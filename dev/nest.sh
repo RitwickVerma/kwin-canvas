@@ -188,6 +188,10 @@ up() {
         [ -f "$STATE/bus" ] && nq org.kde.KWin /KWin org.kde.KWin.supportInformation >/dev/null 2>&1 && break
         sleep 0.2
     done
+    for _ in $(seq 1 50); do
+        nq org.kde.KWin /Effects org.kde.kwin.Effects.isEffectLoaded kwin-canvas 2>/dev/null | grep -q true && break
+        sleep 0.2
+    done
     if nq org.kde.KWin /Effects org.kde.kwin.Effects.isEffectLoaded kwin-canvas 2>/dev/null | grep -q true; then
         echo "nested KWin up, effect loaded (socket $SOCKET)"
     else

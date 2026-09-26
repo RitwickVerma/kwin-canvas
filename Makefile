@@ -134,11 +134,14 @@ plugin-install-system: plugin ## Install the plugin into DESTDIR/usr/lib/qt6/plu
 	DESTDIR=$(DESTDIR) cmake --install $(PLUGIN_BUILD) >/dev/null
 	@echo "installed: $(DESTDIR)/usr/lib/qt6/plugins/kwin/plugins/$(PLUGIN_ID).so"
 
+# One printf, one write: four separate echoes each risk SIGPIPE from a
+# downstream `head`, and make reports that as "Broken pipe".
 plugin-status: ## Whether the pass-through plugin is built, installed, and answering in the running KWin
-	@echo "plugin built:      $$([ -f $(PLUGIN_BUILD)/bin/kwin/plugins/$(PLUGIN_ID).so ] && echo yes || echo no)"
-	@echo "plugin installed:  $$(ls /usr/lib/qt6/plugins/kwin/plugins/$(PLUGIN_ID).so 2>/dev/null || echo no)"
-	@echo "running KWin:      $$(kwin_wayland --version 2>/dev/null | head -1 || echo unknown)"
-	@echo "plugin answers:    $$($(QDBUS) org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.probe 2>/dev/null || echo 'no: not loaded (built for another KWin?), or no session')"
+	@printf '%s\n' \
+	    "plugin built:      $$([ -f $(PLUGIN_BUILD)/bin/kwin/plugins/$(PLUGIN_ID).so ] && echo yes || echo no)" \
+	    "plugin installed:  $$(ls /usr/lib/qt6/plugins/kwin/plugins/$(PLUGIN_ID).so 2>/dev/null || echo no)" \
+	    "running KWin:      $$(kwin_wayland --version 2>/dev/null | head -1 || echo unknown)" \
+	    "plugin answers:    $$($(QDBUS) org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.probe 2>/dev/null || echo 'no: not loaded (built for another KWin?), or no session')"
 
 # ---- tools and fixtures -----------------------------------------------------
 tools: ## Build the fake-input client used by tests and demos (build/tools/fakeinput)
