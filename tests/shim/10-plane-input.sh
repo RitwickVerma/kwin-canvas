@@ -32,7 +32,8 @@ drawn_at() {
     (printf 'move %s %s\nsleep 3000\n' "$1" "$2" | input) &
     local pid=$!
     sleep 1
-    local e=(env DBUS_SESSION_BUS_ADDRESS="$(bus)" WAYLAND_DISPLAY="$SOCKET" XDG_CONFIG_HOME="$CONF")
+    local b; b=$(nestbus) || return 1
+    local e=(env -u DISPLAY DBUS_SESSION_BUS_ADDRESS="$b" WAYLAND_DISPLAY="$SOCKET" QT_QPA_PLATFORM=wayland $(nest_env client))
     "${e[@]}" spectacle -b -n -f -p -o "$OUT/pointer-with.png" >/dev/null 2>&1
     "${e[@]}" spectacle -b -n -f -o "$OUT/pointer-without.png" >/dev/null 2>&1
     wait "$pid"

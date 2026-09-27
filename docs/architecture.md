@@ -185,6 +185,39 @@ the effect tells it what the canvas owns:
   `$XDG_RUNTIME_DIR/kwin-canvas-preload` supplies the transform whenever the
   effect's does not. With `KWIN_CANVAS_PRELOAD_ATTACH=0` the shim loads and
   arms but never attaches, and KWin stays stock.
+- Application popups (menus, combo lists, tooltips) are drawn while the
+  transform is live. In 6.7.5 a Wayland popup is an `XdgPopupWindow`:
+  `popupWindow` and `transient` true, `transientFor` its parent (a submenu's
+  parent is the menu), `managed` true, and no type flag (`popupMenu`,
+  `dropdownMenu`, `comboBox` and `tooltip` are X11 window types, read from
+  `_NET_WM_WINDOW_TYPE` for override-redirect windows). `appPopups` holds
+  every popup on the current activity and desktop whose chain of parents
+  ends at a window shown there, in stacking order, refreshed by `resync()`
+  (which `windowAdded` and `windowRemoved` schedule, as does the one-second
+  timer). Popups are not entries, so nothing settles, snaps, arranges or
+  commits them. KWin places a popup relative to its parent's real geometry,
+  which `settle()` keeps at the parent's plane position, so each popup is
+  drawn from its own real geometry with the plane transform (`s`, `o`),
+  above the windows and the frame tags and below the toolbar and the
+  canvas's menus (`canvasMenus`). Its drawn area is an item named
+  `kwin-canvas-popup`, where `planeTakes()` hands the pointer to KWin when
+  KWin finds that popup there.
+- KWin constrains an xdg popup to its parent's output placement area. The
+  shim hooks `Workspace::clientArea(option, window)`, which
+  `XdgPopupWindow::updateRelativePlacement()` asks for that area, and
+  `XdgPositioner::placement(bounds)`, which receives it relative to the
+  parent, and hands the positioner the area's image in the plane, so a menu
+  opens beside its parent wherever the parent is on the plane and stays
+  within what the output shows. Bounds that do not match the last area
+  pass through.
+- While an application popup holds a grab, a press the canvas would take
+  goes on to KWin (`Window::hasPopupGrab()` over `Workspace::windows()`),
+  whose popup filter, after the effects filter, dismisses the popup and
+  consumes the press, as a press outside a menu does at 1:1. The wheel
+  stays the canvas's.
+- Without the shim no popup is drawn: with the pass-through plugin KWin
+  places popups at the window's real position, which the canvas does not
+  keep at the drawn one, and nothing routes a click to them.
 
 `endSlide` writes each shown window once, from its entry's canvas position
 and its activity's final target, because writing a geometry makes the entry
@@ -440,10 +473,11 @@ the settings pages through `KCMLauncher.openSystemSettings`, as Overview does.
 
 - **No interaction in the overworld** without the plugin or the shim: the
   canvas is then a navigation view. With either the overworld is
-  interactive, pointer and keys, and Esc belongs to the focused window. A
-  window's popups are not drawn in the overworld: with the plugin they open
-  at the window's real position, off screen if the window is; under the
-  shim they are on the plane, where nothing shows them.
+  interactive, pointer and keys, and Esc belongs to the focused window. With
+  the plugin a window's popups are not drawn: they open at the window's
+  real position, off screen if the window is. Under the shim they are
+  drawn, from their real geometry; a popup of a window on another activity
+  or desktop never opens, since KWin does not show that window.
 - **Output changes.** Hotplug or resolution change runs
   `checkWorkspacePosition` on every window and may pull far-off windows
   toward the new layout. The effect re-derives from geometry so nothing is

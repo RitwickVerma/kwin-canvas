@@ -21,6 +21,7 @@
 #   dev/spike/preload/nest-preload.sh tf S OX OY   set the transform file; "tf off" removes it
 #   dev/spike/preload/nest-preload.sh probe NAME     launch probe.qml titled "Probe NAME"; log in $STATE/probe.log
 #   dev/spike/preload/nest-preload.sh js 'CODE'      run a KWin script in the nest; print() lines come back
+#   dev/spike/preload/nest-preload.sh nq ARGS...     qdbus6 on the nest's bus, never the session's
 #   any other dev/nest.sh command passes through (run, input, log, cmd, shot)
 
 set -euo pipefail
@@ -40,21 +41,24 @@ copy_kwin() {
 }
 
 # The shim uses KWin's headers for types only and links Qt Core alone: every
-# libkwin symbol is resolved at run time, after the build-id check.
+# libkwin symbol is resolved at run time, after the build-id check. The
+# library is renamed into place, so a nest still running the old one keeps it.
 build() {
     copy_kwin
     local inc=(-I/usr/include/kwin -I/usr/include/KF6/KCoreAddons -I/usr/include/KF6/KConfigCore
                -I/usr/include/KF6/KConfig -I/usr/include/KF6/KConfigGui -I/usr/include/KF6/KWindowSystem
                -I/usr/include/KDecoration3)
     # shellcheck disable=SC2046
-    g++ -std=c++20 -O2 -g -fPIC -shared -Wall -o "$SPIKE/build/shim.so" "$SPIKE/shim.cpp" "${inc[@]}" \
+    g++ -std=c++20 -O2 -g -fPIC -shared -Wall -o "$SPIKE/build/shim.so.new" "$SPIKE/shim.cpp" "${inc[@]}" \
         $(pkg-config --cflags Qt6Core Qt6Gui Qt6Widgets Qt6Quick Qt6DBus) $(pkg-config --libs Qt6Core) -ldl
     # No libkwin symbol may be left for ld.so to bind at load time.
-    if nm -D --undefined-only "$SPIKE/build/shim.so" | grep -q '_ZN*K*4KWin'; then
+    if nm -D --undefined-only "$SPIKE/build/shim.so.new" | grep -q '_ZN*K*4KWin'; then
         echo "shim.so imports libkwin symbols:" >&2
-        nm -DC --undefined-only "$SPIKE/build/shim.so" | grep 'KWin::' >&2
+        nm -DC --undefined-only "$SPIKE/build/shim.so.new" | grep 'KWin::' >&2
+        rm -f "$SPIKE/build/shim.so.new"
         return 1
     fi
+    mv "$SPIKE/build/shim.so.new" "$SPIKE/build/shim.so"
     echo "built $SPIKE/build/shim.so and a capability-free $SPIKE/build/kwin_wayland"
 }
 
@@ -73,5 +77,6 @@ case "${1:-}" in
     up) up_preload ;;
     down) rm -f "$TF"; down ;;
     tf) shift; tf "$@" ;;
+    nq) shift; nq "$@" ;;
     *) exec "$SPIKE/../../nest.sh" "$@" ;;
 esac

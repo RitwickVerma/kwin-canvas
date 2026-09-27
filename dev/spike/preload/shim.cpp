@@ -30,14 +30,21 @@
 // not, isMouseInterception() answers false and EffectsHandler's pointer
 // entry points pass the event on, so KWin's own chain routes it to the
 // window at the plane point. A press latches the answer until every button
-// is up. The effect sees every event it takes, and every hover motion, at
-// screen positions.
+// is up. While an application popup holds a grab, every press goes on to
+// KWin, whose popup filter dismisses the popup on a press outside it. The
+// effect sees every event it takes, and every hover motion, at screen
+// positions.
 //
 // KWin's pointer position is in plane coordinates while a transform is set.
 // When the transform changes the shim warps the pointer so it keeps its
 // screen position, and the cursor item, which the hardware cursor plane
 // follows too, is drawn at the screen position. Screen edges are tested at
 // the screen position.
+//
+// A popup is constrained to what its parent's output shows: KWin places an
+// xdg_popup within the output's placement area, which the shim maps into the
+// plane while the transform is live, so a menu opens beside its parent
+// wherever the parent is on the plane.
 //
 // The shim is inert (every hook passes straight through) unless the process is
 // kwin_wayland and libkwin's GNU build-id equals EXPECTED_BUILD_ID.
@@ -112,6 +119,8 @@ enum Hook {
     EffectsAxis,
     EffectsTouchDown,
     EffectsTouchMotion,
+    ClientArea,
+    PopupPlacement,
     HookCount
 };
 const char *const s_hooks[HookCount] = {
@@ -136,6 +145,8 @@ const char *const s_hooks[HookCount] = {
     "_ZN4KWin14EffectsHandler11pointerAxisEPNS_16PointerAxisEventE",
     "_ZN4KWin14EffectsHandler9touchDownEiRK7QPointFNSt6chrono8durationIlSt5ratioILl1ELl1000000EEEE",
     "_ZN4KWin14EffectsHandler11touchMotionEiRK7QPointFNSt6chrono8durationIlSt5ratioILl1ELl1000000EEEE",
+    "_ZNK4KWin9Workspace10clientAreaENS_16clientAreaOptionEPKNS_6WindowE",
+    "_ZNK4KWin13XdgPositioner9placementERKNS_5RectFE",
 };
 void *g_orig[HookCount];
 
@@ -473,6 +484,21 @@ bool canvasTakes(const QPointF &plane)
     return take;
 }
 
+// An application popup holds a grab (an open menu or combo list). KWin's
+// popup filter, which runs after the effects filter, closes it on a press
+// outside it and consumes the press.
+bool popupGrabbed()
+{
+    KWin::Workspace *ws = *g_api.workspace;
+    if (!ws) {
+        return false;
+    }
+    const QList<KWin::Window *> windows = ws->windows();
+    return std::any_of(windows.cbegin(), windows.cend(), [](const KWin::Window *w) {
+        return w->hasPopupGrab();
+    });
+}
+
 bool toKwin(const QPointF &plane)
 {
     switch (g_owner) {
@@ -614,6 +640,11 @@ __attribute__((constructor)) void init()
 }
 
 unsigned long g_findCalls = 0;
+
+// The last Workspace::clientArea(option, window) answer, for the popup
+// placement that follows it.
+thread_local RectF g_lastArea;
+thread_local bool g_haveLastArea = false;
 
 } // namespace
 
@@ -926,9 +957,11 @@ bool _ZN4KWin14EffectsHandler13pointerButtonEPNS_18PointerButtonEventE(void *sel
         return fn(self, event);
     }
     // A press of the only button down starts a gesture, whatever a filter
-    // ahead of this one did with the last release.
+    // ahead of this one did with the last release. While an application
+    // popup holds a grab, a press the canvas would take goes on to KWin,
+    // which dismisses the popup as it does anywhere outside it.
     if (event->state == KWin::PointerButtonState::Pressed && event->buttons == event->button) {
-        g_owner = canvasTakes(event->position) ? Owner::Canvas : Owner::Kwin;
+        g_owner = canvasTakes(event->position) && !popupGrabbed() ? Owner::Canvas : Owner::Kwin;
     }
     const bool r = g_owner == Owner::Kwin ? false : deliver(event, [&] { return fn(self, event); });
     if (event->buttons == Qt::NoButton) {
@@ -977,6 +1010,53 @@ bool _ZN4KWin14EffectsHandler11touchMotionEiRK7QPointFNSt6chrono8durationIlSt5ra
         return false;
     }
     return fn(self, id, engaged() ? effective().toScreen(pos) : pos, time);
+}
+
+// ---- popup placement ------------------------------------------------------------------
+
+// KWin::Workspace::clientArea(clientAreaOption, Window const*) const
+// XdgPopupWindow::updateRelativePlacement() asks this for the parent's
+// placement area and passes it, relative to the parent, straight to
+// XdgPositioner::placement().
+RectF _ZNK4KWin9Workspace10clientAreaENS_16clientAreaOptionEPKNS_6WindowE(const void *self, int option, const void *window)
+{
+    using Fn = RectF (*)(const void *, int, const void *);
+    const Fn fn = orig<Fn>(ClientArea);
+    if (!fn) {
+        return {};
+    }
+    const RectF r = fn(self, option, window);
+    g_lastArea = r;
+    g_haveLastArea = g_armed;
+    return r;
+}
+
+// KWin::XdgPositioner::placement(RectF const& bounds) const
+// bounds is the parent's placement area relative to the parent; while the
+// transform is live it becomes the area's image in the plane, so the popup
+// is kept within what the output shows. The parent's position is the offset
+// between the area and bounds; bounds that do not match the last area pass
+// through.
+RectF _ZNK4KWin13XdgPositioner9placementERKNS_5RectFE(const void *self, const RectF &bounds)
+{
+    using Fn = RectF (*)(const void *, const RectF &);
+    const Fn fn = orig<Fn>(PopupPlacement);
+    if (!fn) {
+        return {};
+    }
+    const bool have = g_haveLastArea;
+    g_haveLastArea = false;
+    const Transform t = engaged() ? effective() : Transform{};
+    const RectF &a = g_lastArea;
+    const auto same = [](double x, double y) { return std::abs(x - y) < 1e-6; };
+    if (!have || !t.active || !same(a.right - a.left, bounds.right - bounds.left)
+        || !same(a.bottom - a.top, bounds.bottom - bounds.top)) {
+        return fn(self, bounds);
+    }
+    const double px = a.left - bounds.left, py = a.top - bounds.top;
+    const RectF mapped{ (a.left - t.ox) / t.s - px, (a.top - t.oy) / t.s - py,
+                        (a.right - t.ox) / t.s - px, (a.bottom - t.oy) / t.s - py };
+    return fn(self, mapped);
 }
 
 } // extern "C"

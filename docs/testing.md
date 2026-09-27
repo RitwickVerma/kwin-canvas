@@ -39,7 +39,25 @@ make nest-clean                 # leftovers of nests whose state is gone
 which is how `tests/lib.sh` reuses it. `js 'CODE'` runs a KWin script in the
 nest and returns the lines it passes to `out()`; `probe NAME` launches a
 probe window titled `Probe NAME` that logs every press, release and key it
-receives, with surface-local coordinates, to `$STATE/probe.log`.
+receives, with surface-local coordinates, to `$STATE/probe.log`, and opens
+a menu on a right press. Everything that talks to the nest takes the
+nest's bus from `$STATE/bus` and fails when it is missing: an empty
+`DBUS_SESSION_BUS_ADDRESS` would fall back to the live session's bus. The
+nest's own D-Bus daemons see only the nest's Wayland socket.
+
+A nest never competes with the live session on equal terms. Everything it
+runs (compositor, bus and daemons, plasmashell, clients, probes) starts
+under `nice -n 10 ionice -c3`; `/usr/bin/kwin_wayland` gives its threads
+SCHED_RR through its file capability, so `up` moves the nest's compositor
+back to SCHED_OTHER. `fixtures` and `clients` launch one app at a time,
+each waiting (up to 10 s) for its window to map before the next. The nest's kded does not load its
+GTK module, which writes `$HOME/.gtkrc-2.0` whatever `XDG_CONFIG_HOME` says
+and so makes the live session's kded reload its xsettings. Everything
+the nest runs gets the nest's XDG config, state and cache homes under
+`$STATE`, and the compositor and its bus the nest's data home too. Clients
+keep the user's data home, since the goldens depend on it (Dolphin's view
+properties), so a fixture app still writes its own data there: KWrite's
+anonymous session, Gwenview's recent folders.
 
 ## Driving the effect
 
@@ -140,8 +158,13 @@ their drawn positions with the right surface-local coordinates, inside and
 outside the output, focus and keys follow, title-bar, tag and toolbar
 gestures stay the canvas's, the cursor is drawn at the screen point, the
 chord and the hot corner exit, closing clears the transform, twenty cycles
-leave KWin stock, and unloading the open effect clears it too. `make test`
-runs without the shim.
+leave KWin stock, and unloading the open effect clears it too. The popup
+scenario opens the probe's menu (an xdg_popup, magenta) and submenu (cyan)
+with real input at zoom 0.5: each is drawn at its real geometry over the
+windows, found by pixel colour in a screenshot, a click on an item reaches
+the app, a click on the ground or the toolbar closes an open menu and does
+nothing else, and the menu of a window outside the output opens beside it.
+`make test` runs without the shim.
 
 The spike's own gates (`dev/spike/preload/test.sh`, 16 checks with the
 effect unloaded and the transform from `$XDG_RUNTIME_DIR/kwin-canvas-preload`)

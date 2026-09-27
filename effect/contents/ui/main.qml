@@ -83,8 +83,9 @@ KWin.SceneEffect {
     readonly property real planeScale: zoom
     readonly property real planeOffsetX: { revision; return (peekTarget(currentActivity).x - viewX) * zoom; }
     readonly property real planeOffsetY: { revision; return (peekTarget(currentActivity).y - viewY) * zoom; }
-    // Open menus: while one is up the canvas takes the whole pointer.
-    property int popups: 0
+    // The canvas's own open menus: while one is up the canvas takes the
+    // whole pointer.
+    property int canvasMenus: 0
     // Frame positions at open, for cancel to put back what settle() wrote.
     property var openFrames: ({})
     property bool settled: false
@@ -215,16 +216,30 @@ KWin.SceneEffect {
     function isCanvasWindow(w, anyActivity) {
         if (!w || w.deleted || !w.managed) return false;
         if (w.desktopWindow || w.dock || w.popupWindow || w.specialWindow) return false;
-        if (w.minimized || w.hidden) return false;
-        if (!w.onAllDesktops) {
-            const cur = KWin.Workspace.currentDesktop;
-            const ds = w.desktops;
-            let on = false;
-            for (let i = 0; i < ds.length; ++i) if (ds[i] === cur) on = true;
-            if (!on) return false;
-        }
+        if (w.minimized || w.hidden || !onDesktop(w)) return false;
         if (!anyActivity && !onActivity(w, currentActivity)) return false;
         return true;
+    }
+
+    function onDesktop(w) {
+        if (w.onAllDesktops) return true;
+        const cur = KWin.Workspace.currentDesktop;
+        const ds = w.desktops;
+        for (let i = 0; i < ds.length; ++i) if (ds[i] === cur) return true;
+        return false;
+    }
+
+    // An application's popup (menu, combo list, tooltip) on this activity
+    // and desktop, whose chain of parents ends at a window the canvas shows
+    // here. Wayland popups carry popupWindow and transientFor and no type
+    // flag; X11 override-redirect menus carry their type and may have no
+    // parent.
+    function isAppPopup(w) {
+        if (!w || w.deleted || !w.popupWindow || w.minimized || w.hidden) return false;
+        if (!onDesktop(w) || !onActivity(w, currentActivity)) return false;
+        let p = w.transientFor;
+        while (p && p.popupWindow) p = p.transientFor;
+        return !p || isCanvasWindow(p, false);
     }
 
     // ---- activities and targets --------------------------------------------
@@ -543,7 +558,27 @@ KWin.SceneEffect {
             entries = list;
             revision++;
         }
+        refreshAppPopups();
     }
+
+    // The app popups drawn in the overworld, bottom to top. Only while the
+    // plane transform is live: KWin then places a popup relative to its
+    // parent's real geometry, which settle() keeps at the parent's plane
+    // position, so the popup's own real geometry is where to draw it and
+    // where KWin routes the pointer to it. They are not entries: nothing
+    // settles, snaps, arranges or commits them.
+    property var appPopups: []
+    function refreshAppPopups() {
+        const list = [];
+        if (planeLive) {
+            const stack = KWin.Workspace.stackingOrder;
+            for (let i = 0; i < stack.length; ++i) if (isAppPopup(stack[i])) list.push(stack[i]);
+        }
+        let same = list.length === appPopups.length;
+        for (let i = 0; same && i < list.length; ++i) same = list[i] === appPopups[i];
+        if (!same) appPopups = list;
+    }
+    onPlaneLiveChanged: refreshAppPopups()
 
     Timer {
         interval: 1000
@@ -627,7 +662,7 @@ KWin.SceneEffect {
         ensureTargets();
         entryTargets = copyTargets(targets);
         snapshot();
-        popups = 0;
+        canvasMenus = 0;
         settled = false;
         openFrames = {};
         for (let i = 0; i < entries.length; ++i) openFrames[entries[i].window.internalId] = { x: entries[i].frameX, y: entries[i].frameY };
@@ -1154,10 +1189,10 @@ KWin.SceneEffect {
     // Called by the shim for a global screen point: true where the canvas
     // takes the pointer, false where it goes to w, the window KWin finds at
     // the matching plane point. The pointer goes to a window only over the
-    // client area of its drawn thumbnail, with no control above it, and only
-    // while KWin has that same window there.
+    // client area of its drawn thumbnail, or over a drawn app popup, with no
+    // control above it, and only while KWin has that same window there.
     function planeTakes(x, y, w) {
-        if (!planeLive || popups > 0) return true;
+        if (!planeLive || canvasMenus > 0) return true;
         const sv = effect.viewAt(Qt.point(x, y));
         let item = sv ? sv.rootItem : null;
         if (!item) return true;
@@ -1166,6 +1201,7 @@ KWin.SceneEffect {
             p = item.mapToItem(c, p.x, p.y);
             item = c;
             if (item.objectName === "kwin-canvas-client") return !reaches(item.entry, w);
+            if (item.objectName === "kwin-canvas-popup") return !w || item.modelData !== w;
         }
         return true;
     }
@@ -1446,6 +1482,7 @@ KWin.SceneEffect {
             effect.shiftAll(dx, dy);
         }
         function onActivitiesChanged(id) { Qt.callLater(effect.activitiesChanged); }
+        // App popups come and go with these too; resync() refreshes them.
         function onWindowAdded(w) { if (effect.visible) Qt.callLater(effect.resync); }
         function onWindowRemoved(w) { if (effect.visible) Qt.callLater(effect.resync); }
         // Switching activities at 1:1 switches viewport: the ground follows.
@@ -1670,7 +1707,7 @@ KWin.SceneEffect {
 
     function logState() {
         let s = "kwin-canvas state visible=" + visible + (quiet ? " quiet" : "") + (passthroughLive ? " passthrough" : "") + (planeLive ? " plane" : "") + " zoom=" + zoom.toFixed(4) + " view=(" + viewX.toFixed(1) + "," + viewY.toFixed(1) + ") activity=" + labelOf(currentActivity) + " entries=" + entries.length
-            + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
+            + " popups=" + appPopups.length + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
         const ids = activityIds, screens = KWin.Workspace.screens;
         for (let i = 0; i < ids.length; ++i) {
@@ -2167,6 +2204,30 @@ KWin.SceneEffect {
             }
         }
 
+        // App popups, above the windows and the frame tags, below the
+        // toolbar and the canvas's menus, in KWin's stacking order. Each is
+        // drawn at its real geometry with the plane transform, and its area
+        // is where planeTakes() lets the pointer through to it.
+        Repeater {
+            model: effect.appPopups
+            delegate: Item {
+                required property var modelData
+                required property int index
+                readonly property rect fg: modelData ? modelData.frameGeometry : Qt.rect(0, 0, 0, 0)
+                objectName: "kwin-canvas-popup"
+                x: fg.x * effect.planeScale + effect.planeOffsetX - view.sg.x
+                y: fg.y * effect.planeScale + effect.planeOffsetY - view.sg.y
+                width: fg.width * effect.planeScale
+                height: fg.height * effect.planeScale
+                z: 70000 + index
+
+                KWin.WindowThumbnail {
+                    anchors.fill: parent
+                    client: parent.modelData
+                }
+            }
+        }
+
         // Frame tags, above the windows so they can always be grabbed.
         Repeater {
             model: effect.activityIds
@@ -2236,8 +2297,8 @@ KWin.SceneEffect {
             id: arrangeMenu
             z: 100001
             title: "Arrange"
-            onOpened: effect.popups++
-            onClosed: effect.popups = Math.max(0, effect.popups - 1)
+            onOpened: effect.canvasMenus++
+            onClosed: effect.canvasMenus = Math.max(0, effect.canvasMenus - 1)
             PC3.MenuItem { text: "Arrange horizontally"; icon.name: "view-split-left-right"; onTriggered: effect.arrange("horizontal") }
             PC3.MenuItem { text: "Arrange vertically";   icon.name: "view-split-top-bottom"; onTriggered: effect.arrange("vertical") }
             PC3.MenuItem { text: "Tile";                 icon.name: "view-grid";             onTriggered: effect.arrange("tile") }
@@ -2390,8 +2451,8 @@ KWin.SceneEffect {
                     onClicked: settingsMenu.open()
                     PC3.Menu {
                         id: settingsMenu
-                        onOpened: effect.popups++
-                        onClosed: effect.popups = Math.max(0, effect.popups - 1)
+                        onOpened: effect.canvasMenus++
+                        onClosed: effect.canvasMenus = Math.max(0, effect.canvasMenus - 1)
                         x: hud.vertical ? (hud.atRight ? -width : parent.width) : 0
                         y: hud.vertical ? 0 : parent.height
                         PC3.MenuItem { text: "Effect settings…";  icon.name: "preferences-desktop-effects"; onTriggered: KCM.KCMLauncher.openSystemSettings("kcm_kwin_effects") }

@@ -35,7 +35,7 @@ frame()  { jsq 'for (const w of workspace.windowList()) if (w.caption == "'"$1"'
 "$N" build >/dev/null
 "$N" up || exit 1
 rm -f "$PLOG"
-nq() { DBUS_SESSION_BUS_ADDRESS=$(cat "$STATE/bus") qdbus6 "$@"; }
+nq() { "$N" nq "$@"; }
 nq org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect kwin-canvas
 check "effect unloaded" "$(nq org.kde.KWin /Effects org.kde.kwin.Effects.isEffectLoaded kwin-canvas)" "false"
 "$N" probe A; "$N" probe B; sleep 3

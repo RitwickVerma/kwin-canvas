@@ -29,7 +29,7 @@ c() {
     LAST_STATE=$(cmd "$1")
 }
 
-# sget zoom|viewx|viewy|visible|activity|entries|nactivities  -> value from the last state line
+# sget zoom|viewx|viewy|visible|activity|entries|popups|nactivities  -> value from the last state line
 sget() {
     local line; line=$(head -1 <<<"$LAST_STATE")
     case $1 in
@@ -39,6 +39,7 @@ sget() {
         visible) sed -n 's/.*visible=\([a-z]*\).*/\1/p' <<<"$line" ;;
         activity) sed -n 's/.*activity=\(.*\) entries=.*/\1/p' <<<"$line" ;;
         entries) sed -n 's/.*entries=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        popups)  sed -n 's/.* popups=\([0-9]*\).*/\1/p' <<<"$line" ;;
         nactivities) grep -c '^  {' <<<"$LAST_STATE" ;;
     esac
 }

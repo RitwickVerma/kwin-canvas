@@ -12,6 +12,21 @@ Unreleased: the overworld under the plane-input shim.
   test-shim` runs the shim scenario; see docs/testing.md.
 - A window raised while the canvas is open restacks at once, and a drag or
   resize follows the window it started on when the stack changes under it.
+- Application popups in the overworld under the shim: menus, submenus,
+  combo lists and tooltips of the current activity's windows are drawn
+  where KWin has them, above the windows and below the toolbar, and take
+  the pointer. A menu opens beside its window wherever the window is on
+  the plane, kept within what the screen shows. A click outside an open
+  menu closes it, as at 1:1. Without the shim popups are still not drawn.
+- The nest harness keeps the nest's D-Bus daemons (portals, the activity
+  manager, the secret service) off the live session's compositor and X
+  display, `down` stops them (it used to miss them, so they outlived every
+  nest as clients of the live session), and every call that needs the
+  nest's bus fails when it is missing instead of reaching the session bus.
+  A nest runs niced at idle I/O priority with its compositor off SCHED_RR,
+  launches the fixture apps one at a time, keeps its caches under its own
+  state directory, and no longer lets kded's GTK module write
+  `~/.gtkrc-2.0`.
 
 0.4.0 is the overworld: one chord out and back in, and the open canvas is
 a live desktop.

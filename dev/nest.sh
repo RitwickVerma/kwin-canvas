@@ -62,7 +62,30 @@ ACT1=11111111-1111-4111-8111-111111111111
 ACT2=22222222-2222-4222-8222-222222222222
 
 bus() { cat "$STATE/bus" 2>/dev/null; }
-nq() { DBUS_SESSION_BUS_ADDRESS=$(bus) qdbus6 "$@"; }
+# Everything a nest runs (compositor, bus, daemons, shell, clients) runs
+# niced and at idle I/O priority, so it never contends with the live
+# session's compositor on equal terms.
+LOW=(nice -n 10 ionice -c3)
+# The nest's XDG homes: config, state and cache live under $STATE for the
+# compositor, its bus and every client, so none of them writes session
+# state or caches (shader, sycoca, QML) into the real home. The data home
+# is the nest's for the compositor and its bus (the activity manager's
+# database); clients (nest_env client) keep the user's, which the fixture
+# apps' look depends on (Dolphin's view properties). ~/.local/share stays
+# first on the data search path for the installed packages.
+nest_env() {
+    printf '%s\n' "XDG_CONFIG_HOME=$CONF" "XDG_STATE_HOME=$STATE/state" "XDG_CACHE_HOME=$STATE/cache" \
+        "XDG_DATA_DIRS=$HOME/.local/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+    [ "${1:-}" = client ] || echo "XDG_DATA_HOME=$STATE/data"
+}
+# The nest's bus address, or a loud failure: an empty DBUS_SESSION_BUS_ADDRESS
+# makes D-Bus fall back to the live session's bus.
+nestbus() {
+    local b; b=$(bus)
+    [ -n "$b" ] || { echo "nest $NEST_NAME has no bus ($STATE/bus); not falling back to the session bus" >&2; return 1; }
+    echo "$b"
+}
+nq() { local b; b=$(nestbus) || return 1; DBUS_SESSION_BUS_ADDRESS=$b qdbus6 "$@"; }
 alive() { [ -f "$STATE/pid" ] && kill -0 "$(cat "$STATE/pid")" 2>/dev/null; }
 
 # The fixture wallpaper for a space (1-based). NEST_WALLPAPER=0 disables
@@ -101,6 +124,12 @@ Backend=OpenGL
 Number=2
 Rows=1
 CFG
+    # kded's GTK module writes $HOME/.gtkrc-2.0 whatever XDG_CONFIG_HOME
+    # says, and the live session's kded reloads its xsettings on that.
+    cat > "$CONF/kded5rc" <<CFG
+[Module-gtkconfig]
+autoload=false
+CFG
     # The nest's activity manager reads these; the state file (XDG_STATE_HOME)
     # names the current one. Rewritten on every up, so an added activity
     # never lingers.
@@ -109,7 +138,7 @@ CFG
 $ACT1=Activity 1
 $ACT2=Activity 2
 CFG
-    mkdir -p "$STATE/state" "$STATE/data"
+    mkdir -p "$STATE/state" "$STATE/data" "$STATE/cache"
     cat > "$STATE/state/kactivitymanagerdstaterc" <<CFG
 [main]
 currentActivity=$ACT1
@@ -174,13 +203,16 @@ up() {
     # dbus-run-session's, written from inside as its child's $PPID. The
     # environment goes on dbus-run-session itself, so the daemons the bus
     # activates (the activity manager above all) read the nest's config.
-    # The data home is the nest's too, so the activity manager's database
-    # is not the live session's; ~/.local/share stays on the search path
-    # for the installed packages. Clients launched with run() keep the
-    # user's data home, so the fixture apps look as they do at 1:1.
+    # The XDG homes are the nest's (nest_env), so the activity manager's
+    # database is not the live session's.
     # With a shim, LD_PRELOAD goes on kwin_wayland alone: dbus-run-session and
     # bash stay clean, and the shim unsets it so KWin's children do not
     # inherit it.
+    # The bus and every daemon it activates (portals, the activity manager,
+    # the secret service) see the nest's Wayland socket and no X display, so
+    # none of them connects to the live session's compositor or Xwayland;
+    # kwin_wayland alone gets the caller's displays back, which a windowed
+    # nest needs.
     local kwin=kwin_wayland plugins="$HERE/build/plugin/bin${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
     if [ -n "${NEST_PRELOAD:-}" ]; then
         kwin=${NEST_KWIN:?NEST_PRELOAD needs NEST_KWIN, a capability-free kwin_wayland}
@@ -188,13 +220,17 @@ up() {
     fi
     (
         cd "$STATE"
-        setsid -f env XDG_CONFIG_HOME="$STATE/config" XDG_STATE_HOME="$STATE/state" \
-            XDG_DATA_HOME="$STATE/data" XDG_DATA_DIRS="$HOME/.local/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}" \
+        setsid -f "${LOW[@]}" env -u DISPLAY WAYLAND_DISPLAY="$SOCKET" \
+            NEST_HOST_WAYLAND="${WAYLAND_DISPLAY:-}" NEST_HOST_DISPLAY="${DISPLAY:-}" \
+            $(nest_env) \
             QT_LOGGING_TO_CONSOLE=1 KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 \
             QT_PLUGIN_PATH="$plugins" NEST_KWIN_BIN="$kwin" NEST_KWIN_PRELOAD="${NEST_PRELOAD:-}" \
             dbus-run-session -- bash -c '
             echo "$PPID" > "$0/pid"
             echo "$DBUS_SESSION_BUS_ADDRESS" > "$0/bus"
+            export WAYLAND_DISPLAY="$NEST_HOST_WAYLAND"
+            [ -n "$NEST_HOST_DISPLAY" ] && export DISPLAY="$NEST_HOST_DISPLAY"
+            unset NEST_HOST_WAYLAND NEST_HOST_DISPLAY
             exec env ${NEST_KWIN_PRELOAD:+LD_PRELOAD="$NEST_KWIN_PRELOAD"} "$NEST_KWIN_BIN" '"$([ "$VIRTUAL" = 1 ] && echo --virtual)"' --width '"$WIDTH"' --height '"$HEIGHT"' --output-count '"$OUTPUTS"' --xwayland --no-lockscreen --socket '"$SOCKET"'
         ' "$STATE" > "$LOG" 2>&1
     )
@@ -211,16 +247,33 @@ up() {
     else
         echo "nested KWin up but effect NOT loaded; see: dev/nest.sh log"
     fi
+    unrealtime
     shell
+}
+
+# /usr/bin/kwin_wayland carries cap_sys_nice and gives its threads
+# SCHED_RR, the live compositor's own class. A nest's compositor drops back
+# to the normal class, which an unprivileged process may always do.
+unrealtime() {
+    local pid t
+    pid=$(pgrep -P "$(cat "$STATE/pid" 2>/dev/null)" 2>/dev/null | head -1) || return 0
+    [ -n "$pid" ] || return 0
+    for t in /proc/"$pid"/task/*; do
+        chrt -p "${t##*/}" 2>/dev/null | grep -q SCHED_OTHER || chrt -o -p 0 "${t##*/}" 2>/dev/null || true
+    done
 }
 
 # Every process attached to the nest's private bus: the compositor, the
 # clients launched into it, and the daemons D-Bus activated there (portals,
 # kactivitymanagerd, kglobalacceld). Those daemons outlive the bus otherwise.
+# The environment is read whole before it is matched: under pipefail a
+# grep -q that stops at the match fails the pipeline once tr is still
+# writing, and the daemons' environments are large enough for that.
 pids_on_bus() {   # pids_on_bus BUS_ADDRESS
-    local addr=$1 p
+    local addr=$1 p env
     for p in /proc/[0-9]*; do
-        if cat "$p/environ" 2>/dev/null | tr '\0' '\n' | grep -qxF "DBUS_SESSION_BUS_ADDRESS=$addr"; then
+        env=$({ tr '\0' '\n' < "$p/environ"; } 2>/dev/null) || continue
+        if grep -qxF "DBUS_SESSION_BUS_ADDRESS=$addr" <<<"$env"; then
             echo "${p#/proc/}"
         fi
     done
@@ -234,10 +287,11 @@ down() {
     fi
     if [ -n "$addr" ]; then
         local pids; pids=$(pids_on_bus "$addr")
-        [ -n "$pids" ] && kill $pids 2>/dev/null
+        # A pid already gone fails kill, which must not end down under set -e.
+        [ -n "$pids" ] && { kill $pids 2>/dev/null || true; }
         sleep 0.3
         pids=$(pids_on_bus "$addr")
-        [ -n "$pids" ] && kill -9 $pids 2>/dev/null
+        [ -n "$pids" ] && { kill -9 $pids 2>/dev/null || true; }
     fi
     rm -f "$STATE/pid" "$STATE/bus" "$STATE/clients"
     echo "down"
@@ -275,7 +329,8 @@ clean() {
 
 run() {
     alive || { echo "not up"; exit 1; }
-    ( export WAYLAND_DISPLAY=$SOCKET DBUS_SESSION_BUS_ADDRESS=$(bus) XDG_CONFIG_HOME=$CONF XDG_STATE_HOME=$STATE/state; unset DISPLAY; "$@" >/dev/null 2>&1 & echo $! >> "$STATE/clients" )
+    local b; b=$(nestbus) || exit 1
+    ( export WAYLAND_DISPLAY=$SOCKET DBUS_SESSION_BUS_ADDRESS=$b $(nest_env client); unset DISPLAY; "${LOW[@]}" "$@" >/dev/null 2>&1 & echo $! >> "$STATE/clients" )
     echo "launched: $*"
 }
 
@@ -298,7 +353,8 @@ toggle() {
 shot() {
     alive || { echo "not up"; exit 1; }
     local out=${1:-$STATE/shot-$(date +%H%M%S).png}
-    DBUS_SESSION_BUS_ADDRESS=$(bus) WAYLAND_DISPLAY=$SOCKET XDG_CONFIG_HOME=$CONF \
+    local b; b=$(nestbus) || return 1
+    env -u DISPLAY DBUS_SESSION_BUS_ADDRESS="$b" WAYLAND_DISPLAY=$SOCKET QT_QPA_PLATFORM=wayland $(nest_env client) \
         spectacle -b -n -f -o "$out" >/dev/null 2>&1 || true
     [ -s "$out" ] && echo "$out" || echo "screenshot failed"
 }
@@ -323,8 +379,9 @@ reload() {
 }
 
 clients() {
-    for c in ${NEST_CLIENTS:-kcalc konsole kwrite}; do run "$c" >/dev/null; done
-    sleep 3
+    local n; n=$(nwindows)
+    for c in ${NEST_CLIENTS:-kcalc konsole kwrite}; do run "$c" >/dev/null; n=$((n + 1)); mapped "$n"; done
+    sleep 1
     echo "clients: ${NEST_CLIENTS:-kcalc konsole kwrite}"
 }
 
@@ -334,13 +391,24 @@ clients() {
 fixtures() {
     [ -f "$FIXTURES/wallpaper.png" ] || python3 "$FIXTURES/gen.py" >/dev/null
     rm -f "$FIXTURES"/.*.kate-swp "$FIXTURES"/*.swp 2>/dev/null
-    run kcalc >/dev/null
-    run kwrite "$FIXTURES/sample.txt" >/dev/null
-    run konsole -e sh -c "cat '$FIXTURES/konsole.txt'; exec sleep 1d" >/dev/null
-    run dolphin "$FIXTURES" >/dev/null
-    run gwenview "$FIXTURES/wallpaper.png" >/dev/null
-    sleep 4
+    # One at a time: each launch waits for its window before the next.
+    local n; n=$(nwindows)
+    run kcalc >/dev/null; mapped $((n + 1))
+    run kwrite "$FIXTURES/sample.txt" >/dev/null; mapped $((n + 2))
+    run konsole -e sh -c "cat '$FIXTURES/konsole.txt'; exec sleep 1d" >/dev/null; mapped $((n + 3))
+    run dolphin "$FIXTURES" >/dev/null; mapped $((n + 4))
+    run gwenview "$FIXTURES/wallpaper.png" >/dev/null; mapped $((n + 5))
+    sleep 1
     echo "fixtures: kcalc kwrite konsole dolphin gwenview"
+}
+
+# The number of normal windows mapped; mapped N waits up to 10 s for N.
+nwindows() { js 'let n = 0; for (const w of workspace.windowList()) if (w.normalWindow && !w.deleted) ++n; out(n)'; }
+mapped() {
+    for _ in $(seq 1 20); do
+        [ "$(nwindows)" -ge "$1" ] 2>/dev/null && return 0
+        sleep 0.5
+    done
 }
 
 # A KWin script run through org.kde.kwin.Scripting; its out() lines land in
@@ -361,8 +429,9 @@ js() {
 # key it receives with surface-local coordinates, as "PROBE Probe NAME ...".
 probe() {
     alive || { echo "not up"; return 1; }
-    ( export WAYLAND_DISPLAY=$SOCKET DBUS_SESSION_BUS_ADDRESS=$(bus) XDG_CONFIG_HOME=$CONF QT_QPA_PLATFORM=wayland QT_FORCE_STDERR_LOGGING=1; unset DISPLAY
-      qml6 "$HERE/dev/spike/preload/probe.qml" -- "$1" >> "$STATE/probe.log" 2>&1 & echo $! >> "$STATE/clients" )
+    local b; b=$(nestbus) || return 1
+    ( export WAYLAND_DISPLAY=$SOCKET DBUS_SESSION_BUS_ADDRESS=$b $(nest_env client) QT_QPA_PLATFORM=wayland QT_FORCE_STDERR_LOGGING=1; unset DISPLAY
+      "${LOW[@]}" qml6 "$HERE/dev/spike/preload/probe.qml" -- "$1" >> "$STATE/probe.log" 2>&1 & echo $! >> "$STATE/clients" )
 }
 
 # Inject input through KWin's fake-input protocol. Commands on stdin, or as
