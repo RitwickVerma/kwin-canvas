@@ -8,6 +8,7 @@
 # --update-golden  store this run's screenshots as the golden references
 # --keep           leave the test nest running afterwards
 # PATTERN          only scenarios whose file name matches
+# SCENARIOS=DIR    run DIR/*.sh instead of tests/scenarios (tests/run-shim.sh)
 set -uo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 KEEP=0; PATTERN=""
@@ -29,7 +30,7 @@ fixtures
 arrange >/dev/null
 echo "   fixtures arranged: $(sget entries) windows"
 
-for f in "$HERE"/tests/scenarios/*.sh; do
+for f in "$HERE"/${SCENARIOS:-tests/scenarios}/*.sh; do
     name=$(basename "$f" .sh)
     [ -n "$PATTERN" ] && [[ "$name" != *$PATTERN* ]] && continue
     unset -f run_scenario; scenario_desc=""

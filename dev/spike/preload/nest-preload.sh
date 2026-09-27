@@ -2,11 +2,9 @@
 # SPDX-FileCopyrightText: 2026 Aaron Bockelie <aaronsb@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Spike harness: a virtual-backend nest whose kwin_wayland runs with the
-# preload shim. Reuses dev/nest.sh for config, bus, clients, input and
-# teardown; only the launch differs, because LD_PRELOAD has to reach
-# kwin_wayland alone (dbus-run-session and bash stay clean, and the shim
-# unsets it at load so KWin's children do not inherit it). The pass-through
-# plugin is left off QT_PLUGIN_PATH so it cannot confound routing.
+# preload shim. dev/nest.sh does the launch (NEST_PRELOAD, NEST_KWIN), config,
+# bus, clients, input and teardown. The pass-through plugin is left off
+# QT_PLUGIN_PATH so it cannot confound routing.
 #
 # /usr/bin/kwin_wayland carries the file capability cap_sys_nice=ep, which
 # puts ld.so in secure-execution mode (AT_SECURE): LD_PRELOAD paths with a
@@ -14,10 +12,13 @@
 # binary (cp drops file capabilities) from build/, which only costs KWin its
 # realtime scheduling.
 #
-#   dev/spike/preload/nest-preload.sh build     compile shim.so and the probe client deps
+# This nest sets KWIN_CANVAS_PRELOAD_FILE=1, so the transform file below
+# applies whenever the kwin-canvas effect's own transform does not.
+#
+#   dev/spike/preload/nest-preload.sh build     compile shim.so and copy kwin_wayland
 #   dev/spike/preload/nest-preload.sh up        start the nest (virtual, NEST_NAME=preload)
 #   dev/spike/preload/nest-preload.sh down
-#   dev/spike/preload/nest-preload.sh tf S OX OY   set the transform; "tf off" clears it
+#   dev/spike/preload/nest-preload.sh tf S OX OY   set the transform file; "tf off" removes it
 #   dev/spike/preload/nest-preload.sh probe NAME     launch probe.qml titled "Probe NAME"; log in $STATE/probe.log
 #   dev/spike/preload/nest-preload.sh js 'CODE'      run a KWin script in the nest; print() lines come back
 #   any other dev/nest.sh command passes through (run, input, log, cmd, shot)
@@ -29,64 +30,45 @@ export NEST_NAME=preload NEST_VIRTUAL=1 NEST_SHELL=${NEST_SHELL:-0}
 source "$SPIKE/../../nest.sh"
 TF=${XDG_RUNTIME_DIR:-/tmp}/kwin-canvas-preload
 
-build() {
+# A capability-free copy of kwin_wayland, refreshed whenever the installed
+# one differs; renamed into place, so a nest still running the old copy keeps it.
+copy_kwin() {
     mkdir -p "$SPIKE/build"
-    cp /usr/bin/kwin_wayland "$SPIKE/build/kwin_wayland"
-    g++ -O2 -g -fPIC -shared -Wall -o "$SPIKE/build/shim.so" "$SPIKE/shim.cpp" -ldl
+    cmp -s /usr/bin/kwin_wayland "$SPIKE/build/kwin_wayland" || {
+        cp /usr/bin/kwin_wayland "$SPIKE/build/kwin_wayland.new" && mv "$SPIKE/build/kwin_wayland.new" "$SPIKE/build/kwin_wayland"
+    }
+}
+
+# The shim uses KWin's headers for types only and links Qt Core alone: every
+# libkwin symbol is resolved at run time, after the build-id check.
+build() {
+    copy_kwin
+    local inc=(-I/usr/include/kwin -I/usr/include/KF6/KCoreAddons -I/usr/include/KF6/KConfigCore
+               -I/usr/include/KF6/KConfig -I/usr/include/KF6/KConfigGui -I/usr/include/KF6/KWindowSystem
+               -I/usr/include/KDecoration3)
+    # shellcheck disable=SC2046
+    g++ -std=c++20 -O2 -g -fPIC -shared -Wall -o "$SPIKE/build/shim.so" "$SPIKE/shim.cpp" "${inc[@]}" \
+        $(pkg-config --cflags Qt6Core Qt6Gui Qt6Widgets Qt6Quick Qt6DBus) $(pkg-config --libs Qt6Core) -ldl
+    # No libkwin symbol may be left for ld.so to bind at load time.
+    if nm -D --undefined-only "$SPIKE/build/shim.so" | grep -q '_ZN*K*4KWin'; then
+        echo "shim.so imports libkwin symbols:" >&2
+        nm -DC --undefined-only "$SPIKE/build/shim.so" | grep 'KWin::' >&2
+        return 1
+    fi
     echo "built $SPIKE/build/shim.so and a capability-free $SPIKE/build/kwin_wayland"
 }
 
 up_preload() {
     [ -f "$SPIKE/build/shim.so" ] || build
-    if alive; then echo "already up (pid $(cat "$STATE/pid"))"; return; fi
-    mkdir -p "$STATE"; rm -f "$STATE/bus" "$STATE/clients" "$STATE/pid"
-    seed_config
-    (
-        cd "$STATE"
-        setsid -f env XDG_CONFIG_HOME="$STATE/config" XDG_STATE_HOME="$STATE/state" \
-            XDG_DATA_HOME="$STATE/data" XDG_DATA_DIRS="$HOME/.local/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}" \
-            QT_LOGGING_TO_CONSOLE=1 KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 \
-            SHIM="$SPIKE/build/shim.so" KWIN_BIN="$SPIKE/build/kwin_wayland" \
-            dbus-run-session -- bash -c '
-            echo "$PPID" > "$0/pid"
-            echo "$DBUS_SESSION_BUS_ADDRESS" > "$0/bus"
-            exec env LD_PRELOAD="$SHIM" "$KWIN_BIN" --virtual --width '"$WIDTH"' --height '"$HEIGHT"' --output-count 1 --xwayland --no-lockscreen --socket '"$SOCKET"'
-        ' "$STATE" > "$LOG" 2>&1
-    )
-    for _ in $(seq 1 50); do
-        [ -f "$STATE/bus" ] && nq org.kde.KWin /KWin org.kde.KWin.supportInformation >/dev/null 2>&1 && break
-        sleep 0.2
-    done
-    alive && echo "nest up (pid $(cat "$STATE/pid"), socket $SOCKET)" || { echo "nest failed; see $LOG"; return 1; }
+    copy_kwin
+    NEST_PRELOAD="$SPIKE/build/shim.so" NEST_KWIN="$SPIKE/build/kwin_wayland" KWIN_CANVAS_PRELOAD_FILE=1 up
 }
 
 tf() {
     if [ "${1:-off}" = off ]; then rm -f "$TF"; echo "transform off"; else echo "$1 $2 $3" > "$TF"; echo "transform $1 $2 $3"; fi
 }
 
-probe() {
-    alive || { echo "not up"; return 1; }
-    ( export WAYLAND_DISPLAY=$SOCKET DBUS_SESSION_BUS_ADDRESS=$(bus) QT_QPA_PLATFORM=wayland QT_FORCE_STDERR_LOGGING=1; unset DISPLAY
-      qml6 "$SPIKE/probe.qml" -- "$1" >> "$STATE/probe.log" 2>&1 & echo $! >> "$STATE/clients" )
-}
-
-# A KWin script run through org.kde.kwin.Scripting; its print() output lands
-# in the nest log tagged with a fresh marker, which is echoed back.
-js() {
-    alive || { echo "not up"; return 1; }
-    local tag="JS$RANDOM$RANDOM" f="$STATE/script-$RANDOM.js"
-    printf 'function out(s) { print("%s " + s); }\n%s\n' "$tag" "$1" > "$f"
-    local id; id=$(nq org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript "$f" "$tag")
-    nq org.kde.KWin "/Scripting/Script$id" org.kde.kwin.Script.run >/dev/null
-    sleep 0.3
-    nq org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript "$tag" >/dev/null
-    rm -f "$f"
-    grep -a "$tag " "$LOG" | sed "s/.*$tag //"
-}
-
 case "${1:-}" in
-    probe) probe "$2" ;;
-    js) js "$2" ;;
     build) build ;;
     up) up_preload ;;
     down) rm -f "$TF"; down ;;

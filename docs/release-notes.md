@@ -1,3 +1,18 @@
+Unreleased: the overworld under the plane-input shim.
+
+- With the spike shim of `dev/spike/preload` preloaded into kwin_wayland
+  6.7.5, KWin's pointer chain works in plane coordinates and the open
+  canvas shares input with the windows it draws: pointer over a window's
+  client area goes to the window, every key to the focused window; title
+  bars, edges, frames, tags, ground and toolbar stay the canvas's. The
+  effect publishes its transform as properties the shim reads in-process,
+  and KWin runs stock whenever the canvas is closed, quiet or unloaded.
+  The cursor is drawn at the screen point and screen edges stay on the
+  screen. The pass-through plugin stands down under the shim. `make
+  test-shim` runs the shim scenario; see docs/testing.md.
+- A window raised while the canvas is open restacks at once, and a drag or
+  resize follows the window it started on when the stack changes under it.
+
 0.4.0 is the overworld: one chord out and back in, and the open canvas is
 a live desktop.
 

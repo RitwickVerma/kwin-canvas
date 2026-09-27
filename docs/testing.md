@@ -17,7 +17,9 @@ effect uses to publish the ground offset, so the handoff runs on every nest.
 
 `NEST_NAME=foo` gives an independent nest with its own socket, bus, config and
 log. Tests use `test`, the demo uses `demo`, and the default is `kwincanvas`.
-`NEST_SHELL=0` skips plasmashell.
+`NEST_SHELL=0` skips plasmashell. `NEST_PRELOAD=SHIM.so NEST_KWIN=BINARY`
+runs BINARY with the plane-input shim preloaded and the pass-through plugin
+off the plugin path (see below).
 
 ```bash
 make play                       # up, fixture apps arranged, canvas open and fitted
@@ -34,7 +36,10 @@ make nest-clean                 # leftovers of nests whose state is gone
 
 `dev/nest.sh` is sourceable: `source dev/nest.sh` exposes `up`, `down`, `run`,
 `cmd`, `shot`, `input`, `fixtures` and the rest without running anything,
-which is how `tests/lib.sh` reuses it.
+which is how `tests/lib.sh` reuses it. `js 'CODE'` runs a KWin script in the
+nest and returns the lines it passes to `out()`; `probe NAME` launches a
+probe window titled `Probe NAME` that logs every press, release and key it
+receives, with surface-local coordinates, to `$STATE/probe.log`.
 
 ## Driving the effect
 
@@ -65,6 +70,7 @@ make nest-cmd CMD=activities              # raw activity ids and each window's l
 make nest-cmd CMD=resetview               # 1:1 only: forget the pan so canvas == frame
 make nest-cmd CMD=list                    # every window with its frame and activity
 make nest-cmd CMD=cancel
+make nest-cmd CMD="locate In"             # log the global centre of the toolbar control labelled In
 ```
 
 Each command prints the effect state afterwards: `visible`, `zoom`, `view`,
@@ -112,6 +118,34 @@ them at fixed canvas positions with `placeby`, then sources each
   `UPDATE_GOLDEN=1` it records instead. Diffs land in `build/test/NAME.diff.png`.
 - `input ...` injects real events; `have_input` says whether the tool is built.
 - `arrange` restores the fixed fixture layout.
+
+`tests/run.sh` takes `SCENARIOS=DIR` to run another directory of scenarios.
+
+## Plane input under the shim
+
+```bash
+make test-shim            # tests/shim/*.sh under the preload shim
+make test-shim ARGS=--keep
+```
+
+`tests/run-shim.sh` builds the shim (`dev/spike/preload/nest-preload.sh
+build`: `shim.so` against KWin's headers, and a capability-free copy of
+`kwin_wayland`, since the file capability on the real binary makes ld.so
+drop `LD_PRELOAD`), then runs `tests/run.sh` with `NEST_NAME=shim`,
+`NEST_PRELOAD` and `SCENARIOS=tests/shim`. It prints a skip line and exits 0
+when the installed libkwin is not the build the shim was written for, or
+the shim does not build. The shim scenario drives two probe windows with
+real input while the canvas is open at zoom 0.5: clicks reach the windows at
+their drawn positions with the right surface-local coordinates, inside and
+outside the output, focus and keys follow, title-bar, tag and toolbar
+gestures stay the canvas's, the cursor is drawn at the screen point, the
+chord and the hot corner exit, closing clears the transform, twenty cycles
+leave KWin stock, and unloading the open effect clears it too. `make test`
+runs without the shim.
+
+The spike's own gates (`dev/spike/preload/test.sh`, 16 checks with the
+effect unloaded and the transform from `$XDG_RUNTIME_DIR/kwin-canvas-preload`)
+run in the `preload` nest, which sets `KWIN_CANVAS_PRELOAD_FILE=1`.
 
 The fixtures are procedural (`tests/fixtures/gen.py`): a wallpaper with
 labelled quadrants, a seamless tile, and two text files. The fixture apps open

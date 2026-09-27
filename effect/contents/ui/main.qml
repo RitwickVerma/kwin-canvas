@@ -67,8 +67,27 @@ KWin.SceneEffect {
     // to the real window; the ground, the decorations, the frame tags and
     // the toolbar stay the canvas's. Live once the plugin has answered the
     // probe for this opening; the camera is published to it on every change.
-    readonly property bool passthrough: configuration.Passthrough !== false
+    readonly property bool passthrough: configuration.Passthrough !== false && !planeInput
     property bool passthroughLive: false
+    // Plane input: under the preload shim (dev/spike/preload) KWin's pointer
+    // chain works in plane coordinates, plane = (screen - o) / s, where a
+    // plane point is a frame position on the current activity: s = zoom and
+    // o = (target(current) - view) * zoom. The shim sets planeInput when it
+    // attaches, reads the transform below while planeLive, and asks
+    // planeTakes() where the canvas keeps the pointer. Everywhere else KWin
+    // routes the pointer to the window there, and keys go to the focused
+    // window. The pass-through plugin stands down.
+    property bool planeInput: false
+    // The shim takes a scale in (0.01, 100) only; outside it the transform is off.
+    readonly property bool planeLive: planeInput && canvasOpen && zoom > 0.01 && zoom < 100
+    readonly property real planeScale: zoom
+    readonly property real planeOffsetX: { revision; return (peekTarget(currentActivity).x - viewX) * zoom; }
+    readonly property real planeOffsetY: { revision; return (peekTarget(currentActivity).y - viewY) * zoom; }
+    // Open menus: while one is up the canvas takes the whole pointer.
+    property int popups: 0
+    // Frame positions at open, for cancel to put back what settle() wrote.
+    property var openFrames: ({})
+    property bool settled: false
     // Selection: window internalId -> true. selectionRev bumps on every change.
     property var selected: ({})
     property int selectionRev: 0
@@ -485,7 +504,7 @@ KWin.SceneEffect {
         const t = targetOf(a);
         const g = w.frameGeometry;
         return { window: w, activity: a, x: g.x + t.x, y: g.y + t.y, width: g.width, height: g.height,
-                 frameX: g.x, frameY: g.y, anchorRight: false, anchorBottom: false };
+                 frameX: g.x, frameY: g.y, anchorRight: false, anchorBottom: false, askW: 0, askH: 0 };
     }
 
     function snapshot() {
@@ -608,6 +627,10 @@ KWin.SceneEffect {
         ensureTargets();
         entryTargets = copyTargets(targets);
         snapshot();
+        popups = 0;
+        settled = false;
+        openFrames = {};
+        for (let i = 0; i < entries.length; ++i) openFrames[entries[i].window.internalId] = { x: entries[i].frameX, y: entries[i].frameY };
         visible = true;
         if (!quiet) openView();
         if (!quiet && passthrough) probeCall.call();
@@ -665,6 +688,7 @@ KWin.SceneEffect {
         viewY = cur.y;
         zoom = 1.0;
         publishGround();
+        settled = false;
         visible = false;
         quiet = false;
         swiping = false;
@@ -676,6 +700,7 @@ KWin.SceneEffect {
 
     function cancel() {
         if (!visible) return;
+        unsettle();
         targets = copyTargets(entryTargets);
         viewX = entryViewX;
         viewY = entryViewY;
@@ -729,7 +754,7 @@ KWin.SceneEffect {
     //            frame centred on it.
     property var pendingFocus: null
     function focusWindow(entry, gx, gy) {
-        if (gx === undefined) { const p = KWin.Workspace.cursorPos; gx = p.x; gy = p.y; }
+        if (gx === undefined) { const p = cursorScreen(); gx = p.x; gy = p.y; }
         const inFrame = activityAt(entry);
         const a = inFrame !== null ? inFrame : entry.activity;
         const t = targetOf(a);
@@ -1037,8 +1062,10 @@ KWin.SceneEffect {
         h += snapEdge1D(anchorBottom ? bottom - h : e.y + h, false, cands) * (anchorBottom ? -1 : 1);
         e.anchorRight = anchorRight;
         e.anchorBottom = anchorBottom;
+        e.askW = Math.max(50, Math.round(w));
+        e.askH = Math.max(50, Math.round(h));
         const f = e.window.frameGeometry;
-        e.window.frameGeometry = Qt.rect(f.x, f.y, Math.max(50, Math.round(w)), Math.max(50, Math.round(h)));
+        e.window.frameGeometry = Qt.rect(f.x, f.y, e.askW, e.askH);
     }
 
     // Absorb a window's real frame change into its entry. Returns true if anything moved.
@@ -1054,6 +1081,8 @@ KWin.SceneEffect {
             changed = true;
         }
         if (f.width !== e.width || f.height !== e.height) {
+            e.askW = 0;
+            e.askH = 0;
             if (e.anchorRight) e.x += e.width - f.width;
             if (e.anchorBottom) e.y += e.height - f.height;
             e.width = f.width;
@@ -1112,6 +1141,80 @@ KWin.SceneEffect {
     onViewXChanged: if (passthroughLive) Qt.callLater(publishCamera)
     onViewYChanged: if (passthroughLive) Qt.callLater(publishCamera)
     onZoomChanged: if (passthroughLive) Qt.callLater(publishCamera)
+    onPlaneInputChanged: if (planeInput) dropPassthrough()
+
+    // ---- plane input -----------------------------------------------------------
+    // The pointer in global screen coordinates; KWin reports plane
+    // coordinates while the transform is live.
+    function cursorScreen() {
+        const p = KWin.Workspace.cursorPos;
+        return planeLive ? Qt.point(p.x * planeScale + planeOffsetX, p.y * planeScale + planeOffsetY) : p;
+    }
+
+    // Called by the shim for a global screen point: true where the canvas
+    // takes the pointer, false where it goes to w, the window KWin finds at
+    // the matching plane point. The pointer goes to a window only over the
+    // client area of its drawn thumbnail, with no control above it, and only
+    // while KWin has that same window there.
+    function planeTakes(x, y, w) {
+        if (!planeLive || popups > 0) return true;
+        const sv = effect.viewAt(Qt.point(x, y));
+        let item = sv ? sv.rootItem : null;
+        if (!item) return true;
+        let p = Qt.point(x - item.sg.x, y - item.sg.y);
+        for (let c = item.childAt(p.x, p.y); c; c = item.childAt(p.x, p.y)) {
+            p = item.mapToItem(c, p.x, p.y);
+            item = c;
+            if (item.objectName === "kwin-canvas-client") return !reaches(item.entry, w);
+        }
+        return true;
+    }
+
+    // KWin has the entry's window at the drawn position: on the current
+    // activity, where the entry says, and topmost there.
+    function reaches(e, w) {
+        if (!e || !e.window || e.window.deleted || w !== e.window) return false;
+        if (e.activity !== currentActivity || !onActivity(e.window, currentActivity)) return false;
+        const t = peekTarget(currentActivity), f = e.window.frameGeometry;
+        return Math.abs(e.x - t.x - f.x) < 1 && Math.abs(e.y - t.y - f.y) < 1;
+    }
+
+    // KWin routes the pointer by real geometry, so while the transform is
+    // live a window of the current activity that moves on the canvas is
+    // written at once. The entry takes the new frame position first, so it
+    // absorbs the write as no move.
+    function settle() {
+        if (!planeLive) return;
+        const t = peekTarget(currentActivity);
+        for (let i = 0; i < entries.length; ++i) {
+            const e = entries[i];
+            if (!e || !e.window || e.window.deleted || e.activity !== currentActivity || !onActivity(e.window, currentActivity)) continue;
+            const fx = Math.round(e.x - t.x), fy = Math.round(e.y - t.y);
+            if (fx === e.frameX && fy === e.frameY) continue;
+            e.frameX = fx;
+            e.frameY = fy;
+            // A size requestSize() asked for may not have arrived yet; ask for
+            // it again rather than the old size.
+            const g = e.window.frameGeometry;
+            e.window.frameGeometry = Qt.rect(fx, fy, e.askW || g.width, e.askH || g.height);
+            settled = true;
+        }
+    }
+    onRevisionChanged: if (planeLive) Qt.callLater(settle)
+
+    // Cancel puts every window settle() moved back where it was at open.
+    function unsettle() {
+        if (!settled) return;
+        settled = false;
+        for (let i = 0; i < entries.length; ++i) {
+            const w = entries[i] ? entries[i].window : null;
+            if (!w || w.deleted) continue;
+            const o = openFrames[w.internalId];
+            if (!o) continue;
+            const g = w.frameGeometry;
+            if (g.x !== o.x || g.y !== o.y) w.frameGeometry = Qt.rect(o.x, o.y, g.width, g.height);
+        }
+    }
 
     // ---- ground publication ------------------------------------------------
     KWin.DBusCall {
@@ -1330,6 +1433,8 @@ KWin.SceneEffect {
         target: KWin.Workspace
         function onWindowActivated(w) {
             // Open: a raise (pass-through clicks) restacks the thumbnails.
+            // The plane transform is only ever live while open, so the
+            // on-screen test below always sees geometry as drawn.
             if (effect.visible) { Qt.callLater(effect.resync); return; }
             if (!effect.configuration.FollowActivation) return;
             if (!effect.isCanvasWindow(w, false)) return;
@@ -1387,8 +1492,8 @@ KWin.SceneEffect {
     KWin.ShortcutHandler { name: "Canvas Cancel";   text: "Canvas: cancel";                    sequence: ""; onActivated: if (effect.canvasOpen) effect.cancel() }
     KWin.ShortcutHandler { name: "Canvas Fit";      text: "Canvas: zoom to fit";               sequence: ""; onActivated: if (effect.canvasOpen) effect.zoomExtents() }
     KWin.ShortcutHandler { name: "Canvas Origin";   text: "Canvas: camera to the origin";      sequence: ""; onActivated: if (effect.canvasOpen) effect.origin() }
-    KWin.ShortcutHandler { name: "Canvas Zoom In";  text: "Canvas: zoom in";                   sequence: ""; onActivated: if (effect.canvasOpen) effect.setZoom(effect.zoom * effect.zoomStep, KWin.Workspace.cursorPos) }
-    KWin.ShortcutHandler { name: "Canvas Zoom Out"; text: "Canvas: zoom out";                  sequence: ""; onActivated: if (effect.canvasOpen) effect.setZoom(effect.zoom / effect.zoomStep, KWin.Workspace.cursorPos) }
+    KWin.ShortcutHandler { name: "Canvas Zoom In";  text: "Canvas: zoom in";                   sequence: ""; onActivated: if (effect.canvasOpen) effect.setZoom(effect.zoom * effect.zoomStep, effect.cursorScreen()) }
+    KWin.ShortcutHandler { name: "Canvas Zoom Out"; text: "Canvas: zoom out";                  sequence: ""; onActivated: if (effect.canvasOpen) effect.setZoom(effect.zoom / effect.zoomStep, effect.cursorScreen()) }
     // Pan at 1:1 by one step (a slide), or move the open canvas's camera.
     KWin.ShortcutHandler { name: "Canvas Pan Left";  text: "Canvas: pan left";  sequence: effect.configuration.PanLeftShortcut;  onActivated: effect.panStepBy(-1, 0) }
     KWin.ShortcutHandler { name: "Canvas Pan Right"; text: "Canvas: pan right"; sequence: effect.configuration.PanRightShortcut; onActivated: effect.panStepBy(1, 0) }
@@ -1434,7 +1539,7 @@ KWin.SceneEffect {
         case "extents": zoomExtents(); break;
         case "pan": panBy(Number(a[1]), Number(a[2])); break;
         case "zoom": {
-            const p = a.length >= 4 ? Qt.point(Number(a[2]), Number(a[3])) : KWin.Workspace.cursorPos;
+            const p = a.length >= 4 ? Qt.point(Number(a[2]), Number(a[3])) : cursorScreen();
             setZoom(Number(a[1]), p);
             break;
         }
@@ -1521,6 +1626,17 @@ KWin.SceneEffect {
             console.log(s);
             break;
         }
+        case "locate": {
+            // locate TEXT: the global centre of the visible control on the
+            // primary screen whose text is TEXT, for tests that click it.
+            const sv = viewForScreen(primaryScreen);
+            const root = sv ? sv.rootItem : null;
+            const text = a.slice(1).join(" ");
+            const it = root ? findLabelled(root, text) : null;
+            const p = it ? it.mapToItem(root, it.width / 2, it.height / 2) : null;
+            console.log("kwin-canvas locate " + text + " = " + (p ? Math.round(p.x + root.sg.x) + " " + Math.round(p.y + root.sg.y) : "none"));
+            break;
+        }
         case "help": helpOpen = !helpOpen; break;
         case "select": selectOnly(entries[Number(a[1])]); break;
         case "selectadd": selectAdd(entries[Number(a[1])]); break;
@@ -1541,8 +1657,19 @@ KWin.SceneEffect {
         logState();
     }
 
+    function findLabelled(item, text) {
+        if (!item || !item.visible) return null;
+        if (item.text === text) return item;
+        const ch = item.children;
+        for (let i = 0; i < ch.length; ++i) {
+            const f = findLabelled(ch[i], text);
+            if (f) return f;
+        }
+        return null;
+    }
+
     function logState() {
-        let s = "kwin-canvas state visible=" + visible + (quiet ? " quiet" : "") + (passthroughLive ? " passthrough" : "") + " zoom=" + zoom.toFixed(4) + " view=(" + viewX.toFixed(1) + "," + viewY.toFixed(1) + ") activity=" + labelOf(currentActivity) + " entries=" + entries.length
+        let s = "kwin-canvas state visible=" + visible + (quiet ? " quiet" : "") + (passthroughLive ? " passthrough" : "") + (planeLive ? " plane" : "") + " zoom=" + zoom.toFixed(4) + " view=(" + viewX.toFixed(1) + "," + viewY.toFixed(1) + ") activity=" + labelOf(currentActivity) + " entries=" + entries.length
             + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
         const ids = activityIds, screens = KWin.Workspace.screens;
@@ -1925,6 +2052,10 @@ KWin.SceneEffect {
                 // geometry bindings read the table directly and depend on
                 // revision to re-evaluate after dragEntry().
                 readonly property var entry: effect.entries[index]
+                // The entry a drag started on. A raise restacks the entries
+                // under the delegates, so a drag follows its entry, not its index.
+                property var held: null
+                readonly property int heldIndex: { effect.revision; return effect.entries.indexOf(held); }
                 x: { effect.revision; return (effect.entries[index].x - effect.viewX) * effect.zoom - view.sg.x; }
                 y: { effect.revision; return (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; }
                 width: { effect.revision; return effect.entries[index].width * effect.zoom; }
@@ -1963,6 +2094,7 @@ KWin.SceneEffect {
                 Connections {
                     target: thumb.entry.window
                     function onFrameGeometryChanged() { effect.syncIndex(thumb.index); }
+                    function onStackingOrderChanged() { Qt.callLater(effect.resync); }
                 }
 
                 // Body: move on drag, pick on click.
@@ -1971,9 +2103,24 @@ KWin.SceneEffect {
                     anchors.fill: parent
                     viewItem: view
                     tappable: true
-                    onDragStarted: effect.beginDrag(thumb.index)
-                    onDragged: (dx, dy) => effect.dragEntry(thumb.index, dx, dy)
+                    onDragStarted: { thumb.held = thumb.entry; effect.beginDrag(thumb.index); }
+                    onDragged: (dx, dy) => effect.dragEntry(thumb.heldIndex, dx, dy)
                     onTapped: (count, modifiers, button) => effect.windowGesture(thumb.entry, count, modifiers, button)
+                }
+
+                // The window's client area, where planeTakes() lets the
+                // pointer through to the window. No handlers, so without the
+                // shim the body below takes everything as before.
+                Item {
+                    objectName: "kwin-canvas-client"
+                    readonly property var entry: thumb.entry
+                    readonly property rect fg: thumb.entry.window.frameGeometry
+                    readonly property rect cg: thumb.entry.window.clientGeometry
+                    x: (cg.x - fg.x) * effect.zoom
+                    y: (cg.y - fg.y) * effect.zoom
+                    width: cg.width * effect.zoom
+                    height: cg.height * effect.zoom
+                    z: 5
                 }
 
                 // Resize grips: four edges, four corners, above the body. Each
@@ -2002,6 +2149,7 @@ KWin.SceneEffect {
                             ? ((north && west) || (south && east) ? Qt.SizeFDiagCursor : Qt.SizeBDiagCursor)
                             : ((north || south) ? Qt.SizeVerCursor : Qt.SizeHorCursor)
                         onDragStarted: {
+                            thumb.held = thumb.entry;
                             startW = thumb.entry.width;
                             startH = thumb.entry.height;
                         }
@@ -2012,7 +2160,7 @@ KWin.SceneEffect {
                             if (west) rw = startW - t.x / effect.zoom;
                             if (south) rh = startH + t.y / effect.zoom;
                             if (north) rh = startH - t.y / effect.zoom;
-                            effect.requestSize(thumb.index, rw, rh, west, north);
+                            effect.requestSize(thumb.heldIndex, rw, rh, west, north);
                         }
                     }
                 }
@@ -2056,9 +2204,9 @@ KWin.SceneEffect {
             } else if (effect.bound("fit", k)) {
                 effect.zoomExtents();
             } else if (effect.bound("zoomIn", k)) {
-                effect.setZoom(effect.zoom * effect.zoomStep, KWin.Workspace.cursorPos);
+                effect.setZoom(effect.zoom * effect.zoomStep, effect.cursorScreen());
             } else if (effect.bound("zoomOut", k)) {
-                effect.setZoom(effect.zoom / effect.zoomStep, KWin.Workspace.cursorPos);
+                effect.setZoom(effect.zoom / effect.zoomStep, effect.cursorScreen());
             } else {
                 return;
             }
@@ -2078,7 +2226,7 @@ KWin.SceneEffect {
             function onContextRequested(entry) {
                 // Attached properties resolve against this Connections object, so go through the view.
                 if (view.screen !== KWin.Workspace.activeScreen) return;
-                const p = KWin.Workspace.cursorPos;
+                const p = effect.cursorScreen();
                 arrangeMenu.x = p.x - view.sg.x;
                 arrangeMenu.y = p.y - view.sg.y;
                 arrangeMenu.open();
@@ -2088,6 +2236,8 @@ KWin.SceneEffect {
             id: arrangeMenu
             z: 100001
             title: "Arrange"
+            onOpened: effect.popups++
+            onClosed: effect.popups = Math.max(0, effect.popups - 1)
             PC3.MenuItem { text: "Arrange horizontally"; icon.name: "view-split-left-right"; onTriggered: effect.arrange("horizontal") }
             PC3.MenuItem { text: "Arrange vertically";   icon.name: "view-split-top-bottom"; onTriggered: effect.arrange("vertical") }
             PC3.MenuItem { text: "Tile";                 icon.name: "view-grid";             onTriggered: effect.arrange("tile") }
@@ -2240,6 +2390,8 @@ KWin.SceneEffect {
                     onClicked: settingsMenu.open()
                     PC3.Menu {
                         id: settingsMenu
+                        onOpened: effect.popups++
+                        onClosed: effect.popups = Math.max(0, effect.popups - 1)
                         x: hud.vertical ? (hud.atRight ? -width : parent.width) : 0
                         y: hud.vertical ? 0 : parent.height
                         PC3.MenuItem { text: "Effect settings…";  icon.name: "preferences-desktop-effects"; onTriggered: KCM.KCMLauncher.openSystemSettings("kcm_kwin_effects") }

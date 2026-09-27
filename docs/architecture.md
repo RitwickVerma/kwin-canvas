@@ -104,6 +104,88 @@ the window on the plane; selection, the marquee and the arrange menu start
 from the title bar. Stepping in writes every entry once from its plane
 position.
 
+**Plane input** is the route that replaces pass-through: an LD_PRELOAD shim
+for stock kwin_wayland 6.7.5 (`dev/spike/preload`, a spike) moves KWin's
+pointer chain into plane coordinates, the contract a KWin patch for #3 would
+provide:
+
+```
+plane = (screen - o) / s      s = zoom      o = (target(current) - view) * zoom
+```
+
+A plane point is a frame position on the current activity, so every KWin
+filter and every client sees the pointer where the window really is, and
+clicks, focus, keys and client-side moves work unmodified. A
+`QuickSceneEffect` cannot share input by itself: `startInternal()` grabs the
+keyboard and starts mouse interception for as long as it runs
+(`effect/quickeffect.cpp`), `EffectsHandler::pointerMotion`, `pointerButton`
+and `pointerAxis` consume every event while any effect intercepts
+(`effect/effecthandler.cpp`), `InputRedirection::findToplevel` finds no
+window and `CursorImage` shows the effect's cursor while
+`isMouseInterception()` is true (`input.cpp`, `pointer_input.cpp`), and
+nothing of this is reachable from QML. So the shim decides in-process, and
+the effect tells it what the canvas owns:
+
+- The shim finds the effect with `EffectsHandler::findEffect("kwin-canvas")`
+  (the QML root object is the `Effect`), sets its `planeInput`, and reads
+  `planeLive`, `planeScale`, `planeOffsetX` and `planeOffsetY` on every
+  use. `planeLive` is `planeInput && canvasOpen`; the offsets are bindings
+  on `zoom`, `view`, the current activity and `revision`, so every camera
+  and target change is published by the binding itself and closing clears
+  it. The transform is identity unless the effect object exists, is active
+  (running, with views, screen not locked) and is live, so an unloaded,
+  closed or failed effect leaves KWin stock at the next event, and within
+  a second without one. The pass-through plugin stands down while
+  `planeInput` is set.
+- For each pointer event the shim asks `planeTakes(x, y, w)` with the
+  screen point and the window KWin finds at the plane point. The effect
+  walks its scene with `childAt` from the view under the point: the pointer
+  goes to the window only over a thumbnail's client area (an item with no
+  handlers, `kwin-canvas-client`) with nothing of the canvas above it, when
+  the thumbnail's window is on the current activity, sits where its entry
+  says, and is the window KWin found there. Title bars, borders, the resize
+  grips (6 screen px, over the client's edges), frames, tags, ground,
+  toolbar and any open menu are the canvas's, as are windows of other
+  activities, which KWin does not have on the plane. Where the canvas does
+  not take the point, `isMouseInterception()` answers false and
+  EffectsHandler passes the event on, so KWin's own chain routes it. A
+  press latches the answer until every button is up. The effect sees every
+  event it takes and every hover motion at screen positions, and
+  `cursorScreen()` maps `Workspace.cursorPos` for the anchors that use it.
+- Keyboard policy: `hasKeyboardGrab()` answers false while live, so every
+  key goes to the focused window, Esc, Enter and Space included. The ways
+  out are the Toggle chord (a global shortcut, which fires before any
+  window sees the key), the toolbar's Enter and Cancel, and the hot corner.
+  The canvas's own keys work only without the shim and the plugin. Touch
+  stays the canvas's, at screen positions.
+- KWin routes by real geometry, so while live a window of the current
+  activity that moves on the canvas is written at once (`settle()`, after
+  any revision): its entry takes the new frame position first and absorbs
+  the write as no move, and a pending size from `requestSize()` is asked
+  for again. Cancel puts every window it moved back (`unsettle()`); with
+  `FramesCarryWindows` a frame drag moves the target and the windows
+  together, so nothing is written and the transform follows.
+- KWin's pointer position is a plane point. When the transform changes the
+  shim warps it so it keeps its screen position; the cursor item is drawn
+  at the screen position (`WorkspaceScene::updateCursor`), and screen edges
+  and hot corners test the screen position, with the edge push-back warp
+  mapped back to the plane. The item's position is the hotspot, with the
+  image at `-hotspot` inside it, and the hardware cursor plane is an
+  `ItemTreeView` of the same item (`compositor.cpp`), so the software and
+  hardware cursors both follow.
+- The shim uses KWin's headers for types only and links Qt Core alone. It
+  resolves every libkwin function and variable with `dlsym` after checking
+  the process is `kwin_wayland` and libkwin's build-id, so a KWin upgrade
+  leaves it inert instead of failing to load. It disarms at
+  `aboutToQuit`, and a gesture's owner is latched again at every first
+  press.
+- The closed-state activation rule never runs while the transform is live
+  (the canvas is open then), so it always sees geometry as drawn.
+- With `KWIN_CANVAS_PRELOAD_FILE=1` (the spike harness only) the file
+  `$XDG_RUNTIME_DIR/kwin-canvas-preload` supplies the transform whenever the
+  effect's does not. With `KWIN_CANVAS_PRELOAD_ATTACH=0` the shim loads and
+  arms but never attaches, and KWin stays stock.
+
 `endSlide` writes each shown window once, from its entry's canvas position
 and its activity's final target, because writing a geometry makes the entry
 absorb the change as a delta; windows the canvas does not show are shifted
@@ -356,11 +438,12 @@ the settings pages through `KCMLauncher.openSystemSettings`, as Overview does.
 - **Activity changes are asynchronous.** Adding, removing or switching goes
   through the activity manager; the canvas follows when KWin reports it.
 
-- **No interaction in the overworld** without the plugin: the canvas is
-  then a navigation view. With the pass-through plugin the overworld is
-  interactive, pointer and keys, and Esc belongs to the focused window; a
-  window's popups still open at its real position, off screen if the window
-  is.
+- **No interaction in the overworld** without the plugin or the shim: the
+  canvas is then a navigation view. With either the overworld is
+  interactive, pointer and keys, and Esc belongs to the focused window. A
+  window's popups are not drawn in the overworld: with the plugin they open
+  at the window's real position, off screen if the window is; under the
+  shim they are on the plane, where nothing shows them.
 - **Output changes.** Hotplug or resolution change runs
   `checkWorkspacePosition` on every window and may pull far-off windows
   toward the new layout. The effect re-derives from geometry so nothing is

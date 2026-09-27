@@ -23,7 +23,7 @@ PYTHON      := python3
 .DEFAULT_GOAL := help
 .PHONY: help deps deps-install install uninstall install-system uninstall-system reload enable disable status \
         tools fixtures play nest nest-down nest-clients nest-fixtures nest-reload nest-shot nest-log nest-clean nest-cmd \
-        test golden demo video clean stage dist pkgbuild aur aur-passthrough release tour \
+        test test-shim golden demo video clean stage dist pkgbuild aur aur-passthrough release tour \
         plugin plugin-try plugin-install-system plugin-status
 
 help: ## Show this help
@@ -188,6 +188,9 @@ nest-cmd: ## Send a debug command: make nest-cmd CMD="zoom 0.4 960 540"
 # ---- tests and demos --------------------------------------------------------
 test: install fixtures plugin-try ## Run the scenarios against a dedicated test nest (NEST_NAME=test)
 	tests/run.sh $(ARGS)
+
+test-shim: install fixtures tools ## Run the plane-input scenarios (tests/shim) under the preload shim; skips when the shim cannot build for this KWin
+	tests/run-shim.sh $(ARGS)
 
 golden: install fixtures ## Re-record the golden screenshots from the current build
 	UPDATE_GOLDEN=1 tests/run.sh $(ARGS)

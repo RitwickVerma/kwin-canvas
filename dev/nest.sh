@@ -22,6 +22,9 @@
 #   dev/nest.sh input CMDS    inject pointer/keyboard events (see tools/fakeinput.c)
 #   dev/nest.sh clean         kill leftovers of nests whose state is gone
 #   dev/nest.sh shell         start plasmashell in the nest (up does this; NEST_SHELL=0 skips)
+#   dev/nest.sh js 'CODE'     run a KWin script in the nest; its out() lines come back
+#   dev/nest.sh probe NAME    launch a probe window titled "Probe NAME" that logs
+#                             presses, releases and keys to $STATE/probe.log
 #
 # NEST_NAME=foo runs a second, independent nest (own socket, bus, config, log).
 # NEST_WALLPAPER=0 keeps the plain grid instead of tiling the fixture wallpaper.
@@ -29,6 +32,9 @@
 # NEST_VIRTUAL=1 renders to KWin's virtual framebuffer instead of a window on
 # the live desktop: nothing to look at, but frames keep coming at full rate
 # when the nest would be hidden or covered. The tests use it.
+# NEST_PRELOAD=SHIM.so NEST_KWIN=BINARY runs BINARY (a capability-free copy of
+# kwin_wayland) with the plane-input shim of dev/spike/preload preloaded, and
+# leaves the pass-through plugin off the plugin path.
 # The nest has its own activity manager with two seeded activities, so the
 # frame groups and the send-to menu have something to show.
 # The file is sourceable: `source dev/nest.sh` exposes every function without
@@ -172,16 +178,24 @@ up() {
     # is not the live session's; ~/.local/share stays on the search path
     # for the installed packages. Clients launched with run() keep the
     # user's data home, so the fixture apps look as they do at 1:1.
+    # With a shim, LD_PRELOAD goes on kwin_wayland alone: dbus-run-session and
+    # bash stay clean, and the shim unsets it so KWin's children do not
+    # inherit it.
+    local kwin=kwin_wayland plugins="$HERE/build/plugin/bin${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
+    if [ -n "${NEST_PRELOAD:-}" ]; then
+        kwin=${NEST_KWIN:?NEST_PRELOAD needs NEST_KWIN, a capability-free kwin_wayland}
+        plugins=${QT_PLUGIN_PATH:-}
+    fi
     (
         cd "$STATE"
         setsid -f env XDG_CONFIG_HOME="$STATE/config" XDG_STATE_HOME="$STATE/state" \
             XDG_DATA_HOME="$STATE/data" XDG_DATA_DIRS="$HOME/.local/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}" \
             QT_LOGGING_TO_CONSOLE=1 KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 \
-            QT_PLUGIN_PATH="$HERE/build/plugin/bin${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}" \
+            QT_PLUGIN_PATH="$plugins" NEST_KWIN_BIN="$kwin" NEST_KWIN_PRELOAD="${NEST_PRELOAD:-}" \
             dbus-run-session -- bash -c '
             echo "$PPID" > "$0/pid"
             echo "$DBUS_SESSION_BUS_ADDRESS" > "$0/bus"
-            exec kwin_wayland '"$([ "$VIRTUAL" = 1 ] && echo --virtual)"' --width '"$WIDTH"' --height '"$HEIGHT"' --output-count '"$OUTPUTS"' --xwayland --no-lockscreen --socket '"$SOCKET"'
+            exec env ${NEST_KWIN_PRELOAD:+LD_PRELOAD="$NEST_KWIN_PRELOAD"} "$NEST_KWIN_BIN" '"$([ "$VIRTUAL" = 1 ] && echo --virtual)"' --width '"$WIDTH"' --height '"$HEIGHT"' --output-count '"$OUTPUTS"' --xwayland --no-lockscreen --socket '"$SOCKET"'
         ' "$STATE" > "$LOG" 2>&1
     )
     for _ in $(seq 1 50); do
@@ -229,35 +243,32 @@ down() {
     echo "down"
 }
 
-# Kill leftovers from nests whose state is gone: anything on a private bus
-# that is neither the live session bus nor a running nest's bus.
+# Kill leftovers from nests whose state is gone. A process belongs to a nest
+# only by the nest's own marker: XDG_CONFIG_HOME under
+# $XDG_RUNTIME_DIR/kwin-canvas-nest-NAME/, which the compositor, the daemons
+# its bus activates and every client run() or probe() starts carry. Running
+# nests are kept, and so is any compositor serving the caller's
+# WAYLAND_DISPLAY, so a live session can never match.
 clean() {
-    local live=${DBUS_SESSION_BUS_ADDRESS:-} keep="" f p addr n=0
-    # A bus file whose nest is gone is a leftover too.
-    for f in "${XDG_RUNTIME_DIR:-/tmp}"/kwin-canvas-nest-*/bus; do
-        [ -f "$f" ] || continue
-        local d; d=$(dirname "$f")
-        if [ -f "$d/pid" ] && kill -0 "$(cat "$d/pid")" 2>/dev/null; then
-            keep="$keep $(cat "$f")"
-        else
-            rm -f "$f" "$d/pid"
-        fi
-    done
+    local rt=${XDG_RUNTIME_DIR:-/tmp} p conf name sock n=0
     for p in /proc/[0-9]*; do
-        # Unreadable environs (other users' processes) must not end the sweep under set -e.
-        addr=$({ cat "$p/environ" 2>/dev/null || true; } | tr '\0' '\n' | sed -n 's/^DBUS_SESSION_BUS_ADDRESS=//p')
-        [ -n "$addr" ] || continue
-        [ "$addr" = "$live" ] && continue
-        case "$addr" in unix:path=/tmp/dbus-*|unix:abstract=/tmp/dbus-*) ;; *) continue ;; esac
-        case " $keep " in *" $addr "*) continue ;; esac
-        kill "${p#/proc/}" 2>/dev/null && n=$((n + 1))
+        conf=$({ cat "$p/environ" 2>/dev/null || true; } | tr '\0' '\n' | sed -n 's/^XDG_CONFIG_HOME=//p')
+        case "$conf" in "$rt"/kwin-canvas-nest-*/config) ;; *) continue ;; esac
+        name=${conf#"$rt"/kwin-canvas-nest-}; name=${name%/config}
+        if [ -f "$rt/kwin-canvas-nest-$name/pid" ] && kill -0 "$(cat "$rt/kwin-canvas-nest-$name/pid")" 2>/dev/null; then
+            continue
+        fi
+        sock=$({ cat "$p/cmdline" 2>/dev/null || true; } | tr '\0' '\n' | { grep -A1 -x -- --socket || true; } | tail -1)
+        if [ -n "$sock" ] && [ "$sock" = "${WAYLAND_DISPLAY:-}" ]; then
+            continue
+        fi
+        if kill "${p#/proc/}" 2>/dev/null; then n=$((n + 1)); fi
     done
-    # Nested compositors with no state file left.
-    for p in $(pgrep -f "kwin_wayland .*--socket wayland-" ); do
-        local sock; sock=$(cat /proc/$p/cmdline 2>/dev/null | tr '\0' '\n' | grep -A1 -x -- --socket | tail -1)
-        [ "$sock" = "wayland-0" ] && continue
-        [ -f "${XDG_RUNTIME_DIR:-/tmp}/kwin-canvas-nest-${sock#wayland-}/pid" ] && continue
-        kill "$p" 2>/dev/null && n=$((n + 1))
+    local d
+    for d in "$rt"/kwin-canvas-nest-*; do
+        if [ -f "$d/pid" ] && ! kill -0 "$(cat "$d/pid")" 2>/dev/null; then
+            rm -f "$d/pid" "$d/bus"
+        fi
     done
     echo "cleaned $n orphaned processes"
 }
@@ -332,6 +343,28 @@ fixtures() {
     echo "fixtures: kcalc kwrite konsole dolphin gwenview"
 }
 
+# A KWin script run through org.kde.kwin.Scripting; its out() lines land in
+# the nest log tagged with a fresh marker, which is echoed back.
+js() {
+    alive || { echo "not up"; return 1; }
+    local tag="JS$RANDOM$RANDOM" f="$STATE/script-$RANDOM.js"
+    printf 'function out(s) { print("%s " + s); }\n%s\n' "$tag" "$1" > "$f"
+    local id; id=$(nq org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript "$f" "$tag")
+    nq org.kde.KWin "/Scripting/Script$id" org.kde.kwin.Script.run >/dev/null
+    sleep 0.3
+    nq org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript "$tag" >/dev/null
+    rm -f "$f"
+    grep -a "$tag " "$LOG" | sed "s/.*$tag //"
+}
+
+# A probe client (dev/spike/preload/probe.qml): logs every press, release and
+# key it receives with surface-local coordinates, as "PROBE Probe NAME ...".
+probe() {
+    alive || { echo "not up"; return 1; }
+    ( export WAYLAND_DISPLAY=$SOCKET DBUS_SESSION_BUS_ADDRESS=$(bus) XDG_CONFIG_HOME=$CONF QT_QPA_PLATFORM=wayland QT_FORCE_STDERR_LOGGING=1; unset DISPLAY
+      qml6 "$HERE/dev/spike/preload/probe.qml" -- "$1" >> "$STATE/probe.log" 2>&1 & echo $! >> "$STATE/clients" )
+}
+
 # Inject input through KWin's fake-input protocol. Commands on stdin, or as
 # arguments for a single command: move X Y | drag X1 Y1 X2 Y2 | wheel N |
 # click | key NAME | sleep MS. Built by `make tools`.
@@ -363,6 +396,8 @@ case "${1:-}" in
     clean) clean ;;
     shell) shell ;;
     input) shift; input "$@" ;;
+    js) js "$2" ;;
+    probe) probe "$2" ;;
     bus) bus ;;
     *) sed -n '2,20p' "$0"; exit 1 ;;
 esac
