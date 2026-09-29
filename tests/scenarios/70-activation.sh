@@ -14,13 +14,21 @@ run_scenario() {
     assert_true "KCalc on screen" "$(awk -v x="$fx" 'BEGIN{print (x>=0 && x<1920)}')" = 1
     assert_near "Dolphin kept its offset" "$(eget Dolphin fx)" "$(awk -v x="$fx" 'BEGIN{print x+680}')" 1
     # A window hanging half off the screen is not visible: focusing it slides
-    # until it is wholly on screen, centred in its placement area.
-    c "shift 780 0"
+    # the least that brings it wholly on screen - its edge ends at the
+    # screen's margin - keeping the rest of the desk in view rather than
+    # centring it. The layout is restored first, and Dolphin is activated
+    # while fully visible, so the KCalc activation is the only fly.
+    arrange >/dev/null
     c "activate Dolphin"
+    sleep 0.3
+    c "shift 1500 0"
     c "activate KCalc"
     sleep 0.4
     c state
-    assert_near "a half-off window is brought wholly on screen" "$(eget KCalc fx)" 720 1
+    assert_true "a half-off window is brought wholly on screen" \
+        "$(awk -v x="$(eget KCalc fx)" 'BEGIN{print (x>=0 && x+480<=1920)}')" = 1
+    assert_true "with the least movement, its edge near the margin" \
+        "$(awk -v x="$(eget KCalc fx)" 'BEGIN{print (x + 480 > 1820 && x + 480 <= 1920)}')" = 1
     arrange >/dev/null
     assert_eq "layout restored" "$(eget KCalc fx)" 100
 }

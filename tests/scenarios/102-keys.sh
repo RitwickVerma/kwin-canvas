@@ -66,7 +66,7 @@ run_scenario() {
     c "placeby KCalc 100 120"
     c state
     printf 'move 340 142\nclick\n' | input
-    sleep 0.4; c state
+    sleep 0.6; c state
     assert_eq "a click focuses the window" "$(grep -c 'active="KCalc"' <<<"$LAST_STATE")" 1
     c cancel
     open_1to1
@@ -79,6 +79,24 @@ run_scenario() {
     sleep 0.6; c state
     assert_eq "enter applies with the hovered window" "$(sget visible)" false
     assert_eq "and it ends focused" "$(grep -c 'active="KCalc"' <<<"$LAST_STATE")" 1
+    # The digits are the plane's desks: Ctrl+1 saves the view, 1 springs back.
+    c cancel
+    c resetview
+    open_1to1
+    c "zoom 0.5 960 540"
+    sleep 0.5
+    c state
+    printf 'key leftctrl down\nkey 1\nkey leftctrl up\n' | input
+    sleep 0.4; c state
+    assert_true "ctrl+1 saved the view" \
+        "$(kreadconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key Bookmarks | grep -ci 'spot')" -ge 1
+    c home
+    c "pan 500 0"
+    sleep 0.3
+    printf 'key 1\n' | input
+    sleep 0.4; c state
+    assert_near "1 springs back to the saved view" "$(sget viewx)" -960 2
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key Bookmarks --delete
     c cancel
     kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key Passthrough --delete
     arrange >/dev/null

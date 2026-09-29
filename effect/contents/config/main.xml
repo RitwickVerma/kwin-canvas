@@ -293,6 +293,10 @@
             <label>Pinned windows, by caption. A pinned window is screen-fixed: it rides the camera and never leaves the screen - the one window that follows you everywhere on the plane, this model's "on all desktops". Drag it to move its spot; drag it past an edge and it bounces back into view.</label>
             <default></default>
         </entry>
+        <entry name="Bookmarks" type="String">
+            <label>Saved views on the plane, as JSON: each a name, a camera position and a zoom. The digit keys jump to them and Ctrl+digit saves the current view as one - the plane's desks, the feature virtual desktops had that the plane needs.</label>
+            <default></default>
+        </entry>
         <entry name="FollowActivation" type="Bool">
             <label>Pan the canvas so an activated off-screen window comes on screen.</label>
             <default>true</default>

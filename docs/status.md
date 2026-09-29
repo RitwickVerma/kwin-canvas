@@ -48,7 +48,7 @@ built and loaded (the live-session half stays untested, below):
 
 - `make lint-qml` and `make lint-shell` — exit 0. `lint-reuse` still needs
   `reuse`, which is not installed here (below).
-- `make test` — `== pass 345  fail 0  skip 1`, the skip `91-two-outputs`
+- `make test` — `== pass 353  fail 0  skip 1`, the skip `91-two-outputs`
   needing a two-output nest; `85-passthrough` runs for real against the
   built plugin. `make test-two-outputs` — `== pass 17  fail 0  skip 0`.
 - The goldens were re-recorded in the full-run sequence (`make golden`),
@@ -101,6 +101,24 @@ those, from this side of the fork:
   pinned build-id - the biggest gap left in the suite.
 
 ## Sessions
+
+### 2026-09-29 — the plane's desks, the minimal fly, the radial pan, and a quiet harness
+
+Bookmarks: the digits jump to saved views, Ctrl+digit saves, persisted as
+JSON, with a glass toast. The focus fly is minimal (the window's edge ends
+at the screen margin) and defers while the pointer's buttons are down - the
+plugin publishes the button mask, so the canvas never grabs the click that
+caused the fly. A double-click during the modifier's hold animates (flyEnter
+runs while visible, not just while the overworld is open). The edge pan is
+radial with a speed curve toward the edge. The glass: a soft shadow under
+the hovered and lifted windows. The nest harness stopped flaking: the
+compositor's log is line-buffered (stdbuf -oL -eL), a nest whose effect
+never answers restarts up to three times, the plugin retries its D-Bus
+registration, and fakeinput's digits now send the digit keys rather than
+their code values - which had silently turned `key 1` into Esc-adjacent
+noise. Verified: `make lint-qml`, `make lint-shell`, `make test` twice ==
+pass 353 fail 0 skip 1, `make test-two-outputs` == 17/0/0, fixtures byte
+for byte.
 
 ### 2026-09-29 — pinned windows with edge physics
 

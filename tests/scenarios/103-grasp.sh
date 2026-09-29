@@ -68,6 +68,26 @@ run_scenario() {
         "$(awk -v x="$(eget Gwenview fx)" 'BEGIN{print (x>=0 && x+460<=1920)}')" = 1
     wait
 
+    # A double-click during the hold animates like any step in: with the
+    # smooth camera on, zoomed out, the step springs to 1:1 before it
+    # commits.
+    setcfg SmoothZoom true
+    setcfg CamSpring 4
+    arrange >/dev/null
+    printf 'move 1700 900\nsleep 60\ndown back\nsleep 700\nwheel -1\nsleep 5000\n' | input &
+    sleep 2.4; c state
+    read -r tx ty <<<"$(screen_of $(( $(eget KCalc x) + 240 )) $(( $(eget KCalc y) + 22 )))"
+    printf "move %d %d\nclick\nsleep 60\nclick\nsleep 600\n" "$tx" "$ty" | input
+    sleep 0.5; c state
+    assert_eq "the double-click flies before it commits" "$(sget cam)" goal
+    sleep 2.5; c state
+    assert_eq "and it committed" "$(sget visible)" false
+    assert_eq "focused on the clicked window" "$(grep -c 'active="KCalc"' <<<"$LAST_STATE")" 1
+    wait
+    setcfg SmoothZoom false
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key CamSpring --delete
+    c state
+
     # Held in the open overworld it is navigation only: the hold counts, the
     # release commits nothing and leaves the canvas open.
     open_1to1

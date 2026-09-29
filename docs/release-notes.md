@@ -1,5 +1,28 @@
 Unreleased:
 
+- The plane's desks: the digit keys jump to saved views and Ctrl+digit saves
+  the current one - named camera positions, the feature virtual desktops had
+  that the plane lacked. A glass toast names what just happened.
+
+- The focus fly is minimal and never grabs: an activated window slides the
+  least that brings it wholly on screen (its edge ends at the margin, so the
+  rest of the desk stays in view), and the fly waits until the hand lets go
+  of the pointer - the canvas never grabs the gesture that caused it. A
+  double-click during the modifier's hold now animates like any step in.
+
+- The edge pan is radial: past the resting zone the pan follows the pointer's
+  direction from the screen centre and speeds up toward the edge, so corners
+  pan diagonally and the very edge flies.
+
+- The glass: hovered and lifted windows wear a soft shadow and the hovered
+  one a glow in the activity's colour, and the toolbar reads as glass.
+
+- The nest harness no longer flakes: the compositor's log is line-buffered
+  (the intermittent empty state reads), a nest whose effect never answers is
+  restarted up to three times, and the plugin retries its D-Bus registration
+  while the session bus is still starting. fakeinput's digit keys now send
+  the digit keys, not their code values.
+
 - Pin a window and it follows you everywhere: a pinned window is screen-fixed
   - it rides the camera and never leaves the screen, this model's "on all
   desktops" - and it bounces with real physics when pushed past a screen

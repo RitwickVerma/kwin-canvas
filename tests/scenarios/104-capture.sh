@@ -110,5 +110,19 @@ run_scenario() {
     assert_eq "and the window's release commits" "$(sget visible)" false
     assert_near "with the window written where the hand put it" "$(eget KCalc fx)" -50 2
     wait
+    # A focus fly asked for mid-press waits for the hand: the canvas never
+    # grabs the gesture that caused it.
+    c cancel; c resetview
+    c "shift 3000 0"
+    c "activate Dolphin"
+    printf 'move 960 540\nsleep 60\ndown left\nsleep 2000\nup left\n' | input &
+    sleep 0.5
+    c "activate KCalc"
+    sleep 0.4; c state
+    assert_eq "the fly waits while the button is down" "$(sget visible)" false
+    wait
+    sleep 0.8; c state
+    assert_true "and flies once the hand lets go" \
+        "$(awk -v x="$(eget KCalc fx)" 'BEGIN{print (x>=0 && x+480<=1920)}')" = 1
     arrange >/dev/null
 }

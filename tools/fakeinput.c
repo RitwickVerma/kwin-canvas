@@ -202,15 +202,17 @@ static bool parse_key(const char *s, uint32_t *out)
     long n;
     if (!s)
         return false;
+    // The name table first: "1" is the digit key, not the code 1.
+    unsigned code = key_lookup(s);
+    if (code != 0) {
+        *out = code;
+        return true;
+    }
     if (isdigit((unsigned char)s[0]) && parse_long(s, &n) && n > 0 && n < 0x300) {
         *out = (uint32_t)n;
         return true;
     }
-    unsigned code = key_lookup(s);
-    if (!code)
-        return false;
-    *out = code;
-    return true;
+    return false;
 }
 
 /* Last absolute position sent, so glide has somewhere to start from. */

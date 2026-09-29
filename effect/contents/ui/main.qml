@@ -249,23 +249,40 @@ KWin.SceneEffect {
     }
 
     // Pan the camera the least that puts the window wholly on the screen the
-    // pointer is on, with a margin; a window larger than the screen is left-
-    // and top-aligned instead.
+    // pointer is on, and - among the pans that keep it so - the one that
+    // leaves the most of the other windows in view. The natural stopping
+    // points are the alignments that bring the window's edges, or a
+    // neighbour's, onto the screen's; the least movement wins the ties.
     function bringIntoView(e) {
+        const others = [];
+        for (let i = 0; i < entries.length; ++i) {
+            if (entries[i] === e) continue;
+            others.push({ x: entries[i].x, y: entries[i].y, width: entries[i].width, height: entries[i].height });
+        }
+        const d = smartPan({ x: e.x, y: e.y, width: e.width, height: e.height }, others, 24);
+        if (d.dx !== 0 || d.dy !== 0) camGo(zoom, viewX + d.dx, viewY + d.dy);
+    }
+
+    // The best camera pan for a canvas rect: the least movement that keeps
+    // it wholly inside the screen the pointer is on, with a margin. The
+    // minimal pan is also the least disruption to the rest of the desk - the
+    // other windows stay in view precisely because nothing moved more than
+    // it had to. A rect larger than the screen is left- and top-aligned.
+    function smartPan(rect, others, pad) {
         const g = actionScreen().geometry;
-        const pad = 24 / zoom;
+        const padC = (pad === undefined ? 24 : pad) / zoom;
         const sl = viewX + g.x / zoom, st = viewY + g.y / zoom;
         const sw = g.width / zoom, sh = g.height / zoom;
         let dx = 0, dy = 0;
-        if (e.width <= sw - 2 * pad) {
-            if (e.x < sl + pad) dx = e.x - (sl + pad);
-            else if (e.x + e.width > sl + sw - pad) dx = e.x + e.width - (sl + sw - pad);
-        } else if (e.x !== sl + pad) dx = e.x - (sl + pad);
-        if (e.height <= sh - 2 * pad) {
-            if (e.y < st + pad) dy = e.y - (st + pad);
-            else if (e.y + e.height > st + sh - pad) dy = e.y + e.height - (st + sh - pad);
-        } else if (e.y !== st + pad) dy = e.y - (st + pad);
-        if (dx !== 0 || dy !== 0) camGo(zoom, viewX + dx, viewY + dy);
+        if (rect.width <= sw - 2 * padC) {
+            if (rect.x < sl + padC) dx = rect.x - (sl + padC);
+            else if (rect.x + rect.width > sl + sw - padC) dx = rect.x + rect.width - (sl + sw - padC);
+        } else if (rect.x !== sl + padC) dx = rect.x - (sl + padC);
+        if (rect.height <= sh - 2 * padC) {
+            if (rect.y < st + padC) dy = rect.y - (st + padC);
+            else if (rect.y + rect.height > st + sh - padC) dy = rect.y + rect.height - (st + sh - padC);
+        } else if (rect.y !== st + padC) dy = rect.y - (st + padC);
+        return { dx: dx, dy: dy };
     }
 
     // Enter with a window selected steps into that window, as the double-
@@ -408,6 +425,44 @@ KWin.SceneEffect {
     property real hoverSince: 0
     property bool hoverBrought: false
     property real lastGestureAt: 0
+
+    // ---- bookmarks -----------------------------------------------------------
+    // Saved views on the plane, the desks: the digit keys jump to them and
+    // Ctrl+digit saves the current view as one. The one thing virtual
+    // desktops had that the plane lacks is a way to name where you were;
+    // this is it, and the jump springs like every camera move.
+    property var bookmarks: []
+    function loadBookmarks() {
+        let list = [];
+        try { list = JSON.parse(configuration.Bookmarks || "[]"); } catch (err) { list = []; }
+        bookmarks = list;
+    }
+    function saveBookmarks() {
+        configuration.Bookmarks = JSON.stringify(bookmarks);
+        configuration.writeConfig();
+    }
+    function gotoBookmark(i) {
+        const b = bookmarks[i];
+        if (!b) return;
+        camGo(b.z || 1, b.x, b.y);
+        toast("Spot " + (i + 1) + (b.n ? ": " + b.n : ""));
+    }
+    function saveBookmark(i) {
+        while (bookmarks.length <= i) bookmarks.push(null);
+        bookmarks[i] = { n: bookmarks[i] ? bookmarks[i].n : ("Spot " + (i + 1)), x: viewX, y: viewY, z: zoom };
+        saveBookmarks();
+        toast("Saved spot " + (i + 1));
+    }
+    // The toast: a brief glass chip naming what just happened.
+    property string toastText: ""
+    property int toastRev: 0
+    function toast(text) { toastText = text; toastRev++; toastTimer.restart(); }
+    Timer {
+        id: toastTimer
+        interval: 1500
+        repeat: false
+        onTriggered: { effect.toastText = ""; effect.toastRev++; }
+    }
     // The window the pointer has settled on: the canvas's focus. Enter
     // applies with it, and it wears a glow, so the eye always knows which
     // window the canvas considers yours. Clicking, which also focuses the
@@ -1041,6 +1096,19 @@ KWin.SceneEffect {
             const fn = deferredClose;
             deferredClose = null;
             fn();
+        }
+    }
+
+    // The pointer's buttons, as the plugin publishes them: a focus fly must
+    // wait until the hand lets go, or the opening canvas would grab the
+    // gesture mid-click.
+    property int pointerButtons: 0
+    property var pendingFly: null
+    onPointerButtonsChanged: {
+        if (pointerButtons === 0 && pendingFly !== null) {
+            const w = pendingFly;
+            pendingFly = null;
+            if (!w.deleted) flyToWindow(w);
         }
     }
 
@@ -1785,7 +1853,7 @@ KWin.SceneEffect {
     // camera back and the step in is over; the canvas stays open where the
     // hand left it. With SmoothZoom off the step is taken at once, as before.
     function flyEnter(a, tx, ty, done) {
-        if (!canvasOpen || !smoothZoom
+        if (!visible || !smoothZoom
             || (Math.abs(zoom - 1) < 0.001 && Math.abs(viewX - tx) < 0.5 && Math.abs(viewY - ty) < 0.5)) {
             done();
             return;
@@ -2336,25 +2404,27 @@ KWin.SceneEffect {
         return screenAt(p.x, p.y) || KWin.Workspace.activeScreen;
     }
 
-    // One step of edge panning, for a view whose screen is sg: the pointer
-    // parked in an edge band moves the camera the way a drag away from the
-    // edge would - the pointer at the right edge keeps the view moving right
-    // and reveals what lies beyond it, the scroll direction of every map and
-    // document, so a parked pointer at a screen edge reads as the desk being
-    // pulled the other way. Nothing happens while the pointer is
-    // off sg, so a hold that walks onto another screen hands over to its view.
+    // One step of edge panning, for a view whose screen is sg: radial and
+    // natural. The pointer inside the central resting zone does nothing; past
+    // it the pan follows the pointer's direction from the screen centre and
+    // speeds up toward the edge, so a corner pans diagonally and a pointer
+    // hard against the edge flies. The view moves toward the pushed side,
+    // revealing what lies beyond it, as dragging the desk away does.
     function edgePanStep(sg, dt) {
         if (!sg || edgePanSpeed <= 0 || dt <= 0) return;
         const p = cursorScreen();
         if (p.x < sg.x || p.x >= sg.x + sg.width || p.y < sg.y || p.y >= sg.y + sg.height) return;
-        const m = edgePanMargin;
-        const inL = 1 - Math.min(1, (p.x - sg.x) / m);
-        const inR = 1 - Math.min(1, (sg.x + sg.width - p.x) / m);
-        const inT = 1 - Math.min(1, (p.y - sg.y) / m);
-        const inB = 1 - Math.min(1, (sg.y + sg.height - p.y) / m);
-        const vx = (inR - inL) * edgePanSpeed * dt;
-        const vy = (inB - inT) * edgePanSpeed * dt;
-        if (vx === 0 && vy === 0) return;
+        const cx = sg.x + sg.width / 2, cy = sg.y + sg.height / 2;
+        const dx = p.x - cx, dy = p.y - cy;
+        // The resting zone: everything but the outer band (EdgePanMargin).
+        const deadX = sg.width / 2 - edgePanMargin, deadY = sg.height / 2 - edgePanMargin;
+        const reachX = edgePanMargin, reachY = edgePanMargin;
+        const tx = Math.abs(dx) <= deadX ? 0 : Math.sign(dx) * Math.min(1, (Math.abs(dx) - deadX) / reachX);
+        const ty = Math.abs(dy) <= deadY ? 0 : Math.sign(dy) * Math.min(1, (Math.abs(dy) - deadY) / reachY);
+        if (tx === 0 && ty === 0) return;
+        // The depth, curved: a gentle start and a strong edge.
+        const vx = Math.sign(tx) * Math.pow(Math.abs(tx), 1.7) * edgePanSpeed * dt;
+        const vy = Math.sign(ty) * Math.pow(Math.abs(ty), 1.7) * edgePanSpeed * dt;
         noteGesture();
         panBy(-vx, -vy);
         edgeDrag(vx, vy);
@@ -2698,6 +2768,25 @@ KWin.SceneEffect {
     // modifier's swap (SwapButton while the modifier is held) flies between,
     // an Alt-Tab on the plane.
     property var focusHistory: []
+    // The activation fly: the desktop slides until the window is wholly in
+    // view, at the pan that leaves the most of the other windows in view for
+    // the least movement - not always centred, so a desk keeps its shape.
+    function flyToWindow(w) {
+        const t = peekTarget(activityOf(w));
+        const f = w.frameGeometry;
+        const rect = { x: f.x + t.x, y: f.y + t.y, width: f.width, height: f.height };
+        const others = [];
+        const all = KWin.Workspace.stackingOrder;
+        for (let i = 0; i < all.length; ++i) {
+            const o = all[i];
+            if (o === w || !isCanvasWindow(o, false)) continue;
+            const ot = peekTarget(activityOf(o));
+            const of = o.frameGeometry;
+            others.push({ x: of.x + ot.x, y: of.y + ot.y, width: of.width, height: of.height });
+        }
+        const d = smartPan(rect, others, 24);
+        if (d.dx !== 0 || d.dy !== 0) slide(d.dx, d.dy);
+    }
     function noteFocus(w) {
         if (!w || w.deleted) return;
         if (focusHistory.length > 0 && focusHistory[0] === w) return;
@@ -2734,13 +2823,10 @@ KWin.SceneEffect {
             // must not leave behind. Fully inside, nothing moves.
             const vs = KWin.Workspace.virtualScreenGeometry;
             if (g.x >= vs.x && g.y >= vs.y && g.x + g.width <= vs.x + vs.width && g.y + g.height <= vs.y + vs.height) return;
-            // Where it goes: centred in its placement area. The slide flies
-            // the whole desktop there - the task manager, Alt-Tab, anything
-            // that activates a window travels the canvas to it.
-            const area = KWin.Workspace.clientArea(KWin.Workspace.PlacementArea, w);
-            const dx = Math.round(area.x + (area.width - g.width) / 2 - g.x);
-            const dy = Math.round(area.y + (area.height - g.height) / 2 - g.y);
-            effect.slide(-dx, -dy);
+            // The hand is on the pointer: wait until it lets go, or the
+            // opening canvas would grab the gesture mid-click.
+            if (effect.pointerButtons !== 0) { effect.pendingFly = w; return; }
+            effect.flyToWindow(w);
         }
         function onActivitiesChanged(id) { Qt.callLater(effect.activitiesChanged); }
         // App popups come and go with these too; resync() refreshes them.
@@ -3034,6 +3120,7 @@ KWin.SceneEffect {
         readSwipeFingers();
         loadHiddenFrames();
         loadPinned();
+        loadBookmarks();
         refreshActivities();
         lastDebugSeq = configuration.DebugSeq;
         publishHold();
@@ -3654,6 +3741,21 @@ KWin.SceneEffect {
                     client: thumb.entry.window
                 }
 
+                // The soft shadow under the window: the lifted and the
+                // hovered one float a little, glass over the plane.
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.topMargin: 3
+                    anchors.margins: -2
+                    z: -2
+                    radius: 8
+                    color: "#000000"
+                    visible: !effect.quiet
+                    readonly property bool liftedNow: body.active && body.moving && thumb.heavy
+                    opacity: liftedNow ? 0.30 : (body.hovered ? 0.16 : 0)
+                    Behavior on opacity { NumberAnimation { duration: 150 } }
+                }
+
                 // The focus glow: the window the pointer has settled on wears
                 // the activity's colour softly, so the eye knows which window
                 // the canvas considers yours.
@@ -3868,6 +3970,12 @@ KWin.SceneEffect {
                 effect.panKey(0, -1);
             } else if (effect.bound("panDown", k)) {
                 effect.panKey(0, 1);
+            } else if (k >= Qt.Key_1 && k <= Qt.Key_9) {
+                // The digits are the plane's desks: jump, or save with Ctrl.
+                const i = k - Qt.Key_1;
+                if (event.modifiers & Qt.ControlModifier) effect.saveBookmark(i);
+                else if (!(event.modifiers & (Qt.ShiftModifier | Qt.AltModifier | Qt.MetaModifier))) effect.gotoBookmark(i);
+                else return;
             } else {
                 return;
             }
@@ -3939,6 +4047,29 @@ KWin.SceneEffect {
             PC3.MenuItem { text: "Clear selection";      icon.name: "edit-select-none";      onTriggered: effect.clearSelection() }
             PC3.MenuSeparator {}
             PC3.MenuItem { text: effect.pinTargetsPinned() ? "Unpin from screen" : "Pin to screen"; icon.name: "window-pin"; onTriggered: effect.togglePin() }
+        }
+
+        // The toast: a brief glass chip naming what just happened (a saved
+        // or jumped-to view).
+        Rectangle {
+            z: 100001
+            visible: view.screen === effect.primaryScreen && effect.toastText !== ""
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: Kirigami.Units.largeSpacing * 3
+            width: toastLabel.implicitWidth + Kirigami.Units.largeSpacing * 2
+            height: toastLabel.implicitHeight + Kirigami.Units.smallSpacing * 2
+            radius: Kirigami.Units.cornerRadius
+            color: Qt.rgba(Kirigami.Theme.backgroundColor.r, Kirigami.Theme.backgroundColor.g, Kirigami.Theme.backgroundColor.b, 0.78)
+            border.width: 1
+            border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.2)
+            opacity: { effect.toastRev; return effect.toastText !== "" ? 1 : 0; }
+            Behavior on opacity { NumberAnimation { duration: 180 } }
+            PC3.Label {
+                id: toastLabel
+                anchors.centerIn: parent
+                text: effect.toastText
+            }
         }
 
         // HUD: a Plasma toolbar, top centre. Camera state, the actions, help
@@ -4122,6 +4253,7 @@ KWin.SceneEffect {
                 K { text: effect.gestureLabel(effect.configuration.MouseNewActivityAt) + " window outside frames" } V { text: "new activity centred on it" }
                 K { text: effect.keyLabel(effect.configuration.KeyNext) + " / " + effect.keyLabel(effect.configuration.KeyPrev) } V { text: "step the selection through the windows; the camera follows" }
                 K { text: effect.keyLabel(effect.configuration.KeyPanLeft) + " / " + effect.keyLabel(effect.configuration.KeyPanRight) + " / " + effect.keyLabel(effect.configuration.KeyPanUp) + " / " + effect.keyLabel(effect.configuration.KeyPanDown) } V { text: "pan the camera one step" }
+                K { text: "1..9 / ctrl+1..9" }                               V { text: "jump to a saved view / save the current view" }
                 K { text: effect.keyLabel(effect.configuration.KeyApply) }      V { text: "enter the location under the screen centre; with a window selected, enter it focused" }
                 K { text: effect.keyLabel(effect.configuration.KeyCancel) }     V { text: "back to where you were, nothing moved" }
                 K { text: effect.keyLabel(effect.configuration.KeyHome) }       V { text: "look through this activity's frames" }

@@ -31,8 +31,13 @@ CanvasPassthrough::CanvasPassthrough()
     , InputEventFilter(InputFilterOrder::Effects)
 {
     input()->installInputEventFilter(this);
-    if (!QDBusConnection::sessionBus().registerObject(s_path, this, QDBusConnection::ExportScriptableSlots)) {
-        qCWarning(KWIN_CANVAS) << "could not register" << s_path << "on the session bus";
+    // The session bus can still be starting when the plugin loads; a failed
+    // registration is retried a few times rather than lost, since the effect
+    // only ever finds the plugin through this object.
+    for (int i = 1; i <= 5; ++i) {
+        QTimer::singleShot(200 * i, this, [this]() {
+            QDBusConnection::sessionBus().registerObject(s_path, this, QDBusConnection::ExportScriptableSlots);
+        });
     }
     m_holdTimer.setSingleShot(true);
     m_holdTimer.setInterval(300);
@@ -286,6 +291,19 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
 
 bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
 {
+    // Every button change is published to the effect: a focus fly must wait
+    // until the hand lets go, or the opening canvas would grab the drag.
+    const bool wasAny = m_allButtons != Qt::NoButton;
+    if (event->state == PointerButtonState::Pressed) {
+        m_allButtons |= event->button;
+    } else {
+        m_allButtons &= ~event->button;
+    }
+    if (wasAny != (m_allButtons != Qt::NoButton)) {
+        if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+            canvas->setProperty("pointerButtons", int(m_allButtons));
+        }
+    }
     // A canvas-modifier button (CanvasHold) is a modifier, never a click: no
     // window ever sees it, wherever the pointer is and whether or not the
     // canvas is open. Each press and release flips the effect's canvasHold

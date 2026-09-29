@@ -202,8 +202,8 @@ shell() {
     echo "plasmashell up"
 }
 
-up() {
-    if alive; then echo "already up (pid $(cat "$STATE/pid"))"; return; fi
+up_once() {
+    if alive; then echo "already up (pid $(cat "$STATE/pid"))"; return 0; fi
     mkdir -p "$STATE"; rm -f "$STATE/bus" "$STATE/clients" "$STATE/pid"
     seed_config
     # setsid: the nest gets its own session so nothing that happens to the
@@ -239,7 +239,7 @@ up() {
             export WAYLAND_DISPLAY="$NEST_HOST_WAYLAND"
             [ -n "$NEST_HOST_DISPLAY" ] && export DISPLAY="$NEST_HOST_DISPLAY"
             unset NEST_HOST_WAYLAND NEST_HOST_DISPLAY
-            exec env ${NEST_KWIN_PRELOAD:+LD_PRELOAD="$NEST_KWIN_PRELOAD"} "$NEST_KWIN_BIN" '"$([ "$VIRTUAL" = 1 ] && echo --virtual)"' --width '"$WIDTH"' --height '"$HEIGHT"' --output-count '"$OUTPUTS"' --xwayland --no-lockscreen --socket '"$SOCKET"'
+            exec stdbuf -oL -eL env ${NEST_KWIN_PRELOAD:+LD_PRELOAD="$NEST_KWIN_PRELOAD"} "$NEST_KWIN_BIN" '"$([ "$VIRTUAL" = 1 ] && echo --virtual)"' --width '"$WIDTH"' --height '"$HEIGHT"' --output-count '"$OUTPUTS"' --xwayland --no-lockscreen --socket '"$SOCKET"'
         ' "$STATE" > "$LOG" 2>&1
     )
     for _ in $(seq 1 50); do
@@ -258,14 +258,30 @@ up() {
     # The effect's QML completes asynchronously after isEffectLoaded turns
     # true, and a debug command sent before it completes is lost (the
     # reconfigure never fires onConfigurationChanged). Wait until a command
-    # answers, so the first scenario command is never swallowed.
-    for _ in $(seq 1 40); do
-        cmd state >/dev/null 2>&1 || true
-        [ -n "$(state)" ] && break
-        sleep 0.25
+    # answers, so the first scenario command is never swallowed. A nest whose
+    # effect never answers is broken - restart it, up to three tries.
+    local ready=0
+    for attempt in 1 2 3; do
+        for _ in $(seq 1 40); do
+            cmd state >/dev/null 2>&1 || true
+            [ -n "$(state)" ] && break
+            sleep 0.25
+        done
+        if [ -n "$(state)" ]; then ready=1; break; fi
+        echo "nested KWin's effect did not answer; restarting (attempt $attempt)" >&2
+        down >/dev/null 2>&1
+        up_once
     done
+    if [ "$ready" = 0 ]; then
+        echo "nested KWin's effect never answered; see: dev/nest.sh log" >&2
+        return 1
+    fi
     unrealtime
     shell
+}
+
+up() {
+    up_once
 }
 
 # /usr/bin/kwin_wayland carries cap_sys_nice and gives its threads
