@@ -195,6 +195,26 @@ them at fixed canvas positions with `placeby`, then sources each
 
 `tests/run.sh` takes `SCENARIOS=DIR` to run another directory of scenarios.
 
+## What CI checks
+
+`.gitlab-ci.yml` runs in an `archlinux:latest` container, which has no
+compositor, so it holds the checks that do not need one and skips the rest
+rather than pretending they passed: `reuse lint` for the copyright and
+licensing metadata (REUSE 3.3 — the headers in the files, plus `REUSE.toml`
+for the PNGs, the JSON and XML KWin parses, `VERSION` and the text fixtures),
+`qmllint` on every `.qml` file, `bash -n` on every script, `make tools`, and
+`make fixtures` followed by a `git diff` on `tests/fixtures` so the committed
+fixtures have to match the generator. `qmllint` returns 0 for everything by
+default and an unresolvable import is expected off KDE, so the QML job fails
+only on a `[syntax]` warning, and it calls `/usr/lib/qt6/bin/qmllint` by path
+because the Qt5 build in `/usr/bin` answers to the same name.
+
+The scenarios, the demo, the plugin and the shim stay local: they need a
+nested KWin with real windows and virtual outputs, or KWin's headers to build
+against. `make test`, `make test-two-outputs`, `make test-shim`, `make golden`
+and `make plugin` are those commands, and `dev/deps.sh` prints the packages
+they need.
+
 ## Plane input under the shim
 
 ```bash

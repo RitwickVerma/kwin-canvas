@@ -1,0 +1,62 @@
+# SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
+# SPDX-License-Identifier: GPL-2.0-or-later
+# What a container with no compositor can still check: the metadata linter, QML
+# and shell parse errors, and the tools and fixture builds. The scenarios drive
+# a nested KWin with real windows and virtual outputs, so they stay local; see
+# docs/testing.md. A runner that can host a KWin session can add
+# `tests/run.sh` to the same stage.
+
+image: archlinux:latest
+
+stages: [check, build]
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+default:
+  before_script:
+    # The job runs as root in a checkout the runner owns.
+    - git config --global --add safe.directory '*'
+    - pacman -Syu --noconfirm --needed --quiet git make reuse qt6-declarative python python-pillow gcc wayland pkgconf
+
+reuse:
+  stage: check
+  script:
+    - reuse lint
+
+qml:
+  stage: check
+  script:
+    # qmllint returns 0 for everything by default, and an unresolvable import
+    # off KDE is expected here, so only parse errors fail the job. The Qt5 build
+    # in /usr/bin answers to the same name and lints QML differently.
+    - |
+      status=0
+      for f in $(git ls-files '*.qml'); do
+          out=$(/usr/lib/qt6/bin/qmllint "$f" 2>&1)
+          if printf '%s' "$out" | grep -q '\[syntax\]'; then
+              printf '%s\n' "$f" "$out"
+              status=1
+          fi
+      done
+      exit $status
+
+shell:
+  stage: check
+  script:
+    - |
+      status=0
+      for f in $(git ls-files '*.sh'); do
+          bash -n "$f" || status=1
+      done
+      exit $status
+
+build:
+  stage: build
+  script:
+    - make tools
+    - make fixtures
+    # The fixtures in the tree are the generator's output; they must stay in step.
+    - git diff --exit-code -- tests/fixtures
