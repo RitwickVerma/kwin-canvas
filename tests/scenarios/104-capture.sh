@@ -7,6 +7,34 @@ screen_of() {
 }
 run_scenario() {
     if ! have_input; then skip "fakeinput not built (make tools)"; return; fi
+    if ! nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.probe >/dev/null 2>&1; then
+        skip "pass-through plugin not loaded (make plugin)"; return
+    fi
+    # A quick press of the modifier is the window's own click: it passes
+    # through to the app under the pointer and the canvas never opens, so
+    # the button stays usable in games and browsers. A deliberate hold is
+    # the canvas (103 covers it).
+    probe GraspProbe
+    sleep 1.2
+    open_1to1
+    c "placeby Probe 400 400"
+    c commit
+    sleep 0.5
+    : > "$STATE/probe.log"
+    input move 500 500
+    printf 'down back\nsleep 50\nup back\n' | input
+    sleep 0.4; c state
+    assert_eq "a quick press does not open the canvas" "$(sget visible)" false
+    assert_true "and the window under the pointer got the click" \
+        "$(grep -ac 'press' "$STATE/probe.log" 2>/dev/null || echo 0)" -ge 1
+    # The probe's work is done: close it, so the scenarios after this one
+    # find the same five fixtures (the runner runs 104 before 10).
+    pkill -f "probe.qml.*GraspProbe" || true
+    sleep 0.8
+    open_1to1
+    c state
+    assert_eq "the probe window is gone" "$(sget entries)" 5
+    c cancel
     # The hover navigation: KCalc parked with only a sliver on screen, the
     # pointer resting on the sliver for a moment, the camera pans the least
     # that fits the window wholly into view.
@@ -16,6 +44,16 @@ run_scenario() {
     input move 1900 142
     sleep 0.6; c state
     assert_true "a lingering hover pans the window into view" \
+        "$(awk -v x="$(sget viewx)" 'BEGIN{print (x > 300 && x < 500)}')" = 1
+    # Over the client area too, where the pass-through plugin takes the
+    # pointer and the scene never sees a hover: the effect's own poll does.
+    c cancel
+    open_1to1
+    c "placeby KCalc 1800 120"
+    c state
+    input move 1900 300
+    sleep 0.6; c state
+    assert_true "a client-area hover pans the window into view too" \
         "$(awk -v x="$(sget viewx)" 'BEGIN{print (x > 300 && x < 500)}')" = 1
     c cancel
 

@@ -4,13 +4,40 @@ Unreleased:
   camera the least that fits it wholly into view. The hover navigation
   shipped with a bug the nest never caught: the thumbs restarted the hover
   timer through an id, which is not a property an outer scope can reach, so
-  every hover in a live session threw - the timer is now a property alias,
-  and a scenario hovers over a window, which the suite never had. A close
-  asked for while a gesture is in hand - the chord mid-drag,
+  every hover in a live session threw - the hover is now polled in the effect
+  itself, which also makes it work over a window's client area where the
+  pass-through plugin consumes the pointer, and it waits out a grace period
+  after any gesture so it never fights the hand that just dragged a window.
+  A close asked for while a gesture is in hand - the chord mid-drag,
   releasing the modifier before the window - parks itself and runs the moment
   the buttons come up, so the canvas never hands a still-held button to the
   desktop, where its motion would be a native drag on whatever is under the
   pointer.
+
+- Stepping in and out is flickerless. A close asked for while the chrome is
+  still up - stepping in from 1:1, a cancel with nothing to fly back from -
+  fades the frames, the tags and the toolbar out before the canvas hides,
+  instead of cutting them in one frame.
+
+- The modifier is a hold, not a press: MB4 must stay down for a moment
+  (300 ms) before the canvas opens, and a quicker press passes through as
+  the window's own click - the button stays usable in games, browsers and
+  every app that binds it.
+
+- The edge pan scrolls the natural way: a pointer parked at a screen edge
+  pans the view toward the edge, revealing what lies beyond it, the same
+  direction as dragging the desk away - it used to move the content the
+  other way.
+
+- Releasing the modifier commits to where the hand left off: a pan during
+  the hold becomes the location's new viewport, so the release enters the
+  screen at that coordinate instead of snapping back.
+
+- The nest harness waits until the effect answers its first command: KWin
+  reports the effect loaded before its QML completes, and a command sent in
+  that window was lost, which is what the intermittent empty-state flakes
+  were. The effect also runs a pending command at completion, so a nest's
+  first command is never swallowed.
 
 - Everything that focuses a window flies to it through the canvas. Activating
   a window from the task manager - Alt-Tab, an application grabbing focus,

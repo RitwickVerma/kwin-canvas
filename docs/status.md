@@ -48,7 +48,7 @@ built and loaded (the live-session half stays untested, below):
 
 - `make lint-qml` and `make lint-shell` — exit 0. `lint-reuse` still needs
   `reuse`, which is not installed here (below).
-- `make test` — `== pass 328  fail 0  skip 1`, the skip `91-two-outputs`
+- `make test` — `== pass 334  fail 0  skip 1`, the skip `91-two-outputs`
   needing a two-output nest; `85-passthrough` runs for real against the
   built plugin. `make test-two-outputs` — `== pass 17  fail 0  skip 0`.
 - The goldens were re-recorded in the full-run sequence (`make golden`),
@@ -101,6 +101,24 @@ those, from this side of the fork:
   pinned build-id - the biggest gap left in the suite.
 
 ## Sessions
+
+### 2026-09-29 — flickerless steps, the hover made honest, and the hold threshold
+
+The close paths fade the chrome before hiding (farewellHide, wired into
+commit and doCancel), so stepping in from 1:1 no longer cuts the frames,
+tags and toolbar in one frame. The hover navigation was rebuilt as an
+effect-level poll of the real pointer - it works over client areas where
+the plugin consumes the scene's events, and it waits out a 600 ms grace
+after any gesture so it never un-pans a window the hand just dragged. The
+edge pan direction flipped to the natural scroll (toward the edge), the
+grasp's release commits to the panned viewport instead of snapping back,
+and MB4 opens the canvas only after a 300 ms hold - quicker presses replay
+as the window's own click, so games keep the button. The nest harness now
+waits until the effect answers a command (KWin reports the effect loaded
+before its QML completes), which was the intermittent empty-state flake,
+and the runner's collation put 104 before 10, so 104 now closes its probe.
+Verified: `make lint-qml`, `make lint-shell`, `make test` == pass 334
+fail 0 skip 1, `make test-two-outputs` == 17/0/0, fixtures byte for byte.
 
 ### 2026-09-28 — the capture fix drive
 

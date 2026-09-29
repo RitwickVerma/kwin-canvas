@@ -13,6 +13,7 @@
 #include <QPointF>
 #include <QPointer>
 #include <QString>
+#include <QTimer>
 
 namespace KWin
 {
@@ -101,6 +102,8 @@ private:
     bool enter(KWin::Window *window, const QPointF &canvas);
     void leave();
     void clearGrab();
+    /** A hold-button press that was a click, not a hold: replay press and release to the window under the pointer. */
+    void replayClick();
 
     bool m_active = false;
     double m_viewX = 0;
@@ -120,6 +123,12 @@ private:
     bool m_holdDown = false;
     /** The hold button that is down, for the mask-change check in setHoldButtons. */
     Qt::MouseButton m_heldButton = Qt::NoButton;
+    /** A hold button is down but the threshold has not passed: it may still be a click. */
+    bool m_holdCandidate = false;
+    /** The candidate's button, for the replay and the mask check. */
+    Qt::MouseButton m_candidateButton = Qt::NoButton;
+    /** The hold threshold: a hold button must stay down this long to open the canvas. */
+    QTimer m_holdTimer;
     QPointer<KWin::Window> m_hover;
     QPointer<KWin::SurfaceInterface> m_hoverSurface;
 };

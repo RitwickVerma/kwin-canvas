@@ -16,6 +16,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLoggingCategory>
+#include <QTimer>
 
 Q_LOGGING_CATEGORY(KWIN_CANVAS, "kwin_canvas_passthrough", QtWarningMsg)
 
@@ -33,6 +34,19 @@ CanvasPassthrough::CanvasPassthrough()
     if (!QDBusConnection::sessionBus().registerObject(s_path, this, QDBusConnection::ExportScriptableSlots)) {
         qCWarning(KWIN_CANVAS) << "could not register" << s_path << "on the session bus";
     }
+    m_holdTimer.setSingleShot(true);
+    m_holdTimer.setInterval(300);
+    connect(&m_holdTimer, &QTimer::timeout, this, [this]() {
+        // The hold outlasted the threshold: it is the canvas modifier, not a
+        // click. The press was consumed from the start, so the window under
+        // the pointer never saw it and has nothing to release.
+        m_holdCandidate = false;
+        m_holdDown = true;
+        m_heldButton = m_candidateButton;
+        if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+            canvas->setProperty("canvasHold", true);
+        }
+    });
 }
 
 CanvasPassthrough::~CanvasPassthrough()
@@ -92,6 +106,27 @@ void CanvasPassthrough::setHoldButtons(int buttons)
             canvas->setProperty("canvasHold", false);
         }
     }
+    // A press still waiting out the threshold, for a button that no longer
+    // counts, is replayed as the click it was.
+    if (m_holdCandidate && !(mask & uint(m_candidateButton))) {
+        m_holdCandidate = false;
+        m_holdTimer.stop();
+        replayClick();
+    }
+}
+
+// The press of a hold button that turned out to be a click, not a hold:
+// deliver it to the window under the pointer, press and release, at the
+// pointer's own place. The seat's pointer state is whatever the normal
+// chain keeps - the real window at 1:1, the plugin's hover in the overworld
+// - so only the buttons need replaying.
+void CanvasPassthrough::replayClick()
+{
+    SeatInterface *seat = waylandServer()->seat();
+    seat->notifyPointerButton(m_candidateButton, PointerButtonState::Pressed);
+    seat->notifyPointerFrame();
+    seat->notifyPointerButton(m_candidateButton, PointerButtonState::Released);
+    seat->notifyPointerFrame();
 }
 
 QString CanvasPassthrough::state() const
@@ -260,13 +295,27 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     // the press before anything else does.
     if (uint(event->button) & m_hold) {
         const bool pressed = event->state == PointerButtonState::Pressed;
-        if (pressed != m_holdDown) {
-            m_holdDown = pressed;
-            if (pressed) {
-                m_heldButton = Qt::MouseButton(uint(event->button));
+        if (pressed) {
+            if (!m_holdDown && !m_holdCandidate) {
+                // The press is consumed from the start and the threshold
+                // decides what it was: outlasted, it is the canvas modifier;
+                // released first, it is replayed as the click it was.
+                m_holdCandidate = true;
+                m_candidateButton = Qt::MouseButton(uint(event->button));
+                m_holdTimer.start();
             }
-            if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
-                canvas->setProperty("canvasHold", pressed);
+        } else {
+            if (m_holdDown) {
+                m_holdDown = false;
+                if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+                    canvas->setProperty("canvasHold", false);
+                }
+            } else if (m_holdCandidate) {
+                // A quick press, not a hold: give the window the click the
+                // modifier would have swallowed, at the pointer's own place.
+                m_holdCandidate = false;
+                m_holdTimer.stop();
+                replayClick();
             }
         }
         return true;

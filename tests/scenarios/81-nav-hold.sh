@@ -63,14 +63,15 @@ run_scenario() {
     assert_near "and leaves the camera alone" "$(sget viewx)" 0 2
 
     # A pointer parked in the right edge band with the button held pans on its
-    # own, the way the drag was going, and stops the moment the button is let
-    # go: no drag, no motion, just the hold. The band is EdgePanMargin wide, so
-    # 1918 is inside it; 540 is in no other band.
+    # own, revealing what lies beyond the edge - the scroll direction of any
+    # map, the desk pulled the other way - and stops the moment the button is
+    # let go: no drag, no motion, just the hold. The band is EdgePanMargin
+    # wide, so 1918 is inside it; 540 is in no other band.
     c cancel; open_1to1
     printf 'move 1918 540\nsleep 60\ndown right\nsleep 900\n' | input
     c state
     assert_true "the edge pans while the button is held" \
-        "$(awk -v v="$(sget viewx)" 'BEGIN{print (v < -100)}')" = 1
+        "$(awk -v v="$(sget viewx)" 'BEGIN{print (v > 100)}')" = 1
     assert_near "and pans that axis only" "$(sget viewy)" 0 2
     printf 'up right\n' | input
     sleep 0.4; c state
@@ -106,7 +107,7 @@ run_scenario() {
     printf 'move 1918 540\nsleep 60\ndown middle\nsleep 900\n' | input
     c state
     assert_true "the edge pans with the middle button held" \
-        "$(awk -v v=\"$(sget viewx)\" 'BEGIN{print (v < -100)}')" = 1
+        "$(awk -v v="$(sget viewx)" 'BEGIN{print (v > 100)}')" = 1
     assert_near "and pans that axis only" "$(sget viewy)" 0 2
     printf 'up middle\n' | input
     sleep 0.4; c state
@@ -149,7 +150,7 @@ run_scenario() {
     sx0=$(awk -v x="$plane0" -v v="$vx0" 'BEGIN{print x - v}')
     sleep 1; c state
     assert_true "the edge pans with a window in hand" \
-        "$(awk -v v="$(sget viewx)" 'BEGIN{print (v < -300)}')" = 1
+        "$(awk -v v="$(sget viewx)" 'BEGIN{print (v > 300)}')" = 1
     assert_near "the window travels with the camera's step" \
         "$(awk -v p0="$plane0" -v p="$(eget KCalc x)" 'BEGIN{print p0 - p}')" \
         "$(awk -v v0="$vx0" -v v="$(sget viewx)" 'BEGIN{print v0 - v}')" 4
@@ -157,7 +158,7 @@ run_scenario() {
         "$(awk -v x="$(eget KCalc x)" -v v="$(sget viewx)" 'BEGIN{print x - v}')" "$sx0" 4
     wait
     printf 'up right\n' | input
-    sleep 0.4; c state
+    sleep 1.3; c state
     local dropped; dropped=$(sget viewx)
     sleep 0.7; c state
     assert_near "and the pan stops when the window is dropped" "$(sget viewx)" "$dropped" 4

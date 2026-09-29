@@ -255,6 +255,15 @@ up() {
     else
         echo "nested KWin up but effect NOT loaded; see: dev/nest.sh log"
     fi
+    # The effect's QML completes asynchronously after isEffectLoaded turns
+    # true, and a debug command sent before it completes is lost (the
+    # reconfigure never fires onConfigurationChanged). Wait until a command
+    # answers, so the first scenario command is never swallowed.
+    for _ in $(seq 1 40); do
+        cmd state >/dev/null 2>&1 || true
+        [ -n "$(state)" ] && break
+        sleep 0.25
+    done
     unrealtime
     shell
 }

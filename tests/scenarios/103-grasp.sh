@@ -48,6 +48,10 @@ run_scenario() {
     assert_near "and y" "$(sget viewy)" 100 3
     sleep 0.9; c state
     assert_eq "and the release closes again" "$(sget visible)" false
+    # The pan is the release: the location opens at the panned viewport, not
+    # back where the hold began.
+    assert_near "the viewport became the panned view, x" "$(tget 0 x)" 200 1
+    assert_near "and y" "$(tget 0 y)" 100 1
     wait
 
     # MB5 while the modifier is held flies between the two most recent

@@ -168,6 +168,14 @@ KWin.SceneEffect {
                 const inFrame = activityAt(e);
                 placeTarget(e, inFrame !== null ? inFrame : (e.activity || currentActivity));
             }
+        } else {
+            // No swap: what the hand left on screen is the location. A pan
+            // during the hold becomes the new viewport - the release enters
+            // the screen at that coordinate instead of snapping back - and a
+            // hold that only moved windows keeps the viewport it started on.
+            const t = targetOf(currentActivity);
+            t.x = viewX;
+            t.y = viewY;
         }
         commit(null);
     }
@@ -259,8 +267,53 @@ KWin.SceneEffect {
     }
 
     property int lastDebugSeq: 0
-    // The window the pointer has been resting on, for the hover navigation.
+
+    // ---- hover navigation ----------------------------------------------------
+    // The pointer rests on a window and the camera pans the least that brings
+    // it wholly into view. Polled from the event loop rather than the scene's
+    // handlers: with the pass-through plugin live, the plugin consumes the
+    // pointer over a window's client area, so the scene never sees the hover
+    // there - and it is exactly there that the hover should navigate. The
+    // global pointer always carries the real screen position, whatever owns
+    // the events. The hover never fights the hand: it waits out a grace
+    // period after any gesture, so a window the hand just dragged off the
+    // edge stays there, and it acts once per rest.
     property var hoverEntry: null
+    property real hoverSince: 0
+    property bool hoverBrought: false
+    property real lastGestureAt: 0
+    function noteGesture() { lastGestureAt = Date.now(); }
+    function hoverTick() {
+        if (navHeld || closing || canvasMenus > 0 || camLive()) return;
+        const p = cursorScreen();
+        const c = globalToCanvas(p.x, p.y);
+        let e = null;
+        for (let i = entries.length - 1; i >= 0; --i) {
+            const en = entries[i];
+            if (c.x >= en.x && c.x < en.x + en.width && c.y >= en.y && c.y < en.y + en.height) { e = en; break; }
+        }
+        const now = Date.now();
+        if (e !== hoverEntry) {
+            hoverEntry = e;
+            hoverSince = now;
+            hoverBrought = false;
+            return;
+        }
+        if (now - lastGestureAt < 600) {
+            hoverSince = now;
+            return;
+        }
+        if (e && now - hoverSince >= 250 && !hoverBrought) {
+            hoverBrought = true;
+            bringIntoView(e);
+        }
+    }
+    Timer {
+        interval: 100
+        repeat: true
+        running: effect.canvasOpen && !effect.closing
+        onTriggered: effect.hoverTick()
+    }
 
     // ---- key bindings, from config ------------------------------------------
     // Each entry is a list of Qt key codes parsed from a comma-separated list
@@ -1072,6 +1125,39 @@ KWin.SceneEffect {
         easing.type: Easing.InOutCubic
     }
 
+    // A close asked for while the chrome is still up - stepping in from 1:1,
+    // a cancel with nothing to fly back from - fades the chrome out first
+    // and hides when it is gone. At 1:1 the thumbnails and the real windows
+    // agree, so the fade is the only thing the eye can see, and cutting the
+    // frames, the tags and the toolbar in one frame is exactly the flash
+    // that must not happen. With SmoothZoom off, and once the chrome is
+    // already gone (a flight's arrival), the close is taken at once, as a
+    // script measures it.
+    property bool closing: false
+    property var farewellThen: null
+    function farewellHide(then) {
+        dropPassthrough();
+        if (!smoothZoom || chromeFade <= 0.02) {
+            then();
+            return;
+        }
+        closing = true;
+        farewellThen = then;
+        farewellAnim.restart();
+        closeTimer.restart();
+    }
+    Timer {
+        id: closeTimer
+        interval: 170
+        repeat: false
+        onTriggered: {
+            const fn = effect.farewellThen;
+            effect.farewellThen = null;
+            effect.closing = false;
+            if (fn) fn();
+        }
+    }
+
     // Windows fade in when the opening view moves the camera, so a step out
     // to fit draws its subjects in instead of popping them. 1 for an open at
     // 1:1 and for a quiet slide, where the canvas is the desktop itself.
@@ -1251,10 +1337,11 @@ KWin.SceneEffect {
         zoom = 1.0;
         publishGround();
         settled = false;
-        visible = false;
-        quiet = false;
         swiping = false;
-        dropPassthrough();
+        farewellHide(function () {
+            visible = false;
+            quiet = false;
+        });
         if (activate && !activate.deleted) {
             KWin.Workspace.activeWindow = activate;
         }
@@ -1288,10 +1375,11 @@ KWin.SceneEffect {
         viewX = entryViewX;
         viewY = entryViewY;
         zoom = 1.0;
-        visible = false;
-        quiet = false;
         swiping = false;
-        dropPassthrough();
+        farewellHide(function () {
+            visible = false;
+            quiet = false;
+        });
     }
 
     // The chord: step out to the canvas, or enter the location in view.
@@ -2052,10 +2140,11 @@ KWin.SceneEffect {
     }
 
     // One step of edge panning, for a view whose screen is sg: the pointer
-    // parked in an edge band moves the camera the way a drag would have, by
-    // the depth in the band times EdgePanSpeed, for dt seconds. Content
-    // follows the pointer, as it does under a drag: the pointer at the right
-    // edge keeps the canvas moving right. Nothing happens while the pointer is
+    // parked in an edge band moves the camera the way a drag away from the
+    // edge would - the pointer at the right edge keeps the view moving right
+    // and reveals what lies beyond it, the scroll direction of every map and
+    // document, so a parked pointer at a screen edge reads as the desk being
+    // pulled the other way. Nothing happens while the pointer is
     // off sg, so a hold that walks onto another screen hands over to its view.
     function edgePanStep(sg, dt) {
         if (!sg || edgePanSpeed <= 0 || dt <= 0) return;
@@ -2069,15 +2158,17 @@ KWin.SceneEffect {
         const vx = (inR - inL) * edgePanSpeed * dt;
         const vy = (inB - inT) * edgePanSpeed * dt;
         if (vx === 0 && vy === 0) return;
-        panBy(vx, vy);
+        noteGesture();
+        panBy(-vx, -vy);
         edgeDrag(vx, vy);
     }
 
     // An edge pan with a window in hand takes the window along: holding a
     // navigate button on a window and pushing the pointer to a screen edge pans
     // and carries it. The camera
-    // moved the plane by (vx, vy) on screen, so the window moves the other way
-    // by the same amount on the plane - its screen position does not change and
+    // moved the plane by (vx, vy) on screen, so the window moves with the
+    // plane's content by the same amount on the plane - its screen position
+    // does not change and
     // it stays under the pointer - while the desk, the frames included, travels
     // under it: the edge scroll of any drag and drop, with a desktop on the
     // plane. Same call as the pointer's own step, so the set being dragged, the
@@ -2085,7 +2176,7 @@ KWin.SceneEffect {
     // window stays still on screen, which is why it neither trails nor leans.
     function edgeDrag(dx, dy) {
         if (dragIndex < 0) return;
-        dragEntry(dragIndex, -dx, -dy);
+        dragEntry(dragIndex, dx, dy);
     }
 
     // Called by the shim for a global screen point: true where the canvas
@@ -2735,6 +2826,13 @@ KWin.SceneEffect {
         refreshActivities();
         lastDebugSeq = configuration.DebugSeq;
         publishHold();
+        // The harness can write a command before the QML completes: KWin
+        // reports the effect loaded first, and a reconfigure that lands
+        // before onCompleted never fires onConfigurationChanged. Run the
+        // pending command here, once, so the first command of a nest is
+        // never lost.
+        const cmd = configuration.DebugCommand;
+        if (cmd && cmd.length > 0) runDebug(cmd);
         if (configuration.AutoActivate) {
             Qt.callLater(open);
         }
@@ -2790,6 +2888,7 @@ KWin.SceneEffect {
             property point last: Qt.point(0, 0)
             onActiveChanged: {
                 effect.sceneGestures += active ? 1 : -1;
+                effect.noteGesture();
                 last = Qt.point(0, 0);
                 if (active) grip.dragStarted(); else grip.dragEnded();
             }
@@ -3075,23 +3174,6 @@ KWin.SceneEffect {
             onTapped: effect.swapWindow()
         }
 
-        // A hover that lingers navigates: after a moment over a window the
-        // camera pans the least that brings it wholly into view, so the
-        // overworld reads around the pointer the way an eye does. Only when
-        // the hand is not already navigating, and never during a grasp or a
-        // slide, where the desktop is the subject. An alias, not an id: the
-        // thumbs restart it through view.hoverBringTimer, and an id is not a
-        // property an outer scope can reach.
-        property alias hoverBringTimer: hoverBringTimer
-        Timer {
-            id: hoverBringTimer
-            interval: 250
-            repeat: false
-            onTriggered: {
-                if (effect.hoverEntry && !effect.navHeld && effect.canvasOpen) effect.bringIntoView(effect.hoverEntry);
-            }
-        }
-
         DragHandler {
             id: panDrag
             target: null
@@ -3122,6 +3204,7 @@ KWin.SceneEffect {
                 // release needs the travel and the times the drag ended with,
                 // so zeroing them first would make every fling a no-op.
                 effect.sceneGestures += active ? 1 : -1;
+                effect.noteGesture();
                 if (active) {
                     last = Qt.point(0, 0);
                     travelX = 0; travelY = 0;
@@ -3188,6 +3271,7 @@ KWin.SceneEffect {
         WheelHandler {
             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
             onWheel: (event) => {
+                effect.noteGesture();
                 const steps = event.angleDelta.y / 120;
                 if (steps === 0) return;
                 const anchor = Qt.point(event.x + view.sg.x, event.y + view.sg.y);
@@ -3393,14 +3477,6 @@ KWin.SceneEffect {
                     onDragged: (dx, dy) => { effect.dragEntry(thumb.heldIndex, dx, dy); effect.noteDrag(dx, dy); }
                     onDragEnded: effect.endDrag()
                     onTapped: (count, modifiers, button) => effect.windowGesture(thumb.entry, count, modifiers, button)
-                    onHoveredChanged: {
-                        if (hovered) {
-                            effect.hoverEntry = thumb.entry;
-                            view.hoverBringTimer.restart();
-                        } else if (effect.hoverEntry === thumb.entry) {
-                            effect.hoverEntry = null;
-                        }
-                    }
                 }
 
                 // The window's client area, where planeTakes() lets the
