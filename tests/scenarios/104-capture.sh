@@ -55,6 +55,27 @@ run_scenario() {
     sleep 0.6; c state
     assert_true "a client-area hover pans the window into view too" \
         "$(awk -v x="$(sget viewx)" 'BEGIN{print (x > 300 && x < 500)}')" = 1
+    # A click with a few pixels of hand noise stays a click: the dead zone
+    # keeps it from grabbing the window.
+    c cancel
+    open_1to1
+    c "placeby KCalc 100 120"
+    c state
+    printf 'move 340 142\nsleep 60\ndown left\nsleep 60\nglide 346 148 5 10\nsleep 60\nup left\n' | input
+    sleep 0.4; c state
+    assert_eq "a noisy click does not grab the window" "$(eget KCalc x)" 100
+    # A fullscreen app at 1:1 is exactly the desktop: opening the canvas over
+    # one steps out a little, so the step is visible.
+    c cancel; c resetview
+    c "activate KCalc"
+    c "fullscreen KCalc on"
+    sleep 0.5
+    c open
+    sleep 0.4; c state
+    assert_near "opening over a fullscreen app steps out a little" "$(sget zoom)" 0.85 0.01
+    c cancel
+    c "fullscreen KCalc off"
+    sleep 0.4
     c cancel
 
     # A close asked for mid-drag waits: the chord while a window drag is in

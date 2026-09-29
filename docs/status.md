@@ -48,7 +48,7 @@ built and loaded (the live-session half stays untested, below):
 
 - `make lint-qml` and `make lint-shell` — exit 0. `lint-reuse` still needs
   `reuse`, which is not installed here (below).
-- `make test` — `== pass 334  fail 0  skip 1`, the skip `91-two-outputs`
+- `make test` — `== pass 340  fail 0  skip 1`, the skip `91-two-outputs`
   needing a two-output nest; `85-passthrough` runs for real against the
   built plugin. `make test-two-outputs` — `== pass 17  fail 0  skip 0`.
 - The goldens were re-recorded in the full-run sequence (`make golden`),
@@ -101,6 +101,20 @@ those, from this side of the fork:
   pinned build-id - the biggest gap left in the suite.
 
 ## Sessions
+
+### 2026-09-29 — clicks focus, the hover is the focus, and no more grab-on-click
+
+Clicking a window focuses it everywhere (the title bar now activates, as the
+client area already did natively under the plugin), the settled hover becomes
+the canvas's focus with a soft activity-coloured glow and Enter applies with
+it, and a click with hand noise no longer grabs: the drag and the weight's
+lift both wait out a 14 px dead zone. Opening over a fullscreen app steps out
+to `FullscreenZoom` (0.85) so the step is visible, for the chord and the
+modifier alike, and the modifier's release springs back to 1:1 at the
+committed viewport. The toolbar reads as glass. The user's live session runs
+with Passthrough off for the natural feel (the plugin still watches MB4).
+Verified: `make lint-qml`, `make lint-shell`, `make test` == pass 340 fail 0
+skip 1, `make test-two-outputs` == 17/0/0.
 
 ### 2026-09-29 — flickerless steps, the hover made honest, and the hold threshold
 

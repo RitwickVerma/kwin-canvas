@@ -60,6 +60,25 @@ run_scenario() {
     sleep 0.4; c state
     assert_true "a click pans the window wholly into view" \
         "$(awk -v x="$(sget viewx)" 'BEGIN{print (x > 300 && x < 500)}')" = 1
+    # A click focuses the window: the keyboard follows it. The hover makes a
+    # window the canvas's focus too, and Enter applies with it.
+    open_1to1
+    c "placeby KCalc 100 120"
+    c state
+    printf 'move 340 142\nclick\n' | input
+    sleep 0.4; c state
+    assert_eq "a click focuses the window" "$(grep -c 'active="KCalc"' <<<"$LAST_STATE")" 1
+    c cancel
+    open_1to1
+    c "placeby Gwenview 8000 0"
+    c state
+    printf 'move 340 142\n' | input
+    sleep 0.8; c state
+    assert_eq "the settled hover is the canvas focus" "$(grep -c 'focus="KCalc"' <<<"$LAST_STATE")" 1
+    printf 'key enter\n' | input
+    sleep 0.6; c state
+    assert_eq "enter applies with the hovered window" "$(sget visible)" false
+    assert_eq "and it ends focused" "$(grep -c 'active="KCalc"' <<<"$LAST_STATE")" 1
     c cancel
     kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key Passthrough --delete
     arrange >/dev/null

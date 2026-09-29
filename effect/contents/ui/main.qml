@@ -150,6 +150,10 @@ KWin.SceneEffect {
         // moved, and the camera returns to the location's viewport.
         slideToX = viewX;
         slideToY = viewY;
+        // A fullscreen app at 1:1 is exactly the desktop: step out a little
+        // so the grasp is visible, then the release springs back to 1:1 at
+        // the committed viewport.
+        if (fullscreenOpen()) fullscreenZoomTo();
     }
     function graspEnd() {
         if (!quiet || !grasp) { grasp = false; return; }
@@ -176,6 +180,13 @@ KWin.SceneEffect {
             const t = targetOf(currentActivity);
             t.x = viewX;
             t.y = viewY;
+        }
+        // The fullscreen opening stepped out a little: spring back to 1:1 at
+        // the committed viewport instead of jumping.
+        if (zoom < 0.999) {
+            camGo(1, viewX, viewY);
+            camOnArrive = function () { commit(null); };
+            return;
         }
         commit(null);
     }
@@ -256,13 +267,15 @@ KWin.SceneEffect {
     }
 
     // Enter with a window selected steps into that window, as the double-
-    // click does; with nothing selected it enters the location under the
-    // screen centre, as the toolbar's Enter does. The key is the overview
-    // pattern - Tab to the window, Enter to go to it - on the canvas.
+    // click does; with a window hovered it steps into that one; with neither
+    // it enters the location under the screen centre, as the toolbar's Enter
+    // does. The key is the overview pattern - Tab or a hover to the window,
+    // Enter to go to it - on the canvas.
     function applyKey() {
         for (let i = 0; i < entries.length; ++i) {
             if (isSelected(entries[i])) { focusWindow(entries[i]); return; }
         }
+        if (focusEntry && entries.indexOf(focusEntry) !== -1) { focusWindow(focusEntry); return; }
         enterHere();
     }
 
@@ -282,6 +295,11 @@ KWin.SceneEffect {
     property real hoverSince: 0
     property bool hoverBrought: false
     property real lastGestureAt: 0
+    // The window the pointer has settled on: the canvas's focus. Enter
+    // applies with it, and it wears a glow, so the eye always knows which
+    // window the canvas considers yours. Clicking, which also focuses the
+    // window itself, is what hands the keyboard over.
+    property var focusEntry: null
     function noteGesture() { lastGestureAt = Date.now(); }
     function hoverTick() {
         if (navHeld || closing || canvasMenus > 0 || camLive()) return;
@@ -303,9 +321,16 @@ KWin.SceneEffect {
             hoverSince = now;
             return;
         }
-        if (e && now - hoverSince >= 250 && !hoverBrought) {
-            hoverBrought = true;
-            bringIntoView(e);
+        if (e && now - hoverSince >= 250) {
+            if (!hoverBrought) {
+                hoverBrought = true;
+                bringIntoView(e);
+            }
+            if (focusEntry !== e) {
+                focusEntry = e;
+            }
+        } else if (!e && focusEntry) {
+            focusEntry = null;
         }
     }
     Timer {
@@ -1271,10 +1296,31 @@ KWin.SceneEffect {
         spec = String(spec || "fit").trim().toLowerCase();
         if (spec === "fit") { zoomExtents(true); return true; }
         const z = Number(spec);
-        if (!(z > 0) || z >= 1) return false;
+        if (!(z > 0) || z >= 1) {
+            // At 1:1 a fullscreen app is exactly the desktop: stepping out
+            // would be invisible. Zoom out a little instead, so the canvas
+            // is clearly the canvas.
+            if (fullscreenOpen()) { fullscreenZoomTo(); return true; }
+            return false;
+        }
         const g = actionScreen().geometry;
         camZoomTo(z, g.x + g.width / 2, g.y + g.height / 2);
         return true;
+    }
+
+    // A fullscreen window is active and the fullscreen opening view is
+    // enabled (FullscreenZoom is not "1").
+    function fullscreenOpen() {
+        const w = KWin.Workspace.activeWindow;
+        if (!w || w.deleted || !w.fullScreen) return false;
+        return String(configuration.FullscreenZoom || "0.85").trim().toLowerCase() !== "1";
+    }
+    function fullscreenZoomTo() {
+        const spec = String(configuration.FullscreenZoom || "0.85").trim().toLowerCase();
+        const g = actionScreen().geometry;
+        if (spec === "fit") { zoomExtents(true); return; }
+        const z = Number(spec);
+        camZoomTo(z > 0 ? z : 0.85, g.x + g.width / 2, g.y + g.height / 2);
     }
 
     // Write every window's geometry relative to the frame it sits in, move it to
@@ -1935,6 +1981,12 @@ KWin.SceneEffect {
             selectAdd(entry);
         } else if (gestureMatches(configuration.MouseSelect, count, modifiers)) {
             selectOnly(entry);
+            // A click on a window focuses it: with the pass-through plugin a
+            // client-area click already activates the window natively, so
+            // this makes a click anywhere on the window - title bar included
+            // - mean the same thing. The focus also makes the keyboard
+            // follow, so the next keys go to the clicked window.
+            if (!entry.window.deleted) KWin.Workspace.activeWindow = entry.window;
             // A click on a window brings it wholly into view: what is clicked
             // on must be seen, so the camera pans the least that fits it.
             bringIntoView(entry);
@@ -2711,6 +2763,15 @@ KWin.SceneEffect {
             }
             break;
         }
+        case "fullscreen": {
+            // fullscreen CAPTION [on|off]: the scripting Window's fullScreen
+            // is writable, which is how a scenario puts a fullscreen app up.
+            for (let i = 0; i < entries.length; ++i) {
+                const w = entries[i].window;
+                if (w.caption.indexOf(a[1]) !== -1) { w.fullScreen = a[2] !== "off"; break; }
+            }
+            break;
+        }
         case "activity": KWin.Workspace.currentActivity = activityIds[Number(a[1])]; break;
         case "addactivity": addActivity(); break;
         case "rmactivity": removeActivity(activityIds[Number(a[1])]); break;
@@ -2786,6 +2847,7 @@ KWin.SceneEffect {
             + " popups=" + appPopups.length + " menus=" + canvasMenus + " nav=" + (navHeld ? "hold" : "-") + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
             + " screens=" + KWin.Workspace.screens.length + " backdrop=" + backdropLayers
             + " cam=" + (camHasGoal ? "goal" : (camLive() ? "glide" : "-"))
+            + " focus=" + (focusEntry ? JSON.stringify(focusEntry.window.caption) : "-")
             + " draglag=" + Math.round(Math.sqrt(dragLagX * dragLagX + dragLagY * dragLagY)) + " lean=" + dragLean.toFixed(2)
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
         const ids = activityIds, screens = KWin.Workspace.screens;
@@ -2849,6 +2911,12 @@ KWin.SceneEffect {
         required property Item viewItem
         property int cursor: Qt.ArrowCursor
         property bool tappable: false
+        // A click with a few pixels of hand noise must stay a click: the drag
+        // does not move anything until the hand has travelled this far.
+        property real dragDead: 0
+        // Whether the hand has genuinely dragged: past the dead zone. The
+        // weight follows this, so a sloppy click never lifts a window.
+        readonly property bool moving: Math.hypot(total.x, total.y) >= grip.dragDead
         // Off during a grasp: a control the eye cannot see (a frame edge band)
         // must not take a drag the hand meant for the plane. Window bodies and
         // resize grips stay live - moving and resizing windows is what a grasp
@@ -2894,6 +2962,7 @@ KWin.SceneEffect {
             }
             onActiveTranslationChanged: {
                 const t = activeTranslation;
+                if (grip.dragDead > 0 && Math.hypot(t.x, t.y) < grip.dragDead) return;
                 grip.dragged(t.x - last.x, t.y - last.y);
                 last = t;
             }
@@ -3401,8 +3470,10 @@ KWin.SceneEffect {
                 // Weight: the window lifts while the hand holds it, trails and
                 // leans with the hand, and springs back when the hand stops.
                 // The entry is exact throughout; this is the picture only.
+                // The lift follows the drag's dead zone, so a click with hand
+                // noise never grabs.
                 readonly property bool heavy: effect.windowPhysics && !effect.quiet
-                property bool lifted: body.active && heavy
+                property bool lifted: body.active && body.moving && heavy
                 scale: lifted ? 1.03 : (body.hovered && heavy ? 1.008 : 1)
                 Behavior on scale { enabled: thumb.heavy; SpringAnimation { spring: 3.6; damping: 0.5; epsilon: 0.001 } }
                 transform: [
@@ -3432,6 +3503,21 @@ KWin.SceneEffect {
                 KWin.WindowThumbnail {
                     anchors.fill: parent
                     client: thumb.entry.window
+                }
+
+                // The focus glow: the window the pointer has settled on wears
+                // the activity's colour softly, so the eye knows which window
+                // the canvas considers yours.
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: -3
+                    z: -1
+                    radius: 6
+                    readonly property color accent: effect.activityColor(thumb.entry.activity)
+                    visible: { effect.selectionRev; return !effect.quiet && body.hovered && !effect.isSelected(thumb.entry); }
+                    color: Qt.rgba(accent.r, accent.g, accent.b, 0.16)
+                    border.width: 1
+                    border.color: Qt.rgba(accent.r, accent.g, accent.b, 0.5)
                 }
 
                 Rectangle {
@@ -3473,6 +3559,7 @@ KWin.SceneEffect {
                     anchors.fill: parent
                     viewItem: view
                     tappable: true
+                    dragDead: 14
                     onDragStarted: { thumb.held = thumb.entry; effect.beginDrag(thumb.index); }
                     onDragged: (dx, dy) => { effect.dragEntry(thumb.heldIndex, dx, dy); effect.noteDrag(dx, dy); }
                     onDragEnded: effect.endDrag()
@@ -3722,7 +3809,7 @@ KWin.SceneEffect {
             width: hudRow.implicitWidth + Kirigami.Units.largeSpacing * 2
             height: hudRow.implicitHeight + Kirigami.Units.smallSpacing * 2
             radius: Kirigami.Units.cornerRadius
-            color: Qt.rgba(Kirigami.Theme.backgroundColor.r, Kirigami.Theme.backgroundColor.g, Kirigami.Theme.backgroundColor.b, 0.85)
+            color: Qt.rgba(Kirigami.Theme.backgroundColor.r, Kirigami.Theme.backgroundColor.g, Kirigami.Theme.backgroundColor.b, 0.72)
             border.width: 1
             border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.15)
             Kirigami.Theme.inherit: false

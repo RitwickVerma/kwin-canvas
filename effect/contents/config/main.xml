@@ -71,6 +71,10 @@
             <label>View when the canvas opens: "1" (the default) stays at 1:1, so the open canvas looks like the desktop until you move; "fit" zooms to every window and frame; any other number is a zoom anchored at the screen centre.</label>
             <default>1</default>
         </entry>
+        <entry name="FullscreenZoom" type="String">
+            <label>View when the canvas opens while a fullscreen window is active: "0.85" (the default) steps out around the screen so the open canvas is visible instead of being the fullscreen app, pixel for pixel, at 1:1; "1" keeps the ordinary opening; "fit" zooms to everything. The chord and the canvas modifier both use it.</label>
+            <default>0.85</default>
+        </entry>
         <entry name="BorderZoom" type="String">
             <label>View when a screen edge or corner opens the canvas: "0.8" (the default) steps out around the screen that was pushed, so the push shows the desks around it rather than the desktop it was on; "fit" shows every window and frame; "1" opens at 1:1 like any other opening. Anchored at that screen's centre, so the point an edge push leaves under the centre is the point applying comes back to. The chord and the toolbar still open at OpenZoom.</label>
             <default>0.8</default>

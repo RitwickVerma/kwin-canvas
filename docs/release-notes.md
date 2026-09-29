@@ -1,5 +1,23 @@
 Unreleased:
 
+- Clicks focus. A click on a window's title bar activates the window - with
+  the pass-through plugin a client-area click already activates it natively,
+  so a click anywhere on a window now means the same thing - and the hover
+  makes a window the canvas's focus: the settled hover wears a soft glow in
+  the activity's colour and Enter applies with it, so the keyboard always
+  knows which window is yours. A click with a few pixels of hand noise no
+  longer grabs the window: the drag, and the lift that announces it, both
+  wait for a real drag.
+
+- Opening over a fullscreen app steps out a little (`FullscreenZoom`, 0.85 by
+  default; 1 keeps the ordinary opening): a fullscreen app at 1:1 is exactly
+  the desktop, so the step out would have been invisible. The chord and the
+  canvas modifier both use it, and the modifier's release springs back to 1:1
+  at the committed viewport.
+
+- The glass: the hovered window wears a soft glow in the activity's colour,
+  and the toolbar reads as glass instead of a slab.
+
 - The capture lifecycle is airtight. A lingering hover over a window pans the
   camera the least that fits it wholly into view. The hover navigation
   shipped with a bug the nest never caught: the thumbs restarted the hover
