@@ -23,6 +23,14 @@ done
 source "$HERE/tests/lib.sh"
 
 echo "== kwin-canvas tests (nest: $NEST_NAME, out: $OUT)"
+# The goldens are recorded against one 1920x1080 output, and 91-two-outputs is
+# the scenario written for an arrangement: on a two-output nest the other
+# scenarios would be comparing two different desktops. Ask for the shape by
+# name, or run them by pattern.
+if [ "${NEST_OUTPUTS:-1}" != 1 ] && [ -z "$PATTERN" ]; then
+    PATTERN=91
+    echo "   $NEST_OUTPUTS outputs: running the 91 scenarios (pass a pattern to widen)"
+fi
 (cd "$HERE" && make -s install >/dev/null)
 down >/dev/null 2>&1 || true
 up

@@ -35,6 +35,8 @@
 # NEST_PRELOAD=SHIM.so NEST_KWIN=BINARY runs BINARY (a capability-free copy of
 # kwin_wayland) with the plane-input shim of dev/spike/preload preloaded, and
 # leaves the pass-through plugin off the plugin path.
+# NEST_BORDERS=0,1,2,3,4,5,6,7 seeds every screen border into the effect's
+# BorderActivate; the default is 7, the top-left corner.
 # The nest has its own activity manager with two seeded activities, so the
 # frame groups and the send-to menu have something to show.
 # The file is sourceable: `source dev/nest.sh` exposes every function without
@@ -108,7 +110,13 @@ contrastEnabled=false
 
 [Effect-kwin-canvas]
 PublishGround=true
-BorderActivate=7
+BorderActivate=${NEST_BORDERS:-7}
+# The motion knobs are off in the nest, so a scenario measures the canvas and
+# not the spring: every drag lands exactly where it was put and every camera
+# move arrives at once. 94-physics turns them on and measures them.
+PanInertia=false
+SmoothZoom=false
+WindowPhysics=false
 DebugSeq=0
 ToggleShortcut=Ctrl+Alt+Space
 HomeShortcut=Ctrl+Alt+Home
@@ -359,9 +367,15 @@ shot() {
     [ -s "$out" ] && echo "$out" || echo "screenshot failed"
 }
 
+# The effect logs one message with newlines in it, so the state is the line
+# that names it plus every indented line that follows: the outputs first, then
+# each activity's target, then each entry. The indented lines are matched by
+# shape ("  {" / "  [" / "  screen[") because awk's bracket expressions read
+# "[\[{]" as one character class and would silently stop at the first screen
+# line, leaving sget() the summary and eget()/tget() nothing.
 state() {
     awk '/kwin-canvas state/{buf=$0; sub(/.*kwin-canvas state/, "state", buf); buf=buf "\n"; on=1; next}
-         on && /^  [\[{]/{buf=buf $0 "\n"; next}
+         on && /^  (\[|\{|screen\[)/{buf=buf $0 "\n"; next}
          {on=0}
          END{printf "%s", buf}' "$LOG"
     grep -a -A30 "kwin-canvas windows:" "$LOG" | tail -n +2 | grep -a "^  [* ] " | tail -20 || true

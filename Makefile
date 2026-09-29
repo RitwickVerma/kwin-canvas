@@ -23,7 +23,7 @@ PYTHON      := python3
 .DEFAULT_GOAL := help
 .PHONY: help deps deps-install install uninstall install-system uninstall-system reload enable disable status \
         tools fixtures play nest nest-down nest-clients nest-fixtures nest-reload nest-shot nest-log nest-clean nest-cmd \
-        test test-shim golden demo video clean stage dist pkgbuild aur aur-passthrough release tour \
+        test test-shim test-two-outputs golden demo video clean stage dist pkgbuild aur aur-passthrough release tour \
         plugin plugin-try plugin-install-system plugin-status
 
 help: ## Show this help
@@ -126,9 +126,10 @@ plugin: ## Build the optional pass-through plugin against the installed KWin (bu
 	cmake -S plugin -B $(PLUGIN_BUILD) -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr >/dev/null
 	cmake --build $(PLUGIN_BUILD) -j | grep -E "error|warning:|Built target $(PLUGIN_ID)$$" || true
 
-plugin-try: ## Build the plugin when KWin's headers and cmake are here; otherwise say so and carry on
-	@if [ -f /usr/include/kwin/plugin.h ] && command -v cmake >/dev/null 2>&1; then $(MAKE) -s plugin; \
-	else echo "pass-through plugin: KWin headers or cmake missing, skipped"; fi
+plugin-try: ## Build the plugin when KWin's headers, cmake and ECM are here; otherwise say so and carry on
+	@if [ -f /usr/include/kwin/plugin.h ] && command -v cmake >/dev/null 2>&1 \
+	    && { [ -f /usr/share/ECM/cmake/ECMConfig.cmake ] || [ -f /usr/lib/cmake/ECM/ECMConfig.cmake ]; }; then $(MAKE) -s plugin; \
+	else echo "pass-through plugin: KWin headers, cmake or extra-cmake-modules missing, skipped"; fi
 
 plugin-install-system: plugin ## Install the plugin into DESTDIR/usr/lib/qt6/plugins/kwin/plugins (for a PKGBUILD)
 	DESTDIR=$(DESTDIR) cmake --install $(PLUGIN_BUILD) >/dev/null
@@ -186,8 +187,11 @@ nest-cmd: ## Send a debug command: make nest-cmd CMD="zoom 0.4 960 540"
 	$(NEST) cmd "$(CMD)"
 
 # ---- tests and demos --------------------------------------------------------
-test: install fixtures plugin-try ## Run the scenarios against a dedicated test nest (NEST_NAME=test)
+test: install fixtures tools plugin-try ## Run the scenarios against a dedicated test nest (NEST_NAME=test)
 	tests/run.sh $(ARGS)
+
+test-two-outputs: install fixtures tools plugin-try ## Run the two-output scenarios against a two-output nest (NEST_OUTPUTS=2). ARGS= re-records 91's golden
+	NEST_OUTPUTS=2 tests/run.sh $(if $(ARGS),$(ARGS),91)
 
 test-shim: install fixtures tools ## Run the plane-input scenarios (tests/shim) under the preload shim; skips when the shim cannot build for this KWin
 	tests/run-shim.sh $(ARGS)

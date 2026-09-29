@@ -8,6 +8,9 @@ set -uo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 export NEST_NAME=${NEST_NAME:-kwincanvas}
 export TEST_OUT=${TEST_OUT:-$HERE/build/play}
+# A nest to play in is a window on the live desktop; only the tests want the
+# virtual framebuffer, and tests/lib.sh defaults to it. Say so before sourcing.
+export NEST_VIRTUAL=${NEST_VIRTUAL:-0}
 # shellcheck source=../tests/lib.sh
 source "$HERE/tests/lib.sh"
 

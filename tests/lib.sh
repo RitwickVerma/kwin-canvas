@@ -24,9 +24,21 @@ LAST_STATE=""
 mkdir -p "$OUT"
 
 # ---- driving the effect -----------------------------------------------------
-# c "command": send a debug command, keep the state it printed.
+# c "command": send a debug command, keep the state it printed. Read the state
+# in this shell: sget reads $LAST_STATE, so `v=$(c state; sget visible)` in a
+# subshell sees the parent's stale value, not the one just printed.
 c() {
     LAST_STATE=$(cmd "$1")
+}
+
+# setcfg KEY VALUE: write an effect config key and reconfigure the effect, the
+# way the settings page does (the harness's reconfigure is what re-reads the
+# file, so a scenario can flip one knob without restarting the nest). The `--`
+# is kwriteconfig6's end of options: a value that starts with a dash is a value,
+# not a flag it should complain about.
+setcfg() {
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key "$1" -- "$2"
+    c state >/dev/null
 }
 
 # sget zoom|viewx|viewy|visible|activity|entries|popups|nactivities  -> value from the last state line
@@ -40,8 +52,26 @@ sget() {
         activity) sed -n 's/.*activity=\(.*\) entries=.*/\1/p' <<<"$line" ;;
         entries) sed -n 's/.*entries=\([0-9]*\).*/\1/p' <<<"$line" ;;
         popups)  sed -n 's/.* popups=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        menus)   sed -n 's/.* menus=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        nav)     sed -n 's/.* nav=\([a-z-]*\).*/\1/p' <<<"$line" ;;
+        screens)  sed -n 's/.* screens=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        backdrop) sed -n 's/.* backdrop=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        cam)      sed -n 's/.* cam=\([a-z-]*\).*/\1/p' <<<"$line" ;;
+        draglag)  sed -n 's/.* draglag=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        lean)     sed -n 's/.* lean=\([-0-9.]*\).*/\1/p' <<<"$line" ;;
         nactivities) grep -c '^  {' <<<"$LAST_STATE" ;;
     esac
+}
+
+# screenrect INDEX -> "X Y W H" of an output, from the state's screen lines.
+screenrect() {
+    awk -v i="$1" '$1 == "screen[" i "]" { split($3, a, /[x+]/); printf "%d %d %d %d", a[3], a[4], a[1], a[2] }' <<<"$LAST_STATE"
+}
+
+# screenname INDEX -> that output's name, as KWin reports it (the name a hidden
+# frame is recorded under).
+screenname() {
+    awk -v i="$1" '$1 == "screen[" i "]" { print $2 }' <<<"$LAST_STATE"
 }
 
 # eget CAPTION_SUBSTR x|y|w|h|fx|fy|activity|index  -> field of the matching entry
@@ -116,8 +146,90 @@ snap() {
     fi
 }
 
+# assert_differs NAME A B [MIN]: the two shots taken by snap differ by at least
+# MIN (0.01) of normalized RMSE - for what a setting has to change on screen,
+# where a golden would only pin one of the two.
+assert_differs() {
+    local name=$1 a=$OUT/$2.png b=$OUT/$3.png min=${4:-0.01}
+    if [ ! -s "$a" ] || [ ! -s "$b" ]; then fail "$name: a shot is missing"; return; fi
+    local metric
+    metric=$( { magick compare -metric RMSE "$a" "$b" "$OUT/$name.diff.png" 2>&1 || true; } | sed -n 's/.*(\([0-9.e-]*\)).*/\1/p')
+    if [ -z "$metric" ]; then fail "$name: compare failed"; return; fi
+    if awk -v m="$metric" -v t="$min" 'BEGIN{exit !(m >= t)}'; then
+        ok "$name (rmse $metric)"; rm -f "$OUT/$name.diff.png"
+    else
+        fail "$name: rmse $metric < $min, the two shots are the same"
+    fi
+}
+
 # Open and put the camera at 1:1 on the current activity's frames, whatever OpenZoom is.
 open_1to1() { c open; c home; }
+
+# ---- screen borders ---------------------------------------------------------
+# Which borders the effect reserves, the key the Screen Edges settings page
+# writes. The effect only re-reads it on a reconfigure, so a reload through c
+# is what makes a new list take effect: the Instantiator then builds one
+# ScreenEdgeHandler per number.
+set_borders() {
+    setcfg BorderActivate "$1"
+}
+
+# Push the pointer into border N of the screen rect X Y W H the way a hand
+# does, and the way KWin wants it: the first event lands on the border's own
+# pixel and the second one, ElectricBorderDelay (75 ms) later, lands on it
+# again - which the outward move does, because KWin warps the pointer
+# ElectricBorderPushbackPixels (1) inward after the first event, so the
+# relative push clamps back onto the pixel. The window between the two events
+# is that delay to ElectricBorderCooldown (350 ms): later than that and KWin
+# takes the event for the start of a new attempt, which is why a smooth glide
+# that stops on the pixel never fires (it leaves one event there), while a
+# mouse that keeps pressing does. Border numbers are ElectricBorder: 0 top,
+# clockwise, 7 top left, the same order as ScreenEdgeHandler.Edge.
+#
+# The rect matters on a multi-output desktop: KWin reserves an edge only on the
+# outer sides of the arrangement, but puts the four corner zones on *every*
+# screen (ElectricBorderAllScreenCorner), so a corner can be pushed on any
+# output and an edge only on the side that ends the desktop.
+push_border_on() {
+    local b=$1 x0=$2 y0=$3 w=$4 h=$5
+    local x y dx dy
+    case $b in
+        0) x=$((x0 + w / 2)); y=$y0;             dx=0;   dy=-20 ;;
+        1) x=$((x0 + w - 1)); y=$y0;             dx=20;  dy=-20 ;;
+        2) x=$((x0 + w - 1)); y=$((y0 + h / 2)); dx=20;  dy=0 ;;
+        3) x=$((x0 + w - 1)); y=$((y0 + h - 1)); dx=20;  dy=20 ;;
+        4) x=$((x0 + w / 2)); y=$((y0 + h - 1)); dx=0;   dy=20 ;;
+        5) x=$x0;             y=$((y0 + h - 1)); dx=-20; dy=20 ;;
+        6) x=$x0;             y=$((y0 + h / 2)); dx=-20; dy=0 ;;
+        7) x=$x0;             y=$y0;             dx=-20; dy=-20 ;;
+        *) echo "no such border: $b" >&2; return 1 ;;
+    esac
+    # A corner's pixel is its own. An edge is TouchTarget (8 px) wide and stops
+    # cornerOffset (40 px) short of each corner, so the midpoints are safely on
+    # the strip whatever the corner zones do.
+    input move "$x" "$y"
+    sleep 0.15
+    input rel "$dx" "$dy"
+}
+push_border() { push_border_on "$1" 0 0 "$WIDTH" "$HEIGHT"; }
+
+# A pointer placed on a border pixel and then taken away, the way a KVM switch
+# (Deskflow, a network KVM, a remote session) drops a pointer onto this machine
+# and the user then moves it: KWin wants two motion events on the pixel inside
+# ElectricBorderDelay..Cooldown, and one is not an attempt. Returns after the
+# move away, so a scenario can read the state.
+kvm_drop_on_border() {
+    local b=$1 x y
+    case $b in
+        0) x=$((WIDTH / 2)); y=0 ;;
+        7) x=0; y=0 ;;
+        6) x=0; y=$((HEIGHT / 2)) ;;
+        4) x=$((WIDTH / 2)); y=$((HEIGHT - 1)) ;;
+    esac
+    input move "$x" "$y"
+    sleep 0.5
+    input move $((WIDTH / 2)) $((HEIGHT / 2))
+}
 
 # ---- fixture layout ---------------------------------------------------------
 # A fixed arrangement of the fixture windows in canvas units. Everything

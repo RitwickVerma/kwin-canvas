@@ -1,34 +1,89 @@
 # SPDX-FileCopyrightText: 2026 Aaron Bockelie <aaronsb@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
-scenario_desc="mouse gestures: double-click a title bar focuses the window, double-click a frame goes there, shift+double-click makes an activity over a window"
+scenario_desc="mouse gestures: double-click a window centres it and focuses it (or keeps the point clicked), double-click a frame goes there, shift+double-click makes an activity over a window"
 screen_of() {
     awk -v cx="$1" -v cy="$2" -v vx="$(sget viewx)" -v vy="$(sget viewy)" -v z="$(sget zoom)" \
         'BEGIN{printf "%d %d", (cx-vx)*z, (cy-vy)*z}'
 }
 dblclick() { printf "move $1 $2\nclick\nsleep 60\nclick\n" | input; }
+# Where the centre of a w×h frame lands on the nest's 1920×1080 screen.
+centre_x() { awk -v w="$1" 'BEGIN{print 960 - w / 2}'; }
+centre_y() { awk -v h="$1" 'BEGIN{print 540 - h / 2}'; }
 # Gestures land on title bars: with pass-through live a click inside a
 # window's client area goes to the app. The nest's KDE apps have server-side
 # title bars about 30 px tall, so canvas y = window top + 12.
 run_scenario() {
     if ! have_input; then skip "fakeinput not built (make tools)"; return; fi
-    # A window far outside every frame, then double-click it: the current
-    # activity's frame comes to it and the window is focused at 1:1.
+    # FocusTarget's default, "smart": a window far outside every frame with
+    # nothing else near it, then double-click it. The current activity's frames
+    # come to it and the window comes to the centre of the screen, focused, at
+    # 1:1 - with no other window in view the placements all tie and the centred
+    # one wins, which is where "centre" has always put it.
     open_1to1
     c "placeby KCalc 6000 4000"
     c extents
+    local w h; w=$(eget KCalc w); h=$(eget KCalc h)
     read -r sx sy <<<"$(screen_of 6240 4012)"
     dblclick "$sx" "$sy"
     sleep 0.6; c state
     assert_eq "double-click applied" "$(sget visible)" false
-    local fx; fx=$(eget KCalc fx)
-    assert_true "KCalc on screen after focus" "$(awk -v x="$fx" 'BEGIN{print (x>=0 && x+480<=1920)}')" = 1
     assert_eq "still on Activity 1" "$(eget KCalc activity)" "Activity 1"
-    # The point clicked (KCalc's title bar centre) is under the pointer at 1:1. The
-    # helper truncates the screen position, so allow one screen pixel at
-    # the fitted zoom.
-    assert_near "clicked point under the pointer" "$fx" $((sx - 240)) 6
+    assert_near "KCalc centred on the screen" "$(eget KCalc fx)" "$(centre_x "$w")" 2
+    assert_near "KCalc centred on the screen, y" "$(eget KCalc fy)" "$(centre_y "$h")" 2
 
-    # Double-click a window sitting in Activity 2's frame: go there, focused on it.
+    # The smart part: the window wholly in view, and of the offsets that keep it
+    # so the one that leaves the most of the desk in view. Gwenview sits a
+    # screen and a half to KCalc's right, so centring KCalc would push it right
+    # off the screen: the placement slides the desk the other way instead, to
+    # the least that keeps KCalc wholly in view - its left edge on the screen's
+    # margin - and Gwenview stays in view with it. Nothing competes on y, so
+    # that axis stays centred.
+    c cancel; open_1to1
+    c "placeby KCalc 6000 4000"
+    c "placeby Gwenview 7500 4000"
+    c extents
+    read -r sx sy <<<"$(screen_of 6240 4012)"
+    dblclick "$sx" "$sy"
+    sleep 0.8; c state
+    assert_eq "the smart placement applied" "$(sget visible)" false
+    assert_near "the window is wholly on screen" "$(eget KCalc fx)" 8 2
+    assert_near "and centred where nothing competes" "$(eget KCalc fy)" "$(centre_y "$h")" 2
+    assert_true "and the neighbour is still in view" \
+        "$(awk -v x="$(eget Gwenview fx)" 'BEGIN{print (x > 0 && x < 1920)}')" = 1
+
+    # The same gesture with FocusTarget=centre shoves that neighbour off the
+    # screen, which is the difference the mode is for.
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key FocusTarget centre
+    c cancel; open_1to1
+    c extents
+    read -r sx sy <<<"$(screen_of 6240 4012)"
+    dblclick "$sx" "$sy"
+    sleep 0.8; c state
+    assert_near "centre puts the window in the middle instead" "$(eget KCalc fx)" "$(centre_x "$w")" 2
+    assert_true "and the neighbour is off the screen there" \
+        "$(awk -v x="$(eget Gwenview fx)" 'BEGIN{print (x >= 1920)}')" = 1
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key FocusTarget smart
+    c "placeby Gwenview 1400 120"
+
+    # FocusTarget=window: the same gesture keeps the point clicked under the
+    # pointer at 1:1 and the frames move to make that so. Click 60 px off the
+    # window's centre, into its title bar.
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key FocusTarget window
+    open_1to1
+    c "placeby KCalc 6000 4000"
+    c extents
+    read -r sx sy <<<"$(screen_of 6060 4012)"
+    dblclick "$sx" "$sy"
+    sleep 0.6; c state
+    assert_eq "window target applied" "$(sget visible)" false
+    assert_true "KCalc on screen after focus" "$(awk -v x="$(eget KCalc fx)" 'BEGIN{print (x>=0 && x+480<=1920)}')" = 1
+    # The helper truncates the screen position, so allow one screen pixel at
+    # the fitted zoom.
+    assert_near "clicked point under the pointer" "$(eget KCalc fx)" $((sx - 60)) 6
+
+    # Default target: a window sitting in Activity 2's frame takes you there,
+    # comes to the centre of the screen, and is focused.
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key FocusTarget centre
     open_1to1
     c state
     local t2x t2y; t2x=$(tget 1 x); t2y=$(tget 1 y)
@@ -39,7 +94,8 @@ run_scenario() {
     sleep 1.2; c state
     assert_eq "entered Activity 2" "$(sget activity)" "Activity 2"
     assert_eq "KCalc on Activity 2" "$(eget KCalc activity)" "Activity 2"
-    assert_near "KCalc's title bar centre under the pointer there" "$(eget KCalc fx)" $((sx - 240)) 6
+    assert_near "KCalc centred on the screen there" "$(eget KCalc fx)" "$(centre_x "$w")" 2
+    assert_near "KCalc centred on the screen there, y" "$(eget KCalc fy)" "$(centre_y "$h")" 2
     c "activity 0"
     sleep 0.8
     open_1to1
@@ -59,7 +115,7 @@ run_scenario() {
     assert_eq "desktop target applied" "$(sget visible)" false
     assert_eq "frame stayed put" "$(tget 0 x),$(tget 0 y)" "$t1x,$t1y"
     assert_eq "KCalc did not move on screen" "$(eget KCalc fx),$(eget KCalc fy)" "$kx,$ky"
-    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key FocusTarget window
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key FocusTarget centre
 
     # Shift+double-click on a window outside every frame: a new activity centred on it.
     open_1to1
@@ -91,7 +147,8 @@ run_scenario() {
     assert_near "camera fitted to the frame" "$(sget zoom)" 0.8889 0.01
     c cancel
 
-    # Restore: Gwenview back, extra activity gone.
+    # Restore: FocusTarget back to its default, Gwenview back, extra activity gone.
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key FocusTarget --delete
     open_1to1
     c "placeby Gwenview 1400 120"
     c commit
