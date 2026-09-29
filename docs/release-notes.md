@@ -1,5 +1,94 @@
 Unreleased: the overworld under the plane-input shim.
 
+- A PanHold button is now a portal into the open canvas rather than a pan that
+  only works where the canvas already had the pointer. With the pass-through
+  plugin or the plane-input shim live, a press of the button was handed to the
+  window under it and never reached the canvas at all; the effect now publishes
+  the mask (`planeNavButtons`; `setNavButtons` over D-Bus for the plugin) and
+  both routes leave those buttons to the canvas wherever they land, client
+  areas included. Held, a drag on the ground pans, a drag on a window moves
+  that window on the plane — by its client area too — and a drag on a tag or a
+  frame edge does what it does with the left button. A click still opens the
+  arrange menu, and the middle button still pans from anywhere. `BackButton`
+  and `ForwardButton` (a mouse's side buttons) are accepted in `PanHold` for
+  anyone who wants the portal off the right button.
+
+- An edge pan with a window in hand takes the window along: hold a navigate
+  button (`PanHold`, the right button by default) on a window, push the pointer
+  to a screen edge and the canvas keeps panning with the window riding it. The
+  camera's step
+  is added to the window the other way on the plane, so its screen position
+  does not change — it stays under the pointer while the desk, frames included,
+  travels under it — and it can be pushed past a screen edge and into a frame
+  that was never on screen.
+
+- `FocusTarget=smart`, now the default, is where a double-click on a window
+  lands the desk: the window comes wholly into view, and among the placements
+  that keep it so, the one that leaves the most of the other windows on screen
+  wins, so stepping back to a window no longer throws its neighbours off the
+  screen. The offsets that change what is in view are the ones that bring a
+  neighbouring window's edge onto the screen's, so those crossings, the corners
+  and the centred placement are what gets compared, once per gesture, by the
+  same target the other modes move — no window is written, moved or restacked.
+  Ties go to the centred placement, so a window alone in view lands exactly
+  where `centre` has always put it, and `centre` itself is unchanged for anyone
+  who wants it. `window` now also shifts the least it can when pinning the
+  clicked point would leave the window hanging over a screen edge.
+
+- The open canvas is navigable by holding a button: `PanHold` (the right
+  button by default) pans on drag from anywhere on the screen, windows and tags
+  included, and a pointer parked at a screen edge keeps panning that way
+  (`EdgePan`, `EdgePanMargin`, `EdgePanSpeed`), with the wheel zooming at the
+  cursor throughout. The middle button navigates the same way with nothing
+  configured — held or dragged, a drag or a parked pointer at an edge alike.
+  A navigate button held at a screen edge no longer toggles the canvas through
+  the Screen Edges handlers.
+
+- The plane is the desktop's own wallpaper. `Backdrop=wallpaper` (the default)
+  puts one `DesktopBackground` per output at that output's place on the current
+  activity's frames and tiles it outward from there at primary-screen steps
+  (`BackdropReach`, 0 to 4, default 2), so what lies beyond the desks is the
+  wallpaper continuing rather than a grid into void, and a slide at 1:1 draws
+  the desktop that was on screen. `BackdropDim` (0.45) keeps the desks and the
+  windows on top of it, and is 0 while the canvas slides at 1:1, where the
+  plane and the desktop have to be the same thing. `Backdrop=grid` is the plane
+  as it was.
+- The camera moves under physics instead of a timeline. A wheel notch, a fit or
+  a border opening the canvas springs to its destination with the point under
+  the cursor pinned (`SmoothZoom`, `CamSpring` 14/s, critically damped, so it
+  arrives without overshooting and can be taken over mid-flight); a flicked pan
+  keeps going and slows under `PanFriction` (`PanInertia`), while a drag that
+  pauses before letting go still lands exactly where it was put. `SmoothZoom`
+  off is the old instant camera.
+- A dragged window carries weight (`WindowPhysics`): it lifts, trails in the
+  direction of travel and leans with the hand, and settles on Qt's springs when
+  the hand stops. Drawn only - the entries and the committed geometry are exact
+  either way, so what the canvas commits does not depend on how it looked while
+  the hand was moving.
+- A screen edge or corner opens the canvas stepped out around the screen that
+  was pushed (`BorderZoom`, 0.8 by default; `fit`, or `1` for the desktop
+  exactly as it was), anchored at that screen's centre, so a push shows the
+  desks around that monitor rather than the desktop already on it. The chord
+  enters the point the push came from, on the same screen.
+- Multi-monitor correctness. Nothing asks `Workspace.activeScreen` - the
+  focused window's screen - for "the current screen" any more: a fit, a focus,
+  an enter and a border open all follow the screen the pointer is on. Every
+  activity has a frame, and the backdrop a wallpaper tile, per output; a hidden
+  frame is hidden per output; and the frames and the tiles re-derive on a
+  hotplug, a resolution change, a rearrange, or a virtual output coming or
+  going. A pointer a KVM switch (Deskflow, a network KVM, a remote session)
+  drops onto a border pixel no longer opens the canvas, and neither does a fast
+  traverse across one: KWin wants two events on the pixel between its delay and
+  its cooldown.
+- `make test-two-outputs` runs a two-output nest (`NEST_OUTPUTS=2`), where
+  `91-two-outputs` covers the per-output frames, the fit, the corner push and
+  the enter on the far output; `93-backdrop` covers the wallpaper tiles, their
+  reach and the dim, and `94-physics` covers the springs, the glide and the
+  window's weight. `dev/nest.sh` seeds the motion knobs off so the other
+  scenarios measure the canvas rather than the spring, and `tests/lib.sh` grows
+  `setcfg`, `screenrect`, `screenname`, `push_border_on` and
+  `kvm_drop_on_border`.
+
 - With the spike shim of `dev/spike/preload` preloaded into kwin_wayland
   6.7.5, KWin's pointer chain works in plane coordinates and the open
   canvas shares input with the windows it draws: pointer over a window's
@@ -82,10 +171,13 @@ put it under Qt 5's. Nothing else changed.
   against your KWin: in pan mode, clicks, drags and the wheel reach the
   real windows, a click raises, title bars and edges move windows on the
   plane. Its own AUR package; rebuild it after a KWin upgrade.
-- Double-click a window: the window's activity takes the viewport, and a
-  window in another activity's frame takes you there. `FocusTarget` chooses
-  between the point you clicked staying under the pointer (`window`) and a
-  frame staying put (`desktop`).
+- Double-click a window: the window's activity takes the viewport, the
+  window comes to the centre of the screen and it takes the focus; a window
+  in another activity's frame takes you there. `FocusTarget` chooses where
+  the viewport goes: `centre` (default) brings the window's centre to the
+  screen centre, `window` keeps the point you clicked under the pointer at
+  1:1, `desktop` leaves a frame put and only centres a window outside every
+  frame.
 - Dragging an activity's frames carries its windows along
   (`FramesCarryWindows`, on by default).
 - Activation-follow moves minimized and other-desktop windows of the

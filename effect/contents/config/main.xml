@@ -35,6 +35,18 @@
             <label>Optional image tiled across the canvas at 1:1. Empty draws the grid.</label>
             <default></default>
         </entry>
+        <entry name="Backdrop" type="String">
+            <label>What the ground draws beyond the monitor frames: "wallpaper" (the default) puts the desktop's own wallpaper on the plane, at each output's place and tiled outward from it, dimmed by BackdropDim, so the plane reads as the desktop continuing; "grid" is the plain grid on Background.</label>
+            <default>wallpaper</default>
+        </entry>
+        <entry name="BackdropDim" type="Double">
+            <label>How far the backdrop wallpaper is dimmed toward Background: 0 leaves it as it is, 0.45 (the default) keeps the desks and the windows reading on top of it, 1 hides it. Always 0 while the canvas slides at 1:1, where the plane and the desktop have to look identical.</label>
+            <default>0.45</default>
+        </entry>
+        <entry name="BackdropReach" type="Int">
+            <label>How far the backdrop wallpaper carries beyond the screens, in primary-screen widths, so the plane around the desks is wallpaper rather than void. 0 draws it on the screens only; 2 (the default) covers a fit view.</label>
+            <default>2</default>
+        </entry>
         <entry name="BorderActivate" type="IntList">
             <label>Screen edges and corners that open the canvas (written by the Screen Edges settings page). 0 top, 1 top-right, 2 right, 3 bottom-right, 4 bottom, 5 bottom-left, 6 left, 7 top-left.</label>
             <default></default>
@@ -54,6 +66,10 @@
         <entry name="OpenZoom" type="String">
             <label>View when the canvas opens: "1" (the default) stays at 1:1, so the open canvas looks like the desktop until you move; "fit" zooms to every window and frame; any other number is a zoom anchored at the screen centre.</label>
             <default>1</default>
+        </entry>
+        <entry name="BorderZoom" type="String">
+            <label>View when a screen edge or corner opens the canvas: "0.8" (the default) steps out around the screen that was pushed, so the push shows the desks around it rather than the desktop it was on; "fit" shows every window and frame; "1" opens at 1:1 like any other opening. Anchored at that screen's centre, so the point an edge push leaves under the centre is the point applying comes back to. The chord and the toolbar still open at OpenZoom.</label>
+            <default>0.8</default>
         </entry>
         <entry name="KeyApply" type="String">
             <label>Keys that apply and close, as Qt key names without the Key_ prefix, comma separated.</label>
@@ -83,6 +99,22 @@
             <label>Held while dragging to pan from anywhere.</label>
             <default>Space</default>
         </entry>
+        <entry name="PanHold" type="String">
+            <label>Mouse buttons that navigate the open canvas while held down: any of LeftButton, MiddleButton, RightButton, BackButton, ForwardButton, comma separated. A held button is a portal into the canvas: wherever the pointer is, a drag on the ground pans and a drag on a window moves it on the plane, and the app under a window never sees the press. A window in hand at a screen edge keeps the canvas panning and comes along with it. The middle button always navigates, whether or not it is listed here; BackButton and ForwardButton are a mouse's side buttons.</label>
+            <default>RightButton</default>
+        </entry>
+        <entry name="EdgePan" type="Bool">
+            <label>While a pan button is held, or a window is in hand, a pointer within EdgePanMargin of a screen edge keeps panning that way until it leaves the band, the button is let go or the window is dropped. A dragged window rides the pan and stays under the pointer.</label>
+            <default>true</default>
+        </entry>
+        <entry name="EdgePanMargin" type="Int">
+            <label>Width of the edge band that starts edge panning, in screen pixels.</label>
+            <default>24</default>
+        </entry>
+        <entry name="EdgePanSpeed" type="Double">
+            <label>Edge panning speed in screen pixels per second at the very edge, tapering to nothing at the inner edge of the band.</label>
+            <default>900</default>
+        </entry>
         <entry name="MouseFocusWindow" type="String">
             <label>Gesture on a window that applies with it focused: Click or DoubleClick, with optional Shift+, Ctrl+, Alt+, Meta+.</label>
             <default>DoubleClick</default>
@@ -92,8 +124,8 @@
             <default>true</default>
         </entry>
         <entry name="FocusTarget" type="String">
-            <label>Where the viewport goes when a double-click applies with a window focused. "window": the point clicked stays under the pointer at 1:1 and the activity's frames move to make that so. "desktop": a window inside a frame leaves the frame where it is; one outside every frame gets the frame centred on it.</label>
-            <default>window</default>
+            <label>Where the viewport goes when a double-click on a window applies with it focused. "smart": the window comes wholly into view, and of the offsets that keep it so the one that leaves the most of the desk's other windows in view wins, so a window alone lands centred. "centre": the window's centre comes to the centre of the active screen, whatever that pushes off it. "window": the point clicked stays under the pointer at 1:1, unless that would leave the window hanging over an edge, in which case it is shifted the least it can be to fit. "desktop": a window inside a frame leaves the frame where it is; one outside every frame gets the frame centred on it, as "centre" does for every window. Every one of them moves the frames, their windows and the wallpaper together and writes nothing.</label>
+            <default>smart</default>
         </entry>
         <entry name="MouseGotoActivity" type="String">
             <label>Gesture on an activity frame that applies with that activity current.</label>
@@ -183,6 +215,26 @@
         <entry name="PanDuration" type="Int">
             <label>Length of the slide animation in milliseconds. 0 jumps.</label>
             <default>220</default>
+        </entry>
+        <entry name="PanInertia" type="Bool">
+            <label>A pan the hand lets go of keeps the plane moving, slowing by PanFriction, so a flick carries. A drag that pauses before the release, or a slow one, stops where it is put.</label>
+            <default>true</default>
+        </entry>
+        <entry name="PanFriction" type="Double">
+            <label>How quickly a flung pan slows, per second. 3 (the default) coasts about a third of the flick's own length further; higher stops sooner, lower carries further.</label>
+            <default>3.0</default>
+        </entry>
+        <entry name="SmoothZoom" type="Bool">
+            <label>Wheel zoom and other camera moves spring to their destination, with the point under the cursor pinned, instead of jumping. Off, every camera move lands at once.</label>
+            <default>true</default>
+        </entry>
+        <entry name="CamSpring" type="Double">
+            <label>Camera spring rate in 1/s: how fast a smooth zoom or an animated camera arrives. 14 (the default) is about a third of a second, critically damped, so it does not overshoot; higher is snappier.</label>
+            <default>14.0</default>
+        </entry>
+        <entry name="WindowPhysics" type="Bool">
+            <label>A dragged window carries weight: it lifts a little, trails and leans after the hand, and settles when it stops. Drawn only - the committed geometry is exact either way.</label>
+            <default>true</default>
         </entry>
         <entry name="PanSwipeFingers" type="Int">
             <label>Touchpad swipe with this many fingers pans at 1:1, following the fingers. 0 turns it off. KWin's own three-finger swipes switch desktops and four-finger swipes open Overview; a matching count fires both.</label>

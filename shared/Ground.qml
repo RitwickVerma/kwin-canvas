@@ -26,6 +26,10 @@ Item {
     property color lineColor: "#7f8fb0"
     property string tileImage: ""
     property bool showLabels: true
+    // False leaves the plane behind the ground to whatever the caller put
+    // there: the effect draws the desktop's wallpaper under the grid, and owns
+    // the opaque base itself. The wallpaper plugin always draws it.
+    property bool drawBackground: true
 
     // Screen spacing below which an octave is invisible, and above which it is fully drawn.
     readonly property real fadeIn: 14
@@ -36,6 +40,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
+        visible: ground.drawBackground
         color: ground.background
     }
 

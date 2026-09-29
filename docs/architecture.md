@@ -95,7 +95,10 @@ input surface takes the point, delivers the event to the Wayland seat with
 the window's own input transformation, so the client sees the same surface
 coordinates it would at 1:1. A press inside a window raises it and starts
 an implicit grab until the buttons are up; a press on the ground leaves the
-gesture to the effect. Over the ground the pointer leaves the surface and
+gesture to the effect, and so does a press of a button in `planeNavButtons`
+(`setNavButtons`), wherever it lands — the window under it never sees it, and
+the canvas's QML owns the whole gesture, which is what lets a held button be a
+portal into the canvas. Over the ground the pointer leaves the surface and
 events fall through, so the effect pans and zooms as before. Every key goes
 to the focused window, Esc included; the canvas's own keys work only when
 the plugin is absent. The thumbnail grips only ever see title bars and
@@ -138,7 +141,12 @@ the effect tells it what the canvas owns:
   a second without one. The pass-through plugin stands down while
   `planeInput` is set.
 - For each pointer event the shim asks `planeTakes(x, y, w)` with the
-  screen point and the window KWin finds at the plane point. The effect
+  screen point and the window KWin finds at the plane point. A press of a
+  button in the effect's `planeNavButtons` (the PanHold buttons and the
+  middle button) skips the question: it is the canvas's wherever it lands,
+  client areas included, which is what makes a held button a portal into the
+  canvas rather than something the window under it sees.
+  The effect
   walks its scene with `childAt` from the view under the point: the pointer
   goes to the window only over a thumbnail's client area (an item with no
   handlers, `kwin-canvas-client`) with nothing of the canvas above it, when
@@ -273,21 +281,38 @@ activity requests the switch, and the write happens when KWin reports it;
 the screen centre over no frame keeps the current activity. Then, for every entry, the activity whose frame overlaps the entry the
 most wins: the window's `activities` list is set to that one if it differs
 (a window on every activity stays on every activity), and
-`frameGeometry = entry - target(that activity)`. An entry in no frame keeps
+`frameGeometry = entry - target(that activity)`, with the entry taking the
+new frame position first: a write in that shape is the entry's own
+projection, not the user having moved the window, so it must never be read
+back as a delta into the entry (the rule `settle()` states), or a second
+commit after one of these writes — the chord, a stale click that lands
+after the canvas hid, an activity switch — would find the entries shifted
+by the first and write the window a delta off. An entry in no frame keeps
 its activity. Windows not shown (minimized, hidden, other desktops) are
 shifted by how much their activity's target moved, so they stay put on the
-plane. The camera is set to the current activity's target at zoom 1, the
+plane, and the targets the frames then sit relative to are snapshotted for
+the next commit, so they are not shifted twice either. The camera is set to the current activity's target at zoom 1, the
 ground offset is published, and the effect hides. `pick()` (double-click on
 a window's title bar) enters that window's location: the activity whose
 frame holds it, else the one it belongs to, with the target placed by
-`FocusTarget`: `window` sets it to
-`canvas(pointer) - pointer`, so the point clicked stays under the pointer at
-1:1, as a zoom-in there would; `desktop` leaves the target alone for a
-window inside a frame and centres the active-screen frame on a window
-outside every frame. A double-click on a frame enters that location with
-its activity current. `cancel()` (Esc without the plugin, the toolbar's
-Cancel) restores the targets and `entryView` and hides without writing
-anything: back to where you were, nothing moved.
+`FocusTarget`: `smart` (the default) keeps the window wholly in view and
+picks, among the placements that do, the one that leaves the most window area
+on screen — the offsets that keep it so are the ones that bring a neighbouring
+window's edge onto the screen's, so `smartOffset()` evaluates those crossings
+plus the corners and the centred placement, and a tie goes to the centred one,
+which is what a window alone in view gets; `centre`
+sets it to `window(centre) - screen(centre)`, so the window's centre comes
+to the centre of the active screen — the frames, their windows and the
+wallpaper slide together on screen, and nothing moves on the plane.
+`window` sets it to `canvas(pointer) - pointer`, so the point clicked stays
+under the pointer at 1:1, as a zoom-in there would, shifted the least it can
+be when that would leave the window over an edge; `desktop` leaves the target
+alone for a window inside a
+frame and centres the active-screen frame on a window outside every frame,
+which is what `centre` does for every window. A double-click on a frame
+enters that location with its activity current. `cancel()` (Esc without the
+plugin, the toolbar's Cancel) restores the targets and `entryView` and hides
+without writing anything: back to where you were, nothing moved.
 
 **Activity switch in a location.** `currentActivityChanged` sets `view` to the new
 activity's target and republishes the ground, so the wallpaper scrolls to
@@ -386,8 +411,9 @@ Verified against the 6.7.5 source, in `src/`:
 
 ## Layers
 
-Back to front inside each screen's view: the ground, the monitor frames, the
-windows in KWin's stacking order, the frame tags, the HUD. A frame's interior
+Back to front inside each screen's view: the plane's base, the backdrop, the
+dim, the ground, the monitor frames, the windows in KWin's stacking order, the
+frame tags, the HUD. A frame's interior
 is a `DesktopBackground` item for its output, the current desktop and the
 frame's activity, which is the real Plasma wallpaper. Plasmashell keeps one
 desktop window per screen, on every activity, and swaps its containment on
@@ -399,6 +425,25 @@ even with no background window, as in the nest.
 `DesktopBackground` with an empty `activity` crashes KWin 6.7 when activities
 are disabled (null dereference in `updateWindow`), so the effect always
 passes a non-empty activity.
+
+**The backdrop** is the same item again, as the plane's own floor rather than
+the frames' interior: `Backdrop=wallpaper` (the default) puts one
+`DesktopBackground` per output at that output's place on the current
+activity's frames, and tiles the wallpaper outward from there at
+primary-screen steps (`BackdropReach`, 0 to 4, default 2), each padding tile
+wearing the wallpaper of the output nearest its centre. At 1:1 the tile that
+covers the real desktop is that desktop's own wallpaper, pixel for pixel, so
+a slide draws what the screen was showing; beyond the arrangement the plane
+reads as the desktop continuing instead of a grid fading into void.
+`BackdropDim` (0.45) is a rect of `Background` over the tiles, so the desks
+and the windows stay the subject - and it is 0 while the canvas is quiet,
+where the plane and the desktop have to be the same thing. `Backdrop=grid`
+is the plane as it was: no tiles, the ground's own background, the grid.
+Tiles ride the same `revision` bindings the frames do, so a camera move or a
+drag never rebuilds the model; `screensRev` (a hotplug, a resolution change,
+a rearrange, a virtual output coming or going) does, and so does switching
+activity. KWin renders one offscreen per (view, window) and shares it
+between every item that shows it, so the tiles cost draw calls, not renders.
 
 ## Keys
 
@@ -441,6 +486,99 @@ Activity colours come from `palettes[Palette]`; okabe-ito, tol and ibm are
 published colour-blind safe sets, mono is luminance only, and tag text
 picks black or white by luminance.
 
+## Navigating
+
+`PanHold` (default `RightButton`) is the navigate button: held down, the
+canvas is being navigated, and the button is a portal into it. The middle
+button is one too, with nothing to configure, so a hold of either pans the
+same way. A drag of the held button pans from anywhere on the screen, because
+the pan handler sits on each screen's root item, so every press on that screen
+is on its delivery path — over a control, which takes the same buttons and does
+what the left button would have done with it (a window body moves the window, a
+frame tag or edge moves its frames, a resize grip resizes), or over the ground,
+which pans. The middle button is a pan everywhere. Over a window's client area
+the app would otherwise have taken the press: with the plugin or the shim live,
+a button in `planeNavButtons` never reaches it, which is what turns a held
+button into a portal. The hold
+itself is a `TapHandler` with no policy of its own: it takes
+a passive grab for the configured buttons and the middle button, so it knows
+the press the moment it lands and the release the moment it lifts, whether or
+not the pointer ever moves. A pointer parked at a screen edge is the whole
+gesture, so the edge pans with no drag at all. The Screen Edges handlers ask
+for the same hold before they toggle the canvas, so a pointer pushed into a
+corner on purpose pans instead of closing it.
+
+`edgePanStep(sg, dt)` is one tick of the edge screen's own 16 ms `Timer`,
+running while a
+button is held and the pointer is inside an edge band
+`EdgePanMargin` screen pixels wide:
+the depth in the band times `EdgePanSpeed` screen pixels per second, signed
+like the drag it continues — content follows the pointer, so a pointer at the
+right edge keeps the canvas moving right. A pointer off `sg` does nothing, so a
+hold that walks onto another screen hands over to that screen's view. A window
+in hand rides the pan — `edgeDrag()` adds the camera's own step to it, the
+other way on the plane, so its screen position does not change and it keeps its
+place under the pointer — which is how a window is carried past a screen edge
+and into a frame that was never on screen. `EdgePan` turns the whole thing off,
+and `EdgePanSpeed` 0 with it.
+
+The wheel is not part of this: it zooms at the cursor, a notch up in and a
+notch down out, with or without a button held. What the button does change is
+the screen edges: `navHeld` on the effect (a count of the views being navigated
+- a held button, a pan drag, or a drag a portal button is holding on a control)
+stops a screen edge handler from toggling the canvas, since a pointer
+pushed into a border to pan is not a push meant to leave.
+
+## Motion
+
+The camera is not a timeline. `viewX`, `viewY` and `zoom` are the state, a set
+of velocities (`camVX`, `camVY`, `camVZoom`) is what moves them, and one
+`FrameAnimation` integrates while anything is live (`camLive()`), so any motion
+can be taken over mid-flight by a hand, a new destination or a commit without a
+jolt and without a queue. A `Timer` and not a `FrameAnimation`: the frame
+animation advances with the frames the compositor draws for the effect, so the
+first step of a gesture would wait for damage the gesture has not caused yet —
+the wheel sets a goal, nothing on screen has moved, no frame is drawn, and the
+spring would never start. The timer steps from the event loop, and the step it
+takes is what damages the scene, so the motion keeps its own frames coming. Its
+dt is the interval rather than what the event loop actually took, so a busy loop
+slows the camera rather than lengthening the steps an explicit Euler spring is
+only stable for a fraction of a period of. Two motions fall out of
+that.
+
+**A glide** is a pan the hand let go of: `camFling(dx, dy, ms)` from the pan
+handler's own record of the drag takes the hand's average velocity in canvas
+units a second - under 140 screen px/s, or a slow drag, is not a throw - caps
+it at a screen and a half a second, and lets `PanFriction` (3/s) fade it. The
+integral of that fade is a third of the flick's speed again in distance, which
+is what makes a flick feel like it carries. The pan handler only calls it when
+the last motion was within 120 ms of the release, so a drag that pauses before
+letting go - the way a careful placement ends - lands exactly where it was put.
+
+**A spring** is anything with a destination: a wheel notch, a fit, an edge
+opening the canvas, `camGo(zoom, x, y, [gx, gy])`. It is critically damped
+(`k = w²`, `c = 2w`, `w = CamSpring` in 1/s, 14 by default, about a third of a
+second) so it arrives as fast as it can without overshooting, the same easing
+family KWin's own Overview uses but interruptible. When a screen point is
+pinned (`camAnchored`) the anchor owns the position - the canvas point under
+the screen point when the zoom started stays under it, recomputed as
+`anchor.x - gx / zoom` every step - and only the scale springs, which is what a
+wheel at the cursor and a pinch both are; a pinch without that jumps. The wheel
+compounds from the *goal* rather than from mid-step, so a burst of notches
+rides as one motion. `SmoothZoom` off makes every camera move land at once,
+which is what the scenarios measure the canvas with.
+
+**A dragged window's weight** is drawn and never measured. The entries, and so
+the committed geometry, follow the pointer exactly; `noteDrag()` turns the
+hand's velocity into an offset along the direction of travel (`dragLagX`/`Y`,
+up to 26 screen px), a lean about the centre (`dragLean`, up to 2.2°) and a
+lift, and Qt's `SpringAnimation` settles each when the hand stops, so the
+picture trails and leans and then settles rather than following a curve. With
+`WindowPhysics` off there is no weight at all: the velocity, the offset and the
+lean are zero, so what the state reports is what the screen shows. Everything
+is one per drag, not per window, which is what makes a group drag read as one
+piece of paper.
+
 ## Screen edges
 
 `X-KWin-Border-Activate` in the metadata puts the effect into the Screen
@@ -449,6 +587,73 @@ the effect's config group as ElectricBorder numbers (top is 0, clockwise to
 top-left at 7, the same order as `ScreenEdgeHandler.Edge`). The effect
 instantiates one `ScreenEdgeHandler` per number and toggles on activation.
 `TouchBorderActivate` does the same for touch edges.
+
+KWin arms a pointer edge only after two motion events inside it that are
+`ElectricBorderDelay` (75 ms by default) apart, and only re-arms it once
+`ElectricBorderCooldown` (350 ms) has passed, so a push that keeps going for
+longer than that toggles twice - open, then into the location. The wait
+between the two events has to fall inside that window: an event that arrives
+later than the cooldown is the first event of a new attempt, not the
+confirmation of the old one, which is why a pointer that glides into a corner
+and stops on the pixel never fires at all - it leaves one event there. A
+mouse that keeps pressing fires, because KWin warps the pointer
+`ElectricBorderPushbackPixels` (1) inward on the first event and the next
+step of the hand lands on the pixel again.
+
+What a border owns is KWin's geometry, not the effect's. A corner is a
+`TouchTarget` (8 px) square at the intersection of its two screen sides; an
+edge is a `TouchTarget`-wide band along its side that stops `cornerOffset`
+(40 px) short of either end. The two never overlap, so the pixel in the very
+corner matches the corner and neither of the edges meeting there: with all
+eight borders reserved a push into a corner is still one toggle, which is
+what the scenario checks. The scenarios push in with two events on the
+border's own pixel and then stop - `push_border` in `tests/lib.sh`, one
+border at a time through `set_borders`.
+
+An edge or corner opens the canvas around the screen that was pushed, not on
+the desktop it was showing: `BorderZoom` (0.8 by default, `fit`, `1`, or any
+zoom) goes to `open()` as the view spec in place of `OpenZoom`, and it is
+anchored at *that screen's* centre. The anchor matters on more than one
+output: at 1:1 on its frames the canvas point under the pushed screen's centre
+is the target plus half that screen, and pinning it puts the camera a quarter
+of that centre short of the frames - `-240,-135` on a single 1920x1080 output,
+and a quarter of the pushed screen's own centre on any other, so `-720` in x
+for the second output of two 1920-wide ones side by side. Because the chord
+uses
+the same anchor on the same output, the point the push left under the centre is
+the point applying comes back to, and the viewport, the frames and every window
+end where the push found them.
+
+## Several outputs
+
+Every activity has one frame, and one wallpaper tile, per output, at that
+output's place in Display Configuration, so the plane is the whole
+arrangement. An activity's frame group is therefore as wide as the
+arrangement, and the next activity's target stands a whole virtual screen
+(plus `ActivityGap`) beyond it - two screens and a gap apart on two 1920x1080
+outputs side by side. A hidden frame is a
+(activity, output) pair: hidden on one output, the frame is still drawn and
+still takes windows on the other, and the config records it as
+`activity|screenName`.
+
+Nothing the effect decides from "the current screen" uses
+`Workspace.activeScreen`, which is the *focused window's* screen - wrong half
+the time on two monitors. `actionScreen()` asks `screenAt()` for the screen
+under the cursor and falls back to the active screen only when there is no
+pointer: it is what a fit, a focus, an enter and a border open all use. The
+pointer is also why a corner works on every output while an edge only works on
+the arrangement's outer sides: KWin builds the four corner zones on every
+screen (`ElectricBorderAllScreenCorner`), and no edge band in the middle of
+the desktop.
+
+A pointer a KVM switch (Deskflow, a network KVM, a remote session) drops onto
+a border pixel is not a push. KWin wants two motion events on that pixel
+between `ElectricBorderDelay` and `ElectricBorderCooldown`, so a single
+placement - and the move away the user makes next - leaves one event there and
+never arms the border. A fast traverse across a border is not a push either:
+the two events have to be within `DISTANCE_RESET` (30 px) of each other, so a
+pointer crossing at speed passes through. Both are what the KVM case needs, and
+`kvm_drop_on_border` in `tests/lib.sh` is the placement the scenario replays.
 
 ## HUD
 

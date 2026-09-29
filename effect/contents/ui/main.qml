@@ -83,9 +83,38 @@ KWin.SceneEffect {
     readonly property real planeScale: zoom
     readonly property real planeOffsetX: { revision; return (peekTarget(currentActivity).x - viewX) * zoom; }
     readonly property real planeOffsetY: { revision; return (peekTarget(currentActivity).y - viewY) * zoom; }
+    // The buttons the canvas owns while they are down: the PanHold buttons and
+    // the middle button. The shim reads this and the plugin is told over D-Bus
+    // (setNavButtons); both then hand the pointer to the canvas for those
+    // buttons wherever it is, a window's client area included. That is what
+    // makes a held button a portal into the canvas: the window under it never
+    // sees the press, so a drag moves the window on the plane, a drag on the
+    // ground pans, and the screen edge keeps panning with the window in hand
+    // (edgePanStep). It is the same mask the pan handlers already take, so
+    // there is one answer to "which buttons navigate the canvas".
+    readonly property int planeNavButtons: (bindings.panHold || 0) | Qt.MiddleButton
+    // The buttons a drag on a control takes: the left button, and the PanHold
+    // buttons. That is the set the pan handler acts on over the ground, so a
+    // held portal button does what the left button would have done wherever
+    // there is a control to take it - a window moves, a frame tag or edge moves
+    // its frames, a resize grip resizes - and only the ground beside them pans.
+    // The middle button is not among them: it pans from anywhere, controls
+    // included, and that is a promise of its own.
+    readonly property int gripButtons: Qt.LeftButton | (bindings.panHold || 0)
+    // The buttons that make a held pointer a portal, without the left button
+    // they share a grip drag with: a drag of one of these on a control is a
+    // drag the canvas is being navigated by (see the view's navHeld), so the
+    // edge pan runs with the window in hand and the screen edges stay off.
+    readonly property int portalButtons: bindings.panHold || 0
     // The canvas's own open menus: while one is up the canvas takes the
     // whole pointer.
     property int canvasMenus: 0
+    // Views with a pan button held down. There is one pointer, so at most one
+    // screen's view holds it; counting them keeps two screens honest, and lets
+    // the effect ask whether the canvas is being navigated (the screen edge
+    // handlers do: pushing into a border to pan must not toggle the canvas).
+    property int navHolds: 0
+    readonly property bool navHeld: navHolds > 0
     // Frame positions at open, for cancel to put back what settle() wrote.
     property var openFrames: ({})
     property bool settled: false
@@ -131,6 +160,33 @@ KWin.SceneEffect {
         return out;
     }
 
+    // Mouse buttons that navigate while held down, as a mask: parsed from the
+    // same comma-separated Qt button names as the keys ("RightButton" ->
+    // Qt.RightButton). An unknown name is logged and skipped, as above.
+    function buttonsFor(spec) {
+        let mask = 0;
+        const names = String(spec || "").split(",");
+        for (let i = 0; i < names.length; ++i) {
+            const n = names[i].trim();
+            if (!n) continue;
+            const code = Qt[n];
+            if (typeof code !== "number") { console.warn("kwin-canvas: unknown mouse button", n); continue; }
+            mask |= code;
+        }
+        return mask;
+    }
+
+    // "RightButton, MiddleButton" -> "right button / middle button", for the legend.
+    function holdLabel(spec) {
+        const parts = String(spec || "").split(",");
+        const out = [];
+        for (let i = 0; i < parts.length; ++i) {
+            const n = parts[i].trim().replace(/Button$/i, "").trim().toLowerCase();
+            if (n) out.push(n + " button");
+        }
+        return out.join(" / ");
+    }
+
     function rebuildBindings() {
         bindings = {
             apply: keysFor(configuration.KeyApply),
@@ -140,7 +196,8 @@ KWin.SceneEffect {
             fit: keysFor(configuration.KeyFit),
             zoomIn: keysFor(configuration.KeyZoomIn),
             zoomOut: keysFor(configuration.KeyZoomOut),
-            pan: keysFor(configuration.KeyPan)
+            pan: keysFor(configuration.KeyPan),
+            panHold: buttonsFor(configuration.PanHold)
         };
     }
 
@@ -182,6 +239,36 @@ KWin.SceneEffect {
         return String(spec || "").replace(/DoubleClick/i, "double-click").replace(/RightClick/i, "right-click").replace(/MiddleClick/i, "middle-click").replace(/Click/, "click").toLowerCase();
     }
 
+    // Where the viewport goes when a window gesture applies with that window
+    // focused, from the FocusTarget setting. The viewport is the activity's
+    // target, so moving it slides the frames, the windows on them and the
+    // wallpaper together and writes nothing: each of these is a placement of
+    // the desk, not of a window.
+    //   smart    the window wholly in view, at the offset that leaves the most
+    //            of the rest of the desk in view (smartOffset).
+    //   centre   the window's centre to the centre of the active screen,
+    //            whatever that pushes off it.
+    //   window   the point clicked stays under the pointer, then the least
+    //            shift that brings the window wholly back into view.
+    //   desktop  a window inside a frame leaves the frame where it is.
+    // "center" is accepted for "centre"; anything else is the default, smart.
+    function focusMode() {
+        const m = String(configuration.FocusTarget || "").trim().toLowerCase();
+        if (m === "window" || m === "desktop") return m;
+        if (m === "centre" || m === "center") return "centre";
+        return "smart";
+    }
+
+    // Legend text for the focus gesture: what the viewport does after applying.
+    function focusHelp() {
+        switch (focusMode()) {
+        case "window":  return "apply with that point under the pointer, focused on it; in another activity's frame, go there";
+        case "desktop": return "apply, focused on it; in another activity's frame, go there";
+        case "centre":  return "apply with it centred on screen, focused on it; in another activity's frame, go there";
+        default:        return "apply with it and the rest of the desk in view, focused on it; in another activity's frame, go there";
+        }
+    }
+
     // Legend text for an action: the configured names, lower-cased.
     function keyLabel(spec) {
         return String(spec || "").split(",").map(function (n) { return n.trim().toLowerCase(); }).join("/");
@@ -192,6 +279,17 @@ KWin.SceneEffect {
 
     readonly property real zoomMin: configuration.ZoomMin
     readonly property real zoomStep: configuration.ZoomStep
+    // ---- hold to navigate ---------------------------------------------------
+    // A PanHold button held down puts the canvas in navigation: the button pans
+    // on drag from anywhere on the screen, and a pointer parked at a screen
+    // edge pans on its own, faster the deeper it is in the band (EdgePan,
+    // EdgePanMargin, EdgePanSpeed). The wheel zooms at the cursor throughout.
+    // The middle button is a navigate button with nothing to configure: it is
+    // one whether or not PanHold lists it, held or dragged.
+    readonly property int panHoldButtons: bindings.panHold || 0
+    readonly property bool edgePan: configuration.EdgePan !== false
+    readonly property int edgePanMargin: Math.max(1, Math.round(Number(configuration.EdgePanMargin) || 1))
+    readonly property real edgePanSpeed: Math.max(0, Number(configuration.EdgePanSpeed) || 0)
     // Activity colour schemes. The colour-blind safe ones are published sets:
     // Okabe & Ito (2008), Paul Tol's bright set, IBM's Carbon set. mono
     // differs by luminance only.
@@ -444,7 +542,7 @@ KWin.SceneEffect {
         const entry = pendingNewAt;
         pendingNewAt = null;
         if (!entry) return;
-        const g = KWin.Workspace.activeScreen.geometry;
+        const g = actionScreen().geometry;
         targets[id] = { x: entry.x + entry.width / 2 - (g.x + g.width / 2),
                         y: entry.y + entry.height / 2 - (g.y + g.height / 2) };
         if (!entry.window.deleted) entry.window.activities = [id];
@@ -590,9 +688,11 @@ KWin.SceneEffect {
     // ---- camera ops --------------------------------------------------------
     function globalToCanvas(gx, gy) { return Qt.point(viewX + gx / zoom, viewY + gy / zoom); }
 
+    function clampZoom(z) { return Math.max(zoomMin, Math.min(1.0, Number(z))); }
+
     // Zoom while holding the canvas point under `anchor` (global px) fixed on screen.
     function setZoom(z, anchor) {
-        z = Math.max(zoomMin, Math.min(1.0, z));
+        z = clampZoom(z);
         const c = globalToCanvas(anchor.x, anchor.y);
         zoom = z;
         viewX = c.x - anchor.x / zoom;
@@ -602,6 +702,162 @@ KWin.SceneEffect {
     function panBy(dx, dy) {
         viewX -= dx / zoom;
         viewY -= dy / zoom;
+    }
+
+    // ---- camera physics ------------------------------------------------------
+    // The camera moves under physics, not a timeline, so it can always be taken
+    // over mid-flight and never arrives with a jolt. Two motions, one 16 ms
+    // step: a pan the hand lets go of is a glide that friction takes away, and
+    // anything with a destination (a wheel notch, a fit, an edge opening the
+    // canvas) is a spring. Critically damped - the damping is twice the square
+    // root of the rate - so it arrives as fast as it can without overshooting,
+    // which is what a camera wants, and the same easing family KWin's own
+    // Overview uses; the difference is that a drag or a new destination can
+    // interrupt this one mid-flight. Units are canvas pixels per second.
+    property real camVX: 0
+    property real camVY: 0
+    property real camVZoom: 0
+    property bool camHasGoal: false
+    property real camGoalX: 0
+    property real camGoalY: 0
+    property real camGoalZoom: 1.0
+    // A zoom can pin a point: the canvas point under a screen point when the
+    // zoom starts is under it at every step, as a pinch and a wheel at the
+    // cursor both do. The anchor owns the position while it is live and only
+    // the scale springs.
+    property bool camAnchored: false
+    property real camAnchorX: 0
+    property real camAnchorY: 0
+    property real camAnchorGX: 0
+    property real camAnchorGY: 0
+    readonly property bool panInertia: configuration.PanInertia !== false
+    readonly property bool smoothZoom: configuration.SmoothZoom !== false
+    readonly property real panFriction: Math.max(0.1, Number(configuration.PanFriction) || 3)
+    readonly property real camSpring: Math.max(1, Number(configuration.CamSpring) || 14)
+    // A glide is over below this many screen pixels a second: below it the eye
+    // cannot see the difference, and stopping is what ends the timer.
+    readonly property real camRest: 8
+
+    function camLive() {
+        return camHasGoal || Math.abs(camVX) > 0.001 || Math.abs(camVY) > 0.001 || Math.abs(camVZoom) > 0.0001;
+    }
+
+    function camStop() {
+        camHasGoal = false;
+        camAnchored = false;
+        camVX = 0; camVY = 0; camVZoom = 0;
+    }
+
+    // A pan the hand let go of: keep the plane moving the way it was, under
+    // friction. dx, dy are the screen pixels the drag covered and ms how long
+    // it took, so this is the hand's average velocity - negated, because the
+    // pan moved the view the other way (content follows the pointer) - and a
+    // flick carries while a slow drag settles at once. The caller has already
+    // refused a drag that paused before the release (see the pan handler),
+    // which is what lets "drag it where you want it and let go" land exactly
+    // where it was put.
+    function camFling(dx, dy, ms) {
+        camStop();
+        if (!panInertia || ms <= 0) return;
+        let vx = -dx / (ms / 1000) / zoom;
+        let vy = -dy / (ms / 1000) / zoom;
+        const speed = Math.sqrt(vx * vx + vy * vy);
+        if (speed * zoom < 140) return;          // a careful drag releases to a still canvas
+        const maxSpeed = 5200 / zoom;            // a screen and a half a second, at most
+        if (speed > maxSpeed) { vx *= maxSpeed / speed; vy *= maxSpeed / speed; }
+        camVX = vx;
+        camVY = vy;
+    }
+
+    // Spring the camera to a scale, and - unless a screen point is given to pin
+    // - to a place. Instant when SmoothZoom is off, so a script or a still hand
+    // gets exactly what it asked for.
+    function camGo(z, goalX, goalY, gx, gy) {
+        z = clampZoom(z);
+        const pinned = gx !== undefined && gx !== null;
+        camStop();
+        if (!smoothZoom) {
+            if (pinned) setZoom(z, Qt.point(gx, gy));
+            else { zoom = z; viewX = goalX; viewY = goalY; }
+            return;
+        }
+        camGoalZoom = z;
+        if (pinned) {
+            const c = globalToCanvas(gx, gy);
+            camAnchorX = c.x; camAnchorY = c.y; camAnchorGX = gx; camAnchorGY = gy;
+            camAnchored = true;
+            camGoalX = viewX; camGoalY = viewY;
+        } else {
+            camAnchored = false;
+            camGoalX = goalX; camGoalY = goalY;
+        }
+        camHasGoal = true;
+        // A push off the mark, so a spring heading somewhere starts moving this
+        // frame rather than the next.
+        if (camVZoom === 0) camVZoom = (z - zoom) * camSpring * 0.4;
+    }
+
+    // A zoom about a screen point: the wheel at the cursor, a pinch, an edge
+    // stepping the canvas out around its own screen.
+    function camZoomTo(z, gx, gy) { camGo(z, viewX, viewY, gx, gy); }
+
+    // One step, dt in seconds. A Timer and not a FrameAnimation: a
+    // FrameAnimation advances with the frames the compositor draws for the
+    // effect, so the first step of a gesture would wait for damage the gesture
+    // has not caused yet - the wheel sets a goal, nothing on screen has moved,
+    // no frame is drawn, and the spring never starts. A timer steps from the
+    // event loop; the step it takes is what damages the scene, and the motion
+    // then keeps its own frames coming. 16 ms is a frame at 60 Hz, and the dt
+    // is deliberately the interval and not what the event loop actually took,
+    // so a busy loop slows the camera rather than lengthening its steps - an
+    // explicit Euler spring is only stable for a fraction of its period.
+    function camStep(dt) {
+        if (!camLive() || dt <= 0) return;
+        const w = camSpring, k = w * w, c = 2 * w;
+        if (camHasGoal) {
+            camVZoom += (-k * (zoom - camGoalZoom) - c * camVZoom) * dt;
+            if (!camAnchored) {
+                camVX += (-k * (viewX - camGoalX) - c * camVX) * dt;
+                camVY += (-k * (viewY - camGoalY) - c * camVY) * dt;
+            }
+        } else {
+            const f = Math.exp(-panFriction * dt);
+            camVX *= f; camVY *= f; camVZoom *= f;
+        }
+        const z = clampZoom(zoom + camVZoom * dt);
+        if (z !== zoom) zoom = z;
+        if (camAnchored) {
+            viewX = camAnchorX - camAnchorGX / zoom;
+            viewY = camAnchorY - camAnchorGY / zoom;
+        } else {
+            viewX += camVX * dt;
+            viewY += camVY * dt;
+        }
+        const nearZoom = Math.abs(zoom - camGoalZoom) < 0.0004 && Math.abs(camVZoom) < 0.02;
+        if (camHasGoal && nearZoom
+            && (camAnchored || (Math.abs(viewX - camGoalX) < 0.2 && Math.abs(viewY - camGoalY) < 0.2
+                                && Math.abs(camVX) < 0.5 && Math.abs(camVY) < 0.5))) {
+            zoom = camGoalZoom;
+            if (camAnchored) {
+                viewX = camAnchorX - camAnchorGX / zoom;
+                viewY = camAnchorY - camAnchorGY / zoom;
+            } else {
+                viewX = camGoalX; viewY = camGoalY;
+            }
+            camStop();
+            return;
+        }
+        if (!camHasGoal && camVZoom === 0
+            && Math.abs(camVX) * zoom < camRest && Math.abs(camVY) * zoom < camRest) {
+            camStop();
+        }
+    }
+
+    Timer {
+        interval: 16
+        repeat: true
+        running: effect.canvasOpen && effect.camLive()
+        onTriggered: effect.camStep(interval / 1000)
     }
 
     // Look through the current activity's frames.
@@ -618,8 +874,10 @@ KWin.SceneEffect {
         zoom = 1.0;
     }
 
-    // Fit every window and every frame into the active screen.
-    function zoomExtents() {
+    // Fit every window and every frame into the screen the pointer is on (the
+    // active screen's, when there is no pointer), at once for a script and on
+    // the spring for the toolbar and the key.
+    function zoomExtents(animate) {
         let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
@@ -633,17 +891,22 @@ KWin.SceneEffect {
             r = Math.max(r, f.x + f.width); b = Math.max(b, f.y + f.height);
         }
         if (l === Infinity) { l = 0; t = 0; r = 1; b = 1; }
-        const sg = KWin.Workspace.activeScreen.geometry;
+        const sg = actionScreen().geometry;
         const pad = 80;
         const z = Math.max(zoomMin, Math.min(1.0, Math.min((sg.width - 2 * pad) / (r - l), (sg.height - 2 * pad) / (b - t))));
+        const cx = (l + r) / 2 - (sg.x + sg.width / 2) / z;
+        const cy = (t + b) / 2 - (sg.y + sg.height / 2) / z;
+        if (animate) { camGo(z, cx, cy); return; }
+        camStop();
         zoom = z;
-        viewX = (l + r) / 2 - (sg.x + sg.width / 2) / zoom;
-        viewY = (t + b) / 2 - (sg.y + sg.height / 2) / zoom;
+        viewX = cx;
+        viewY = cy;
     }
 
     // ---- open / close ------------------------------------------------------
-    function open(quietMode) {
+    function open(quietMode, spec) {
         if (visible) return;
+        camStop();
         quiet = !!quietMode;
         entryViewX = viewX;
         entryViewY = viewY;
@@ -653,6 +916,7 @@ KWin.SceneEffect {
         snapCorners = configuration.SnapCorners;
         snapGrid = configuration.SnapGrid;
         dragRaw = {};
+        dragIndex = -1;
         targetRaw = null;
         pendingNewAt = null;
         loadHiddenFrames();
@@ -667,25 +931,32 @@ KWin.SceneEffect {
         openFrames = {};
         for (let i = 0; i < entries.length; ++i) openFrames[entries[i].window.internalId] = { x: entries[i].frameX, y: entries[i].frameY };
         visible = true;
-        if (!quiet) openView();
+        if (!quiet) openView(spec);
         if (!quiet && passthrough) probeCall.call();
     }
 
-    // Where the camera starts: fit everything, stay at 1:1, or a zoom
-    // anchored at the active screen's centre.
-    function openView() {
-        const spec = String(configuration.OpenZoom || "fit").trim().toLowerCase();
-        if (spec === "fit") { zoomExtents(); return; }
+    // Where the camera starts: fit everything, stay at 1:1, or a zoom anchored
+    // at the centre of the screen being opened. An edge or corner passes its
+    // own spec (BorderZoom) instead of OpenZoom: the canvas steps out around
+    // the screen the pointer pushed, about that screen's centre. Because the
+    // anchor does not move, the point the push left under that centre is the
+    // point applying comes back to, so a corner's step out and the chord's
+    // "enter the location under the screen centre" still agree exactly.
+    function openView(spec) {
+        if (spec === undefined || spec === null || spec === "") spec = configuration.OpenZoom;
+        spec = String(spec || "fit").trim().toLowerCase();
+        if (spec === "fit") { zoomExtents(true); return; }
         const z = Number(spec);
         if (!(z > 0) || z >= 1) return;
-        const g = KWin.Workspace.activeScreen.geometry;
-        setZoom(z, Qt.point(g.x + g.width / 2, g.y + g.height / 2));
+        const g = actionScreen().geometry;
+        camZoomTo(z, g.x + g.width / 2, g.y + g.height / 2);
     }
 
     // Write every window's geometry relative to the frame it sits in, move it to
     // that frame's activity, put the camera on the current activity's target,
     // and hand input back.
     function commit(activate) {
+        camStop();
         for (const k in targets) {
             targets[k].x = Math.round(targets[k].x);
             targets[k].y = Math.round(targets[k].y);
@@ -701,7 +972,14 @@ KWin.SceneEffect {
             if (a !== e.activity && a && e.window.activities.length > 0) e.window.activities = [a];
             e.activity = a;
             const t = targetOf(a);
-            e.window.frameGeometry = Qt.rect(Math.round(e.x - t.x), Math.round(e.y - t.y), e.width, e.height);
+            // Take the new frame position first: the write below is this
+            // function's own projection of the entry, so the entry must
+            // absorb it as no move (see settle()), not as the user having
+            // dragged the window to the new screen position.
+            const fx = Math.round(e.x - t.x), fy = Math.round(e.y - t.y);
+            e.frameX = fx;
+            e.frameY = fy;
+            e.window.frameGeometry = Qt.rect(fx, fy, e.width, e.height);
         }
         // Windows not shown (minimized, hidden, other desktops) share the
         // plane: keep them where they were relative to their activity's frames.
@@ -718,6 +996,10 @@ KWin.SceneEffect {
             const g = w.frameGeometry;
             w.frameGeometry = Qt.rect(g.x + dx, g.y + dy, g.width, g.height);
         }
+        // The frames now sit relative to these targets, so a later commit
+        // (the chord, a stale click, an activity switch) must measure the
+        // hidden windows against them and not shift them twice.
+        entryTargets = copyTargets(targets);
         const cur = targetOf(currentActivity);
         viewX = cur.x;
         viewY = cur.y;
@@ -735,6 +1017,7 @@ KWin.SceneEffect {
 
     function cancel() {
         if (!visible) return;
+        camStop();
         unsettle();
         targets = copyTargets(entryTargets);
         viewX = entryViewX;
@@ -752,12 +1035,23 @@ KWin.SceneEffect {
         if (visible) enterHere(); else open();
     }
 
+    // A screen edge or corner fired: the same step out and the same enter, but
+    // the step out is a step *around the screen that was pushed* (BorderZoom),
+    // so the push shows the desks around that screen instead of the desktop it
+    // was already on. The chord and the toolbar keep OpenZoom; a border that
+    // fires while the canvas is open enters, as it always has.
+    function toggleFromBorder() {
+        if (quiet) { finishSlide(); return; }
+        if (visible) { enterHere(); return; }
+        open(false, configuration.BorderZoom);
+    }
+
     // Enter the location under the active screen's centre. The activity
     // whose frame holds that canvas point becomes current, its own when no
     // frame does, and its viewport is placed so that point is at the screen
     // centre at 1:1: at zoom 1 that is exactly where the camera is.
     function enterHere() {
-        const g = KWin.Workspace.activeScreen.geometry;
+        const g = actionScreen().geometry;
         const cx = g.x + g.width / 2, cy = g.y + g.height / 2;
         const c = globalToCanvas(cx, cy);
         const fs = frames();
@@ -775,31 +1069,125 @@ KWin.SceneEffect {
         if (a !== currentActivity) gotoActivity(a); else commit(null);
     }
 
+    // ---- placing the desk around a window -------------------------------------
+
+    // The offsets that keep a w x h window wholly inside the screen g, inset by
+    // margin: the range of screen offsets its top-left may take, the offset
+    // that centres it, and whether any offset fits at all (a window larger than
+    // the screen fits nowhere). Everything here is in the units the target
+    // moves in - canvas pixels, which at the applied 1:1 are screen pixels.
+    function fitRange(w, h, g, margin) {
+        const x0 = margin, x1 = g.width - w - margin;
+        const y0 = margin, y1 = g.height - h - margin;
+        return { x0: x0, x1: x1, y0: y0, y1: y1,
+                 cx: Math.round((g.width - w) / 2), cy: Math.round((g.height - h) / 2),
+                 fits: x1 >= x0 && y1 >= y0 };
+    }
+
+    // The area of the windows on activity a, other than the one being placed,
+    // that the screen g shows with that activity's target at (tx, ty). Windows
+    // are counted one at a time - an overlap is counted twice - which is enough
+    // to prefer the offset that keeps the desk in view.
+    function deskArea(a, g, tx, ty, skip) {
+        let sum = 0;
+        for (let i = 0; i < entries.length; ++i) {
+            const e = entries[i];
+            if (!e || e.window.deleted || e.window.internalId === skip) continue;
+            if (e.activity !== a || !onActivity(e.window, a)) continue;
+            const l = Math.max(e.x - tx, 0), t = Math.max(e.y - ty, 0);
+            const r = Math.min(e.x - tx + e.width, g.width);
+            const b = Math.min(e.y - ty + e.height, g.height);
+            if (r > l && b > t) sum += (r - l) * (b - t);
+        }
+        return sum;
+    }
+
+    // Where the target goes to place `entry` on activity a around the active
+    // screen g: the screen offset the window's top-left takes. The window
+    // wholly in view is the one hard rule; among the offsets that keep it so,
+    // the one that leaves the most of the desk's other windows in view wins, so
+    // arriving at a window does not throw the rest of the desk off the screen.
+    // The window is raised by the focus itself, so what it covers is not the
+    // question - what the screen shows is. The target moves the whole plane, so
+    // the windows keep their places relative to each other and only the screen
+    // over them changes: the area in view is piecewise linear in the offset,
+    // it breaks where a window's edge meets the screen's, so the best offset is
+    // one of those alignments, the centred one, or a corner. Ties go to the
+    // centred offset, which is where "centre" has always put the window, so the
+    // common case - a window alone in view, or neighbours too far to matter -
+    // does not change.
+    function smartOffset(entry, a, g) {
+        const margin = 8;
+        const range = fitRange(entry.width, entry.height, g, margin);
+        if (!range.fits) return { dx: range.cx, dy: range.cy };   // larger than the screen: centred, clipped
+        const clamp = function (v, lo, hi) { return Math.max(lo, Math.min(hi, v)); };
+        const xs = [range.x0, range.x1, range.cx], ys = [range.y0, range.y1, range.cy];
+        for (let i = 0; i < entries.length; ++i) {
+            const e = entries[i];
+            if (!e || e.window.deleted || e.window.internalId === entry.window.internalId) continue;
+            if (e.activity !== a || !onActivity(e.window, a)) continue;
+            // The offset is the window's top-left on screen; a neighbour's edges
+            // sit at its own offset plus the gap between the two, so these are
+            // the offsets that bring a neighbour's edge onto the screen's.
+            const rx = e.x - entry.x, ry = e.y - entry.y;
+            xs.push(clamp(-rx, range.x0, range.x1));
+            xs.push(clamp(g.width - e.width - rx, range.x0, range.x1));
+            ys.push(clamp(-ry, range.y0, range.y1));
+            ys.push(clamp(g.height - e.height - ry, range.y0, range.y1));
+        }
+        let best = { dx: range.cx, dy: range.cy }, bestArea = -1, bestD = 0;
+        for (let i = 0; i < xs.length; ++i) {
+            for (let j = 0; j < ys.length; ++j) {
+                const dx = xs[i], dy = ys[j];
+                const area = deskArea(a, g, entry.x - g.x - dx, entry.y - g.y - dy, entry.window.internalId);
+                const d = Math.abs(dx - range.cx) + Math.abs(dy - range.cy);
+                if (bestArea < 0 || area > bestArea + 0.5
+                    || (Math.abs(area - bestArea) <= 0.5 && d < bestD)) {
+                    best = { dx: dx, dy: dy }; bestArea = area; bestD = d;
+                }
+            }
+        }
+        return best;
+    }
+
     // ---- named actions --------------------------------------------------------
 
     // focusWindow: apply with this window focused. The window's activity is
     // the one whose frame it sits in, else the one it belongs to; the canvas
     // switches to it if it is not current, and the focus waits for the
     // switch, since KWin reports it asynchronously. Where its viewport goes
-    // is FocusTarget:
-    //   window   the canvas point under the pointer stays under it at 1:1,
-    //            as if the camera zoomed in there; the frames move as one.
-    //   desktop  a window inside a frame leaves the frame where it is; one
-    //            outside every frame gets its activity's active-screen
-    //            frame centred on it.
+    // is focusMode(), and every mode is the activity's target: the frames, the
+    // windows on them and the wallpaper slide together, nothing on the plane
+    // moves, and nothing is written.
     property var pendingFocus: null
     function focusWindow(entry, gx, gy) {
         if (gx === undefined) { const p = cursorScreen(); gx = p.x; gy = p.y; }
         const inFrame = activityAt(entry);
-        const a = inFrame !== null ? inFrame : entry.activity;
+        const a = inFrame !== null ? inFrame : (entry.activity || currentActivity);
         const t = targetOf(a);
-        const desktop = String(configuration.FocusTarget || "window").trim().toLowerCase() === "desktop";
-        if (!desktop) {
+        const mode = focusMode();
+        if (mode === "window") {
             const c = globalToCanvas(gx, gy);
             t.x = Math.round(c.x - gx);
             t.y = Math.round(c.y - gy);
-        } else if (inFrame === null) {
-            const g = KWin.Workspace.activeScreen.geometry;
+            // The point clicked is kept under the pointer unless that would
+            // leave the window hanging over an edge of the screen: then the
+            // least shift that brings it wholly back in, because a window a
+            // double-click focused should not be half off the screen.
+            const g = actionScreen().geometry;
+            const range = fitRange(entry.width, entry.height, g, 8);
+            if (range.fits) {
+                t.x = Math.round(entry.x - g.x - Math.max(range.x0, Math.min(range.x1, entry.x - t.x - g.x)));
+                t.y = Math.round(entry.y - g.y - Math.max(range.y0, Math.min(range.y1, entry.y - t.y - g.y)));
+            }
+        } else if (mode === "smart") {
+            const g = actionScreen().geometry;
+            const off = smartOffset(entry, a, g);
+            t.x = Math.round(entry.x - g.x - off.dx);
+            t.y = Math.round(entry.y - g.y - off.dy);
+        } else if (mode === "centre" || inFrame === null) {
+            // "centre", and "desktop" for a window outside every frame.
+            const g = actionScreen().geometry;
             t.x = Math.round(entry.x + entry.width / 2 - (g.x + g.width / 2));
             t.y = Math.round(entry.y + entry.height / 2 - (g.y + g.height / 2));
         }
@@ -817,7 +1205,7 @@ KWin.SceneEffect {
         const t = peekTarget(id);
         const vs = KWin.Workspace.virtualScreenGeometry;
         const l = t.x + vs.x, tp = t.y + vs.y, r = l + vs.width, b = tp + vs.height;
-        const sg = KWin.Workspace.activeScreen.geometry;
+        const sg = actionScreen().geometry;
         const pad = 60;
         const z = Math.max(zoomMin, Math.min(1.0, Math.min((sg.width - 2 * pad) / (r - l), (sg.height - 2 * pad) / (b - tp))));
         zoom = z;
@@ -915,14 +1303,77 @@ KWin.SceneEffect {
         return ba <= th ? best : 0;
     }
 
-    // Raw, unsnapped positions of the set being dragged, keyed by window id.
+    // Raw, unsnapped positions of the set being dragged, keyed by window id,
+    // and the entry the drag started on. A drag is live while dragIndex is >= 0:
+    // the grip clears it on release and open() clears it with the rest of the
+    // gesture state. That is what tells an edge pan a window is in hand, so it
+    // can bring it along (edgePanStep).
     property var dragRaw: ({})
+    property int dragIndex: -1
     function beginDrag(index) {
         const e = entries[index];
         if (!e) return;
         dragRaw = {};
+        dragIndex = index;
         const set = isSelected(e) ? entries.filter(isSelected) : [e];
         for (let i = 0; i < set.length; ++i) dragRaw[set[i].window.internalId] = { x: set[i].x, y: set[i].y };
+    }
+
+    // ---- the weight of a dragged window --------------------------------------
+    // Drawn, never measured: the entries, and so the committed geometry, follow
+    // the pointer exactly. What trails is the picture, and how far it trails is
+    // the hand's velocity, so a window leans after the hand while it is thrown
+    // about and settles a moment after the hand stops - the read Compiz's and
+    // KWin's wobbly windows give a window being moved, on a canvas instead of a
+    // screen, without a mesh: a lifted scale, a trail along the direction of
+    // travel and a lean about the centre, each on Qt's physical spring
+    // (SpringAnimation: mass, spring, damping, epsilon) so the settle is a
+    // spring rather than a curve.
+    property real dragVX: 0
+    property real dragVY: 0
+    property real dragLagX: 0
+    property real dragLagY: 0
+    property real dragLean: 0
+    property real dragLastAt: 0
+    readonly property bool windowPhysics: configuration.WindowPhysics !== false
+    // The speed at which the trail is at its longest, how far it may reach in
+    // screen pixels, and how far the window may lean, in degrees.
+    readonly property real dragLagFull: 900
+    readonly property real dragLagMax: 26
+    readonly property real dragLeanMax: 2.2
+
+    function noteDrag(dx, dy) {
+        // WindowPhysics off is no weight at all, not a weight nothing draws:
+        // the trail, the lean and the velocity are zero, so what the state
+        // reports is what the screen shows.
+        if (!windowPhysics) { endWindowDrag(); return; }
+        const now = Date.now();
+        const dt = dragLastAt ? Math.max(8, now - dragLastAt) : 16;
+        dragLastAt = now;
+        // Smoothed: one sample of a 100 Hz pointer is noise, and a spring fed
+        // noise shakes.
+        dragVX = dragVX * 0.6 + (dx / (dt / 1000)) * 0.4;
+        dragVY = dragVY * 0.6 + (dy / (dt / 1000)) * 0.4;
+        const speed = Math.sqrt(dragVX * dragVX + dragVY * dragVY);
+        if (speed <= 0) { dragLagX = 0; dragLagY = 0; dragLean = 0; return; }
+        const reach = dragLagMax * Math.min(1, speed / dragLagFull);
+        dragLagX = -dragVX / speed * reach;
+        dragLagY = -dragVY / speed * reach;
+        dragLean = Math.max(-dragLeanMax, Math.min(dragLeanMax, -dragVX / dragLagFull * dragLeanMax * 2));
+    }
+
+    // The weight goes: the hand has stopped and the trail, the lean and the
+    // velocity are zero. noteDrag() calls this with the physics off, so it
+    // touches nothing but the weight - the drag's own state is endDrag().
+    function endWindowDrag() {
+        dragVX = 0; dragVY = 0; dragLastAt = 0;
+        dragLagX = 0; dragLagY = 0; dragLean = 0;
+    }
+
+    // The drag is over: the grip's release, or anything that ends a gesture.
+    function endDrag() {
+        dragIndex = -1;
+        endWindowDrag();
     }
 
     // ---- arrange the selection ----------------------------------------------
@@ -1154,11 +1605,19 @@ KWin.SceneEffect {
         dbusInterface: "org.kde.kwin.canvas.Passthrough"
         method: "setCamera"
     }
+    KWin.DBusCall {
+        id: navCall
+        service: "org.kde.KWin"
+        path: "/KWinCanvas"
+        dbusInterface: "org.kde.kwin.canvas.Passthrough"
+        method: "setNavButtons"
+    }
     // The plugin answered: if the canvas is still open, switch it on and give it the camera.
     function passthroughProbed() {
         if (!canvasOpen || passthroughLive) return;
         passthroughLive = true;
         publishCamera();
+        publishNav();
         activeCall.arguments = [true];
         activeCall.call();
     }
@@ -1166,6 +1625,14 @@ KWin.SceneEffect {
         if (!passthroughLive) return;
         cameraCall.arguments = [viewX, viewY, zoom, currentActivity, JSON.stringify(targets)];
         cameraCall.call();
+    }
+    // The buttons the plugin leaves to the canvas whatever is drawn under the
+    // pointer: the same mask the shim reads (planeNavButtons). Told when the
+    // plugin answers, and again if the binding changes.
+    function publishNav() {
+        if (!passthroughLive) return;
+        navCall.arguments = [planeNavButtons];
+        navCall.call();
     }
     function dropPassthrough() {
         if (!passthroughLive) return;
@@ -1176,6 +1643,7 @@ KWin.SceneEffect {
     onViewXChanged: if (passthroughLive) Qt.callLater(publishCamera)
     onViewYChanged: if (passthroughLive) Qt.callLater(publishCamera)
     onZoomChanged: if (passthroughLive) Qt.callLater(publishCamera)
+    onPlaneNavButtonsChanged: publishNav()
     onPlaneInputChanged: if (planeInput) dropPassthrough()
 
     // ---- plane input -----------------------------------------------------------
@@ -1184,6 +1652,67 @@ KWin.SceneEffect {
     function cursorScreen() {
         const p = KWin.Workspace.cursorPos;
         return planeLive ? Qt.point(p.x * planeScale + planeOffsetX, p.y * planeScale + planeOffsetY) : p;
+    }
+
+    // The output holding a global point, or null. Edge panning asks which
+    // screen the pointer is on so that only that screen's view pans.
+    function screenAt(x, y) {
+        const ss = KWin.Workspace.screens;
+        for (let i = 0; i < ss.length; ++i) {
+            const g = ss[i].geometry;
+            if (x >= g.x && x < g.x + g.width && y >= g.y && y < g.y + g.height) return ss[i];
+        }
+        return null;
+    }
+
+    // The screen the user is acting on: the one the pointer is on, else the
+    // active window's. A screen edge fires with the pointer on the border's own
+    // pixel, and KWin puts the corner zones on every screen of the layout
+    // (ElectricBorderAllScreenCorner), so on several outputs this is the screen
+    // that was pushed - which is the screen the camera should open around, not
+    // whichever one the focused window happens to be on. Workspace.activeScreen
+    // is that window's screen, which on a two-monitor desktop is wrong half the
+    // time; everything the pointer starts asks here instead.
+    function actionScreen() {
+        const p = KWin.Workspace.cursorPos;
+        return screenAt(p.x, p.y) || KWin.Workspace.activeScreen;
+    }
+
+    // One step of edge panning, for a view whose screen is sg: the pointer
+    // parked in an edge band moves the camera the way a drag would have, by
+    // the depth in the band times EdgePanSpeed, for dt seconds. Content
+    // follows the pointer, as it does under a drag: the pointer at the right
+    // edge keeps the canvas moving right. Nothing happens while the pointer is
+    // off sg, so a hold that walks onto another screen hands over to its view.
+    function edgePanStep(sg, dt) {
+        if (!sg || edgePanSpeed <= 0 || dt <= 0) return;
+        const p = cursorScreen();
+        if (p.x < sg.x || p.x >= sg.x + sg.width || p.y < sg.y || p.y >= sg.y + sg.height) return;
+        const m = edgePanMargin;
+        const inL = 1 - Math.min(1, (p.x - sg.x) / m);
+        const inR = 1 - Math.min(1, (sg.x + sg.width - p.x) / m);
+        const inT = 1 - Math.min(1, (p.y - sg.y) / m);
+        const inB = 1 - Math.min(1, (sg.y + sg.height - p.y) / m);
+        const vx = (inR - inL) * edgePanSpeed * dt;
+        const vy = (inB - inT) * edgePanSpeed * dt;
+        if (vx === 0 && vy === 0) return;
+        panBy(vx, vy);
+        edgeDrag(vx, vy);
+    }
+
+    // An edge pan with a window in hand takes the window along: holding a
+    // navigate button on a window and pushing the pointer to a screen edge pans
+    // and carries it. The camera
+    // moved the plane by (vx, vy) on screen, so the window moves the other way
+    // by the same amount on the plane - its screen position does not change and
+    // it stays under the pointer - while the desk, the frames included, travels
+    // under it: the edge scroll of any drag and drop, with a desktop on the
+    // plane. Same call as the pointer's own step, so the set being dragged, the
+    // snapping and the write under plane input all behave the same, and the
+    // window stays still on screen, which is why it neither trails nor leans.
+    function edgeDrag(dx, dy) {
+        if (dragIndex < 0) return;
+        dragEntry(dragIndex, -dx, -dy);
     }
 
     // Called by the shim for a global screen point: true where the canvas
@@ -1248,7 +1777,9 @@ KWin.SceneEffect {
             const o = openFrames[w.internalId];
             if (!o) continue;
             const g = w.frameGeometry;
-            if (g.x !== o.x || g.y !== o.y) w.frameGeometry = Qt.rect(o.x, o.y, g.width, g.height);
+            if (g.x !== o.x || g.y !== o.y) {
+                w.frameGeometry = Qt.rect(o.x, o.y, g.width, g.height);
+            }
         }
     }
 
@@ -1272,6 +1803,81 @@ KWin.SceneEffect {
             "}";
         groundCall.arguments = [script];
         groundCall.call();
+    }
+
+    // ---- backdrop: the desktop's own wallpaper on the plane ------------------
+    // The canvas's background is the wallpaper, not a void. One
+    // KWin.DesktopBackground per output sits at that output's place on the
+    // current activity's frames, so at 1:1 it is pixel-identical to the real
+    // desktop under the effect and rides the plane as the camera moves - and it
+    // is the desktop window itself, live, so a slideshow, a picture of the day
+    // or an animated wallpaper keeps going. Beyond the screens the same
+    // wallpaper is tiled at primary-screen steps (BackdropReach), each padding
+    // tile wearing the wallpaper of the output nearest to it, so the plane
+    // reads as the desktop continuing rather than a grid into nothing. Tiles
+    // are cheap: KWin shares one offscreen render per (view, window) between
+    // every item that shows it (WindowThumbnailSource::getOrCreate in
+    // windowthumbnailitem.cpp), so this costs draw calls, not renders.
+    //
+    // Only the effect draws this. While the canvas is closed the wallpaper is
+    // the real one, and the ground wallpaper plugin (with a grid, at 1:1)
+    // stands in for the plane.
+    property int screensRev: 0
+
+    function backdropMode() {
+        const m = String(configuration.Backdrop || "wallpaper").trim().toLowerCase();
+        return m === "grid" ? "grid" : "wallpaper";
+    }
+    function backdropDim() {
+        const d = Number(configuration.BackdropDim);
+        if (isNaN(d)) return 0.45;
+        return Math.max(0, Math.min(1, d));
+    }
+    // The tiles, in canvas units relative to the current activity's frames, so
+    // they ride with the frames exactly as the frames' wallpaper does. The
+    // model only changes when the screens or the activity do, so a camera move
+    // or a drag never rebuilds it.
+    readonly property var backdropTiles: {
+        screensRev; currentActivity; backdropMode();
+        return computeBackdropTiles();
+    }
+    function computeBackdropTiles() {
+        if (backdropMode() !== "wallpaper") return [];
+        const ss = KWin.Workspace.screens;
+        if (!ss || ss.length === 0) return [];
+        const out = [];
+        for (let i = 0; i < ss.length; ++i) {
+            const g = ss[i].geometry;
+            out.push({ o: ss[i], dx: g.x, dy: g.y, w: g.width, h: g.height, z: 0 });
+        }
+        const reach = Math.max(0, Math.min(4, Math.round(Number(configuration.BackdropReach) || 0)));
+        if (reach === 0) return out;
+        const vs = KWin.Workspace.virtualScreenGeometry;
+        const cellW = Math.max(320, primaryScreen.geometry.width);
+        const cellH = Math.max(240, primaryScreen.geometry.height);
+        const cols = Math.ceil(vs.width / cellW) + 2 * reach;
+        const rows = Math.ceil(vs.height / cellH) + 2 * reach;
+        const x0 = vs.x - reach * cellW, y0 = vs.y - reach * cellH;
+        for (let r = 0; r < rows; ++r) {
+            for (let c = 0; c < cols; ++c) {
+                const dx = x0 + c * cellW, dy = y0 + r * cellH;
+                out.push({ o: nearestScreen(ss, dx + cellW / 2, dy + cellH / 2),
+                           dx: dx, dy: dy, w: cellW, h: cellH, z: -1 });
+            }
+        }
+        return out;
+    }
+    // The output whose wallpaper a padding tile wears: the nearest one, so the
+    // desktop's own edge is where its picture ends rather than a stranger's.
+    function nearestScreen(ss, x, y) {
+        let best = ss[0], bd = Infinity;
+        for (let i = 0; i < ss.length; ++i) {
+            const g = ss[i].geometry;
+            const ddx = g.x + g.width / 2 - x, ddy = g.y + g.height / 2 - y;
+            const d = ddx * ddx + ddy * ddy;
+            if (d < bd) { bd = d; best = ss[i]; }
+        }
+        return best;
     }
 
     // ---- 1:1 behaviours (effect closed) ------------------------------------
@@ -1316,7 +1922,7 @@ KWin.SceneEffect {
     // One pan step in screen pixels: a fraction of the active screen.
     function panStep() {
         const f = Math.max(0.05, Math.min(1, Number(configuration.PanStep) || 0.5));
-        const g = KWin.Workspace.activeScreen.geometry;
+        const g = actionScreen().geometry;
         return Qt.point(Math.round(g.width * f), Math.round(g.height * f));
     }
 
@@ -1364,7 +1970,9 @@ KWin.SceneEffect {
             const t = targetOf(e.activity);
             const fx = Math.round(e.x - t.x), fy = Math.round(e.y - t.y);
             const g = e.window.frameGeometry;
-            if (g.x !== fx || g.y !== fy) e.window.frameGeometry = Qt.rect(fx, fy, g.width, g.height);
+            if (g.x !== fx || g.y !== fy) {
+                e.window.frameGeometry = Qt.rect(fx, fy, g.width, g.height);
+            }
         }
         if (dx !== 0 || dy !== 0) {
             const all = KWin.Workspace.stackingOrder;
@@ -1499,6 +2107,14 @@ KWin.SceneEffect {
         }
         // Another desktop's windows are a different set on the same plane.
         function onCurrentDesktopChanged() { if (effect.visible) Qt.callLater(effect.resync); }
+        // A hotplug, a resolution change, a rearrange or a virtual output
+        // coming or going: the layout the frames and the backdrop tiles are
+        // read from has changed.
+        function onScreensChanged() {
+            effect.screensRev++;
+            if (effect.visible) Qt.callLater(effect.resync);
+        }
+        function onVirtualScreenGeometryChanged() { effect.screensRev++; }
     }
 
     // ---- shortcuts ---------------------------------------------------------
@@ -1527,10 +2143,10 @@ KWin.SceneEffect {
     // only while the canvas is open.
     KWin.ShortcutHandler { name: "Canvas Apply";    text: "Canvas: apply and close";           sequence: ""; onActivated: if (effect.canvasOpen) effect.commit(null) }
     KWin.ShortcutHandler { name: "Canvas Cancel";   text: "Canvas: cancel";                    sequence: ""; onActivated: if (effect.canvasOpen) effect.cancel() }
-    KWin.ShortcutHandler { name: "Canvas Fit";      text: "Canvas: zoom to fit";               sequence: ""; onActivated: if (effect.canvasOpen) effect.zoomExtents() }
+    KWin.ShortcutHandler { name: "Canvas Fit";      text: "Canvas: zoom to fit";               sequence: ""; onActivated: if (effect.canvasOpen) effect.zoomExtents(true) }
     KWin.ShortcutHandler { name: "Canvas Origin";   text: "Canvas: camera to the origin";      sequence: ""; onActivated: if (effect.canvasOpen) effect.origin() }
-    KWin.ShortcutHandler { name: "Canvas Zoom In";  text: "Canvas: zoom in";                   sequence: ""; onActivated: if (effect.canvasOpen) effect.setZoom(effect.zoom * effect.zoomStep, effect.cursorScreen()) }
-    KWin.ShortcutHandler { name: "Canvas Zoom Out"; text: "Canvas: zoom out";                  sequence: ""; onActivated: if (effect.canvasOpen) effect.setZoom(effect.zoom / effect.zoomStep, effect.cursorScreen()) }
+    KWin.ShortcutHandler { name: "Canvas Zoom In";  text: "Canvas: zoom in";                   sequence: ""; onActivated: if (effect.canvasOpen) effect.camZoomTo(effect.zoom * effect.zoomStep, effect.cursorScreen().x, effect.cursorScreen().y) }
+    KWin.ShortcutHandler { name: "Canvas Zoom Out"; text: "Canvas: zoom out";                  sequence: ""; onActivated: if (effect.canvasOpen) effect.camZoomTo(effect.zoom / effect.zoomStep, effect.cursorScreen().x, effect.cursorScreen().y) }
     // Pan at 1:1 by one step (a slide), or move the open canvas's camera.
     KWin.ShortcutHandler { name: "Canvas Pan Left";  text: "Canvas: pan left";  sequence: effect.configuration.PanLeftShortcut;  onActivated: effect.panStepBy(-1, 0) }
     KWin.ShortcutHandler { name: "Canvas Pan Right"; text: "Canvas: pan right"; sequence: effect.configuration.PanRightShortcut; onActivated: effect.panStepBy(1, 0) }
@@ -1547,7 +2163,11 @@ KWin.SceneEffect {
             required property int modelData
             enabled: true
             edge: modelData
-            onActivated: effect.toggle()
+            // A held pan button parks the pointer at the edge on purpose:
+            // pushing into the border to pan the canvas must not toggle it.
+            onActivated: {
+                if (!effect.navHeld) effect.toggleFromBorder();
+            }
         }
     }
     Instantiator {
@@ -1707,9 +2327,16 @@ KWin.SceneEffect {
 
     function logState() {
         let s = "kwin-canvas state visible=" + visible + (quiet ? " quiet" : "") + (passthroughLive ? " passthrough" : "") + (planeLive ? " plane" : "") + " zoom=" + zoom.toFixed(4) + " view=(" + viewX.toFixed(1) + "," + viewY.toFixed(1) + ") activity=" + labelOf(currentActivity) + " entries=" + entries.length
-            + " popups=" + appPopups.length + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
+            + " popups=" + appPopups.length + " menus=" + canvasMenus + " nav=" + (navHeld ? "hold" : "-") + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
+            + " screens=" + KWin.Workspace.screens.length + " backdrop=" + backdropTiles.length
+            + " cam=" + (camHasGoal ? "goal" : (camLive() ? "glide" : "-"))
+            + " draglag=" + Math.round(Math.sqrt(dragLagX * dragLagX + dragLagY * dragLagY)) + " lean=" + dragLean.toFixed(2)
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
         const ids = activityIds, screens = KWin.Workspace.screens;
+        for (let i = 0; i < screens.length; ++i) {
+            const g = screens[i].geometry;
+            s += "\n  screen[" + i + "] " + screens[i].name + " " + g.width + "x" + g.height + "+" + g.x + "+" + g.y;
+        }
         for (let i = 0; i < ids.length; ++i) {
             const t = peekTarget(ids[i]);
             let hidden = "";
@@ -1777,7 +2404,17 @@ KWin.SceneEffect {
             id: gripDrag
             target: null
             enabled: !grip.viewItem.spaceHeld
-            acceptedButtons: Qt.LeftButton
+            acceptedButtons: effect.gripButtons
+            // The portal buttons drag a control exactly as the left button
+            // does; where they land on the ground instead they pan (panDrag).
+            // A drag of one of them is also the canvas being navigated for as
+            // long as it lasts - the view counts it into navHeld, which runs
+            // the edge pan and holds the screen edges off - because a
+            // TapHandler cannot: a drag past the tap threshold cancels its
+            // press, and with it the record of the button being down.
+            readonly property bool portal: active && (centroid.pressedButtons & effect.portalButtons) !== 0
+            onPortalChanged: grip.viewItem.portalDrags += portal ? 1 : -1
+            Component.onDestruction: if (portal) grip.viewItem.portalDrags -= 1
             property point last: Qt.point(0, 0)
             onActiveChanged: {
                 last = Qt.point(0, 0);
@@ -1894,11 +2531,75 @@ KWin.SceneEffect {
         // on one of them acts on it instead of racing the pan.
         property int hoverCount: 0
         readonly property bool overControl: hoverCount > 0
+        // Drags a portal button is holding, on any control of this screen
+        // (a window body, a resize grip, a frame tag or edge). A press of one
+        // is a navigation the moment it lands, but the tracker that knows that
+        // is a TapHandler and a drag cancels it, so the drags count here too.
+        property int portalDrags: 0
+        // A pan button held down (PanHold): this screen is being navigated.
+        // Three sources, one per stretch of the gesture: the
+        // tap tracker knows the press the moment it lands and the release the
+        // moment it lifts, whether or not the pointer ever moves — a pointer
+        // parked at a screen edge is the whole gesture — the pan drag is
+        // active for the stretch where the tracker has handed the gesture to
+        // the drag, and a drag on a control counts itself (portalDrags) for the
+        // stretch where the drag has cancelled the tracker. None outlives the
+        // button.
+        readonly property bool navHeld: navHold.pressed || panDrag.active || portalDrags > 0
+        onNavHeldChanged: effect.navHolds += navHeld ? 1 : -1
+        Component.onDestruction: if (navHeld) effect.navHolds -= 1
         enabled: !effect.quiet
         focus: true
         Connections {
             target: effect
             function onVisibleChanged() { if (effect.visible) view.hoverCount = 0; }
+        }
+
+        // The plane's base: opaque, so nothing shows through to the real
+        // desktop under the effect wherever no wallpaper tile reaches (past
+        // BackdropReach, or with no shell behind the canvas at all). Below
+        // everything, tiles included: a padding tile's z is -1 (it belongs
+        // under the output's own tile), which would still put it behind this
+        // rect at z 0, and then the backdrop beyond the screens would never be
+        // drawn at all.
+        Rectangle {
+            anchors.fill: parent
+            z: -100
+            color: effect.configuration.Background
+        }
+
+        // Backdrop: the desktop's wallpaper, at every output's place on the
+        // current activity's frames and tiled outward from the screens. At 1:1
+        // this is the wallpaper the desktop is showing, pixel for pixel, so a
+        // slide at 1:1 moves a desktop that looks untouched.
+        Repeater {
+            model: effect.backdropTiles
+            delegate: Item {
+                id: tile
+                required property var modelData
+                readonly property var spec: modelData
+                x: { effect.revision; return (effect.peekTarget(effect.currentActivity).x + spec.dx - effect.viewX) * effect.zoom - view.sg.x; }
+                y: { effect.revision; return (effect.peekTarget(effect.currentActivity).y + spec.dy - effect.viewY) * effect.zoom - view.sg.y; }
+                width: spec.w * effect.zoom
+                height: spec.h * effect.zoom
+                z: spec.z
+                KWin.DesktopBackground {
+                    anchors.fill: parent
+                    output: tile.spec.o
+                    desktop: KWin.Workspace.currentDesktop
+                    activity: effect.currentActivity || "default"
+                }
+            }
+        }
+
+        // The dim over the backdrop, so the desks and the windows stay the
+        // subject. Zero while the canvas slides at 1:1, where the plane has to
+        // be the desktop and nothing else.
+        Rectangle {
+            anchors.fill: parent
+            visible: effect.backdropMode() === "wallpaper" && !effect.quiet
+            color: effect.configuration.Background
+            opacity: effect.backdropDim()
         }
 
         Ground {
@@ -1912,11 +2613,15 @@ KWin.SceneEffect {
             background: effect.configuration.Background
             lineColor: effect.configuration.LineColor
             tileImage: effect.configuration.TileImage
+            // With the wallpaper behind it the base rect above is the ground's
+            // background, and the grid draws over the wallpaper.
+            drawBackground: effect.backdropMode() !== "wallpaper"
         }
 
-        // Pan: left-drag on the ground, middle-drag anywhere, or hold Space and
-        // left-drag anywhere (Space disables every Grip and IconButton).
-        // Ground click: drop the selection.
+        // Pan: left-drag on the ground, middle-drag anywhere, hold Space and
+        // left-drag anywhere (Space disables every Grip and IconButton), or
+        // hold a PanHold button and drag anywhere. Ground click: drop the
+        // selection.
         TapHandler {
             enabled: !view.spaceHeld && !view.overControl
             acceptedButtons: Qt.LeftButton
@@ -1944,16 +2649,55 @@ KWin.SceneEffect {
             border.color: Kirigami.Theme.highlightColor
         }
 
+        // The hold itself, on the button alone: no motion is needed for the
+        // canvas to be navigated, so a pointer parked in an edge band pans
+        // while the button is down. The middle button navigates with nothing
+        // configured, the way it does in the drag below, so a held middle
+        // button pans at an edge and holds the Screen Edges handlers off the
+        // canvas as a hold of any PanHold button does. A tap handler with no
+        // policy of its own takes a passive grab for those buttons only, so
+        // the left button, the window gestures and the toolbar are untouched,
+        // and a release always lifts it.
+        TapHandler {
+            id: navHold
+            acceptedButtons: effect.panHoldButtons | Qt.MiddleButton
+        }
+
         DragHandler {
             id: panDrag
             target: null
-            acceptedButtons: (active || view.spaceHeld || !view.overControl) ? (Qt.LeftButton | Qt.MiddleButton) : Qt.MiddleButton
-            cursorShape: active ? Qt.ClosedHandCursor : (view.spaceHeld ? Qt.OpenHandCursor : Qt.ArrowCursor)
+            // The middle button pans from anywhere, even over a window or a
+            // tag: this handler is on the screen's root item, so every press
+            // lands on it. The left button and the PanHold buttons pan only on
+            // the ground (or anywhere with Space held, or while this drag is
+            // already going), so a press on a control is the control's - a
+            // drag that starts on one acts on it instead of racing the pan, and
+            // a held portal button moves the window it was pressed on rather
+            // than panning under it.
+            acceptedButtons: Qt.MiddleButton
+                             | ((active || view.spaceHeld || !view.overControl) ? effect.gripButtons : 0)
+            cursorShape: (active || view.navHeld) ? Qt.ClosedHandCursor : (view.spaceHeld ? Qt.OpenHandCursor : Qt.ArrowCursor)
             property bool marquee: false
             property point last: Qt.point(0, 0)
+            // The hand's own record of the drag: how far it travelled, when it
+            // started, and when it last moved. A fling is that average velocity
+            // and only if the hand was still moving at the release: a drag that
+            // pauses before letting go - the way a careful placement ends - is
+            // a placement, not a throw.
+            property real travelX: 0
+            property real travelY: 0
+            property real startedAt: 0
+            property real movedAt: 0
             onActiveChanged: {
-                last = Qt.point(0, 0);
+                // The reset belongs to the press, not to both transitions: the
+                // release needs the travel and the times the drag ended with,
+                // so zeroing them first would make every fling a no-op.
                 if (active) {
+                    last = Qt.point(0, 0);
+                    travelX = 0; travelY = 0;
+                    effect.camStop();
+                    startedAt = Date.now();
+                    movedAt = startedAt;
                     const mods = effect.marqueeModifiers();
                     marquee = !view.spaceHeld && mods !== 0 && (centroid.modifiers & mods) !== 0 && (centroid.pressedButtons & Qt.LeftButton) !== 0;
                     if (marquee) {
@@ -1966,6 +2710,10 @@ KWin.SceneEffect {
                     const r = marqueeBox.rect;
                     const c0 = effect.globalToCanvas(r.x + view.sg.x, r.y + view.sg.y);
                     effect.selectInRect(c0.x, c0.y, r.width / effect.zoom, r.height / effect.zoom);
+                } else {
+                    // Let go: carry the plane if the hand was still moving.
+                    const now = Date.now();
+                    if (now - movedAt <= 120) effect.camFling(travelX, travelY, now - startedAt);
                 }
             }
             onActiveTranslationChanged: {
@@ -1975,19 +2723,49 @@ KWin.SceneEffect {
                     marqueeBox.y1 = marqueeBox.y0 + t.y;
                     return;
                 }
-                effect.panBy(t.x - last.x, t.y - last.y);
+                const dx = t.x - last.x, dy = t.y - last.y;
+                effect.panBy(dx, dy);
                 last = t;
+                travelX += dx;
+                travelY += dy;
+                if (dx !== 0 || dy !== 0) movedAt = Date.now();
             }
         }
 
-        // Zoom at the cursor.
+        // Edge panning: while a button navigates the canvas - a PanHold button
+        // or the middle button, held anywhere, a window or the ground - and the
+        // pointer sits within EdgePanMargin of this screen's edge, the camera
+        // keeps moving the way a drag would have — faster the deeper the pointer
+        // is in the band — and stops when it leaves the band or the button comes
+        // up. A window in hand rides the pan (edgePanStep): holding the button
+        // on a window and pushing the pointer to the edge carries the window
+        // with it. The screen the pointer is on does the panning, so a hold that
+        // walks onto another screen hands over to that screen's view. A Timer,
+        // as the camera's is, for the same reason: it steps from the event loop
+        // rather than waiting for a frame, and its own step is what gets drawn.
+        Timer {
+            id: edgePanTimer
+            interval: 16
+            repeat: true
+            running: view.navHeld && effect.edgePan && effect.canvasOpen
+            onTriggered: effect.edgePanStep(view.sg, interval / 1000)
+        }
+
+        // Zoom at the cursor, whether or not a pan button is held: a notch up
+        // zooms in, a notch down zooms out. (With the pass-through plugin
+        // loaded, a pointer over a client area belongs to the window, the wheel
+        // included, and this handler never sees it.)
         WheelHandler {
             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
             onWheel: (event) => {
                 const steps = event.angleDelta.y / 120;
                 if (steps === 0) return;
                 const anchor = Qt.point(event.x + view.sg.x, event.y + view.sg.y);
-                effect.setZoom(effect.zoom * Math.pow(effect.zoomStep, steps), anchor);
+                // On the spring, so a notch reads as a zoom rather than a jump
+                // and a burst of notches rides as one motion; several notches
+                // from where the last one was heading, never from mid-step.
+                const from = effect.camHasGoal ? effect.camGoalZoom : effect.zoom;
+                effect.camZoomTo(from * Math.pow(effect.zoomStep, steps), anchor.x, anchor.y);
             }
         }
 
@@ -2007,7 +2785,9 @@ KWin.SceneEffect {
                 readonly property string activity: modelData
                 readonly property bool current: modelData === effect.currentActivity
                 readonly property color accent: effect.palette[index % effect.palette.length]
-                model: KWin.Workspace.screens
+                // Re-read on a hotplug or a rearrange (screensRev), so the
+                // frames follow Display Configuration.
+                model: { effect.screensRev; return KWin.Workspace.screens; }
                 delegate: Item {
                     id: frame
                     required property var modelData
@@ -2099,6 +2879,36 @@ KWin.SceneEffect {
                 height: { effect.revision; return effect.entries[index].height * effect.zoom; }
                 visible: !effect.quiet || entry.activity === effect.currentActivity
                 z: 1000 + index
+                // Weight: the window lifts while the hand holds it, trails and
+                // leans with the hand, and springs back when the hand stops.
+                // The entry is exact throughout; this is the picture only.
+                readonly property bool heavy: effect.windowPhysics && !effect.quiet
+                property bool lifted: body.active && heavy
+                scale: lifted ? 1.03 : (body.hovered && heavy ? 1.008 : 1)
+                Behavior on scale { enabled: thumb.heavy; SpringAnimation { spring: 3.6; damping: 0.5; epsilon: 0.001 } }
+                transform: [
+                    Rotation {
+                        origin.x: thumb.width / 2
+                        origin.y: thumb.height / 2
+                        angle: thumb.lifted ? effect.dragLean : 0
+                        Behavior on angle {
+                            enabled: thumb.heavy
+                            SpringAnimation { spring: 3.4; damping: 0.42; epsilon: 0.02 }
+                        }
+                    },
+                    Translate {
+                        x: thumb.lifted ? effect.dragLagX : 0
+                        y: thumb.lifted ? effect.dragLagY : 0
+                        Behavior on x {
+                            enabled: thumb.heavy
+                            SpringAnimation { spring: 3.4; damping: 0.42; epsilon: 0.2 }
+                        }
+                        Behavior on y {
+                            enabled: thumb.heavy
+                            SpringAnimation { spring: 3.4; damping: 0.42; epsilon: 0.2 }
+                        }
+                    }
+                ]
 
                 KWin.WindowThumbnail {
                     anchors.fill: parent
@@ -2134,14 +2944,19 @@ KWin.SceneEffect {
                     function onStackingOrderChanged() { Qt.callLater(effect.resync); }
                 }
 
-                // Body: move on drag, pick on click.
+                // Body: move on drag, pick on click. The grip takes the PanHold
+                // buttons like every other control (Grip), so with pass-through
+                // or plane input live a held right button on a window is a
+                // portal into the canvas: the app under it never sees the
+                // press, and the drag moves the window on the plane instead.
                 Grip {
                     id: body
                     anchors.fill: parent
                     viewItem: view
                     tappable: true
                     onDragStarted: { thumb.held = thumb.entry; effect.beginDrag(thumb.index); }
-                    onDragged: (dx, dy) => effect.dragEntry(thumb.heldIndex, dx, dy)
+                    onDragged: (dx, dy) => { effect.dragEntry(thumb.heldIndex, dx, dy); effect.noteDrag(dx, dy); }
+                    onDragEnded: effect.endDrag()
                     onTapped: (count, modifiers, button) => effect.windowGesture(thumb.entry, count, modifiers, button)
                 }
 
@@ -2235,7 +3050,7 @@ KWin.SceneEffect {
                 id: activityTags
                 required property string modelData
                 required property int index
-                model: KWin.Workspace.screens
+                model: { effect.screensRev; return KWin.Workspace.screens; }
                 delegate: FrameTag {
                     required property var modelData
                     visible: !effect.quiet
@@ -2263,11 +3078,13 @@ KWin.SceneEffect {
             } else if (effect.bound("origin", k)) {
                 effect.origin();
             } else if (effect.bound("fit", k)) {
-                effect.zoomExtents();
+                effect.zoomExtents(true);
             } else if (effect.bound("zoomIn", k)) {
-                effect.setZoom(effect.zoom * effect.zoomStep, effect.cursorScreen());
+                const p = effect.cursorScreen();
+                effect.camZoomTo(effect.zoom * effect.zoomStep, p.x, p.y);
             } else if (effect.bound("zoomOut", k)) {
-                effect.setZoom(effect.zoom / effect.zoomStep, effect.cursorScreen());
+                const p = effect.cursorScreen();
+                effect.camZoomTo(effect.zoom / effect.zoomStep, p.x, p.y);
             } else {
                 return;
             }
@@ -2286,7 +3103,10 @@ KWin.SceneEffect {
             target: effect
             function onContextRequested(entry) {
                 // Attached properties resolve against this Connections object, so go through the view.
-                if (view.screen !== KWin.Workspace.activeScreen) return;
+                // One menu, on the screen the pointer is on: every screen's view
+                // is connected to this signal, and the pointer's screen is where
+                // the gesture was made, not the focused window's.
+                if (view.screen !== effect.actionScreen()) return;
                 const p = effect.cursorScreen();
                 arrangeMenu.x = p.x - view.sg.x;
                 arrangeMenu.y = p.y - view.sg.y;
@@ -2432,10 +3252,10 @@ KWin.SceneEffect {
                     }
                 }
                 Sep {}
-                PC3.ToolButton { icon.name: "zoom-fit-best";   text: "Fit";    display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Zoom to fit (" + effect.keyLabel(effect.configuration.KeyFit) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.zoomExtents() }
+                PC3.ToolButton { icon.name: "zoom-fit-best";   text: "Fit";    display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Zoom to fit (" + effect.keyLabel(effect.configuration.KeyFit) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.zoomExtents(true) }
                 PC3.ToolButton { icon.name: "go-home";         text: "Home";   display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Look through this activity's frames (" + effect.keyLabel(effect.configuration.KeyHome) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.home() }
-                PC3.ToolButton { icon.name: "zoom-in";         text: "In";     display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Zoom in (" + effect.keyLabel(effect.configuration.KeyZoomIn) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.setZoom(effect.zoom * effect.zoomStep, Qt.point(view.sg.x + view.sg.width / 2, view.sg.y + view.sg.height / 2)) }
-                PC3.ToolButton { icon.name: "zoom-out";        text: "Out";    display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Zoom out (" + effect.keyLabel(effect.configuration.KeyZoomOut) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.setZoom(effect.zoom / effect.zoomStep, Qt.point(view.sg.x + view.sg.width / 2, view.sg.y + view.sg.height / 2)) }
+                PC3.ToolButton { icon.name: "zoom-in";         text: "In";     display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Zoom in (" + effect.keyLabel(effect.configuration.KeyZoomIn) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.camZoomTo(effect.zoom * effect.zoomStep, view.sg.x + view.sg.width / 2, view.sg.y + view.sg.height / 2) }
+                PC3.ToolButton { icon.name: "zoom-out";        text: "Out";    display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Zoom out (" + effect.keyLabel(effect.configuration.KeyZoomOut) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.camZoomTo(effect.zoom / effect.zoomStep, view.sg.x + view.sg.width / 2, view.sg.y + view.sg.height / 2) }
                 Sep {}
                 PC3.ToolButton { icon.name: "snap-bounding-box-edges";   text: "Edges";   display: PC3.AbstractButton.IconOnly; checkable: true; checked: effect.snapEdges;   onToggled: effect.snapEdges = checked;   PC3.ToolTip.text: "Snap to edges";   PC3.ToolTip.visible: hovered }
                 PC3.ToolButton { icon.name: "snap-bounding-box-corners"; text: "Corners"; display: PC3.AbstractButton.IconOnly; checkable: true; checked: effect.snapCorners; onToggled: effect.snapCorners = checked; PC3.ToolTip.text: "Snap to corners"; PC3.ToolTip.visible: hovered }
@@ -2495,6 +3315,8 @@ KWin.SceneEffect {
                 component K : PC3.Label { font.family: "monospace"; opacity: 0.85 }
                 component V : PC3.Label {}
                 K { text: "drag ground / " + effect.keyLabel(effect.configuration.KeyPan) + "+drag / middle-drag" } V { text: "pan" }
+                K { text: "hold " + effect.holdLabel(effect.configuration.PanHold) + " or middle" } V { text: "the canvas takes the pointer: drag the ground to pan, drag a window to move it" }
+                K { text: "hold it / to a screen edge" }                        V { text: "the canvas keeps panning; a window in hand comes along" }
                 K { text: "wheel / " + effect.keyLabel(effect.configuration.KeyZoomIn) + " / " + effect.keyLabel(effect.configuration.KeyZoomOut) } V { text: "zoom at the cursor" }
                 K { text: "drag window" }                                       V { text: "move it on the plane" }
                 K { text: "drag window edge or corner" }                        V { text: "resize it" }
@@ -2504,7 +3326,7 @@ KWin.SceneEffect {
                 K { text: effect.gestureLabel(effect.configuration.MouseSelectAdd) + " window, or +drag ground" } V { text: "add to the selection, or select by rectangle" }
                 K { text: effect.gestureLabel(effect.configuration.MouseSelectToggle) + " window" }  V { text: "toggle its selection; a selected window drags the whole selection" }
                 K { text: effect.gestureLabel(effect.configuration.MouseContextMenu) + " window" }   V { text: "arrange the selection: horizontal, vertical, tile, grid, cascade" }
-                K { text: effect.gestureLabel(effect.configuration.MouseFocusWindow) + " window" }   V { text: effect.configuration.FocusTarget === "desktop" ? "apply, focused on it; in another activity's frame, go there" : "apply with that point under the pointer, focused on it; in another activity's frame, go there" }
+                K { text: effect.gestureLabel(effect.configuration.MouseFocusWindow) + " window" }   V { text: effect.focusHelp() }
                 K { text: effect.gestureLabel(effect.configuration.MouseZoomToActivity) + " frame" }  V { text: "zoom to that activity" }
                 K { text: effect.gestureLabel(effect.configuration.MouseGotoActivity) + " frame" }    V { text: "apply with that activity current" }
                 K { text: effect.gestureLabel(effect.configuration.MouseNewActivityAt) + " window outside frames" } V { text: "new activity centred on it" }
