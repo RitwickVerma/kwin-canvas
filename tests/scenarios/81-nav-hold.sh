@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: 2026 Aaron Bockelie <aaronsb@gmail.com>
+# SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
 scenario_desc="navigation while a pan button or the middle button is held: the held button is a portal into the canvas (a drag on the ground pans, a drag on a window moves it, an edge keeps panning with the window in hand), the middle button pans from anywhere, the wheel zooms"
 # Screen position of a canvas point at the current camera, from the last state.

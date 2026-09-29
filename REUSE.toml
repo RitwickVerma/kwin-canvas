@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Some files cannot carry SPDX headers: PNGs, the JSON and XML that KWin parses,
+# VERSION (read with `cat`), and the text fixtures the scenarios type into
+# windows. REUSE 3.3 allows listing them here once instead. Files this fork
+# added are attributed to whoever wrote them; the rest is upstream's.
+
+version = 1
+
+[[annotations]]
+path = [
+    "VERSION",
+    "README.md",
+    "docs/architecture.md",
+    "docs/install.md",
+    "docs/release-notes.md",
+    "docs/tour.md",
+    "docs/images/**",
+    "effect/metadata.json",
+    "effect/contents/config/main.xml",
+    "applet/metadata.json",
+    "wallpaper/metadata.json",
+    "wallpaper/contents/config/main.xml",
+    "plugin/metadata.json",
+    "packaging/PKGBUILD.in",
+    "packaging/PKGBUILD-passthrough.in",
+    "packaging/kwin-canvas.install",
+    "tools/fakeinput.desktop.in",
+    "tests/fixtures/**",
+    "tests/golden/after-commit-1to1.png",
+    "tests/golden/extents.png",
+    "tests/golden/hidden-frame.png",
+    "tests/golden/input-dragged.png",
+    "tests/golden/open-1to1.png",
+    "tests/golden/resized.png",
+    "tests/golden/three-activities.png",
+    "tests/golden/zoom-pan.png",
+]
+SPDX-FileCopyrightText = "2026 Aaron Bockelie <aaronsb@gmail.com>"
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+[[annotations]]
+# The upstream doc this fork adds its CI section to.
+path = ["docs/testing.md"]
+SPDX-FileCopyrightText = [
+    "2026 Aaron Bockelie <aaronsb@gmail.com>",
+    "2026 Ritwick Verma <verma1997@gmail.com>",
+]
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+[[annotations]]
+# Written in this fork: the recovery notes and the goldens the new scenarios
+# recorded.
+path = [
+    "docs/recovery.md",
+    "tests/golden/backdrop-dimmed.png",
+    "tests/golden/backdrop-grid.png",
+    "tests/golden/backdrop-slide.png",
+    "tests/golden/backdrop-undimmed.png",
+    "tests/golden/backdrop-wallpaper.png",
+    "tests/golden/corner-zoom.png",
+    "tests/golden/two-output-corner.png",
+]
+SPDX-FileCopyrightText = "2026 Ritwick Verma <verma1997@gmail.com>"
+SPDX-License-Identifier = "GPL-2.0-or-later"
+
+[[annotations]]
+path = ["REUSE.toml"]
+SPDX-FileCopyrightText = "2026 Ritwick Verma <verma1997@gmail.com>"
+SPDX-License-Identifier = "GPL-2.0-or-later"
