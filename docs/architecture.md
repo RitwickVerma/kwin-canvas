@@ -55,9 +55,14 @@ grab, no per-frame work, so games and fullscreen apps get KWin's native
 path: direct scanout, no extra composition. Three things happen in this
 state:
 
-- `windowActivated` on a window with no on-screen intersection shifts every
-  canvas window by the same delta so it lands centred on its output, and
-  adjusts `view` to match. The task manager becomes a way to travel.
+- `windowActivated` on a window that is not wholly on screen slides the
+  desktop to it - the whole plane glides, the window ends centred in its
+  placement area - and adjusts the view to match. The task manager becomes a
+  way to travel, and every focus change does: the task manager, Alt-Tab, an
+  application grabbing its own focus all fly to their window. A window
+  hanging half off the screen counts as not visible: an intersection is not
+  enough, a focused window must be wholly on screen. The last two activated
+  windows are kept as `focusHistory`, the swap's pair.
 - A pan chord or a touchpad swipe starts a slide (below).
 - The Toggle chord steps out: the canvas opens.
 
@@ -106,6 +111,12 @@ edges, since the plugin has taken the client areas, and a drag there moves
 the window on the plane; selection, the marquee and the arrange menu start
 from the title bar. Stepping in writes every entry once from its plane
 position.
+
+The plugin also watches the canvas-modifier buttons (`setHoldButtons`)
+while the canvas is closed: a press of one is consumed before any window
+sees it and flips the effect's `canvasHold` property - the route that opens
+the quiet grasp and commits on the release - and a mask change under a held
+button ends the hold.
 
 **Plane input** is the route that replaces pass-through: an LD_PRELOAD shim
 for stock kwin_wayland 6.7.5 (`dev/spike/preload`, a spike) moves KWin's
@@ -444,9 +455,12 @@ into a haze, the way an overview's backdrop reads, rather than the wallpaper
 repeating in tiles, which is what it would look like if it moved with the
 plane at 1:1. The layer is the desktop window itself, live (a slideshow, a
 picture of the day, an animated wallpaper keep going in the haze), and each
-view hides its layer while the current activity's frame covers the view -
-open at 1:1, an idle slide - which is exactly where the blur would be
-invisible anyway, so it costs nothing until the camera moves. At 1:1 the
+view fades its layer out while the current activity's frame covers the view
+- `blurAlpha` follows the coverage on a 280 ms easing, so stepping in
+softens the haze away as the desk fills the view and stepping out softens
+it back, never a switch - and at rest under a covering frame (open at 1:1,
+an idle slide) it is gone entirely and costs nothing, which is exactly
+where the blur would be invisible anyway. At 1:1 the
 frame's interior is the real wallpaper, pixel for pixel, so a slide draws
 what the screen was showing and the haze appears only beyond the moving
 desktop. The dim is 0 while the canvas is quiet, where the plane and the
@@ -466,8 +480,8 @@ switches). The keys the open canvas listens for are
 comma-separated Qt key names (`KeyApply` = `Return,Enter` and so on), parsed
 into key codes at load and on every reconfigure by looking up `Qt["Key_" +
 name]`, and the legend is rendered from the same entries. A misspelt name is
-logged and skipped. The in-canvas keys have defaults nothing else uses: the
-arrow keys (`KeyPanLeft` and friends) pan the camera one step, `KeyNext`/`KeyPrev`
+logged and skipped. The in-canvas keys have defaults nothing else uses: WASD
+(`KeyPanLeft` and friends) pan the camera one step, `KeyNext`/`KeyPrev`
 (Tab and Shift+Tab) step the selection through the windows with the camera
 following to keep the chosen window in view, and `KeyApply` with a window
 selected enters it focused - the overview pattern, Tab to the window, Enter
@@ -567,12 +581,26 @@ while a slide runs chains another step onto it. Off, a push opens and enters
 as it always has.
 
 The keyboard navigates the open canvas the same way, with defaults nothing
-else uses: the arrow keys pan the camera one step, Tab and Shift+Tab step the
-selection through the windows, the camera following to keep the chosen window
-in view, and Enter with a window selected steps into it focused, the
+else uses: WASD pan the camera one step, Tab and Shift+Tab step the selection
+through the windows, the camera following to keep the chosen window in view,
+and Enter with a window selected steps into it focused, the
 overview's Tab-then-Enter pattern on a canvas. Every one of them is the
 canvas's only while it owns the keyboard; with the plugin loaded the keys go
 to the focused window.
+
+The pointer navigates too. A click on a window, and a hover that rests on one
+for a moment, pans the camera the least that brings the window wholly into
+view (`bringIntoView`, the Tab cycle's own helper): what the eye lands on is
+what the screen shows. The hover pan waits 250 ms and stands down while the
+hand is navigating, so it never fights a drag, and it settles once the
+window is visible, so it never oscillates.
+
+The swap is an Alt-Tab on the plane: while the canvas modifier is held,
+pressing `SwapButton` (MB5) flies the camera to the other of the two most
+recent windows and focuses it, and releasing the modifier opens the location
+there - the target is placed as a pick would place it, focused on the
+swapped-to window. The swap is a TapHandler on the screen root that only the
+grasp acts on; elsewhere MB5 is the window's own back/forward button.
 
 ## Motion
 

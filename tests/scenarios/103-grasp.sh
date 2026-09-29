@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
-scenario_desc="the canvas modifier: holding MB4 on the normal desktop makes the location itself the canvas - pan and move windows as if the overworld were open, release applies the moves and closes - and held in the open overworld it is navigation only"
+scenario_desc="the canvas modifier: holding MB4 on the normal desktop makes the location itself the canvas - pan and move windows as if the overworld were open, release applies the moves and closes - MB5 while held flies between the two most recent windows, and held in the open overworld it is navigation only"
 # Screen position of a canvas point at the current camera, from the last state.
 screen_of() {
     awk -v cx="$1" -v cy="$2" -v vx="$(sget viewx)" -v vy="$(sget viewy)" -v z="$(sget zoom)" \
@@ -48,6 +48,20 @@ run_scenario() {
     assert_near "and y" "$(sget viewy)" 100 3
     sleep 0.9; c state
     assert_eq "and the release closes again" "$(sget visible)" false
+    wait
+
+    # MB5 while the modifier is held flies between the two most recent
+    # windows, an Alt-Tab on the plane: the focus and the camera go to the
+    # other recent window, and the release opens the location there, focused.
+    printf 'move 1700 900\nsleep 60\ndown back\nsleep 900\nmove 1700 900\nsleep 60\nclick forward\nsleep 700\nup back\n' | input &
+    sleep 0.7; c state
+    assert_eq "the third hold opens quietly" "$(head -1 <<<"$LAST_STATE" | grep -c 'visible=true quiet grasp')" 1
+    sleep 0.7; c state
+    assert_eq "the swap moved the focus to the other recent window" "$(grep -c 'active="wallpaper.png' <<<"$LAST_STATE")" 1
+    sleep 0.9; c state
+    assert_eq "and the release opens the location there" "$(sget visible)" false
+    assert_true "with the swapped-to window wholly on screen" \
+        "$(awk -v x="$(eget Gwenview fx)" 'BEGIN{print (x>=0 && x+460<=1920)}')" = 1
     wait
 
     # Held in the open overworld it is navigation only: the hold counts, the

@@ -91,7 +91,8 @@
             <default>0</default>
         </entry>
         <entry name="KeyFit" type="String">
-            <default>F,W</default>
+            <label>Keys that zoom to fit, as Qt key names. F by default; W is taken by the pan-up key.</label>
+            <default>F</default>
         </entry>
         <entry name="KeyZoomIn" type="String">
             <default>Plus,Equal</default>
@@ -105,19 +106,19 @@
         </entry>
         <entry name="KeyPanLeft" type="String">
             <label>In the open canvas, the key that pans the camera one step left (with the pass-through plugin loaded, keys go to the focused window and these do not apply).</label>
-            <default>Left</default>
+            <default>A</default>
         </entry>
         <entry name="KeyPanRight" type="String">
             <label>In the open canvas, the key that pans the camera one step right.</label>
-            <default>Right</default>
+            <default>D</default>
         </entry>
         <entry name="KeyPanUp" type="String">
             <label>In the open canvas, the key that pans the camera one step up.</label>
-            <default>Up</default>
+            <default>W</default>
         </entry>
         <entry name="KeyPanDown" type="String">
             <label>In the open canvas, the key that pans the camera one step down.</label>
-            <default>Down</default>
+            <default>S</default>
         </entry>
         <entry name="KeyNext" type="String">
             <label>In the open canvas, the key that steps the selection through the windows, the camera following to keep the chosen window in view.</label>
@@ -134,6 +135,10 @@
         <entry name="CanvasHold" type="String">
             <label>The canvas modifier: mouse buttons (any of LeftButton, MiddleButton, RightButton, BackButton, ForwardButton, comma separated) that, held down anywhere on the normal desktop, make the location itself the canvas. While held, the desktop becomes the overworld at 1:1 - pixel for pixel, nothing visibly changes - and every canvas gesture works as if the overworld were open: the middle button grabs and navigates, a drag on a window moves it on the plane, the wheel zooms, a pointer parked at a screen edge keeps panning. Releasing applies the moves and closes again: hold, arrange, let go, done. Needs the kwin-canvas-passthrough plugin (or the plane-input shim) to see the press while the canvas is closed. BackButton (MB4, a mouse's side button) is the default.</label>
             <default>BackButton</default>
+        </entry>
+        <entry name="SwapButton" type="String">
+            <label>Mouse buttons that, pressed while the canvas modifier is held, fly between the two most recent windows - an Alt-Tab on the plane: the camera springs to the other window, the focus follows, and releasing the modifier opens the location there, focused on it. ForwardButton (MB5, a mouse's side button) is the default, so the two side buttons are one hand on the plane.</label>
+            <default>ForwardButton</default>
         </entry>
         <entry name="EdgePan" type="Bool">
             <label>While a pan button is held, or a window is in hand, a pointer within EdgePanMargin of a screen edge keeps panning that way until it leaves the band, the button is let go or the window is dropped. A dragged window rides the pan and stays under the pointer.</label>

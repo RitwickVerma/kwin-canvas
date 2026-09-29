@@ -94,6 +94,9 @@ KWin.SceneEffect {
     // (edgePanStep). It is the same mask the pan handlers already take, so
     // there is one answer to "which buttons navigate the canvas".
     readonly property int planeNavButtons: (bindings.panHold || 0) | Qt.MiddleButton
+    // The swap buttons: while the canvas modifier is held, a press flies
+    // between the two most recent windows.
+    readonly property int swapButtons: bindings.swap || 0
     // The buttons a drag on a control takes: the left button, and the PanHold
     // buttons. That is the set the pan handler acts on over the ground, so a
     // held portal button does what the left button would have done wherever
@@ -127,6 +130,7 @@ KWin.SceneEffect {
     // counts as navigation, so the edge pan works under it there too.
     property bool canvasHold: false
     property bool grasp: false
+    property var graspStartActive: null
     onCanvasHoldChanged: {
         if (canvasHold) {
             // Held in the open overworld it is navigation only: the views
@@ -139,6 +143,7 @@ KWin.SceneEffect {
     function graspStart() {
         if (visible) return;
         grasp = true;
+        graspStartActive = KWin.Workspace.activeWindow;
         open(true);
         // The camera never slides during a grasp, so endSlide()'s measured
         // distance is zero: what gets committed is the windows the hand
@@ -149,7 +154,35 @@ KWin.SceneEffect {
     function graspEnd() {
         if (!quiet || !grasp) { grasp = false; return; }
         grasp = false;
+        // The swap moved the focus: the location opens where the swapped-to
+        // window is, focused on it, as a pick would place it - the frames,
+        // their windows and the wallpaper slide to it and nothing else moves.
+        const aw = KWin.Workspace.activeWindow;
+        if (aw && !aw.deleted && aw !== graspStartActive) {
+            const e = entryFor(aw);
+            if (e) {
+                const inFrame = activityAt(e);
+                placeTarget(e, inFrame !== null ? inFrame : (e.activity || currentActivity));
+            }
+        }
         commit(null);
+    }
+
+    // SwapButton while the modifier is held: fly between the two most recent
+    // windows, an Alt-Tab on the plane. The camera springs to the other
+    // window, the focus follows, and the release opens the location there.
+    function swapWindow() {
+        if (!grasp) return;
+        let target = null;
+        for (let i = 0; i < focusHistory.length; ++i) {
+            const w = focusHistory[i];
+            if (!w || w.deleted) continue;
+            if (w !== KWin.Workspace.activeWindow) { target = w; break; }
+        }
+        if (!target) return;
+        KWin.Workspace.activeWindow = target;
+        const e = entryFor(target);
+        if (e) flyToEntry(e);
     }
     // Frame positions at open, for cancel to put back what settle() wrote.
     property var openFrames: ({})
@@ -222,6 +255,8 @@ KWin.SceneEffect {
     }
 
     property int lastDebugSeq: 0
+    // The window the pointer has been resting on, for the hover navigation.
+    property var hoverEntry: null
 
     // ---- key bindings, from config ------------------------------------------
     // Each entry is a list of Qt key codes parsed from a comma-separated list
@@ -300,7 +335,8 @@ KWin.SceneEffect {
             next: keysFor(configuration.KeyNext),
             prev: keysFor(configuration.KeyPrev),
             panHold: buttonsFor(configuration.PanHold),
-            hold: buttonsFor(configuration.CanvasHold)
+            hold: buttonsFor(configuration.CanvasHold),
+            swap: buttonsFor(configuration.SwapButton)
         };
     }
 
@@ -977,7 +1013,7 @@ KWin.SceneEffect {
     Timer {
         interval: 16
         repeat: true
-        running: effect.canvasOpen && effect.camLive()
+        running: (effect.canvasOpen || effect.grasp) && effect.camLive()
         onTriggered: effect.camStep(interval / 1000)
     }
 
@@ -1381,37 +1417,54 @@ KWin.SceneEffect {
     // windows on them and the wallpaper slide together, nothing on the plane
     // moves, and nothing is written.
     property var pendingFocus: null
-    function focusWindow(entry, gx, gy) {
-        if (gx === undefined) { const p = cursorScreen(); gx = p.x; gy = p.y; }
-        const inFrame = activityAt(entry);
-        const a = inFrame !== null ? inFrame : (entry.activity || currentActivity);
+    // Where the viewport goes when a window gesture applies with that window
+    // focused, written into the activity's target. gx/gy is the point kept
+    // under the pointer in "window" mode; without one (the swap), the
+    // window's centre is the anchor. Every mode is the activity's target:
+    // the frames, the windows on them and the wallpaper slide together,
+    // nothing on the plane moves, and nothing is written until the commit.
+    function placeTarget(entry, a, gx, gy) {
         const t = targetOf(a);
         const mode = focusMode();
         if (mode === "window") {
-            const c = globalToCanvas(gx, gy);
-            t.x = Math.round(c.x - gx);
-            t.y = Math.round(c.y - gy);
-            // The point clicked is kept under the pointer unless that would
-            // leave the window hanging over an edge of the screen: then the
-            // least shift that brings it wholly back in, because a window a
-            // double-click focused should not be half off the screen.
-            const g = actionScreen().geometry;
-            const range = fitRange(entry.width, entry.height, g, 8);
-            if (range.fits) {
-                t.x = Math.round(entry.x - g.x - Math.max(range.x0, Math.min(range.x1, entry.x - t.x - g.x)));
-                t.y = Math.round(entry.y - g.y - Math.max(range.y0, Math.min(range.y1, entry.y - t.y - g.y)));
+            if (gx === undefined || gx === null) {
+                const g = actionScreen().geometry;
+                t.x = Math.round(entry.x + entry.width / 2 - (g.x + g.width / 2));
+                t.y = Math.round(entry.y + entry.height / 2 - (g.y + g.height / 2));
+            } else {
+                const c = globalToCanvas(gx, gy);
+                t.x = Math.round(c.x - gx);
+                t.y = Math.round(c.y - gy);
+                // The point clicked is kept under the pointer unless that would
+                // leave the window hanging over an edge of the screen: then the
+                // least shift that brings it wholly back in, because a window a
+                // double-click focused should not be half off the screen.
+                const g = actionScreen().geometry;
+                const range = fitRange(entry.width, entry.height, g, 8);
+                if (range.fits) {
+                    t.x = Math.round(entry.x - g.x - Math.max(range.x0, Math.min(range.x1, entry.x - t.x - g.x)));
+                    t.y = Math.round(entry.y - g.y - Math.max(range.y0, Math.min(range.y1, entry.y - t.y - g.y)));
+                }
             }
         } else if (mode === "smart") {
             const g = actionScreen().geometry;
             const off = smartOffset(entry, a, g);
             t.x = Math.round(entry.x - g.x - off.dx);
             t.y = Math.round(entry.y - g.y - off.dy);
-        } else if (mode === "centre" || inFrame === null) {
+        } else if (mode === "centre" || activityAt(entry) === null) {
             // "centre", and "desktop" for a window outside every frame.
             const g = actionScreen().geometry;
             t.x = Math.round(entry.x + entry.width / 2 - (g.x + g.width / 2));
             t.y = Math.round(entry.y + entry.height / 2 - (g.y + g.height / 2));
         }
+        return t;
+    }
+
+    function focusWindow(entry, gx, gy) {
+        if (gx === undefined) { const p = cursorScreen(); gx = p.x; gy = p.y; }
+        const inFrame = activityAt(entry);
+        const a = inFrame !== null ? inFrame : (entry.activity || currentActivity);
+        const t = placeTarget(entry, a, gx, gy);
         if (a && a !== currentActivity) {
             flyEnter(a, t.x, t.y, function () {
                 pendingFocus = entry.window;
@@ -1760,6 +1813,9 @@ KWin.SceneEffect {
             selectAdd(entry);
         } else if (gestureMatches(configuration.MouseSelect, count, modifiers)) {
             selectOnly(entry);
+            // A click on a window brings it wholly into view: what is clicked
+            // on must be seen, so the camera pans the least that fits it.
+            bringIntoView(entry);
         }
     }
 
@@ -2316,21 +2372,53 @@ KWin.SceneEffect {
         return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
     }
 
+    // The two most recent windows, most recent first: what the canvas
+    // modifier's swap (SwapButton while the modifier is held) flies between,
+    // an Alt-Tab on the plane.
+    property var focusHistory: []
+    function noteFocus(w) {
+        if (!w || w.deleted) return;
+        if (focusHistory.length > 0 && focusHistory[0] === w) return;
+        const out = [w];
+        for (let i = 0; i < focusHistory.length && out.length < 2; ++i) if (focusHistory[i] !== w) out.push(focusHistory[i]);
+        focusHistory = out;
+    }
+    // The entry a window is drawn from, or null.
+    function entryFor(w) {
+        for (let i = 0; i < entries.length; ++i) if (entries[i].window === w) return entries[i];
+        return null;
+    }
+    // Fly the camera so the window is wholly in view, centred on the screen
+    // the pointer is on (the swap's flight, the hover's nudge).
+    function flyToEntry(e) {
+        if (!e) return;
+        const g = actionScreen().geometry;
+        camGo(zoom, e.x + e.width / 2 - (g.x + g.width / 2), e.y + e.height / 2 - (g.y + g.height / 2));
+    }
+
     Connections {
         target: KWin.Workspace
         function onWindowActivated(w) {
-            // Open: a raise (pass-through clicks) restacks the thumbnails.
+            effect.noteFocus(w);
+            // Open: a raise (pass-through clicks, the swap) restacks the thumbnails.
             // The plane transform is only ever live while open, so the
             // on-screen test below always sees geometry as drawn.
             if (effect.visible) { Qt.callLater(effect.resync); return; }
             if (!effect.configuration.FollowActivation) return;
             if (!effect.isCanvasWindow(w, false)) return;
             const g = w.frameGeometry;
-            if (effect.intersects(g, KWin.Workspace.virtualScreenGeometry)) return;
+            // A focused window must be wholly on screen: an intersection is
+            // not enough - one hanging off an edge is exactly what a focus
+            // must not leave behind. Fully inside, nothing moves.
+            const vs = KWin.Workspace.virtualScreenGeometry;
+            if (g.x >= vs.x && g.y >= vs.y && g.x + g.width <= vs.x + vs.width && g.y + g.height <= vs.y + vs.height) return;
+            // Where it goes: centred in its placement area. The slide flies
+            // the whole desktop there - the task manager, Alt-Tab, anything
+            // that activates a window travels the canvas to it.
             const area = KWin.Workspace.clientArea(KWin.Workspace.PlacementArea, w);
             const dx = Math.round(area.x + (area.width - g.width) / 2 - g.x);
             const dy = Math.round(area.y + (area.height - g.height) / 2 - g.y);
-            effect.shiftAll(dx, dy);
+            effect.slide(-dx, -dy);
         }
         function onActivitiesChanged(id) { Qt.callLater(effect.activitiesChanged); }
         // App popups come and go with these too; resync() refreshes them.
@@ -2846,7 +2934,15 @@ KWin.SceneEffect {
                 const w = og.width * effect.zoom, h = og.height * effect.zoom;
                 return x <= 0 && y <= 0 && x + w >= view.width && y + h >= view.height;
             }
-            visible: wallpaper && !covered
+            // The haze fades with the camera instead of switching: stepping
+            // in softens it out as the desk fills the view, stepping out
+            // softens it back. At rest under a covering frame it is gone and
+            // costs nothing.
+            readonly property bool wantShown: wallpaper && !covered
+            property real blurAlpha: wantShown ? 1 : 0
+            Behavior on blurAlpha { NumberAnimation { duration: 280; easing.type: Easing.InOutCubic } }
+            visible: wallpaper && (wantShown || blurAlpha > 0.004)
+            opacity: blurAlpha
             KWin.DesktopBackground {
                 id: blurSource
                 anchors.fill: parent
@@ -2931,6 +3027,31 @@ KWin.SceneEffect {
         TapHandler {
             id: navHold
             acceptedButtons: effect.panHoldButtons | Qt.MiddleButton
+        }
+
+        // SwapButton while the canvas modifier is held: fly between the two
+        // most recent windows. Only the grasp acts on it; the press is
+        // otherwise someone else's (in the overworld the pass-through plugin
+        // hands it to the window under the pointer, at 1:1 the window's own
+        // back/forward gesture).
+        TapHandler {
+            id: swapTap
+            acceptedButtons: effect.swapButtons
+            onTapped: effect.swapWindow()
+        }
+
+        // A hover that lingers navigates: after a moment over a window the
+        // camera pans the least that brings it wholly into view, so the
+        // overworld reads around the pointer the way an eye does. Only when
+        // the hand is not already navigating, and never during a grasp or a
+        // slide, where the desktop is the subject.
+        Timer {
+            id: hoverBringTimer
+            interval: 250
+            repeat: false
+            onTriggered: {
+                if (effect.hoverEntry && !effect.navHeld && effect.canvasOpen) effect.bringIntoView(effect.hoverEntry);
+            }
         }
 
         DragHandler {
@@ -3233,6 +3354,14 @@ KWin.SceneEffect {
                     onDragged: (dx, dy) => { effect.dragEntry(thumb.heldIndex, dx, dy); effect.noteDrag(dx, dy); }
                     onDragEnded: effect.endDrag()
                     onTapped: (count, modifiers, button) => effect.windowGesture(thumb.entry, count, modifiers, button)
+                    onHoveredChanged: {
+                        if (hovered) {
+                            effect.hoverEntry = thumb.entry;
+                            view.hoverBringTimer.restart();
+                        } else if (effect.hoverEntry === thumb.entry) {
+                            effect.hoverEntry = null;
+                        }
+                    }
                 }
 
                 // The window's client area, where planeTakes() lets the
@@ -3608,6 +3737,9 @@ KWin.SceneEffect {
                 K { text: "drag ground / " + effect.keyLabel(effect.configuration.KeyPan) + "+drag / middle-drag" } V { text: "pan" }
                 K { text: "hold " + effect.holdLabel(effect.configuration.PanHold) + " or middle" } V { text: "the canvas takes the pointer: drag the ground to pan, drag a window to move it" }
                 K { text: "hold it / to a screen edge" }                        V { text: "the canvas keeps panning; a window in hand comes along" }
+                K { text: "hold " + effect.holdLabel(effect.configuration.CanvasHold) } V { text: "on the desktop: the location itself becomes the canvas; drags and the wheel work, release applies" }
+                K { text: "hold it, tap " + effect.holdLabel(effect.configuration.SwapButton) } V { text: "fly between the two most recent windows; release opens the location there, focused" }
+                K { text: "click a window / rest on it" }                        V { text: "the camera pans the least that fits it wholly into view" }
                 K { text: "wheel / " + effect.keyLabel(effect.configuration.KeyZoomIn) + " / " + effect.keyLabel(effect.configuration.KeyZoomOut) } V { text: "zoom at the cursor" }
                 K { text: "drag window" }                                       V { text: "move it on the plane" }
                 K { text: "drag window edge or corner" }                        V { text: "resize it" }

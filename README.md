@@ -103,7 +103,7 @@ disable the stock **Zoom** effect if it owns Meta+wheel.
 | pan chords (no default; bind under Shortcuts → KWin) | slide the desktop half a screen that way | move the camera |
 | three-finger touchpad swipe | the desktop follows the fingers, then settles half a screen that way | |
 | drag on ground, Space+drag, or middle-drag | | pan |
-| hold the forward side button and drag (`PanHold`, MB5 by default; the right button is available too), or the middle button | | a portal into the canvas: drag the ground to pan, drag a window (its client area too) to move it on the plane — the app under it never sees the press. The middle button pans from anywhere, windows and tags included |
+| hold a button and drag (`PanHold`, empty by default; the right button and the side buttons are there if you want one), or the middle button | | a portal into the canvas: drag the ground to pan, drag a window (its client area too) to move it on the plane — the app under it never sees the press. The middle button pans from anywhere, windows and tags included |
 | hold the navigate button or the middle button at a screen edge (`EdgePan`) | | the canvas keeps panning that way, faster the deeper the pointer is in the band, until it leaves the band or the button is let go |
 | hold a window at a screen edge with a portal button down | | the canvas pans and the window comes along, staying under the pointer while it travels over the desk — a drag-and-drop edge scroll, so a window can be pushed into a frame that is off the screen |
 | wheel over the ground | | zoom at the cursor, springing to the step with the point under the cursor pinned (`SmoothZoom`); the wheel over a client area is the window's |
@@ -129,12 +129,17 @@ disable the stock **Zoom** effect if it owns Meta+wheel.
 | Esc | | fly back to where you were, nothing moved (the toolbar's **Cancel**); the window's own key when pass-through is live |
 | Home | | look through the current activity's frames |
 | 0 | | canvas origin |
-| F / W | | zoom to fit |
+| F | | zoom to fit |
 | Tab / Shift+Tab | | step the selection through the windows, wrapping; the camera follows to keep the chosen window in view |
-| arrow keys | | pan the camera one step |
+| WASD | | pan the camera one step |
+| click a window, or rest the pointer on one | | the camera pans the least that brings it wholly into view |
+| hold MB4 and tap MB5 (`SwapButton`) | on the desktop: the location becomes the canvas | fly between the two most recent windows; release opens the location there, focused |
 
-Activating an off-screen window from the task manager pans the plane so it
-comes on screen.
+Activating a window from the task manager - or anything else that focuses it,
+Alt-Tab included - **slides the desktop to it through the canvas**: the plane
+glides until the window is wholly on screen, centred, and a focused window is
+never left hanging off an edge. Everything that pulls focus on a window flies
+to it.
 
 **Pass-through** is the optional binary plugin, `kwin-canvas-passthrough`,
 and it is live whenever the canvas is open. The pointer over a window's

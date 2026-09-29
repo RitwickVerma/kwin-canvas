@@ -11,14 +11,18 @@ run_scenario() {
     setcfg Passthrough false
     open_1to1
     c "zoom 0.5 960 540"
-    # The arrow keys pan the camera one step each, left first.
+    # WASD pans the camera one step each, left first.
     local vx; vx=$(sget viewx)
-    printf 'key left\n' | input
+    printf 'key a\n' | input
     sleep 0.4; c state
-    assert_near "left arrow pans one step" "$(sget viewx)" "$(awk -v x="$vx" 'BEGIN{print x-1920}')" 2
-    printf 'key right\n' | input
+    assert_near "a pans one step" "$(sget viewx)" "$(awk -v x="$vx" 'BEGIN{print x-1920}')" 2
+    printf 'key d\n' | input
     sleep 0.4; c state
-    assert_near "right arrow pans back" "$(sget viewx)" "$vx" 2
+    assert_near "d pans back" "$(sget viewx)" "$vx" 2
+    local vy; vy=$(sget viewy)
+    printf 'key w\n' | input
+    sleep 0.4; c state
+    assert_near "w pans up one step" "$(sget viewy)" "$(awk -v y="$vy" 'BEGIN{print y-1080}')" 2
 
     # Tab steps the selection through the entries in stacking order - KWrite
     # first - and Enter with it selected steps into that window, focused.
@@ -47,6 +51,15 @@ run_scenario() {
     printf 'key shift down\nkey tab\nkey shift up\n' | input
     sleep 0.5; c state
     assert_eq "shift+tab stepped back to Dolphin" "$(grep -c 'Dolphin' <<<"$(selcap)")" 1
+    # A click on a window brings it wholly into view: KCalc parked with only
+    # a sliver on screen, clicked on the sliver, is fitted by the camera.
+    open_1to1
+    c "placeby KCalc 1800 120"
+    c state
+    printf 'move 1900 142\nclick\n' | input
+    sleep 0.4; c state
+    assert_true "a click pans the window wholly into view" \
+        "$(awk -v x="$(sget viewx)" 'BEGIN{print (x > 300 && x < 500)}')" = 1
     c cancel
     kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key Passthrough --delete
     arrange >/dev/null

@@ -43,33 +43,26 @@ This file arrived in one commit on top of those, together with `AGENTS.md` and
 
 ## Verified, and how
 
-On this session's tree, in a nested KWin 6.7.5 (the nest; the live-session
-half stays untested, below):
+On this session's tree, in a nested KWin 6.7.5 with the pass-through plugin
+built and loaded (the live-session half stays untested, below):
 
 - `make lint-qml` and `make lint-shell` — exit 0. `lint-reuse` still needs
   `reuse`, which is not installed here (below).
-- `make test` — `== pass 281  fail 0  skip 2`, the skips the documented honest
-  ones (`85-passthrough` needs the plugin, `91-two-outputs` a two-output
-  nest). This run also pinned the new scenarios 100, 101 and 102 and the
-  reworked 93.
-- `make test-two-outputs` — `== pass 17  fail 0  skip 0` for `91-two-outputs`.
-- The goldens that moved with the new backdrop (zoom-pan, extents,
-  three-activities, hidden-frame, input-dragged, corner-zoom,
-  two-output-corner, and 93's set) were re-recorded and the diff pictures
-  checked; the 1:1 goldens (open-1to1, after-commit-1to1, resized) did not
-  move, as the haze is invisible under the frames.
-- `make fixtures` — the fixtures were not regenerated in this session's work;
-  the generator and its output are untouched.
+- `make test` — `== pass 318  fail 0  skip 1`, the skip `91-two-outputs`
+  needing a two-output nest; `85-passthrough` runs for real against the
+  built plugin. `make test-two-outputs` — `== pass 17  fail 0  skip 0`.
+- The goldens were re-recorded in the full-run sequence (`make golden`),
+  since the plugin and the now-running 85 changed what the scenarios after
+  them see; the 1:1 goldens did not move.
+- `make fixtures` — regenerates the committed fixtures byte for byte.
 
 ## What cannot be checked on this machine
 
-- **The pass-through plugin** (`make plugin`, `make plugin-try`, `85-passthrough`):
-  `extra-cmake-modules` is not installed, so nothing compiles. KWin's own headers
-  are here (`/usr/include/kwin`), so ECM is the missing piece.
 - **The plane-input shim** (`make test-shim`, `tests/shim/*`):
   `dev/spike/preload/shim.cpp` expects libkwin build-id `b4a7f7ab…` (kwin 6.7.5-1)
   and the installed libkwin is `d8d86b3c…`, so the shim scenarios skip before
-  compiling.
+  compiling. The pass-through plugin, the shim's substitute, does build here
+  now (the dependencies were installed) and `85-passthrough` runs for real.
 - **The live-session half**: the `evaluateScript` handoff, and the wallpaper inside
   a real plasmashell, have been rendered in isolation only.
 - `reuse` itself is not installed here, so `make lint-reuse` needs
@@ -100,14 +93,29 @@ those, from this side of the fork:
 - Two-output goldens exist only for `91-two-outputs`; another arrangement would
   widen `make test-two-outputs`.
 - The haze is measured at one zoom and one blur; how the blur reads at
-  extreme zooms, and the per-view hiding under the frames on two outputs, is
+  extreme zooms, and the per-view fade under the frames on two outputs, is
   only partly pinned.
-- The two skips in `make test` are honest ones: `85-passthrough` needs the plugin
-  and `91-two-outputs` needs a two-output nest. A machine with matching KWin headers
-  and ECM would turn the first into a real check — and `make test-shim` into a
-  second runner rather than a skip — which is the biggest gap left in the suite.
+- The one skip left in `make test` is honest: `91-two-outputs` needs a
+  two-output nest, which `make test-two-outputs` gives it. `make test-shim`
+  would be a second runner on a machine whose libkwin matches the shim's
+  pinned build-id - the biggest gap left in the suite.
 
 ## Sessions
+
+### 2026-09-28 — focus flies, the swap, pointer navigation, WASD, and the haze fades
+
+Every focus change travels the canvas: an activation slides the desktop to
+the window (and a half-off window counts as not visible, so a focused window
+is always wholly on screen), the two most recent windows become the pair the
+MB5 swap flies between while the modifier is held, and clicking or resting
+on a window pans the camera the least that fits it. The in-canvas pan keys
+are WASD (F alone is fit - W had collided with it), the haze fades with the
+camera instead of switching, and the settings form was rewritten for people.
+The plugin was built with the newly installed dependencies, which turned
+85-passthrough from a skip into 17 real checks and made the grasp possible.
+Scenario 70 covers the focus slide, 102 the WASD and the click-fit, 103 the
+modifier, the swap and the held-in-overworld hold. Verified: `make lint-qml`,
+`make test` == pass 318 fail 0 skip 1, `make test-two-outputs` == 17/0/0.
 
 ### 2026-09-28 — flights, the haze, border pan, the keyboard, and MB5
 

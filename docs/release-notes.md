@@ -1,5 +1,39 @@
 Unreleased:
 
+- Everything that focuses a window flies to it through the canvas. Activating
+  a window from the task manager - Alt-Tab, an application grabbing focus,
+  anything - slides the whole desktop until the window is wholly on screen,
+  centred in its placement area, and a window hanging half off the screen
+  counts as not visible: a focused window is never left outside the scene.
+
+- The canvas modifier: holding MB4 (`CanvasHold`, the back side button)
+  anywhere on the normal desktop makes the location itself the canvas at 1:1
+  - nothing visibly changes - and the overworld's gestures work: the middle
+  button grabs and pans, a drag on a window moves it on the plane, the wheel
+  zooms, an edge keeps panning. Releasing applies the moves and closes:
+  hold, arrange, let go, done. Needs the pass-through plugin (or the shim),
+  which now sees the press while the canvas is closed and consumes it.
+
+- MB5 while the modifier is held (`SwapButton`) flies between the two most
+  recent windows, an Alt-Tab on the plane: the camera springs to the other
+  window, the focus follows, and releasing opens the location there, focused
+  on it. The last two activated windows are the swap's pair.
+
+- The pointer navigates: a click on a window, or a hover that rests on one
+  for a moment, pans the camera the least that brings the window wholly into
+  view, so what the eye lands on is what the screen shows.
+
+- The in-canvas pan keys are WASD (the arrows are still there to bind), and
+  `KeyFit` is F alone - W is the pan key now.
+
+- The haze fades instead of switching: the blurred wallpaper softens away as
+  the desk fills the view on the step in and back on the step out, and at
+  rest under the desk it is gone and costs nothing.
+
+- The settings form was rewritten for people: groups in the order of use,
+  combo boxes for the fixed choices, one plain sentence per knob, and the
+  canvas modifier and the swap get their own group.
+
 - Stepping in and out is a flight, not a cut. Every step in - the chord, the
   Enter key, a double-click on a window or a frame, the toolbar's Enter -
   springs the camera to the location's viewport at 1:1 and only then writes
@@ -36,16 +70,15 @@ Unreleased:
   step. The chord, the toolbar and the panel button still open the canvas.
 
 - The open canvas is navigable from the keyboard, with defaults nothing else
-  uses: the arrow keys pan the camera one step, Tab and Shift+Tab step the
+  uses: WASD pan the camera one step, Tab and Shift+Tab step the
   selection through the windows with the camera following to keep the chosen
   window in view, and Enter with a window selected steps into it focused -
   the overview's Tab-then-Enter pattern on a canvas - while a bare Enter
   enters the location under the screen centre as it always has.
 
-- `PanHold` defaults to the forward side button, MB5, so a mouse's side
-  button is a hand on the plane out of the box and the right button stays
-  free for its own gestures (the right button is still there in the config,
-  and the middle button always navigates). The effect now names the buttons
+- `PanHold` defaults to empty - the middle button always navigates, and the
+  canvas modifier and the swap take the side buttons. The effect names the
+  buttons
   the way KWin delivers them: MB5 arrives as Qt's ExtraButton3, not
   ForwardButton, so both values are in the mask the plane-input shim and the
   pass-through plugin compare against.
