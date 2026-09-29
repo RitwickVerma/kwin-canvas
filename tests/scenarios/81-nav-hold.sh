@@ -13,9 +13,13 @@ title_of() {    # title_of CAPTION -> "SX SY"
 run_scenario() {
     if ! have_input; then skip "fakeinput not built (make tools)"; return; fi
     # The scenario exercises the right-button portal end to end; the default
-    # (ForwardButton) is covered at the end. PanHold is a config key, so pin
-    # it for the body of the scenario.
+    # (empty, the middle button always navigates) is what the nest starts
+    # with. PanHold is a config key, so pin it for the body of the scenario,
+    # and stand the pass-through plugin down: this scenario measures the
+    # QML-side portal, and its Esc belongs to the canvas (85 covers the
+    # plugin).
     setcfg PanHold RightButton
+    setcfg Passthrough false
     c state
     # Hold the right button (PanHold) on the ground and travel 200 by 100 screen
     # pixels left and up: the canvas pans the same 200 by 100, the gesture a
@@ -170,16 +174,8 @@ run_scenario() {
     assert_eq "escape closes it" "$(sget menus)" 0
     assert_eq "and leaves the canvas open" "$(sget visible)" true
 
-    # The default PanHold is the forward side button (MB5): with nothing
-    # configured it navigates like any other held button, so a mouse's side
-    # button is a hand on the plane out of the box.
-    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key PanHold --delete
-    c cancel; open_1to1
-    printf 'move 1700 900\nsleep 60\ndown forward\nsleep 60\nglide 1500 800\nsleep 60\nup forward\n' | input
-    sleep 0.3; c state
-    assert_near "the default forward button drag pans x" "$(sget viewx)" 200 3
-    assert_near "and pans y" "$(sget viewy)" 100 3
-
     c cancel
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key Passthrough --delete
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key PanHold --delete
     arrange >/dev/null
 }

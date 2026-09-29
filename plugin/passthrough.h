@@ -70,9 +70,19 @@ public Q_SLOTS:
      * canvas, whose QML then owns the whole gesture - drag the ground to pan,
      * drag a window to move it on the plane, hold still at a screen edge to
      * keep panning. Motion and wheel while one is down stay the canvas's too.
-     * Zero restores the plain pass-through of every button.
+     * Zero restores the plain pass-through of every button. (A double because
+     * the effect's DBusCall marshals its numbers that way.)
      */
-    Q_SCRIPTABLE void setNavButtons(uint buttons);
+    Q_SCRIPTABLE void setNavButtons(int buttons);
+    /**
+     * The canvas-modifier buttons (CanvasHold). A press of one of them is
+     * consumed wherever the pointer is and flips the effect's canvasHold
+     * property, so the effect can open quietly at 1:1 and commit on the
+     * release - the hold that makes the location itself the canvas. This
+     * works while the canvas is closed, which is the whole point: the filter
+     * sees the press before any window does. Zero turns the modifier off.
+     */
+    Q_SCRIPTABLE void setHoldButtons(int buttons);
     /** One line of state for the nest harness: active, camera, grab, hover. */
     Q_SCRIPTABLE QString state() const;
 
@@ -104,6 +114,12 @@ private:
     Qt::MouseButtons m_buttons;
     /** Buttons the canvas owns while they are down (setNavButtons), a mask of Qt::MouseButton values. */
     uint m_nav = 0;
+    /** The canvas-modifier buttons (setHoldButtons), a mask of Qt::MouseButton values. */
+    uint m_hold = 0;
+    /** A hold button is currently down (one of m_hold). */
+    bool m_holdDown = false;
+    /** The hold button that is down, for the mask-change check in setHoldButtons. */
+    Qt::MouseButton m_heldButton = Qt::NoButton;
     QPointer<KWin::Window> m_hover;
     QPointer<KWin::SurfaceInterface> m_hoverSurface;
 };

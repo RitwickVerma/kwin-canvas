@@ -116,6 +116,41 @@ KWin.SceneEffect {
     // handlers do: pushing into a border to pan must not toggle the canvas).
     property int navHolds: 0
     readonly property bool navHeld: navHolds > 0
+    // The canvas modifier (CanvasHold): a button that, held with the canvas
+    // closed, makes the location itself the canvas. The pass-through plugin
+    // (or the plane-input shim) sets this property on its press and release;
+    // the press opens the canvas quietly at 1:1 - pixel-identical to the
+    // desktop, no chrome - with input live, so the overworld's gestures work
+    // as if it were open (the middle button pans, a drag on a window moves
+    // it, the wheel zooms, an edge keeps panning), and the release commits
+    // the moves and closes again. Held while the overworld is open it simply
+    // counts as navigation, so the edge pan works under it there too.
+    property bool canvasHold: false
+    property bool grasp: false
+    onCanvasHoldChanged: {
+        if (canvasHold) {
+            // Held in the open overworld it is navigation only: the views
+            // count it into navHeld, and releasing does nothing.
+            if (!visible) graspStart();
+        } else if (grasp) {
+            graspEnd();
+        }
+    }
+    function graspStart() {
+        if (visible) return;
+        grasp = true;
+        open(true);
+        // The camera never slides during a grasp, so endSlide()'s measured
+        // distance is zero: what gets committed is the windows the hand
+        // moved, and the camera returns to the location's viewport.
+        slideToX = viewX;
+        slideToY = viewY;
+    }
+    function graspEnd() {
+        if (!quiet || !grasp) { grasp = false; return; }
+        grasp = false;
+        commit(null);
+    }
     // Frame positions at open, for cancel to put back what settle() wrote.
     property var openFrames: ({})
     property bool settled: false
@@ -264,7 +299,8 @@ KWin.SceneEffect {
             panDown: keysFor(configuration.KeyPanDown),
             next: keysFor(configuration.KeyNext),
             prev: keysFor(configuration.KeyPrev),
-            panHold: buttonsFor(configuration.PanHold)
+            panHold: buttonsFor(configuration.PanHold),
+            hold: buttonsFor(configuration.CanvasHold)
         };
     }
 
@@ -1190,7 +1226,7 @@ KWin.SceneEffect {
 
     // The chord: step out to the canvas, or enter the location in view.
     function toggle() {
-        if (quiet) { finishSlide(); return; }
+        if (quiet) { if (grasp) graspEnd(); else finishSlide(); return; }
         if (visible) enterHere(); else open();
     }
 
@@ -1204,7 +1240,7 @@ KWin.SceneEffect {
     // the pushed side, a slide at 1:1 and a camera step in the open canvas.
     function toggleFromBorder(border) {
         if (configuration.BorderSlide) { borderSlide(border); return; }
-        if (quiet) { finishSlide(); return; }
+        if (quiet) { if (grasp) graspEnd(); else finishSlide(); return; }
         if (visible) { enterHere(); return; }
         open(false, configuration.BorderZoom);
     }
@@ -1839,12 +1875,20 @@ KWin.SceneEffect {
         dbusInterface: "org.kde.kwin.canvas.Passthrough"
         method: "setNavButtons"
     }
+    KWin.DBusCall {
+        id: holdCall
+        service: "org.kde.KWin"
+        path: "/KWinCanvas"
+        dbusInterface: "org.kde.kwin.canvas.Passthrough"
+        method: "setHoldButtons"
+    }
     // The plugin answered: if the canvas is still open, switch it on and give it the camera.
     function passthroughProbed() {
         if (!canvasOpen || passthroughLive) return;
         passthroughLive = true;
         publishCamera();
         publishNav();
+        publishHold();
         activeCall.arguments = [true];
         activeCall.call();
     }
@@ -1861,6 +1905,17 @@ KWin.SceneEffect {
         navCall.arguments = [planeNavButtons];
         navCall.call();
     }
+    // The canvas-modifier buttons (CanvasHold): the plugin watches for these
+    // even while the canvas is closed, consumes them, and flips the effect's
+    // canvasHold property on each press and release. The mask has to reach
+    // the plugin before the first hold, so it is published as soon as the
+    // effect loads, on every reconfigure, and again whenever the plugin
+    // answers its probe.
+    readonly property int holdButtons: bindings.hold || 0
+    function publishHold() {
+        holdCall.arguments = [holdButtons];
+        holdCall.call();
+    }
     function dropPassthrough() {
         if (!passthroughLive) return;
         passthroughLive = false;
@@ -1871,6 +1926,7 @@ KWin.SceneEffect {
     onViewYChanged: if (passthroughLive) Qt.callLater(publishCamera)
     onZoomChanged: if (passthroughLive) Qt.callLater(publishCamera)
     onPlaneNavButtonsChanged: publishNav()
+    onHoldButtonsChanged: publishHold()
     onPlaneInputChanged: if (planeInput) dropPassthrough()
 
     // ---- plane input -----------------------------------------------------------
@@ -2316,7 +2372,7 @@ KWin.SceneEffect {
         text: "Canvas: return this activity to the origin"
         sequence: effect.configuration.HomeShortcut
         onActivated: {
-            if (effect.quiet) effect.finishSlide();
+            if (effect.quiet) { if (effect.grasp) effect.graspEnd(); else effect.finishSlide(); }
             if (effect.visible) { effect.home(); return; }
             effect.open();
             const t = effect.targetOf(effect.currentActivity);
@@ -2513,7 +2569,7 @@ KWin.SceneEffect {
     }
 
     function logState() {
-        let s = "kwin-canvas state visible=" + visible + (quiet ? " quiet" : "") + (passthroughLive ? " passthrough" : "") + (planeLive ? " plane" : "") + " zoom=" + zoom.toFixed(4) + " view=(" + viewX.toFixed(1) + "," + viewY.toFixed(1) + ") activity=" + labelOf(currentActivity) + " entries=" + entries.length
+        let s = "kwin-canvas state visible=" + visible + (quiet ? " quiet" : "") + (grasp ? " grasp" : "") + (passthroughLive ? " passthrough" : "") + (planeLive ? " plane" : "") + " zoom=" + zoom.toFixed(4) + " view=(" + viewX.toFixed(1) + "," + viewY.toFixed(1) + ") activity=" + labelOf(currentActivity) + " entries=" + entries.length
             + " popups=" + appPopups.length + " menus=" + canvasMenus + " nav=" + (navHeld ? "hold" : "-") + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
             + " screens=" + KWin.Workspace.screens.length + " backdrop=" + backdropLayers
             + " cam=" + (camHasGoal ? "goal" : (camLive() ? "glide" : "-"))
@@ -2541,6 +2597,7 @@ KWin.SceneEffect {
     onConfigurationChanged: {
         rebuildBindings();
         readSwipeFingers();
+        publishHold();
         const seq = configuration.DebugSeq;
         if (seq !== lastDebugSeq) {
             lastDebugSeq = seq;
@@ -2555,6 +2612,7 @@ KWin.SceneEffect {
         loadHiddenFrames();
         refreshActivities();
         lastDebugSeq = configuration.DebugSeq;
+        publishHold();
         if (configuration.AutoActivate) {
             Qt.callLater(open);
         }
@@ -2571,6 +2629,11 @@ KWin.SceneEffect {
         required property Item viewItem
         property int cursor: Qt.ArrowCursor
         property bool tappable: false
+        // Off during a grasp: a control the eye cannot see (a frame edge band)
+        // must not take a drag the hand meant for the plane. Window bodies and
+        // resize grips stay live - moving and resizing windows is what a grasp
+        // is for.
+        property bool holdOff: false
         property alias buttons: gripDrag.acceptedButtons
         readonly property bool hovered: gripHover.hovered
         readonly property bool active: gripDrag.active
@@ -2582,7 +2645,7 @@ KWin.SceneEffect {
 
         HoverHandler {
             id: gripHover
-            enabled: !grip.viewItem.spaceHeld
+            enabled: !grip.viewItem.spaceHeld && !(grip.holdOff && effect.grasp)
             cursorShape: gripDrag.active && grip.cursor === Qt.ArrowCursor ? Qt.ClosedHandCursor : grip.cursor
             onHoveredChanged: grip.viewItem.hoverCount += hovered ? 1 : -1
             Component.onDestruction: if (hovered) grip.viewItem.hoverCount -= 1
@@ -2590,7 +2653,7 @@ KWin.SceneEffect {
         DragHandler {
             id: gripDrag
             target: null
-            enabled: !grip.viewItem.spaceHeld
+            enabled: !grip.viewItem.spaceHeld && !(grip.holdOff && effect.grasp)
             acceptedButtons: effect.gripButtons
             // The portal buttons drag a control exactly as the left button
             // does; where they land on the ground instead they pan (panDrag).
@@ -2724,19 +2787,24 @@ KWin.SceneEffect {
         // is a navigation the moment it lands, but the tracker that knows that
         // is a TapHandler and a drag cancels it, so the drags count here too.
         property int portalDrags: 0
-        // A pan button held down (PanHold): this screen is being navigated.
-        // Three sources, one per stretch of the gesture: the
+        // A pan button held down (PanHold), the canvas modifier (CanvasHold),
+        // or the middle button: this screen is being navigated.
+        // Four sources, one per stretch of the gesture: the
         // tap tracker knows the press the moment it lands and the release the
         // moment it lifts, whether or not the pointer ever moves — a pointer
         // parked at a screen edge is the whole gesture — the pan drag is
         // active for the stretch where the tracker has handed the gesture to
-        // the drag, and a drag on a control counts itself (portalDrags) for the
-        // stretch where the drag has cancelled the tracker. None outlives the
-        // button.
-        readonly property bool navHeld: navHold.pressed || panDrag.active || portalDrags > 0
+        // the drag, a drag on a control counts itself (portalDrags) for the
+        // stretch where the drag has cancelled the tracker, and the canvas
+        // modifier is down for its whole hold, during a grasp and in the open
+        // overworld alike. None outlives the button.
+        readonly property bool navHeld: navHold.pressed || panDrag.active || portalDrags > 0 || effect.canvasHold
         onNavHeldChanged: effect.navHolds += navHeld ? 1 : -1
         Component.onDestruction: if (navHeld) effect.navHolds -= 1
-        enabled: !effect.quiet
+        // Input is live while the overworld is open, and while a grasp holds
+        // the canvas quietly at 1:1 - a slide without a grasp stays inert,
+        // which is what keeps a slide a brief animation and nothing more.
+        enabled: !effect.quiet || effect.grasp
         focus: true
         Connections {
             target: effect
@@ -2949,7 +3017,7 @@ KWin.SceneEffect {
             id: edgePanTimer
             interval: 16
             repeat: true
-            running: view.navHeld && effect.edgePan && effect.canvasOpen
+            running: view.navHeld && effect.edgePan && (effect.canvasOpen || effect.grasp)
             onTriggered: effect.edgePanStep(view.sg, interval / 1000)
         }
 
@@ -3035,9 +3103,11 @@ KWin.SceneEffect {
                     }
 
                     // A gesture on the frame's own area (windows sit above and
-                    // take their own taps).
+                    // take their own taps). Off during a grasp: the frames are
+                    // bare wallpaper then, and a click there should be a click
+                    // on the plane.
                     TapHandler {
-                        enabled: !view.spaceHeld
+                        enabled: !view.spaceHeld && !effect.grasp
                         acceptedButtons: Qt.LeftButton
                         onTapped: effect.frameGesture(activityFrames.activity, tapCount, point.modifiers)
                     }
@@ -3050,6 +3120,7 @@ KWin.SceneEffect {
                             readonly property int band: 8
                             viewItem: view
                             cursor: Qt.SizeAllCursor
+                            holdOff: true
                             x: index === 1 ? frame.width - band : 0
                             y: index === 3 ? frame.height - band : 0
                             width: (index === 0 || index === 2) ? frame.width : band

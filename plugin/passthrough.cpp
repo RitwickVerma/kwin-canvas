@@ -5,6 +5,7 @@
 #include "passthrough.h"
 
 #include <config-kwin.h>
+#include <effect/effecthandler.h>
 #include <wayland/seat.h>
 #include <wayland/surface.h>
 #include <wayland_server.h>
@@ -71,21 +72,40 @@ void CanvasPassthrough::setCamera(double viewX, double viewY, double zoom, const
     }
 }
 
-void CanvasPassthrough::setNavButtons(uint buttons)
+void CanvasPassthrough::setNavButtons(int buttons)
 {
-    m_nav = buttons;
+    m_nav = uint(buttons);
+}
+
+void CanvasPassthrough::setHoldButtons(int buttons)
+{
+    const uint mask = uint(buttons);
+    if (m_hold == mask) {
+        return;
+    }
+    m_hold = mask;
+    // The mask changed under a held button: treat the hold as over, so the
+    // canvas closes rather than waiting for a release that no longer counts.
+    if (m_holdDown && !(mask & uint(m_heldButton))) {
+        m_holdDown = false;
+        if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+            canvas->setProperty("canvasHold", false);
+        }
+    }
 }
 
 QString CanvasPassthrough::state() const
 {
-    return QStringLiteral("active=%1 view=(%2,%3) zoom=%4 grab=%5 ground=%6 hover=%7")
+    return QStringLiteral("active=%1 view=(%2,%3) zoom=%4 grab=%5 ground=%6 hover=%7 nav=%8 hold=%9")
         .arg(m_active ? QStringLiteral("true") : QStringLiteral("false"))
         .arg(m_viewX)
         .arg(m_viewY)
         .arg(m_zoom)
         .arg(m_grab ? m_grab->caption() : QStringLiteral("-"))
         .arg(m_grabGround ? QStringLiteral("true") : QStringLiteral("false"))
-        .arg(m_hover ? m_hover->caption() : QStringLiteral("-"));
+        .arg(m_hover ? m_hover->caption() : QStringLiteral("-"))
+        .arg(m_nav)
+        .arg(m_hold);
 }
 
 // ---- the plane ---------------------------------------------------------------
@@ -231,6 +251,26 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
 
 bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
 {
+    // A canvas-modifier button (CanvasHold) is a modifier, never a click: no
+    // window ever sees it, wherever the pointer is and whether or not the
+    // canvas is open. Each press and release flips the effect's canvasHold
+    // property, which opens the canvas quietly at 1:1 for the hold and
+    // commits on the release - the hold that makes the location itself the
+    // canvas. It works while the canvas is closed because this filter sees
+    // the press before anything else does.
+    if (uint(event->button) & m_hold) {
+        const bool pressed = event->state == PointerButtonState::Pressed;
+        if (pressed != m_holdDown) {
+            m_holdDown = pressed;
+            if (pressed) {
+                m_heldButton = Qt::MouseButton(uint(event->button));
+            }
+            if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+                canvas->setProperty("canvasHold", pressed);
+            }
+        }
+        return true;
+    }
     if (!m_active) {
         return false;
     }

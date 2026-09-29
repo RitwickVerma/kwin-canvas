@@ -1,32 +1,53 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- SPDX-FileCopyrightText: 2026 Aaron Bockelie <aaronsb@gmail.com> -->
+<!-- SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com> -->
 <!-- SPDX-License-Identifier: GPL-2.0-or-later -->
 <ui version="4.0">
  <class>KWinCanvasConfigForm</class>
  <widget class="QWidget" name="KWinCanvasConfigForm">
   <layout class="QVBoxLayout" name="verticalLayout">
-   <item><widget class="QGroupBox" name="group0"><property name="title"><string>Opening</string></property>
-    <layout class="QFormLayout" name="form0">
-     <item row="0" column="0"><widget class="QLabel" name="label_OpenZoom"><property name="text"><string>View when opened (fit, 1, or a zoom like 0.5)</string></property><property name="buddy"><cstring>kcfg_OpenZoom</cstring></property></widget></item>
-     <item row="0" column="1"><widget class="QLineEdit" name="kcfg_OpenZoom"/></item>
-     <item row="1" column="0"><widget class="QLabel" name="label_HudPosition"><property name="text"><string>Toolbar position on the primary display</string></property><property name="buddy"><cstring>kcfg_HudPosition</cstring></property></widget></item>
-     <item row="1" column="1"><widget class="QLineEdit" name="kcfg_HudPosition"/></item>
-     <item row="2" column="0"><widget class="QLabel" name="label_HudShape"><property name="text"><string>Toolbar shape (auto, horizontal, vertical, square)</string></property><property name="buddy"><cstring>kcfg_HudShape</cstring></property></widget></item>
-     <item row="2" column="1"><widget class="QLineEdit" name="kcfg_HudShape"/></item>
-     <item row="3" column="0"><widget class="QLabel" name="label_Palette"><property name="text"><string>Activity colours (default, okabe-ito, tol, ibm, mono)</string></property><property name="buddy"><cstring>kcfg_Palette</cstring></property></widget></item>
-     <item row="3" column="1"><widget class="QLineEdit" name="kcfg_Palette"/></item>
-     <item row="4" column="0"><widget class="QLabel" name="label_BorderZoom"><property name="text"><string>View when a screen edge or corner opens it (0.8, fit, or 1)</string></property><property name="buddy"><cstring>kcfg_BorderZoom</cstring></property></widget></item>
-     <item row="4" column="1"><widget class="QLineEdit" name="kcfg_BorderZoom"/></item>
+   <item><widget class="QGroupBox" name="groupOpening"><property name="title"><string>Opening the canvas</string></property>
+    <layout class="QFormLayout" name="formOpening">
+     <item row="0" column="0"><widget class="QLabel" name="label_OpenZoom"><property name="text"><string>View when the canvas opens</string></property><property name="buddy"><cstring>kcfg_OpenZoom</cstring></property></widget></item>
+     <item row="0" column="1"><widget class="QComboBox" name="kcfg_OpenZoom"><property name="editable"><bool>true</bool></property><item><property name="text"><string>1</string></property></item><item><property name="text"><string>fit</string></property></item><item><property name="text"><string>0.5</string></property></item></widget></item>
+     <item row="1" column="0"><widget class="QLabel" name="label_BorderZoom"><property name="text"><string>View when a screen edge or corner opens it</string></property><property name="buddy"><cstring>kcfg_BorderZoom</cstring></property></widget></item>
+     <item row="1" column="1"><widget class="QComboBox" name="kcfg_BorderZoom"><property name="editable"><bool>true</bool></property><item><property name="text"><string>0.8</string></property></item><item><property name="text"><string>1</string></property></item><item><property name="text"><string>fit</string></property></item></widget></item>
+     <item row="2" column="1"><widget class="QCheckBox" name="kcfg_BorderSlide"><property name="text"><string>A screen edge push pans the plane one step toward it instead of opening the canvas (the edges are a route, not a door)</string></property></widget></item>
+     <item row="3" column="1"><widget class="QCheckBox" name="kcfg_AutoActivate"><property name="text"><string>Open the canvas as soon as the effect loads, at login</string></property></widget></item>
     </layout></widget></item>
-   <item><widget class="QGroupBox" name="group1"><property name="title"><string>Keys inside the canvas (Qt key names, comma separated)</string></property>
-    <layout class="QFormLayout" name="form1">
-     <item row="0" column="0"><widget class="QLabel" name="label_KeyApply"><property name="text"><string>Apply and close</string></property><property name="buddy"><cstring>kcfg_KeyApply</cstring></property></widget></item>
+   <item><widget class="QGroupBox" name="groupHold"><property name="title"><string>The canvas modifier - hold a button on the normal desktop</string></property>
+    <layout class="QVBoxLayout" name="formHoldV">
+     <item><widget class="QLabel" name="label_HoldExplain"><property name="text"><string>While the button is held, the desktop itself becomes the canvas at 1:1 - nothing visibly changes - and every canvas gesture works: drag the ground to pan, drag a window to move it, the wheel zooms, a pointer at a screen edge keeps panning. Letting go applies the moves and returns to the desktop. Needs the pass-through plugin (or the plane-input shim) to see the press while the canvas is closed.</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+     <item><layout class="QFormLayout" name="formHold">
+      <item row="0" column="0"><widget class="QLabel" name="label_CanvasHold"><property name="text"><string>Button held (LeftButton, MiddleButton, RightButton, BackButton, ForwardButton; BackButton = MB4)</string></property><property name="buddy"><cstring>kcfg_CanvasHold</cstring></property></widget></item>
+      <item row="0" column="1"><widget class="QLineEdit" name="kcfg_CanvasHold"/></item>
+     </layout></item>
+    </layout></widget></item>
+   <item><widget class="QGroupBox" name="groupNav"><property name="title"><string>Navigating</string></property>
+    <layout class="QFormLayout" name="formNav">
+     <item row="0" column="0"><widget class="QLabel" name="label_PanHold"><property name="text"><string>Buttons held to navigate the open canvas (the middle button always navigates)</string></property><property name="buddy"><cstring>kcfg_PanHold</cstring></property></widget></item>
+     <item row="0" column="1"><widget class="QLineEdit" name="kcfg_PanHold"/></item>
+     <item row="1" column="1"><widget class="QCheckBox" name="kcfg_EdgePan"><property name="text"><string>A pointer parked at a screen edge keeps panning that way while a navigate button is held</string></property></widget></item>
+     <item row="2" column="0"><widget class="QLabel" name="label_EdgePanMargin"><property name="text"><string>Width of the edge band (screen px)</string></property><property name="buddy"><cstring>kcfg_EdgePanMargin</cstring></property></widget></item>
+     <item row="2" column="1"><widget class="QSpinBox" name="kcfg_EdgePanMargin"><property name="minimum"><number>1</number></property><property name="maximum"><number>256</number></property></widget></item>
+     <item row="3" column="0"><widget class="QLabel" name="label_EdgePanSpeed"><property name="text"><string>Edge panning speed at the very edge (screen px/s)</string></property><property name="buddy"><cstring>kcfg_EdgePanSpeed</cstring></property></widget></item>
+     <item row="3" column="1"><widget class="QDoubleSpinBox" name="kcfg_EdgePanSpeed"><property name="minimum"><double>0.0</double></property><property name="maximum"><double>6000.0</double></property><property name="singleStep"><double>50.0</double></property></widget></item>
+     <item row="4" column="0"><widget class="QLabel" name="label_PanStep"><property name="text"><string>One slide or pan step, as a fraction of the screen</string></property><property name="buddy"><cstring>kcfg_PanStep</cstring></property></widget></item>
+     <item row="4" column="1"><widget class="QDoubleSpinBox" name="kcfg_PanStep"><property name="minimum"><double>0.05</double></property><property name="maximum"><double>1.0</double></property><property name="singleStep"><double>0.05</double></property></widget></item>
+     <item row="5" column="0"><widget class="QLabel" name="label_PanDuration"><property name="text"><string>Length of the slide animation (ms, 0 jumps)</string></property><property name="buddy"><cstring>kcfg_PanDuration</cstring></property></widget></item>
+     <item row="5" column="1"><widget class="QSpinBox" name="kcfg_PanDuration"><property name="minimum"><number>0</number></property><property name="maximum"><number>2000</number></property></widget></item>
+     <item row="6" column="0"><widget class="QLabel" name="label_PanSwipeFingers"><property name="text"><string>Touchpad swipe fingers (0 off; 3 and 4 also fire KWin's own swipes)</string></property><property name="buddy"><cstring>kcfg_PanSwipeFingers</cstring></property></widget></item>
+     <item row="6" column="1"><widget class="QSpinBox" name="kcfg_PanSwipeFingers"><property name="minimum"><number>0</number></property><property name="maximum"><number>5</number></property></widget></item>
+    </layout></widget></item>
+   <item><widget class="QGroupBox" name="groupKeys"><property name="title"><string>Keys inside the canvas (Qt key names, comma separated; the plugin hands keys to the focused window when loaded)</string></property>
+    <layout class="QFormLayout" name="formKeys">
+     <item row="0" column="0"><widget class="QLabel" name="label_KeyApply"><property name="text"><string>Apply and close; with a window selected, enter it focused</string></property><property name="buddy"><cstring>kcfg_KeyApply</cstring></property></widget></item>
      <item row="0" column="1"><widget class="QLineEdit" name="kcfg_KeyApply"/></item>
-     <item row="1" column="0"><widget class="QLabel" name="label_KeyCancel"><property name="text"><string>Cancel</string></property><property name="buddy"><cstring>kcfg_KeyCancel</cstring></property></widget></item>
+     <item row="1" column="0"><widget class="QLabel" name="label_KeyCancel"><property name="text"><string>Cancel, back to where you were</string></property><property name="buddy"><cstring>kcfg_KeyCancel</cstring></property></widget></item>
      <item row="1" column="1"><widget class="QLineEdit" name="kcfg_KeyCancel"/></item>
-     <item row="2" column="0"><widget class="QLabel" name="label_KeyHome"><property name="text"><string>Look through frames</string></property><property name="buddy"><cstring>kcfg_KeyHome</cstring></property></widget></item>
+     <item row="2" column="0"><widget class="QLabel" name="label_KeyHome"><property name="text"><string>Look through this activity's frames</string></property><property name="buddy"><cstring>kcfg_KeyHome</cstring></property></widget></item>
      <item row="2" column="1"><widget class="QLineEdit" name="kcfg_KeyHome"/></item>
-     <item row="3" column="0"><widget class="QLabel" name="label_KeyOrigin"><property name="text"><string>Camera to origin</string></property><property name="buddy"><cstring>kcfg_KeyOrigin</cstring></property></widget></item>
+     <item row="3" column="0"><widget class="QLabel" name="label_KeyOrigin"><property name="text"><string>Camera to the canvas origin</string></property><property name="buddy"><cstring>kcfg_KeyOrigin</cstring></property></widget></item>
      <item row="3" column="1"><widget class="QLineEdit" name="kcfg_KeyOrigin"/></item>
      <item row="4" column="0"><widget class="QLabel" name="label_KeyFit"><property name="text"><string>Zoom to fit</string></property><property name="buddy"><cstring>kcfg_KeyFit</cstring></property></widget></item>
      <item row="4" column="1"><widget class="QLineEdit" name="kcfg_KeyFit"/></item>
@@ -36,96 +57,124 @@
      <item row="6" column="1"><widget class="QLineEdit" name="kcfg_KeyZoomOut"/></item>
      <item row="7" column="0"><widget class="QLabel" name="label_KeyPan"><property name="text"><string>Hold to pan from anywhere</string></property><property name="buddy"><cstring>kcfg_KeyPan</cstring></property></widget></item>
      <item row="7" column="1"><widget class="QLineEdit" name="kcfg_KeyPan"/></item>
+     <item row="8" column="0"><widget class="QLabel" name="label_KeyPanLeft"><property name="text"><string>Pan the camera one step left / right / up / down (the arrow keys)</string></property><property name="buddy"><cstring>kcfg_KeyPanLeft</cstring></property></widget></item>
+     <item row="8" column="1"><layout class="QHBoxLayout" name="hboxPanKeys">
+      <item><widget class="QLineEdit" name="kcfg_KeyPanLeft"/></item>
+      <item><widget class="QLineEdit" name="kcfg_KeyPanRight"/></item>
+      <item><widget class="QLineEdit" name="kcfg_KeyPanUp"/></item>
+      <item><widget class="QLineEdit" name="kcfg_KeyPanDown"/></item>
+     </layout></item>
+     <item row="9" column="0"><widget class="QLabel" name="label_KeyNext"><property name="text"><string>Next / previous window in the selection cycle (Tab / Shift+Tab)</string></property><property name="buddy"><cstring>kcfg_KeyNext</cstring></property></widget></item>
+     <item row="9" column="1"><layout class="QHBoxLayout" name="hboxCycleKeys">
+      <item><widget class="QLineEdit" name="kcfg_KeyNext"/></item>
+      <item><widget class="QLineEdit" name="kcfg_KeyPrev"/></item>
+     </layout></item>
     </layout></widget></item>
-   <item><widget class="QGroupBox" name="group2"><property name="title"><string>Mouse gestures (Click or DoubleClick, with Shift+, Ctrl+, Alt+, Meta+)</string></property>
-    <layout class="QFormLayout" name="form2">
-     <item row="0" column="0"><widget class="QLabel" name="label_MouseFocusWindow"><property name="text"><string>On a window: apply focused on it</string></property><property name="buddy"><cstring>kcfg_MouseFocusWindow</cstring></property></widget></item>
+   <item><widget class="QGroupBox" name="groupGestures"><property name="title"><string>Mouse gestures (Click or DoubleClick, with Shift+, Ctrl+, Alt+, Meta+)</string></property>
+    <layout class="QFormLayout" name="formGestures">
+     <item row="0" column="0"><widget class="QLabel" name="label_MouseFocusWindow"><property name="text"><string>On a window: enter its location, focused on it</string></property><property name="buddy"><cstring>kcfg_MouseFocusWindow</cstring></property></widget></item>
      <item row="0" column="1"><widget class="QLineEdit" name="kcfg_MouseFocusWindow"/></item>
-     <item row="1" column="0"><widget class="QLabel" name="label_MouseZoomToActivity"><property name="text"><string>On a frame: zoom to that activity</string></property><property name="buddy"><cstring>kcfg_MouseZoomToActivity</cstring></property></widget></item>
-     <item row="1" column="1"><widget class="QLineEdit" name="kcfg_MouseZoomToActivity"/></item>
-     <item row="2" column="0"><widget class="QLabel" name="label_MouseGotoActivity"><property name="text"><string>On a frame: apply with that activity current</string></property><property name="buddy"><cstring>kcfg_MouseGotoActivity</cstring></property></widget></item>
-     <item row="2" column="1"><widget class="QLineEdit" name="kcfg_MouseGotoActivity"/></item>
+     <item row="1" column="0"><widget class="QLabel" name="label_FocusTarget"><property name="text"><string>Where that puts the desk: smart (the window and the rest of the desk in view), centre (the window comes to the screen centre), window (the clicked point stays under the pointer, shifted only to fit), desktop (a frame stays put)</string></property><property name="buddy"><cstring>kcfg_FocusTarget</cstring></property></widget></item>
+     <item row="1" column="1"><widget class="QComboBox" name="kcfg_FocusTarget"><item><property name="text"><string>smart</string></property></item><item><property name="text"><string>centre</string></property></item><item><property name="text"><string>window</string></property></item><item><property name="text"><string>desktop</string></property></item></widget></item>
+     <item row="2" column="0"><widget class="QLabel" name="label_MouseZoomToActivity"><property name="text"><string>On a frame: zoom to that activity (canvas stays open)</string></property><property name="buddy"><cstring>kcfg_MouseZoomToActivity</cstring></property></widget></item>
+     <item row="2" column="1"><widget class="QLineEdit" name="kcfg_MouseZoomToActivity"/></item>
+     <item row="3" column="0"><widget class="QLabel" name="label_MouseGotoActivity"><property name="text"><string>On a frame: enter it, with that activity current</string></property><property name="buddy"><cstring>kcfg_MouseGotoActivity</cstring></property></widget></item>
+     <item row="3" column="1"><widget class="QLineEdit" name="kcfg_MouseGotoActivity"/></item>
      <item row="4" column="0"><widget class="QLabel" name="label_MouseSelect"><property name="text"><string>On a window: select it alone</string></property><property name="buddy"><cstring>kcfg_MouseSelect</cstring></property></widget></item>
      <item row="4" column="1"><widget class="QLineEdit" name="kcfg_MouseSelect"/></item>
-     <item row="5" column="0"><widget class="QLabel" name="label_MouseSelectAdd"><property name="text"><string>On a window: add to selection (its modifier + drag on ground: rectangle select)</string></property><property name="buddy"><cstring>kcfg_MouseSelectAdd</cstring></property></widget></item>
+     <item row="5" column="0"><widget class="QLabel" name="label_MouseSelectAdd"><property name="text"><string>On a window: add to the selection (its modifier + drag on the ground: select by rectangle)</string></property><property name="buddy"><cstring>kcfg_MouseSelectAdd</cstring></property></widget></item>
      <item row="5" column="1"><widget class="QLineEdit" name="kcfg_MouseSelectAdd"/></item>
-     <item row="6" column="0"><widget class="QLabel" name="label_MouseSelectToggle"><property name="text"><string>On a window: toggle selection</string></property><property name="buddy"><cstring>kcfg_MouseSelectToggle</cstring></property></widget></item>
+     <item row="6" column="0"><widget class="QLabel" name="label_MouseSelectToggle"><property name="text"><string>On a window: toggle its selection</string></property><property name="buddy"><cstring>kcfg_MouseSelectToggle</cstring></property></widget></item>
      <item row="6" column="1"><widget class="QLineEdit" name="kcfg_MouseSelectToggle"/></item>
-     <item row="7" column="0"><widget class="QLabel" name="label_MouseContextMenu"><property name="text"><string>On a window: arrange menu for the selection</string></property><property name="buddy"><cstring>kcfg_MouseContextMenu</cstring></property></widget></item>
+     <item row="7" column="0"><widget class="QLabel" name="label_MouseContextMenu"><property name="text"><string>On a window: open the arrange menu</string></property><property name="buddy"><cstring>kcfg_MouseContextMenu</cstring></property></widget></item>
      <item row="7" column="1"><widget class="QLineEdit" name="kcfg_MouseContextMenu"/></item>
-     <item row="9" column="1"><widget class="QCheckBox" name="kcfg_FramesCarryWindows"><property name="text"><string>Dragging an activity's frames carries its windows along</string></property></widget></item>
-     <item row="8" column="0"><widget class="QLabel" name="label_FocusTarget"><property name="text"><string>Double-click target: smart (the window and the rest of the desk in view), centre (the window comes to the screen centre), window (the clicked point stays under the pointer, shifted only to fit), desktop (a frame stays put)</string></property><property name="buddy"><cstring>kcfg_FocusTarget</cstring></property></widget></item>
-     <item row="8" column="1"><widget class="QLineEdit" name="kcfg_FocusTarget"/></item>
-     <item row="3" column="0"><widget class="QLabel" name="label_MouseNewActivityAt"><property name="text"><string>On a window outside every frame: new activity there</string></property><property name="buddy"><cstring>kcfg_MouseNewActivityAt</cstring></property></widget></item>
-     <item row="3" column="1"><widget class="QLineEdit" name="kcfg_MouseNewActivityAt"/></item>
-    </layout></widget></item>
-   <item><widget class="QGroupBox" name="group3"><property name="title"><string>Default global chords (rebind under Shortcuts > KWin)</string></property>
-    <layout class="QFormLayout" name="form3">
-     <item row="0" column="0"><widget class="QLabel" name="label_ToggleShortcut"><property name="text"><string>Step out to the canvas, or enter the location in view</string></property><property name="buddy"><cstring>kcfg_ToggleShortcut</cstring></property></widget></item>
-     <item row="0" column="1"><widget class="QLineEdit" name="kcfg_ToggleShortcut"/></item>
-     <item row="1" column="0"><widget class="QLabel" name="label_HomeShortcut"><property name="text"><string>Return this activity to the origin</string></property><property name="buddy"><cstring>kcfg_HomeShortcut</cstring></property></widget></item>
-     <item row="1" column="1"><widget class="QLineEdit" name="kcfg_HomeShortcut"/></item>
-     <item row="2" column="0"><widget class="QLabel" name="label_PanLeftShortcut"><property name="text"><string>Pan left one step</string></property><property name="buddy"><cstring>kcfg_PanLeftShortcut</cstring></property></widget></item>
-     <item row="2" column="1"><widget class="QLineEdit" name="kcfg_PanLeftShortcut"/></item>
-     <item row="3" column="0"><widget class="QLabel" name="label_PanRightShortcut"><property name="text"><string>Pan right one step</string></property><property name="buddy"><cstring>kcfg_PanRightShortcut</cstring></property></widget></item>
-     <item row="3" column="1"><widget class="QLineEdit" name="kcfg_PanRightShortcut"/></item>
-     <item row="4" column="0"><widget class="QLabel" name="label_PanUpShortcut"><property name="text"><string>Pan up one step</string></property><property name="buddy"><cstring>kcfg_PanUpShortcut</cstring></property></widget></item>
-     <item row="4" column="1"><widget class="QLineEdit" name="kcfg_PanUpShortcut"/></item>
-     <item row="5" column="0"><widget class="QLabel" name="label_PanDownShortcut"><property name="text"><string>Pan down one step</string></property><property name="buddy"><cstring>kcfg_PanDownShortcut</cstring></property></widget></item>
-     <item row="5" column="1"><widget class="QLineEdit" name="kcfg_PanDownShortcut"/></item>
-    </layout></widget></item>
-   <item><widget class="QGroupBox" name="groupPan"><property name="title"><string>Panning at 1:1</string></property>
-    <layout class="QFormLayout" name="formPan">
-     <item row="0" column="0"><widget class="QLabel" name="label_PanStep"><property name="text"><string>Step, as a fraction of the screen</string></property><property name="buddy"><cstring>kcfg_PanStep</cstring></property></widget></item>
-     <item row="0" column="1"><widget class="QDoubleSpinBox" name="kcfg_PanStep"><property name="minimum"><double>0.05</double></property><property name="maximum"><double>1.0</double></property><property name="singleStep"><double>0.05</double></property></widget></item>
-     <item row="1" column="0"><widget class="QLabel" name="label_PanDuration"><property name="text"><string>Slide duration (ms, 0 jumps)</string></property><property name="buddy"><cstring>kcfg_PanDuration</cstring></property></widget></item>
-     <item row="1" column="1"><widget class="QSpinBox" name="kcfg_PanDuration"><property name="minimum"><number>0</number></property><property name="maximum"><number>2000</number></property></widget></item>
-     <item row="3" column="1"><widget class="QCheckBox" name="kcfg_Passthrough"><property name="text"><string>Pass clicks, wheel and keys through to windows while the canvas is open (needs the kwin-canvas-passthrough plugin)</string></property></widget></item>
-     <item row="2" column="0"><widget class="QLabel" name="label_PanSwipeFingers"><property name="text"><string>Touchpad swipe fingers (0 off; 3 and 4 also fire KWin's own swipes)</string></property><property name="buddy"><cstring>kcfg_PanSwipeFingers</cstring></property></widget></item>
-     <item row="2" column="1"><widget class="QSpinBox" name="kcfg_PanSwipeFingers"><property name="minimum"><number>0</number></property><property name="maximum"><number>5</number></property></widget></item>
-    </layout></widget></item>
-   <item><widget class="QGroupBox" name="groupNav"><property name="title"><string>Navigating the open canvas (hold a button)</string></property>
-    <layout class="QFormLayout" name="formNav">
-     <item row="0" column="0"><widget class="QLabel" name="label_PanHold"><property name="text"><string>Button held to navigate and to move windows (default ForwardButton, MB5; the middle button always navigates)</string></property><property name="buddy"><cstring>kcfg_PanHold</cstring></property></widget></item>
-     <item row="0" column="1"><widget class="QLineEdit" name="kcfg_PanHold"/></item>
-     <item row="1" column="1"><widget class="QCheckBox" name="kcfg_EdgePan"><property name="text"><string>A pointer at a screen edge keeps panning that way while the button is held</string></property></widget></item>
-     <item row="2" column="0"><widget class="QLabel" name="label_EdgePanMargin"><property name="text"><string>Edge band (screen px)</string></property><property name="buddy"><cstring>kcfg_EdgePanMargin</cstring></property></widget></item>
-     <item row="2" column="1"><widget class="QSpinBox" name="kcfg_EdgePanMargin"><property name="minimum"><number>1</number></property><property name="maximum"><number>256</number></property></widget></item>
-     <item row="3" column="0"><widget class="QLabel" name="label_EdgePanSpeed"><property name="text"><string>Edge panning speed at the very edge (screen px/s)</string></property><property name="buddy"><cstring>kcfg_EdgePanSpeed</cstring></property></widget></item>
-     <item row="3" column="1"><widget class="QDoubleSpinBox" name="kcfg_EdgePanSpeed"><property name="minimum"><double>0.0</double></property><property name="maximum"><double>6000.0</double></property><property name="singleStep"><double>50.0</double></property></widget></item>
-    </layout></widget></item>
-   <item><widget class="QGroupBox" name="group4"><property name="title"><string>Ground</string></property>
-    <layout class="QFormLayout" name="form4">
-     <item row="0" column="0"><widget class="QLabel" name="label_GridBase"><property name="text"><string>Minor grid spacing (px)</string></property><property name="buddy"><cstring>kcfg_GridBase</cstring></property></widget></item>
-     <item row="0" column="1"><widget class="QSpinBox" name="kcfg_GridBase"><property name="minimum"><number>8</number></property><property name="maximum"><number>1024</number></property></widget></item>
-     <item row="1" column="0"><widget class="QLabel" name="label_TileImage"><property name="text"><string>Tile image (file URL, empty for the grid)</string></property><property name="buddy"><cstring>kcfg_TileImage</cstring></property></widget></item>
-     <item row="1" column="1"><widget class="QLineEdit" name="kcfg_TileImage"/></item>
-     <item row="2" column="0"><widget class="QLabel" name="label_Backdrop"><property name="text"><string>Beyond the frames: wallpaper or grid</string></property><property name="buddy"><cstring>kcfg_Backdrop</cstring></property></widget></item>
-     <item row="2" column="1"><widget class="QLineEdit" name="kcfg_Backdrop"/></item>
-     <item row="3" column="0"><widget class="QLabel" name="label_BackdropDim"><property name="text"><string>Dim on the backdrop wallpaper (0 as-is to 1 gone)</string></property><property name="buddy"><cstring>kcfg_BackdropDim</cstring></property></widget></item>
-     <item row="3" column="1"><widget class="QDoubleSpinBox" name="kcfg_BackdropDim"><property name="minimum"><double>0.0</double></property><property name="maximum"><double>1.0</double></property><property name="singleStep"><double>0.05</double></property></widget></item>
-     <item row="4" column="0"><widget class="QLabel" name="label_BackdropBlur"><property name="text"><string>Blur on the backdrop wallpaper beyond the desks (px, 0 sharp)</string></property><property name="buddy"><cstring>kcfg_BackdropBlur</cstring></property></widget></item>
-     <item row="4" column="1"><widget class="QSpinBox" name="kcfg_BackdropBlur"><property name="minimum"><number>0</number></property><property name="maximum"><number>128</number></property></widget></item>
+     <item row="8" column="0"><widget class="QLabel" name="label_MouseNewActivityAt"><property name="text"><string>On a window outside every frame: new activity centred on it</string></property><property name="buddy"><cstring>kcfg_MouseNewActivityAt</cstring></property></widget></item>
+     <item row="8" column="1"><widget class="QLineEdit" name="kcfg_MouseNewActivityAt"/></item>
     </layout></widget></item>
    <item><widget class="QGroupBox" name="groupMotion"><property name="title"><string>Motion and weight</string></property>
     <layout class="QFormLayout" name="formMotion">
-     <item row="0" column="1"><widget class="QCheckBox" name="kcfg_PanInertia"><property name="text"><string>A let-go pan keeps moving, slowing by the friction below</string></property></widget></item>
-     <item row="1" column="0"><widget class="QLabel" name="label_PanFriction"><property name="text"><string>Friction on a flung pan (per second)</string></property><property name="buddy"><cstring>kcfg_PanFriction</cstring></property></widget></item>
-     <item row="1" column="1"><widget class="QDoubleSpinBox" name="kcfg_PanFriction"><property name="minimum"><double>0.1</double></property><property name="maximum"><double>20.0</double></property><property name="singleStep"><double>0.1</double></property></widget></item>
-     <item row="2" column="1"><widget class="QCheckBox" name="kcfg_SmoothZoom"><property name="text"><string>Wheel zoom and camera moves spring to their destination</string></property></widget></item>
-     <item row="3" column="0"><widget class="QLabel" name="label_CamSpring"><property name="text"><string>Camera spring rate (1/s, 14 is about a third of a second)</string></property><property name="buddy"><cstring>kcfg_CamSpring</cstring></property></widget></item>
-     <item row="3" column="1"><widget class="QDoubleSpinBox" name="kcfg_CamSpring"><property name="minimum"><double>1.0</double></property><property name="maximum"><double>60.0</double></property><property name="singleStep"><double>1.0</double></property></widget></item>
-     <item row="4" column="1"><widget class="QCheckBox" name="kcfg_WindowPhysics"><property name="text"><string>A dragged window lifts, trails after the hand and settles</string></property></widget></item>
+     <item row="0" column="1"><widget class="QCheckBox" name="kcfg_SmoothZoom"><property name="text"><string>The wheel zoom and every camera move spring to their destination, with the point under the cursor pinned</string></property></widget></item>
+     <item row="1" column="0"><widget class="QLabel" name="label_CamSpring"><property name="text"><string>Camera spring rate (1/s; 14 is about a third of a second, higher is snappier)</string></property><property name="buddy"><cstring>kcfg_CamSpring</cstring></property></widget></item>
+     <item row="1" column="1"><widget class="QDoubleSpinBox" name="kcfg_CamSpring"><property name="minimum"><double>1.0</double></property><property name="maximum"><double>60.0</double></property><property name="singleStep"><double>1.0</double></property></widget></item>
+     <item row="2" column="1"><widget class="QCheckBox" name="kcfg_PanInertia"><property name="text"><string>A let-go pan keeps moving and slows by the friction below</string></property></widget></item>
+     <item row="3" column="0"><widget class="QLabel" name="label_PanFriction"><property name="text"><string>Friction on a flung pan (per second)</string></property><property name="buddy"><cstring>kcfg_PanFriction</cstring></property></widget></item>
+     <item row="3" column="1"><widget class="QDoubleSpinBox" name="kcfg_PanFriction"><property name="minimum"><double>0.1</double></property><property name="maximum"><double>20.0</double></property><property name="singleStep"><double>0.1</double></property></widget></item>
+     <item row="4" column="1"><widget class="QCheckBox" name="kcfg_WindowPhysics"><property name="text"><string>A dragged window lifts, trails after the hand and settles (drawn only; the position is exact either way)</string></property></widget></item>
     </layout></widget></item>
    <item><widget class="QGroupBox" name="groupSnap"><property name="title"><string>Snapping while dragging</string></property>
     <layout class="QFormLayout" name="formSnap">
-     <item row="0" column="1"><widget class="QCheckBox" name="kcfg_SnapEdges"><property name="text"><string>Snap to edges of other windows and frames</string></property></widget></item>
+     <item row="0" column="1"><widget class="QCheckBox" name="kcfg_SnapEdges"><property name="text"><string>Snap to the edges of other windows and frames</string></property></widget></item>
      <item row="1" column="1"><widget class="QCheckBox" name="kcfg_SnapCorners"><property name="text"><string>Snap to corners</string></property></widget></item>
      <item row="2" column="1"><widget class="QCheckBox" name="kcfg_SnapGrid"><property name="text"><string>Snap to the canvas grid</string></property></widget></item>
      <item row="3" column="0"><widget class="QLabel" name="label_SnapGridSize"><property name="text"><string>Grid step (px)</string></property><property name="buddy"><cstring>kcfg_SnapGridSize</cstring></property></widget></item>
      <item row="3" column="1"><widget class="QSpinBox" name="kcfg_SnapGridSize"><property name="minimum"><number>4</number></property><property name="maximum"><number>1024</number></property></widget></item>
-     <item row="4" column="0"><widget class="QLabel" name="label_SnapDistance"><property name="text"><string>Snap distance (screen px)</string></property><property name="buddy"><cstring>kcfg_SnapDistance</cstring></property></widget></item>
+     <item row="4" column="0"><widget class="QLabel" name="label_SnapDistance"><property name="text"><string>How close a snap grabs (screen px)</string></property><property name="buddy"><cstring>kcfg_SnapDistance</cstring></property></widget></item>
      <item row="4" column="1"><widget class="QSpinBox" name="kcfg_SnapDistance"><property name="minimum"><number>1</number></property><property name="maximum"><number>64</number></property></widget></item>
+     <item row="5" column="0"><widget class="QLabel" name="label_ArrangeGap"><property name="text"><string>Gap between arranged windows (px)</string></property><property name="buddy"><cstring>kcfg_ArrangeGap</cstring></property></widget></item>
+     <item row="5" column="1"><widget class="QSpinBox" name="kcfg_ArrangeGap"><property name="minimum"><number>0</number></property><property name="maximum"><number>256</number></property></widget></item>
+    </layout></widget></item>
+   <item><widget class="QGroupBox" name="groupGround"><property name="title"><string>The ground and what lies beyond the desks</string></property>
+    <layout class="QFormLayout" name="formGround">
+     <item row="0" column="0"><widget class="QLabel" name="label_Backdrop"><property name="text"><string>Beyond the frames</string></property><property name="buddy"><cstring>kcfg_Backdrop</cstring></property></widget></item>
+     <item row="0" column="1"><widget class="QComboBox" name="kcfg_Backdrop"><item><property name="text"><string>wallpaper</string></property></item><item><property name="text"><string>grid</string></property></item></widget></item>
+     <item row="1" column="0"><widget class="QLabel" name="label_BackdropBlur"><property name="text"><string>Blur on the wallpaper beyond the desks (px, 0 sharp)</string></property><property name="buddy"><cstring>kcfg_BackdropBlur</cstring></property></widget></item>
+     <item row="1" column="1"><widget class="QSpinBox" name="kcfg_BackdropBlur"><property name="minimum"><number>0</number></property><property name="maximum"><number>128</number></property></widget></item>
+     <item row="2" column="0"><widget class="QLabel" name="label_BackdropDim"><property name="text"><string>Dim on the backdrop wallpaper (0 as-is, 1 gone)</string></property><property name="buddy"><cstring>kcfg_BackdropDim</cstring></property></widget></item>
+     <item row="2" column="1"><widget class="QDoubleSpinBox" name="kcfg_BackdropDim"><property name="minimum"><double>0.0</double></property><property name="maximum"><double>1.0</double></property><property name="singleStep"><double>0.05</double></property></widget></item>
+     <item row="3" column="0"><widget class="QLabel" name="label_Background"><property name="text"><string>Ground background colour (#RRGGBB)</string></property><property name="buddy"><cstring>kcfg_Background</cstring></property></widget></item>
+     <item row="3" column="1"><widget class="QLineEdit" name="kcfg_Background"/></item>
+     <item row="4" column="0"><widget class="QLabel" name="label_LineColor"><property name="text"><string>Grid line colour (#RRGGBB)</string></property><property name="buddy"><cstring>kcfg_LineColor</cstring></property></widget></item>
+     <item row="4" column="1"><widget class="QLineEdit" name="kcfg_LineColor"/></item>
+     <item row="5" column="0"><widget class="QLabel" name="label_GridBase"><property name="text"><string>Minor grid spacing (px)</string></property><property name="buddy"><cstring>kcfg_GridBase</cstring></property></widget></item>
+     <item row="5" column="1"><widget class="QSpinBox" name="kcfg_GridBase"><property name="minimum"><number>8</number></property><property name="maximum"><number>1024</number></property></widget></item>
+     <item row="6" column="0"><widget class="QLabel" name="label_GridOctaveFactor"><property name="text"><string>Each coarser grid octave is this many times larger</string></property><property name="buddy"><cstring>kcfg_GridOctaveFactor</cstring></property></widget></item>
+     <item row="6" column="1"><widget class="QSpinBox" name="kcfg_GridOctaveFactor"><property name="minimum"><number>2</number></property><property name="maximum"><number>16</number></property></widget></item>
+     <item row="7" column="0"><widget class="QLabel" name="label_GridOctaves"><property name="text"><string>Number of grid octaves drawn</string></property><property name="buddy"><cstring>kcfg_GridOctaves</cstring></property></widget></item>
+     <item row="7" column="1"><widget class="QSpinBox" name="kcfg_GridOctaves"><property name="minimum"><number>1</number></property><property name="maximum"><number>8</number></property></widget></item>
+     <item row="8" column="0"><widget class="QLabel" name="label_TileImage"><property name="text"><string>Tile image instead of the grid (file URL, empty for the grid)</string></property><property name="buddy"><cstring>kcfg_TileImage</cstring></property></widget></item>
+     <item row="8" column="1"><widget class="QLineEdit" name="kcfg_TileImage"/></item>
+    </layout></widget></item>
+   <item><widget class="QGroupBox" name="groupActivity"><property name="title"><string>Activities and windows</string></property>
+    <layout class="QFormLayout" name="formActivity">
+     <item row="0" column="0"><widget class="QLabel" name="label_Palette"><property name="text"><string>Activity colours (okabe-ito, tol and ibm are colour-blind safe)</string></property><property name="buddy"><cstring>kcfg_Palette</cstring></property></widget></item>
+     <item row="0" column="1"><widget class="QComboBox" name="kcfg_Palette"><item><property name="text"><string>okabe-ito</string></property></item><item><property name="text"><string>default</string></property></item><item><property name="text"><string>tol</string></property></item><item><property name="text"><string>ibm</string></property></item><item><property name="text"><string>mono</string></property></item></widget></item>
+     <item row="1" column="0"><widget class="QLabel" name="label_ActivityGap"><property name="text"><string>Gap between activities on the plane (px)</string></property><property name="buddy"><cstring>kcfg_ActivityGap</cstring></property></widget></item>
+     <item row="1" column="1"><widget class="QSpinBox" name="kcfg_ActivityGap"><property name="minimum"><number>0</number></property><property name="maximum"><number>2000</number></property></widget></item>
+     <item row="2" column="1"><widget class="QCheckBox" name="kcfg_FramesCarryWindows"><property name="text"><string>Dragging an activity's frames carries its windows along</string></property></widget></item>
+     <item row="3" column="1"><widget class="QCheckBox" name="kcfg_FollowActivation"><property name="text"><string>Activating an off-screen window from the task manager pans the plane so it comes on screen</string></property></widget></item>
+    </layout></widget></item>
+   <item><widget class="QGroupBox" name="groupToolbar"><property name="title"><string>Toolbar</string></property>
+    <layout class="QFormLayout" name="formToolbar">
+     <item row="0" column="0"><widget class="QLabel" name="label_HudPosition"><property name="text"><string>Position on the primary display</string></property><property name="buddy"><cstring>kcfg_HudPosition</cstring></property></widget></item>
+     <item row="0" column="1"><widget class="QComboBox" name="kcfg_HudPosition"><item><property name="text"><string>Top</string></property></item><item><property name="text"><string>TopLeft</string></property></item><item><property name="text"><string>TopRight</string></property></item><item><property name="text"><string>Bottom</string></property></item><item><property name="text"><string>BottomLeft</string></property></item><item><property name="text"><string>BottomRight</string></property></item><item><property name="text"><string>Left</string></property></item><item><property name="text"><string>Right</string></property></item></widget></item>
+     <item row="1" column="0"><widget class="QLabel" name="label_HudShape"><property name="text"><string>Shape</string></property><property name="buddy"><cstring>kcfg_HudShape</cstring></property></widget></item>
+     <item row="1" column="1"><widget class="QComboBox" name="kcfg_HudShape"><item><property name="text"><string>auto</string></property></item><item><property name="text"><string>horizontal</string></property></item><item><property name="text"><string>vertical</string></property></item><item><property name="text"><string>square</string></property></item></widget></item>
+    </layout></widget></item>
+   <item><widget class="QGroupBox" name="groupChords"><property name="title"><string>Global chords (rebind under Shortcuts &gt; KWin; these are the defaults)</string></property>
+    <layout class="QFormLayout" name="formChords">
+     <item row="0" column="0"><widget class="QLabel" name="label_ToggleShortcut"><property name="text"><string>Step out to the canvas, or enter the location in view</string></property><property name="buddy"><cstring>kcfg_ToggleShortcut</cstring></property></widget></item>
+     <item row="0" column="1"><widget class="QLineEdit" name="kcfg_ToggleShortcut"/></item>
+     <item row="1" column="0"><widget class="QLabel" name="label_HomeShortcut"><property name="text"><string>Return this activity to the origin</string></property><property name="buddy"><cstring>kcfg_HomeShortcut</cstring></property></widget></item>
+     <item row="1" column="1"><widget class="QLineEdit" name="kcfg_HomeShortcut"/></item>
+     <item row="2" column="0"><widget class="QLabel" name="label_PanLeftShortcut"><property name="text"><string>Pan left / right one step (no default: every Meta+arrow chord is taken by KWin)</string></property><property name="buddy"><cstring>kcfg_PanLeftShortcut</cstring></property></widget></item>
+     <item row="2" column="1"><layout class="QHBoxLayout" name="hboxPanChords">
+      <item><widget class="QLineEdit" name="kcfg_PanLeftShortcut"/></item>
+      <item><widget class="QLineEdit" name="kcfg_PanRightShortcut"/></item>
+     </layout></item>
+     <item row="3" column="0"><widget class="QLabel" name="label_PanUpShortcut"><property name="text"><string>Pan up / down one step</string></property><property name="buddy"><cstring>kcfg_PanUpShortcut</cstring></property></widget></item>
+     <item row="3" column="1"><layout class="QHBoxLayout" name="hboxPanChords2">
+      <item><widget class="QLineEdit" name="kcfg_PanUpShortcut"/></item>
+      <item><widget class="QLineEdit" name="kcfg_PanDownShortcut"/></item>
+     </layout></item>
+    </layout></widget></item>
+   <item><widget class="QGroupBox" name="groupSystem"><property name="title"><string>Windows and the system</string></property>
+    <layout class="QFormLayout" name="formSystem">
+     <item row="0" column="1"><widget class="QCheckBox" name="kcfg_Passthrough"><property name="text"><string>While the canvas is open, pass clicks, drags, the wheel and keys through to the real windows (needs the kwin-canvas-passthrough plugin)</string></property></widget></item>
+     <item row="1" column="1"><widget class="QCheckBox" name="kcfg_PublishGround"><property name="text"><string>Write the pan offset to the Canvas Ground wallpaper</string></property></widget></item>
+     <item row="2" column="0"><widget class="QLabel" name="label_ZoomMin"><property name="text"><string>Smallest zoom the canvas reaches (1.0 is native scale)</string></property><property name="buddy"><cstring>kcfg_ZoomMin</cstring></property></widget></item>
+     <item row="2" column="1"><widget class="QDoubleSpinBox" name="kcfg_ZoomMin"><property name="minimum"><double>0.01</double></property><property name="maximum"><double>1.0</double></property><property name="singleStep"><double>0.01</double></property><property name="decimals"><number>3</number></property></widget></item>
+     <item row="3" column="0"><widget class="QLabel" name="label_ZoomStep"><property name="text"><string>Zoom factor per wheel notch</string></property><property name="buddy"><cstring>kcfg_ZoomStep</cstring></property></widget></item>
+     <item row="3" column="1"><widget class="QDoubleSpinBox" name="kcfg_ZoomStep"><property name="minimum"><double>1.01</double></property><property name="maximum"><double>2.0</double></property><property name="singleStep"><double>0.05</double></property></widget></item>
     </layout></widget></item>
    <item><spacer name="spacer"><property name="orientation"><enum>Qt::Vertical</enum></property></spacer></item>
   </layout>

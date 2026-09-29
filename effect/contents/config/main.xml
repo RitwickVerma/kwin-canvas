@@ -128,8 +128,12 @@
             <default>Backtab</default>
         </entry>
         <entry name="PanHold" type="String">
-            <label>Mouse buttons that navigate the open canvas while held down: any of LeftButton, MiddleButton, RightButton, BackButton, ForwardButton, comma separated. A held button is a portal into the canvas: wherever the pointer is, a drag on the ground pans and a drag on a window moves it on the plane, and the app under a window never sees the press. A window in hand at a screen edge keeps the canvas panning and comes along with it. The middle button always navigates, whether or not it is listed here; ForwardButton (MB5, a mouse's side button) is the default so the right button stays free for its own gestures. BackButton is the other side button.</label>
-            <default>ForwardButton</default>
+            <label>Mouse buttons that navigate the open canvas while held down: any of LeftButton, MiddleButton, RightButton, BackButton, ForwardButton, comma separated. A held button is a portal into the canvas: wherever the pointer is, a drag on the ground pans and a drag on a window moves it on the plane, and the app under a window never sees the press. The middle button always navigates, whether or not it is listed here; empty by default, since the canvas hold below covers it.</label>
+            <default></default>
+        </entry>
+        <entry name="CanvasHold" type="String">
+            <label>The canvas modifier: mouse buttons (any of LeftButton, MiddleButton, RightButton, BackButton, ForwardButton, comma separated) that, held down anywhere on the normal desktop, make the location itself the canvas. While held, the desktop becomes the overworld at 1:1 - pixel for pixel, nothing visibly changes - and every canvas gesture works as if the overworld were open: the middle button grabs and navigates, a drag on a window moves it on the plane, the wheel zooms, a pointer parked at a screen edge keeps panning. Releasing applies the moves and closes again: hold, arrange, let go, done. Needs the kwin-canvas-passthrough plugin (or the plane-input shim) to see the press while the canvas is closed. BackButton (MB4, a mouse's side button) is the default.</label>
+            <default>BackButton</default>
         </entry>
         <entry name="EdgePan" type="Bool">
             <label>While a pan button is held, or a window is in hand, a pointer within EdgePanMargin of a screen edge keeps panning that way until it leaves the band, the button is let go or the window is dropped. A dragged window rides the pan and stays under the pointer.</label>

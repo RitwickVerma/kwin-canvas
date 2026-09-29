@@ -10,6 +10,10 @@ scenario_desc="stepping in and cancel fly: the camera springs to the location at
 chord() { printf 'key leftctrl down\nkey leftalt down\nkey space\nkey leftalt up\nkey leftctrl up\n' | input; }
 run_scenario() {
     if ! have_input; then skip "fakeinput not built (make tools)"; return; fi
+    # The scenario drives the canvas with its keys; with the pass-through
+    # plugin live those go to the focused window, so the plugin stands down
+    # for this one (the plugin's own scenario is 85).
+    setcfg Passthrough false
     setcfg SmoothZoom true
     setcfg CamSpring 8
 
@@ -65,6 +69,7 @@ run_scenario() {
     # Back to the nest's own knobs.
     setcfg SmoothZoom false
     kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key CamSpring --delete
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key Passthrough --delete
     c state
     assert_eq "the nest's knobs are back and nothing is left moving" "$(sget cam)" -
     arrange >/dev/null

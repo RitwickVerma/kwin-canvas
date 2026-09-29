@@ -5,6 +5,10 @@ selected() { grep -c "^  \[[0-9]*\] \*" <<<"$LAST_STATE"; }
 selcap() { grep -a "^  \[[0-9]*\] \*" <<<"$LAST_STATE" | head -1; }
 run_scenario() {
     if ! have_input; then skip "fakeinput not built (make tools)"; return; fi
+    # The scenario drives the canvas with its keys; with the pass-through
+    # plugin live those go to the focused window, so the plugin stands down
+    # for this one (the plugin's own scenario is 85).
+    setcfg Passthrough false
     open_1to1
     c "zoom 0.5 960 540"
     # The arrow keys pan the camera one step each, left first.
@@ -44,5 +48,6 @@ run_scenario() {
     sleep 0.5; c state
     assert_eq "shift+tab stepped back to Dolphin" "$(grep -c 'Dolphin' <<<"$(selcap)")" 1
     c cancel
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key Passthrough --delete
     arrange >/dev/null
 }

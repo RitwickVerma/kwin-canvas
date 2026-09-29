@@ -58,10 +58,12 @@ run_scenario() {
     assert_near "KCalc written relative to it" "$(eget KCalc fx)" -100 2
     c "slide -200 -100"
     # Leave the fixtures as found: undo the typed letter, scroll Konsole
-    # back, drop the selection.
+    # back, drop the selection, then the usual arrange, so the scenarios
+    # that follow (and their goldens) see the same desk this one found.
     open_1to1; sleep 0.5
     printf 'move 900 400\nclick\nkey leftctrl down\nkey z\nkey leftctrl up\nmove 400 900\nwheel -3\n' | input; sleep 0.5
     c cancel
     c state
     assert_eq "layout kept" "$(eget KCalc fx)" 100
+    arrange >/dev/null
 }
