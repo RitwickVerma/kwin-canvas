@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
 scenario_desc="the motion physics: a wheel zoom springs to its step with the point under the cursor pinned, a flicked pan glides under friction, a paused one does not, and a dragged window trails, leans and settles without moving the entry"

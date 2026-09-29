@@ -1,4 +1,3 @@
-#!/usr/bin/env bash
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
 scenario_desc="the backdrop: the desktop's own wallpaper on the plane, a tile per output and outward from them, its dim, and grid mode"

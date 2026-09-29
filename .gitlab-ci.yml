@@ -44,4 +44,3 @@ build:
     - make fixtures
     # The fixtures in the tree are the generator's output; they must stay in step.
     - git diff --exit-code -- tests/fixtures
-
