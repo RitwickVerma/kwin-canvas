@@ -12,6 +12,8 @@
 #include <window.h>
 #include <workspace.h>
 
+#include <KConfigGroup>
+#include <KSharedConfig>
 #include <QDBusConnection>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -23,6 +25,33 @@ Q_LOGGING_CATEGORY(KWIN_CANVAS, "kwin_canvas_passthrough", QtWarningMsg)
 using namespace KWin;
 
 static const QString s_path = QStringLiteral("/KWinCanvas");
+
+// The canvas-modifier buttons as a mask, from the effect's config. The
+// plugin reads this itself at startup: the effect publishes the mask over
+// D-Bus, but its publish can race the plugin's own startup, and a missed
+// publish would leave the modifier dead until the next reconfigure. The
+// names carry both Qt values for the side buttons, as the effect does -
+// KWin delivers MB5 as ExtraButton3, not ForwardButton.
+static uint parseHoldButtons(const QString &spec)
+{
+    uint mask = 0;
+    const QStringList names = spec.split(QLatin1Char(','), Qt::SkipEmptyParts);
+    for (const QString &raw : names) {
+        const QString n = raw.trimmed().toLower();
+        if (n == QLatin1String("leftbutton")) {
+            mask |= Qt::LeftButton;
+        } else if (n == QLatin1String("middlebutton")) {
+            mask |= Qt::MiddleButton;
+        } else if (n == QLatin1String("rightbutton")) {
+            mask |= Qt::RightButton;
+        } else if (n == QLatin1String("forwardbutton")) {
+            mask |= Qt::ForwardButton | Qt::ExtraButton3;
+        } else if (n == QLatin1String("backbutton")) {
+            mask |= Qt::BackButton | Qt::ExtraButton4;
+        }
+    }
+    return mask;
+}
 
 CanvasPassthrough::CanvasPassthrough()
     : Plugin()
@@ -39,6 +68,9 @@ CanvasPassthrough::CanvasPassthrough()
             QDBusConnection::sessionBus().registerObject(s_path, this, QDBusConnection::ExportScriptableSlots);
         });
     }
+    // The hold mask from the config, so a missed publish cannot leave the
+    // modifier dead; the effect's setHoldButtons keeps it current.
+    m_hold = parseHoldButtons(KSharedConfig::openConfig(QStringLiteral("kwinrc"))->group(QStringLiteral("Effect-kwin-canvas")).readEntry("CanvasHold", QStringLiteral("BackButton")));
     m_holdTimer.setSingleShot(true);
     m_holdTimer.setInterval(300);
     connect(&m_holdTimer, &QTimer::timeout, this, [this]() {

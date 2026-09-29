@@ -183,8 +183,10 @@ KWin.SceneEffect {
         }
         // The fullscreen opening stepped out a little: spring back to 1:1 at
         // the committed viewport instead of jumping. A grab mid-zoom keeps
-        // the commit parked until the hand lets go.
+        // the commit parked until the hand lets go. Without the smooth
+        // camera the spring would never run, so the commit is taken at once.
         if (zoom < 0.999) {
+            if (!smoothZoom) { commit(null); return; }
             camGo(1, viewX, viewY);
             camOnArrive = function () { deferredClose = null; commit(null); };
             deferredClose = function () { commit(null); };
@@ -1296,7 +1298,7 @@ KWin.SceneEffect {
     Timer {
         interval: 16
         repeat: true
-        running: (effect.canvasOpen || effect.grasp) && effect.camLive()
+        running: effect.camLive()
         onTriggered: effect.camStep(interval / 1000)
     }
 
@@ -3382,16 +3384,25 @@ KWin.SceneEffect {
             Behavior on blurAlpha { NumberAnimation { duration: 280; easing.type: Easing.InOutCubic } }
             visible: wallpaper && (wantShown || blurAlpha > 0.004)
             opacity: blurAlpha
-            KWin.DesktopBackground {
-                id: blurSource
-                anchors.fill: parent
-                output: view.screen
-                desktop: KWin.Workspace.currentDesktop
-                activity: effect.currentActivity || "default"
+            // The source is rendered at half resolution and the blur is
+            // upscaled: a quarter of the pixels for the same haze, which is
+            // the difference between a full-screen blur that runs and one
+            // that exhausts the GPU alongside the live thumbnails.
+            Item {
+                id: blurSourceHost
+                width: Math.max(1, Math.round(view.width / 2))
+                height: Math.max(1, Math.round(view.height / 2))
+                anchors.centerIn: parent
+                KWin.DesktopBackground {
+                    anchors.fill: parent
+                    output: view.screen
+                    desktop: KWin.Workspace.currentDesktop
+                    activity: effect.currentActivity || "default"
+                }
             }
             FastBlur {
                 anchors.fill: parent
-                source: blurSource
+                source: blurSourceHost
                 radius: effect.backdropBlur()
                 transparentBorder: false
             }

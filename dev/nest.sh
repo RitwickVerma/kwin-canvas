@@ -128,6 +128,11 @@ PanDownShortcut=Ctrl+Alt+Down
 [Compositing]
 Backend=OpenGL
 
+[org.kde.kdecoration2]
+NoPlugin=false
+library=org.kde.breeze
+theme=Breeze
+
 [Desktops]
 Number=2
 Rows=1
@@ -137,6 +142,20 @@ CFG
     cat > "$CONF/kded5rc" <<CFG
 [Module-gtkconfig]
 autoload=false
+CFG
+    # The fixture apps' look is pinned, not inherited: whatever the host's
+    # default colour scheme happens to be today, the nest draws Breeze Dark
+    # with the dark icon theme, so a golden screenshot means the same pixels
+    # on every machine and every day.
+    cat > "$CONF/kdeglobals" <<CFG
+[General]
+ColorScheme=BreezeDark
+
+[Icons]
+Theme=breeze-dark
+
+[KDE]
+widgetStyle=Breeze
 CFG
     # The nest's activity manager reads these; the state file (XDG_STATE_HOME)
     # names the current one. Rewritten on every up, so an added activity
