@@ -222,6 +222,9 @@ tests and the demo drive it.
 See [docs/tour.md](docs/tour.md) for a tour in screenshots,
 [docs/architecture.md](docs/architecture.md) for the model and the KWin API
 facts this rests on, and [docs/testing.md](docs/testing.md) for the harness.
+[AGENTS.md](AGENTS.md) is the way in for an AI agent — the commands, the
+conventions, what is deliberate and what has cost time — and
+[docs/status.md](docs/status.md) is where the work stands.
 
 ## Prior attempts
 

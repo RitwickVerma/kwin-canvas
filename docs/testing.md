@@ -173,7 +173,7 @@ them at fixed canvas positions with `placeby`, then sources each
   `kwriteconfig6 ... --key KEY --delete`.
 - `assert_eq`, `assert_near NAME ACTUAL EXPECTED [TOL]`, `assert_true`.
 - `snap NAME` screenshots the nest and compares against `tests/golden/NAME.png`
-  by normalized RMSE, within `GOLDEN_TOLERANCE` (default 0.02). With
+  by normalized RMSE, within `GOLDEN_TOLERANCE` (default 0.03). With
   `UPDATE_GOLDEN=1` it records instead. Diffs land in `build/test/NAME.diff.png`.
 - `assert_differs NAME A B [MIN]` compares two shots `snap` already took: the
   two have to differ by at least MIN (0.01) of normalized RMSE, for a setting
