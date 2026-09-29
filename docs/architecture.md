@@ -291,7 +291,12 @@ tint, tags, toolbar, help) fades on the way in; a drag, a wheel or another
 camera move mid-flight takes the camera back and the step in is over - the
 canvas stays open where the hand left it. With `SmoothZoom` off the step is
 taken at once, as before, and the debug channel's `cancel` and `commit` stay
-instant paths so a script measures the canvas. The Toggle chord, Enter, or the toolbar's Enter
+instant paths so a script measures the canvas. A close asked for while a
+pointer gesture is in hand - the chord mid-drag, the modifier released before
+the window - parks itself in `deferredClose` and runs the moment the buttons
+come up (`sceneGestures` counts the views' pan and grip drags), so the canvas
+never hands a still-held button to the desktop, where its motion would be a
+native drag on whatever is under the pointer. The Toggle chord, Enter, or the toolbar's Enter
 button enters the location under the screen centre: the frame under the
 centre of the active screen names the activity, and that activity's target
 is placed so the canvas point under the screen centre stays under it at

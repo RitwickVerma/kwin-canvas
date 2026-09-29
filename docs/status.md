@@ -48,7 +48,7 @@ built and loaded (the live-session half stays untested, below):
 
 - `make lint-qml` and `make lint-shell` — exit 0. `lint-reuse` still needs
   `reuse`, which is not installed here (below).
-- `make test` — `== pass 318  fail 0  skip 1`, the skip `91-two-outputs`
+- `make test` — `== pass 328  fail 0  skip 1`, the skip `91-two-outputs`
   needing a two-output nest; `85-passthrough` runs for real against the
   built plugin. `make test-two-outputs` — `== pass 17  fail 0  skip 0`.
 - The goldens were re-recorded in the full-run sequence (`make golden`),
@@ -102,6 +102,20 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-09-28 — the capture fix drive
+
+The live journal showed one real exception storm: the thumbs restarted the
+hover timer through an id (not a property), so every hover over a window
+threw - the timer is a property alias now, and scenario 104 hovers, which no
+earlier scenario did. The same drive hardened the close paths: a commit, a
+cancel or a grasp end asked for while a gesture is in hand parks itself in
+deferredClose until the buttons come up (sceneGestures counts the views'
+drags), so the canvas never hands a still-held button to the desktop, where
+its motion would be a native drag. Scenario 104 pins the hover, the
+chord-mid-drag and the modifier-released-before-the-window cases. Verified:
+`make lint-qml`, `make test` == pass 328 fail 0 skip 1,
+`make test-two-outputs` == 17/0/0.
+
 ### 2026-09-28 — focus flies, the swap, pointer navigation, WASD, and the haze fades
 
 Every focus change travels the canvas: an activation slides the desktop to
@@ -115,7 +129,7 @@ The plugin was built with the newly installed dependencies, which turned
 85-passthrough from a skip into 17 real checks and made the grasp possible.
 Scenario 70 covers the focus slide, 102 the WASD and the click-fit, 103 the
 modifier, the swap and the held-in-overworld hold. Verified: `make lint-qml`,
-`make test` == pass 318 fail 0 skip 1, `make test-two-outputs` == 17/0/0.
+`make test` == pass 328 fail 0 skip 1, `make test-two-outputs` == 17/0/0.
 
 ### 2026-09-28 — flights, the haze, border pan, the keyboard, and MB5
 

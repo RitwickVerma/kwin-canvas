@@ -1,5 +1,17 @@
 Unreleased:
 
+- The capture lifecycle is airtight. A lingering hover over a window pans the
+  camera the least that fits it wholly into view. The hover navigation
+  shipped with a bug the nest never caught: the thumbs restarted the hover
+  timer through an id, which is not a property an outer scope can reach, so
+  every hover in a live session threw - the timer is now a property alias,
+  and a scenario hovers over a window, which the suite never had. A close
+  asked for while a gesture is in hand - the chord mid-drag,
+  releasing the modifier before the window - parks itself and runs the moment
+  the buttons come up, so the canvas never hands a still-held button to the
+  desktop, where its motion would be a native drag on whatever is under the
+  pointer.
+
 - Everything that focuses a window flies to it through the canvas. Activating
   a window from the task manager - Alt-Tab, an application grabbing focus,
   anything - slides the whole desktop until the window is wholly on screen,

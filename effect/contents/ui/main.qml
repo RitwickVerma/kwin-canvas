@@ -153,6 +153,10 @@ KWin.SceneEffect {
     }
     function graspEnd() {
         if (!quiet || !grasp) { grasp = false; return; }
+        if (sceneGestures > 0) {
+            deferredClose = graspEnd;
+            return;
+        }
         grasp = false;
         // The swap moved the focus: the location opens where the swapped-to
         // window is, focused on it, as a pick would place it - the frames,
@@ -829,6 +833,26 @@ KWin.SceneEffect {
         onTriggered: effect.resync()
     }
 
+    // Views with a pointer gesture in hand: a pan, a window drag, a resize, a
+    // frame drag. The canvas never hides while one is live - a close would
+    // end the interception mid-press and hand the still-held button to the
+    // desktop, where its motion is a native drag on whatever is under the
+    // pointer. A close asked for mid-gesture is parked in deferredClose and
+    // runs the moment the buttons come up.
+    property int sceneGestures: 0
+    property var deferredClose: null
+    function closeWhenClear(fn) {
+        if (sceneGestures > 0) { deferredClose = fn; return; }
+        fn();
+    }
+    onSceneGesturesChanged: {
+        if (sceneGestures === 0 && deferredClose !== null) {
+            const fn = deferredClose;
+            deferredClose = null;
+            fn();
+        }
+    }
+
     // ---- camera ops --------------------------------------------------------
     function globalToCanvas(gx, gy) { return Qt.point(viewX + gx / zoom, viewY + gy / zoom); }
 
@@ -1169,8 +1193,14 @@ KWin.SceneEffect {
 
     // Write every window's geometry relative to the frame it sits in, move it to
     // that frame's activity, put the camera on the current activity's target,
-    // and hand input back.
+    // and hand input back. A close asked for while a gesture is in hand waits
+    // for the buttons to come up, so the canvas never hands a held button to
+    // the desktop mid-press.
     function commit(activate) {
+        if (sceneGestures > 0) {
+            deferredClose = function () { commit(activate); };
+            return;
+        }
         camStop();
         for (const k in targets) {
             targets[k].x = Math.round(targets[k].x);
@@ -1249,6 +1279,10 @@ KWin.SceneEffect {
 
     function doCancel() {
         if (!visible) return;
+        if (sceneGestures > 0) {
+            deferredClose = doCancel;
+            return;
+        }
         unsettle();
         targets = copyTargets(entryTargets);
         viewX = entryViewX;
@@ -2755,6 +2789,7 @@ KWin.SceneEffect {
             Component.onDestruction: if (portal) grip.viewItem.portalDrags -= 1
             property point last: Qt.point(0, 0)
             onActiveChanged: {
+                effect.sceneGestures += active ? 1 : -1;
                 last = Qt.point(0, 0);
                 if (active) grip.dragStarted(); else grip.dragEnded();
             }
@@ -3044,7 +3079,10 @@ KWin.SceneEffect {
         // camera pans the least that brings it wholly into view, so the
         // overworld reads around the pointer the way an eye does. Only when
         // the hand is not already navigating, and never during a grasp or a
-        // slide, where the desktop is the subject.
+        // slide, where the desktop is the subject. An alias, not an id: the
+        // thumbs restart it through view.hoverBringTimer, and an id is not a
+        // property an outer scope can reach.
+        property alias hoverBringTimer: hoverBringTimer
         Timer {
             id: hoverBringTimer
             interval: 250
@@ -3083,6 +3121,7 @@ KWin.SceneEffect {
                 // The reset belongs to the press, not to both transitions: the
                 // release needs the travel and the times the drag ended with,
                 // so zeroing them first would make every fling a no-op.
+                effect.sceneGestures += active ? 1 : -1;
                 if (active) {
                     last = Qt.point(0, 0);
                     travelX = 0; travelY = 0;
