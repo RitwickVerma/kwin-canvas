@@ -1,17 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
-scenario_desc="two outputs: one frame and one wallpaper tile per output, the camera around the screen the pointer is on, and a corner push on the second output"
-# ceil() of the tile grid computeBackdropTiles() lays out, from the state's own
-# screen lines: the arrangement's bounding box in primary-screen steps.
-tiles_for() {   # tiles_for REACH X0 Y0 W0 H0 X1 Y1 W1 H1
-    awk -v r="$1" -v ax="$2" -v ay="$3" -v aw="$4" -v ah="$5" -v bx="$6" -v by="$7" -v bw="$8" -v bh="$9" 'BEGIN{
-        vx = (ax < bx ? ax : bx); vy = (ay < by ? ay : by);
-        vr = (ax + aw > bx + bw ? ax + aw : bx + bw);
-        vb = (ay + ah > by + bh ? ay + ah : by + bh);
-        cols = int((vr - vx + aw - 1) / aw) + 2 * r;
-        rows = int((vb - vy + ah - 1) / ah) + 2 * r;
-        print 2 + cols * rows }'
-}
+scenario_desc="two outputs: one frame and one wallpaper haze layer per output, the camera around the screen the pointer is on, and a corner push on the second output"
 run_scenario() {
     c state
     if [ "$(sget screens)" != 2 ]; then skip "needs two outputs (make test-two-outputs)"; return; fi
@@ -25,18 +14,17 @@ run_scenario() {
             vh = (ay + ah > by + bh ? ay + ah : by + bh) - (ay < by ? ay : by);
             print (vw >= aw + 100 || vh >= ah + 100) }')" = 1
 
-    # Every activity has a frame on every output, and the wallpaper has a tile
-    # at every output's place: the plane is the whole arrangement, not the
-    # primary output with the rest filled in. The padding tiles come outward
-    # from the arrangement's bounding box, at primary-screen steps.
+    # Every activity has a frame on every output, and the wallpaper haze has a
+    # blur layer per output: the plane is the whole arrangement, not the
+    # primary output with the rest filled in.
     open_1to1
-    setcfg BackdropReach 0
     c state
-    assert_eq "a wallpaper tile per output" "$(sget backdrop)" 2
-    setcfg BackdropReach 2
+    assert_eq "a blur layer per output" "$(sget backdrop)" 2
+    setcfg Backdrop grid
     c state
-    assert_eq "and the padding tiles cover the arrangement" "$(sget backdrop)" \
-        "$(tiles_for 2 "$x0" "$y0" "$w0" "$h0" "$x1" "$y1" "$w1" "$h1")"
+    assert_eq "grid mode draws no wallpaper" "$(sget backdrop)" 0
+    setcfg Backdrop wallpaper
+    c state
 
     # Hiding one output's frame leaves the other's: what is hidden is a
     # (activity, output) pair, named by the output KWin reports.
@@ -111,9 +99,8 @@ run_scenario() {
     c home
     set_borders 7
     kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key BorderZoom --delete
-    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key BackdropReach --delete
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key Backdrop --delete
     c state
-    assert_eq "the defaults are back" "$(sget backdrop)" \
-        "$(tiles_for 2 "$x0" "$y0" "$w0" "$h0" "$x1" "$y1" "$w1" "$h1")"
+    assert_eq "the defaults are back" "$(sget backdrop)" 2
     arrange >/dev/null
 }

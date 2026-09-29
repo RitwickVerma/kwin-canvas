@@ -13,9 +13,9 @@
  *   move X Y                       absolute pointer position, instantly
  *   glide X Y [STEPS] [MS]         eased travel from the last position (demos)
  *   rel DX DY                      relative pointer motion
- *   down [left|middle|right]       button press (default left)
+ *   down [left|middle|right|forward|back]  button press (default left)
  *   up [left|middle|right]         button release
- *   click [left|middle|right]      press, ~30 ms, release
+ *   click [left|middle|right|forward|back] press, ~30 ms, release
  *   drag X1 Y1 X2 Y2 [STEPS] [MS]  left-drag, eased, STEPS (20) steps MS (10) apart
  *   wheel N                        N notches; positive = scroll up
  *   key NAME [down|up]             evdev key by name or decimal code
@@ -40,6 +40,8 @@
 #define BTN_LEFT   0x110
 #define BTN_RIGHT  0x111
 #define BTN_MIDDLE 0x112
+#define BTN_BACK   0x116
+#define BTN_FORWARD 0x115
 
 #define WHEEL_NOTCH 15.0   /* KWin: one notch on the fake axis is 15 units */
 #define AXIS_VERTICAL 0
@@ -185,6 +187,10 @@ static bool parse_button(const char *s, uint32_t *out)
         *out = BTN_RIGHT;
     } else if (strcmp(s, "middle") == 0) {
         *out = BTN_MIDDLE;
+    } else if (strcmp(s, "forward") == 0) {
+        *out = BTN_FORWARD;
+    } else if (strcmp(s, "back") == 0) {
+        *out = BTN_BACK;
     } else {
         return false;
     }
@@ -369,7 +375,7 @@ static void usage_exit(void)
 {
     fputs("usage: fakeinput [--display NAME] [-v] [CMD ARGS...]\n"
           "  glide X Y [STEPS] [MS]        eased pointer travel from the last position\n"
-          "commands: move X Y | rel DX DY | down|up|click [left|middle|right]\n"
+          "commands: move X Y | rel DX DY | down|up|click [left|middle|right|forward|back]\n"
           "          drag X1 Y1 X2 Y2 [STEPS] [MS] | wheel N | key NAME [down|up] | sleep MS\n",
           stderr);
     exit(2);

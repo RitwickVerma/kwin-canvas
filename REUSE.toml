@@ -55,6 +55,7 @@ path = [
     "docs/recovery.md",
     "tests/golden/backdrop-dimmed.png",
     "tests/golden/backdrop-grid.png",
+    "tests/golden/backdrop-sharp.png",
     "tests/golden/backdrop-slide.png",
     "tests/golden/backdrop-undimmed.png",
     "tests/golden/backdrop-wallpaper.png",

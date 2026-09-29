@@ -272,7 +272,15 @@ plane as a unit and its windows keep their frame geometry at commit; off,
 the frames move over the windows and the windows' frame geometry changes.
 The camera is never involved in what gets applied.
 
-**Enter (step in).** The Toggle chord, Enter, or the toolbar's Enter
+**Enter (step in).** Every step in is a flight, not a cut: the camera springs
+to the location's viewport at 1:1 and the commit happens on arrival, where the
+thumbnails and the real windows already agree, so nothing on screen ever jumps
+from the overworld into a location. The overworld's chrome (frame borders and
+tint, tags, toolbar, help) fades on the way in; a drag, a wheel or another
+camera move mid-flight takes the camera back and the step in is over - the
+canvas stays open where the hand left it. With `SmoothZoom` off the step is
+taken at once, as before, and the debug channel's `cancel` and `commit` stay
+instant paths so a script measures the canvas. The Toggle chord, Enter, or the toolbar's Enter
 button enters the location under the screen centre: the frame under the
 centre of the active screen names the activity, and that activity's target
 is placed so the canvas point under the screen centre stays under it at
@@ -311,8 +319,10 @@ alone for a window inside a
 frame and centres the active-screen frame on a window outside every frame,
 which is what `centre` does for every window. A double-click on a frame
 enters that location with its activity current. `cancel()` (Esc without the
-plugin, the toolbar's Cancel) restores the targets and `entryView` and hides
-without writing anything: back to where you were, nothing moved.
+plugin, the toolbar's Cancel) is the same flight in reverse: the camera
+springs back to the entry view at 1:1, the chrome fades, and on arrival the
+targets and `entryView` are restored and the effect hides without writing
+anything - back to where you were, nothing moved, and never a jump.
 
 **Activity switch in a location.** `currentActivityChanged` sets `view` to the new
 activity's target and republishes the ground, so the wallpaper scrolls to
@@ -426,34 +436,46 @@ even with no background window, as in the nest.
 are disabled (null dereference in `updateWindow`), so the effect always
 passes a non-empty activity.
 
-**The backdrop** is the same item again, as the plane's own floor rather than
-the frames' interior: `Backdrop=wallpaper` (the default) puts one
-`DesktopBackground` per output at that output's place on the current
-activity's frames, and tiles the wallpaper outward from there at
-primary-screen steps (`BackdropReach`, 0 to 4, default 2), each padding tile
-wearing the wallpaper of the output nearest its centre. At 1:1 the tile that
-covers the real desktop is that desktop's own wallpaper, pixel for pixel, so
-a slide draws what the screen was showing; beyond the arrangement the plane
-reads as the desktop continuing instead of a grid fading into void.
-`BackdropDim` (0.45) is a rect of `Background` over the tiles, so the desks
-and the windows stay the subject - and it is 0 while the canvas is quiet,
-where the plane and the desktop have to be the same thing. `Backdrop=grid`
-is the plane as it was: no tiles, the ground's own background, the grid.
-Tiles ride the same `revision` bindings the frames do, so a camera move or a
-drag never rebuilds the model; `screensRev` (a hotplug, a resolution change,
-a rearrange, a virtual output coming or going) does, and so does switching
-activity. KWin renders one offscreen per (view, window) and shares it
-between every item that shows it, so the tiles cost draw calls, not renders.
+**The backdrop** is the same wallpaper, continued past the desks: `Backdrop=wallpaper` (the default) keeps the desktop's own wallpaper exact on the frames, and
+beyond them draws it once per output as a full-view, screen-fixed layer,
+blurred (`BackdropBlur`, 48 px by default) and dimmed toward `Background`
+(`BackdropDim`, 0.45), with the ground grid over it - the desktop dissolving
+into a haze, the way an overview's backdrop reads, rather than the wallpaper
+repeating in tiles, which is what it would look like if it moved with the
+plane at 1:1. The layer is the desktop window itself, live (a slideshow, a
+picture of the day, an animated wallpaper keep going in the haze), and each
+view hides its layer while the current activity's frame covers the view -
+open at 1:1, an idle slide - which is exactly where the blur would be
+invisible anyway, so it costs nothing until the camera moves. At 1:1 the
+frame's interior is the real wallpaper, pixel for pixel, so a slide draws
+what the screen was showing and the haze appears only beyond the moving
+desktop. The dim is 0 while the canvas is quiet, where the plane and the
+desktop have to be the same thing, and it fades in with the chrome on open
+and out with it on the step in. `Backdrop=grid` is the plane as it was: no
+wallpaper, the ground's own background, the grid. The layer follows the
+screen, not the plane, so a hotplug or an activity switch rebuilds nothing;
+`screensRev` still gates the frames below.
 
 ## Keys
 
 All keys come from config. The global chords are `ShortcutHandler` sequences
 (`ToggleShortcut`, `HomeShortcut`, and `PanLeftShortcut`
-through `PanDownShortcut`; the pan chords default to nothing). The keys the open canvas listens for are
+through `PanDownShortcut`; the pan chords default to nothing because every
+Meta+arrow chord is taken by KWin - Meta+Ctrl+arrows are the virtual desktop
+switches). The keys the open canvas listens for are
 comma-separated Qt key names (`KeyApply` = `Return,Enter` and so on), parsed
 into key codes at load and on every reconfigure by looking up `Qt["Key_" +
 name]`, and the legend is rendered from the same entries. A misspelt name is
-logged and skipped.
+logged and skipped. The in-canvas keys have defaults nothing else uses: the
+arrow keys (`KeyPanLeft` and friends) pan the camera one step, `KeyNext`/`KeyPrev`
+(Tab and Shift+Tab) step the selection through the windows with the camera
+following to keep the chosen window in view, and `KeyApply` with a window
+selected enters it focused - the overview pattern, Tab to the window, Enter
+to go to it - while a bare Enter enters the location under the screen centre
+as it always has. Shift+Tab arrives as Tab with the shift modifier whatever
+the platform does about Backtab, so both count as previous. All of them are
+the canvas's only while it owns the keyboard: with the pass-through plugin
+loaded every key goes to the focused window, as before.
 
 ## Arranging a selection
 
@@ -488,10 +510,16 @@ picks black or white by luminance.
 
 ## Navigating
 
-`PanHold` (default `RightButton`) is the navigate button: held down, the
+`PanHold` (default `ForwardButton`, MB5) is the navigate button: held down, the
 canvas is being navigated, and the button is a portal into it. The middle
 button is one too, with nothing to configure, so a hold of either pans the
-same way. A drag of the held button pans from anywhere on the screen, because
+same way. The side buttons need both of their Qt names in the mask: KWin
+delivers MB5 as `Qt::ExtraButton3` (its button table maps BTN_FORWARD, the
+same code as BTN_EXTRA, to ExtraButton3 rather than ForwardButton) and MB4 as
+`ExtraButton1` (which is `Qt::BackButton`), so `buttonsFor()` expands
+ForwardButton and BackButton to both values - the mask the plane-input shim
+and the pass-through plugin compare against has to name the buttons KWin
+itself sees. A drag of the held button pans from anywhere on the screen, because
 the pan handler sits on each screen's root item, so every press on that screen
 is on its delivery path — over a control, which takes the same buttons and does
 what the left button would have done with it (a window body moves the window, a
@@ -529,6 +557,23 @@ the screen edges: `navHeld` on the effect (a count of the views being navigated
 stops a screen edge handler from toggling the canvas, since a pointer
 pushed into a border to pan is not a push meant to leave.
 
+A border push is navigation itself with `BorderSlide` on: the edge or corner
+then pans the plane one step toward the pushed side instead of opening the
+canvas - a slide at 1:1, a springing camera step in the open canvas - so the
+borders are a route around the plane (the scrolling-desktop gesture of
+PaperWM, Niri and the Hyprland scrollers) rather than a door in and out of
+it. The chord, the toolbar and the panel button still open it, and a push
+while a slide runs chains another step onto it. Off, a push opens and enters
+as it always has.
+
+The keyboard navigates the open canvas the same way, with defaults nothing
+else uses: the arrow keys pan the camera one step, Tab and Shift+Tab step the
+selection through the windows, the camera following to keep the chosen window
+in view, and Enter with a window selected steps into it focused, the
+overview's Tab-then-Enter pattern on a canvas. Every one of them is the
+canvas's only while it owns the keyboard; with the plugin loaded the keys go
+to the focused window.
+
 ## Motion
 
 The camera is not a timeline. `viewX`, `viewY` and `zoom` are the state, a set
@@ -556,17 +601,27 @@ the last motion was within 120 ms of the release, so a drag that pauses before
 letting go - the way a careful placement ends - lands exactly where it was put.
 
 **A spring** is anything with a destination: a wheel notch, a fit, an edge
-opening the canvas, `camGo(zoom, x, y, [gx, gy])`. It is critically damped
+opening the canvas, `camGo(zoom, x, y, [gx, gy])`, and now the step in and the
+cancel - they fly and land on it like everything else. It is critically damped
 (`k = w²`, `c = 2w`, `w = CamSpring` in 1/s, 14 by default, about a third of a
 second) so it arrives as fast as it can without overshooting, the same easing
-family KWin's own Overview uses but interruptible. When a screen point is
+family KWin's own Overview uses but interruptible. A goal starts with a push -
+a fraction (0.4) of the critical speed toward it, which a critically damped
+spring cannot overshoot - so it is moving on the first frame instead of the
+second. When a screen point is
 pinned (`camAnchored`) the anchor owns the position - the canvas point under
 the screen point when the zoom started stays under it, recomputed as
 `anchor.x - gx / zoom` every step - and only the scale springs, which is what a
 wheel at the cursor and a pinch both are; a pinch without that jumps. The wheel
 compounds from the *goal* rather than from mid-step, so a burst of notches
 rides as one motion. `SmoothZoom` off makes every camera move land at once,
-which is what the scenarios measure the canvas with.
+which is what the scenarios measure the canvas with. A spring can carry an
+arrival callback (`camOnArrive`): the step in and the cancel leave their
+landing there, so the commit or the restore runs at the moment the camera
+arrives, and any takeover - a drag, a wheel, a new goal - runs `camStop()`,
+clears the callback and leaves the canvas open where the hand put it. While a
+callback is held the overworld's chrome fades (`entering`), and it fades back
+if the flight is interrupted.
 
 **A dragged window's weight** is drawn and never measured. The entries, and so
 the committed geometry, follow the pointer exactly; `noteDrag()` turns the
@@ -626,7 +681,7 @@ end where the push found them.
 
 ## Several outputs
 
-Every activity has one frame, and one wallpaper tile, per output, at that
+Every activity has one frame, and the wallpaper haze one blur layer, per output, at that
 output's place in Display Configuration, so the plane is the whole
 arrangement. An activity's frame group is therefore as wide as the
 arrangement, and the next activity's target stands a whole virtual screen
@@ -698,11 +753,10 @@ the settings pages through `KCMLauncher.openSystemSettings`, as Overview does.
 
 ## Next
 
-- Snap `zoom` to 1 with a short animation on commit.
+- Snap `zoom` to 1 with a short animation on the plain `commit` paths that
+  still skip the flight (the debug command, a stale click's second commit).
 - Drawing limits: a drawn sheet boundary that only grows, and `ZoomMin` from
   it rather than a constant.
-- Pan on a screen edge push at 1:1: the edge handlers fire once per push, so
-  each push would be one step.
 - Auto-pan when dragging a window to the screen edge at 1:1. The move is
   KWin's; the effect can watch `Window.move` and shift the plane on a timer.
 - Bookmarks, and a minimap while the canvas is open.

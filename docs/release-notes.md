@@ -1,4 +1,60 @@
-Unreleased: the overworld under the plane-input shim.
+Unreleased:
+
+- Stepping in and out is a flight, not a cut. Every step in - the chord, the
+  Enter key, a double-click on a window or a frame, the toolbar's Enter -
+  springs the camera to the location's viewport at 1:1 and only then writes
+  the windows, where the thumbnails and the real windows already agree, so
+  nothing on screen ever jumps from the overworld into a location. Cancel
+  flies back the same way. The overworld's chrome (frame borders and tint,
+  tags, toolbar, help) fades on the way in and back in if a grab interrupts
+  the flight, and a drag, a wheel or another camera move mid-flight simply
+  cancels the step in: the canvas stays open where the hand left it. With
+  `SmoothZoom` off every step lands at once, as before. Home, the canvas
+  origin and the activity swatches take the same spring, and a spring starts
+  moving on the frame it is asked for rather than the one after.
+
+- Stepping out fades in: the chrome fades in on open, and when the opening
+  view moves the camera (fit, `BorderZoom`, a numeric `OpenZoom`) the windows
+  fade in after it, so a step out to fit draws its subjects in instead of
+  popping them. An open at 1:1 is still the desktop, and a quiet slide is
+  still the desktop exactly - neither fades.
+
+- The plane beyond the desks is the wallpaper in a haze instead of repeated
+  tiles. `Backdrop=wallpaper` (the default) keeps the desktop's own wallpaper
+  exact on the frames and draws it once per output, screen-fixed, blurred
+  (`BackdropBlur`, 48 px by default) and dimmed (`BackdropDim`, 0.45), with
+  the ground grid over it - the desktop dissolving into a haze, live (a
+  slideshow or a picture of the day keeps going in it), and costing nothing
+  while the camera sits at 1:1 on the desk, where the blur would be invisible
+  anyway. `BackdropReach` and the tiling are gone; `Backdrop=grid` is the old
+  plane.
+
+- `BorderSlide` makes the screen edges a route around the plane instead of a
+  door in and out of it: a push into a configured edge or corner pans the
+  plane one step toward the pushed side - a slide at 1:1, a springing camera
+  step in the open canvas - and a push while a slide runs chains another
+  step. The chord, the toolbar and the panel button still open the canvas.
+
+- The open canvas is navigable from the keyboard, with defaults nothing else
+  uses: the arrow keys pan the camera one step, Tab and Shift+Tab step the
+  selection through the windows with the camera following to keep the chosen
+  window in view, and Enter with a window selected steps into it focused -
+  the overview's Tab-then-Enter pattern on a canvas - while a bare Enter
+  enters the location under the screen centre as it always has.
+
+- `PanHold` defaults to the forward side button, MB5, so a mouse's side
+  button is a hand on the plane out of the box and the right button stays
+  free for its own gestures (the right button is still there in the config,
+  and the middle button always navigates). The effect now names the buttons
+  the way KWin delivers them: MB5 arrives as Qt's ExtraButton3, not
+  ForwardButton, so both values are in the mask the plane-input shim and the
+  pass-through plugin compare against.
+
+- The camera can carry an arrival callback: the step in and the cancel leave
+  their landing there, so the commit or the restore runs the moment the
+  camera arrives and is dropped by any takeover. `make test` grows three
+  scenarios for the flights, the border slide and the keyboard (100, 101,
+  102), and the backdrop scenarios (91, 93) measure the haze.
 
 - A PanHold button is now a portal into the open canvas rather than a pan that
   only works where the canvas already had the pointer. With the pass-through

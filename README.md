@@ -33,11 +33,15 @@ canvas shows the current desktop's windows.
 The ground plane is the reference for all of this. A grid with coordinate
 labels scrolls under the windows when you pan at 1:1 and scales with them when
 you zoom out, so the plane has landmarks and the zoom has something to anchor.
-Beyond the monitor frames the plane carries your wallpaper too
-(`Backdrop=wallpaper`, the default): one tile per output, tiled outward at
-screen-size steps and dimmed so the desks and the windows stay the subject, so
-stepping out looks like the desktop continuing rather than a grid fading into
-nothing. `Backdrop=grid` is the old plane.
+Beyond the monitor frames the plane keeps the wallpaper's presence
+(`Backdrop=wallpaper`, the default): on the desks it is exact, and across the
+rest of the view the same wallpaper is drawn once per output, blurred
+(`BackdropBlur`, 48 px) and dimmed (`BackdropDim`, 0.45) with the grid over
+it, so stepping out looks like the desktop dissolving into a haze rather than
+a wallpaper repeating in tiles or a grid fading into nothing. The haze is the
+desktop window itself, live - a slideshow or a picture of the day keeps going
+in it - and it costs nothing while the camera sits at 1:1 on the desk, where
+it would be invisible anyway. `Backdrop=grid` is the old plane.
 
 > Alpha. Tested in a nested KWin 6.7.5 session and on one live Plasma 6.7
 > desktop.
@@ -99,12 +103,12 @@ disable the stock **Zoom** effect if it owns Meta+wheel.
 | pan chords (no default; bind under Shortcuts → KWin) | slide the desktop half a screen that way | move the camera |
 | three-finger touchpad swipe | the desktop follows the fingers, then settles half a screen that way | |
 | drag on ground, Space+drag, or middle-drag | | pan |
-| hold the right button and drag (`PanHold`), or the middle button | | a portal into the canvas: drag the ground to pan, drag a window (its client area too) to move it on the plane — the app under it never sees the press. The middle button pans from anywhere, windows and tags included |
-| hold the right button or the middle button at a screen edge (`EdgePan`) | | the canvas keeps panning that way, faster the deeper the pointer is in the band, until it leaves the band or the button is let go |
+| hold the forward side button and drag (`PanHold`, MB5 by default; the right button is available too), or the middle button | | a portal into the canvas: drag the ground to pan, drag a window (its client area too) to move it on the plane — the app under it never sees the press. The middle button pans from anywhere, windows and tags included |
+| hold the navigate button or the middle button at a screen edge (`EdgePan`) | | the canvas keeps panning that way, faster the deeper the pointer is in the band, until it leaves the band or the button is let go |
 | hold a window at a screen edge with a portal button down | | the canvas pans and the window comes along, staying under the pointer while it travels over the desk — a drag-and-drop edge scroll, so a window can be pushed into a frame that is off the screen |
 | wheel over the ground | | zoom at the cursor, springing to the step with the point under the cursor pinned (`SmoothZoom`); the wheel over a client area is the window's |
 | flick a pan and let go (`PanInertia`) | | the plane keeps moving the way the hand was moving, slowing to a stop; a drag that pauses before letting go lands exactly where it was put |
-| push the pointer into a screen edge or corner (Screen Edges; `BorderZoom`) | | step out around that screen at `BorderZoom` (0.8 by default, `fit`, or `1` for the desktop exactly as it was), so the desks around it show; the chord enters the point the push came from |
+| push the pointer into a screen edge or corner (Screen Edges; `BorderZoom`) | | step out around that screen at `BorderZoom` (0.8 by default, `fit`, or `1` for the desktop exactly as it was), so the desks around it show; the chord enters the point the push came from. With `BorderSlide` on, a push instead pans the plane one step toward the pushed side — a slide at 1:1, a camera step in the open canvas — so the borders are a route around the plane rather than a door in and out of it |
 | pointer over a window's client area | | the window's, with the plugin: click, drag, wheel, and a click raises |
 | keys | | the focused window's, with the plugin; the canvas keys below apply without it |
 | drag a window's title bar | | move it on the plane, with a trail and a lean that settle when the hand stops (`WindowPhysics`; drawn only, the committed geometry is exact) |
@@ -117,15 +121,17 @@ disable the stock **Zoom** effect if it owns Meta+wheel.
 | drag a selected window's title bar | | move the whole selection, geometry kept; drop it in a frame and step in to move them all to that activity |
 | right-click a window's title bar | | arrange the selection: horizontally, vertically, tile, grid (rows × columns), cascade; send to an activity or to the plane |
 | toolbar toggles | | snap to edges, corners, grid while dragging or resizing (grid step and snap distance are settings) |
-| double-click a window's title bar | | enter that window's location, focused, with the window wholly on screen; a window in another activity's frame takes you to that activity. `FocusTarget` sets where the viewport goes: `smart` (default) and of the placements that keep the window wholly in view takes the one that leaves the most of the desk's other windows in view too, so a window alone lands centred; `centre` brings the window's centre to the screen centre whatever that pushes off it; `window` keeps the point you clicked under the pointer at 1:1, shifted the least it can be if that would cut the window off; `desktop` leaves a frame where it is and only centres a window outside every frame. All of them slide the frames, their windows and the wallpaper together and write nothing |
+| double-click a window's title bar | | enter that window's location, focused, with the window wholly on screen; a window in another activity's frame takes you to that activity. `FocusTarget` sets where the viewport goes: `smart` (default) and of the placements that keep the window wholly in view takes the one that leaves the most of the desk's other windows in view too, so a window alone lands centred; `centre` brings the window's centre to the screen centre whatever that pushes off it; `window` keeps the point you clicked under the pointer at 1:1, shifted the least it can be if that would cut the window off; `desktop` leaves a frame where it is and only centres a window outside every frame. All of them slide the frames, their windows and the wallpaper together and write nothing. Every step in is a flight: the camera springs to the location at 1:1, the chrome fades, and the write lands on arrival — nothing on screen jumps |
 | double-click a frame | | enter that location, its activity current |
 | Ctrl+double-click a frame, or click its swatch in the toolbar | | zoom to that activity |
 | Shift+double-click a window outside every frame | | new activity centred on it, window moved there |
-| Enter | | enter the location under the screen centre (the toolbar's **Enter**) |
-| Esc | | back to where you were, nothing moved (the toolbar's **Cancel**); the window's own key when pass-through is live |
+| Enter | | enter the location under the screen centre (the toolbar's **Enter**); with a window selected, enter that window instead, focused |
+| Esc | | fly back to where you were, nothing moved (the toolbar's **Cancel**); the window's own key when pass-through is live |
 | Home | | look through the current activity's frames |
 | 0 | | canvas origin |
 | F / W | | zoom to fit |
+| Tab / Shift+Tab | | step the selection through the windows, wrapping; the camera follows to keep the chosen window in view |
+| arrow keys | | pan the camera one step |
 
 Activating an off-screen window from the task manager pans the plane so it
 comes on screen.

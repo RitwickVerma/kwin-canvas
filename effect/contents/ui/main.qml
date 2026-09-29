@@ -35,6 +35,7 @@
 */
 import QtQuick
 import QtQuick.Layouts
+import Qt5Compat.GraphicalEffects
 import org.kde.kirigami as Kirigami
 import org.kde.kcmutils as KCM
 import org.kde.kwin as KWin
@@ -140,6 +141,51 @@ KWin.SceneEffect {
         selectionRev++;
     }
     function activityColor(id) { return palette[activityIndex(id) % palette.length]; }
+
+    // Keyboard navigation over the windows: Tab steps the selection through
+    // the entries, wrapping, and brings the chosen window into view;
+    // Shift+Tab steps the other way. Overview-like, on a canvas: the camera
+    // follows the selection, so the next window is always where the eye goes.
+    function cycleSelection(dir) {
+        if (entries.length === 0) return;
+        let idx = -1;
+        for (let i = 0; i < entries.length; ++i) if (isSelected(entries[i])) { idx = i; break; }
+        const n = idx < 0 ? (dir > 0 ? 0 : entries.length - 1) : (idx + dir + entries.length) % entries.length;
+        selectOnly(entries[n]);
+        bringIntoView(entries[n]);
+    }
+
+    // Pan the camera the least that puts the window wholly on the screen the
+    // pointer is on, with a margin; a window larger than the screen is left-
+    // and top-aligned instead.
+    function bringIntoView(e) {
+        const g = actionScreen().geometry;
+        const pad = 24 / zoom;
+        const sl = viewX + g.x / zoom, st = viewY + g.y / zoom;
+        const sw = g.width / zoom, sh = g.height / zoom;
+        let dx = 0, dy = 0;
+        if (e.width <= sw - 2 * pad) {
+            if (e.x < sl + pad) dx = e.x - (sl + pad);
+            else if (e.x + e.width > sl + sw - pad) dx = e.x + e.width - (sl + sw - pad);
+        } else if (e.x !== sl + pad) dx = e.x - (sl + pad);
+        if (e.height <= sh - 2 * pad) {
+            if (e.y < st + pad) dy = e.y - (st + pad);
+            else if (e.y + e.height > st + sh - pad) dy = e.y + e.height - (st + sh - pad);
+        } else if (e.y !== st + pad) dy = e.y - (st + pad);
+        if (dx !== 0 || dy !== 0) camGo(zoom, viewX + dx, viewY + dy);
+    }
+
+    // Enter with a window selected steps into that window, as the double-
+    // click does; with nothing selected it enters the location under the
+    // screen centre, as the toolbar's Enter does. The key is the overview
+    // pattern - Tab to the window, Enter to go to it - on the canvas.
+    function applyKey() {
+        for (let i = 0; i < entries.length; ++i) {
+            if (isSelected(entries[i])) { focusWindow(entries[i]); return; }
+        }
+        enterHere();
+    }
+
     property int lastDebugSeq: 0
 
     // ---- key bindings, from config ------------------------------------------
@@ -163,15 +209,30 @@ KWin.SceneEffect {
     // Mouse buttons that navigate while held down, as a mask: parsed from the
     // same comma-separated Qt button names as the keys ("RightButton" ->
     // Qt.RightButton). An unknown name is logged and skipped, as above.
+    // The side buttons need both of their Qt names: KWin delivers a mouse's
+    // MB5 as Qt::ExtraButton3 (TaskButton), not Qt::ForwardButton - its
+    // button table maps BTN_FORWARD (0x115, the same code as BTN_EXTRA) to
+    // ExtraButton3, which wins over the ExtraButton2 entry for that code -
+    // and MB4 as ExtraButton1 (Qt::BackButton), while some devices report it
+    // as BTN_BACK (0x116), ExtraButton4. The mask is what the plane-input
+    // shim and the pass-through plugin compare against, so it has to name
+    // the buttons KWin itself sees.
     function buttonsFor(spec) {
         let mask = 0;
         const names = String(spec || "").split(",");
         for (let i = 0; i < names.length; ++i) {
             const n = names[i].trim();
             if (!n) continue;
-            const code = Qt[n];
-            if (typeof code !== "number") { console.warn("kwin-canvas: unknown mouse button", n); continue; }
-            mask |= code;
+            const lower = n.toLowerCase();
+            if (lower === "forwardbutton") {
+                mask |= Qt.ForwardButton | Qt.ExtraButton3;   // 0x10 and 0x20: KWin sends MB5 as ExtraButton3
+            } else if (lower === "backbutton") {
+                mask |= Qt.BackButton | Qt.ExtraButton4;      // MB4 is ExtraButton1 (= BackButton), or ExtraButton4 as BTN_BACK
+            } else {
+                const code = Qt[n];
+                if (typeof code !== "number") { console.warn("kwin-canvas: unknown mouse button", n); continue; }
+                mask |= code;
+            }
         }
         return mask;
     }
@@ -197,6 +258,12 @@ KWin.SceneEffect {
             zoomIn: keysFor(configuration.KeyZoomIn),
             zoomOut: keysFor(configuration.KeyZoomOut),
             pan: keysFor(configuration.KeyPan),
+            panLeft: keysFor(configuration.KeyPanLeft),
+            panRight: keysFor(configuration.KeyPanRight),
+            panUp: keysFor(configuration.KeyPanUp),
+            panDown: keysFor(configuration.KeyPanDown),
+            next: keysFor(configuration.KeyNext),
+            prev: keysFor(configuration.KeyPrev),
             panHold: buttonsFor(configuration.PanHold)
         };
     }
@@ -545,12 +612,17 @@ KWin.SceneEffect {
         const g = actionScreen().geometry;
         targets[id] = { x: entry.x + entry.width / 2 - (g.x + g.width / 2),
                         y: entry.y + entry.height / 2 - (g.y + g.height / 2) };
-        if (!entry.window.deleted) entry.window.activities = [id];
-        entry.activity = id;
-        revision++;
-        // Activating a window on another activity does not switch to it.
-        KWin.Workspace.currentActivity = id;
-        commit(entry.window);
+        const t = targets[id];
+        // The new activity's frame is centred on the window: fly there, then
+        // move the window, make the activity current and apply, focused.
+        flyEnter(id, t.x, t.y, function () {
+            if (!entry.window.deleted) entry.window.activities = [id];
+            entry.activity = id;
+            revision++;
+            // Activating a window on another activity does not switch to it.
+            KWin.Workspace.currentActivity = id;
+            commit(entry.window);
+        });
     }
 
     function removeActivity(id) {
@@ -730,6 +802,11 @@ KWin.SceneEffect {
     property real camAnchorY: 0
     property real camAnchorGX: 0
     property real camAnchorGY: 0
+    // Run once when the spring arrives: the step-in and the cancel flight
+    // leave their landing here (flyEnter, cancel). Any camera takeover -
+    // a drag, a wheel, a new goal - runs camStop(), which clears it, so a
+    // flight interrupted mid-way is simply over and the canvas stays open.
+    property var camOnArrive: null
     readonly property bool panInertia: configuration.PanInertia !== false
     readonly property bool smoothZoom: configuration.SmoothZoom !== false
     readonly property real panFriction: Math.max(0.1, Number(configuration.PanFriction) || 3)
@@ -746,6 +823,7 @@ KWin.SceneEffect {
         camHasGoal = false;
         camAnchored = false;
         camVX = 0; camVY = 0; camVZoom = 0;
+        camOnArrive = null;
     }
 
     // A pan the hand let go of: keep the plane moving the way it was, under
@@ -790,6 +868,11 @@ KWin.SceneEffect {
         } else {
             camAnchored = false;
             camGoalX = goalX; camGoalY = goalY;
+            // A push toward the goal, so a spring heading somewhere starts
+            // moving this frame rather than the next. A fraction of the
+            // critical speed cannot overshoot a critically damped spring.
+            if (camVX === 0) camVX = (camGoalX - viewX) * camSpring * 0.4;
+            if (camVY === 0) camVY = (camGoalY - viewY) * camSpring * 0.4;
         }
         camHasGoal = true;
         // A push off the mark, so a spring heading somewhere starts moving this
@@ -844,7 +927,9 @@ KWin.SceneEffect {
             } else {
                 viewX = camGoalX; viewY = camGoalY;
             }
+            const cb = camOnArrive;
             camStop();
+            if (cb) cb();
             return;
         }
         if (!camHasGoal && camVZoom === 0
@@ -860,18 +945,60 @@ KWin.SceneEffect {
         onTriggered: effect.camStep(interval / 1000)
     }
 
-    // Look through the current activity's frames.
+    // ---- opening and closing fades ------------------------------------------
+    // The overworld's chrome (frame borders and tint, tags, toolbar, help)
+    // fades while a step in flies and fades back in if the flight is
+    // interrupted. The entries, the ground and the wallpaper never fade:
+    // what is stepped into is the location, which looks exactly like the
+    // canvas at 1:1. Entering is the camera holding an arrival callback -
+    // flyEnter and cancel leave one - so any camera takeover clears it and
+    // the chrome comes back.
+    property real chromeFade: 1
+    readonly property bool entering: camOnArrive !== null
+    onEnteringChanged: {
+        if (entering) farewellAnim.restart();
+        else if (visible) welcomeAnim.restart();
+    }
+    NumberAnimation {
+        id: farewellAnim
+        target: effect
+        property: "chromeFade"
+        to: 0
+        duration: 160
+        easing.type: Easing.InOutCubic
+    }
+    NumberAnimation {
+        id: welcomeAnim
+        target: effect
+        property: "chromeFade"
+        to: 1
+        duration: 160
+        easing.type: Easing.InOutCubic
+    }
+
+    // Windows fade in when the opening view moves the camera, so a step out
+    // to fit draws its subjects in instead of popping them. 1 for an open at
+    // 1:1 and for a quiet slide, where the canvas is the desktop itself.
+    property real thumbOpacity: 1
+    NumberAnimation {
+        id: thumbFadeAnim
+        target: effect
+        property: "thumbOpacity"
+        to: 1
+        duration: 200
+        easing.type: Easing.OutCubic
+    }
+
+    // Look through the current activity's frames. On the smooth camera this
+    // springs like any other destination; with SmoothZoom off it lands at
+    // once, which is what the scenarios measure.
     function home() {
         const t = targetOf(currentActivity);
-        viewX = t.x;
-        viewY = t.y;
-        zoom = 1.0;
+        camGo(1, t.x, t.y);
     }
 
     function origin() {
-        viewX = 0;
-        viewY = 0;
-        zoom = 1.0;
+        camGo(1, 0, 0);
     }
 
     // Fit every window and every frame into the screen the pointer is on (the
@@ -931,8 +1058,21 @@ KWin.SceneEffect {
         openFrames = {};
         for (let i = 0; i < entries.length; ++i) openFrames[entries[i].window.internalId] = { x: entries[i].frameX, y: entries[i].frameY };
         visible = true;
-        if (!quiet) openView(spec);
+        let moved = false;
+        if (!quiet) moved = openView(spec);
         if (!quiet && passthrough) probeCall.call();
+        // The step out fades the overworld's chrome in, and - when the opening
+        // view moves the camera - the windows in after it: a cut to fit, and a
+        // chrome pop at 1:1, would each read as a glitch. A quiet slide has
+        // neither: it is the desktop, and the desktop does not fade.
+        if (quiet) {
+            thumbOpacity = 1;
+        } else {
+            chromeFade = 0;
+            welcomeAnim.restart();
+            if (moved) { thumbOpacity = 0; thumbFadeAnim.restart(); }
+            else thumbOpacity = 1;
+        }
     }
 
     // Where the camera starts: fit everything, stay at 1:1, or a zoom anchored
@@ -942,14 +1082,17 @@ KWin.SceneEffect {
     // anchor does not move, the point the push left under that centre is the
     // point applying comes back to, so a corner's step out and the chord's
     // "enter the location under the screen centre" still agree exactly.
+    // Returns whether the camera moved, so the opening knows whether the
+    // windows are coming from the desktop (no fade) or from elsewhere (fade).
     function openView(spec) {
         if (spec === undefined || spec === null || spec === "") spec = configuration.OpenZoom;
         spec = String(spec || "fit").trim().toLowerCase();
-        if (spec === "fit") { zoomExtents(true); return; }
+        if (spec === "fit") { zoomExtents(true); return true; }
         const z = Number(spec);
-        if (!(z > 0) || z >= 1) return;
+        if (!(z > 0) || z >= 1) return false;
         const g = actionScreen().geometry;
         camZoomTo(z, g.x + g.width / 2, g.y + g.height / 2);
+        return true;
     }
 
     // Write every window's geometry relative to the frame it sits in, move it to
@@ -1015,9 +1158,25 @@ KWin.SceneEffect {
         }
     }
 
+    // Cancel: back to where the canvas opened, nothing moved. With the smooth
+    // camera the way back is a spring like any other - the camera flies to
+    // the entry view at 1:1 and the restore happens on arrival - and a grab
+    // mid-flight keeps the canvas open where the hand left it. The debug
+    // channel takes doCancel() directly, the instant path a script measures.
     function cancel() {
         if (!visible) return;
         camStop();
+        if (quiet || !smoothZoom
+            || (Math.abs(zoom - 1) < 0.001 && Math.abs(viewX - entryViewX) < 0.5 && Math.abs(viewY - entryViewY) < 0.5)) {
+            doCancel();
+            return;
+        }
+        camGo(1, entryViewX, entryViewY);
+        camOnArrive = doCancel;
+    }
+
+    function doCancel() {
+        if (!visible) return;
         unsettle();
         targets = copyTargets(entryTargets);
         viewX = entryViewX;
@@ -1035,15 +1194,41 @@ KWin.SceneEffect {
         if (visible) enterHere(); else open();
     }
 
-    // A screen edge or corner fired: the same step out and the same enter, but
-    // the step out is a step *around the screen that was pushed* (BorderZoom),
-    // so the push shows the desks around that screen instead of the desktop it
-    // was already on. The chord and the toolbar keep OpenZoom; a border that
-    // fires while the canvas is open enters, as it always has.
-    function toggleFromBorder() {
+    // A screen edge or corner fired: by default the same step out and the
+    // same enter, but the step out is a step *around the screen that was
+    // pushed* (BorderZoom), so the push shows the desks around that screen
+    // instead of the desktop it was already on. The chord and the toolbar
+    // keep OpenZoom; a border that fires while the canvas is open enters, as
+    // it always has. With BorderSlide the borders are a route around the
+    // plane instead of a door in and out of it: a push pans one step toward
+    // the pushed side, a slide at 1:1 and a camera step in the open canvas.
+    function toggleFromBorder(border) {
+        if (configuration.BorderSlide) { borderSlide(border); return; }
         if (quiet) { finishSlide(); return; }
         if (visible) { enterHere(); return; }
         open(false, configuration.BorderZoom);
+    }
+
+    // One border pan step: half a screen (PanStep), corners on both axes,
+    // toward the pushed side. A slide mid-slide chains another step onto it,
+    // so holding the pointer against the edge travels the plane. Border
+    // numbers are ElectricBorder: 0 top, clockwise to 7 top-left.
+    function borderSlide(border) {
+        const dirs = [{ x: 0, y: -1 }, { x: 1, y: -1 }, { x: 1, y: 0 }, { x: 1, y: 1 },
+                      { x: 0, y: 1 }, { x: -1, y: 1 }, { x: -1, y: 0 }, { x: -1, y: -1 }];
+        const d = dirs[border];
+        if (!d) return;
+        const st = panStep();
+        if (canvasOpen) { panKey(d.x, d.y); return; }
+        slide(d.x * st.x, d.y * st.y);
+    }
+
+    // Move the camera one step (dx, dy in {-1, 0, 1}): the pan chords, the
+    // border pan and the arrow keys all take this path, springing on the
+    // smooth camera and jumping with SmoothZoom off.
+    function panKey(dx, dy) {
+        const st = panStep();
+        camGo(zoom, viewX + dx * st.x / zoom, viewY + dy * st.y / zoom);
     }
 
     // Enter the location under the active screen's centre. The activity
@@ -1066,7 +1251,7 @@ KWin.SceneEffect {
         const t = targetOf(a);
         t.x = Math.round(c.x - cx);
         t.y = Math.round(c.y - cy);
-        if (a !== currentActivity) gotoActivity(a); else commit(null);
+        flyEnter(a, t.x, t.y, function () { finishEnter(a); });
     }
 
     // ---- placing the desk around a window -------------------------------------
@@ -1192,31 +1377,69 @@ KWin.SceneEffect {
             t.y = Math.round(entry.y + entry.height / 2 - (g.y + g.height / 2));
         }
         if (a && a !== currentActivity) {
-            pendingFocus = entry.window;
-            KWin.Workspace.currentActivity = a;
-            commit(null);
+            flyEnter(a, t.x, t.y, function () {
+                pendingFocus = entry.window;
+                KWin.Workspace.currentActivity = a;
+                commit(null);
+            });
             return;
         }
-        commit(entry.window);
+        flyEnter(a, t.x, t.y, function () { commit(entry.window); });
     }
 
-    // zoomToActivity: camera fitted to that activity's frames, canvas stays open.
+    // zoomToActivity: camera fitted to that activity's frames - the ones that
+    // are drawn, hidden outputs left out - on the spring like any other
+    // destination. The canvas stays open.
     function zoomToActivity(id) {
-        const t = peekTarget(id);
-        const vs = KWin.Workspace.virtualScreenGeometry;
-        const l = t.x + vs.x, tp = t.y + vs.y, r = l + vs.width, b = tp + vs.height;
+        const fs = frames();
+        let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+        for (let i = 0; i < fs.length; ++i) {
+            if (fs[i].id !== id) continue;
+            l = Math.min(l, fs[i].x); t = Math.min(t, fs[i].y);
+            r = Math.max(r, fs[i].x + fs[i].width); b = Math.max(b, fs[i].y + fs[i].height);
+        }
+        if (l === Infinity) return;
         const sg = actionScreen().geometry;
         const pad = 60;
-        const z = Math.max(zoomMin, Math.min(1.0, Math.min((sg.width - 2 * pad) / (r - l), (sg.height - 2 * pad) / (b - tp))));
-        zoom = z;
-        viewX = (l + r) / 2 - (sg.x + sg.width / 2) / zoom;
-        viewY = (tp + b) / 2 - (sg.y + sg.height / 2) / zoom;
+        const z = Math.max(zoomMin, Math.min(1.0, Math.min((sg.width - 2 * pad) / (r - l), (sg.height - 2 * pad) / (b - t))));
+        camGo(z, (l + r) / 2 - (sg.x + sg.width / 2) / z, (t + b) / 2 - (sg.y + sg.height / 2) / z);
     }
 
-    // gotoActivity: apply with that activity current, frames where they are.
-    function gotoActivity(id) {
-        if (id && id !== currentActivity) KWin.Workspace.currentActivity = id;
+    // ---- the animated step in -------------------------------------------------
+    // Entering a location is a flight, not a cut: the camera springs to
+    // (tx, ty) - the location's viewport at 1:1 - the overworld's chrome
+    // fades, and on arrival done() runs, which switches the activity when
+    // asked and commits. At zoom 1 the thumbnails and the real windows agree,
+    // so the commit writes what the eye already saw and nothing on screen
+    // jumps. A drag, a wheel or another camera move mid-flight takes the
+    // camera back and the step in is over; the canvas stays open where the
+    // hand left it. With SmoothZoom off the step is taken at once, as before.
+    function flyEnter(a, tx, ty, done) {
+        if (!canvasOpen || !smoothZoom
+            || (Math.abs(zoom - 1) < 0.001 && Math.abs(viewX - tx) < 0.5 && Math.abs(viewY - ty) < 0.5)) {
+            done();
+            return;
+        }
+        camGo(1, tx, ty);
+        camOnArrive = done;
+    }
+
+    // The camera has arrived: activity a is made current - KWin reports the
+    // switch asynchronously - and the commit writes every window relative to
+    // the frame it sits in and hands input back.
+    function finishEnter(a) {
+        if (a !== currentActivity) KWin.Workspace.currentActivity = a;
         commit(null);
+    }
+
+    // gotoActivity: apply with that activity current, flying to its viewport
+    // first. The camera springs to the activity's target at 1:1 and the
+    // switch and the commit happen on arrival, so a frame double-click steps
+    // into that location with the same animated step, wherever the camera is.
+    function gotoActivity(id) {
+        const a = id || currentActivity;
+        const t = targetOf(a);
+        flyEnter(a, t.x, t.y, function () { finishEnter(a); });
     }
 
     // newActivityAt: a new activity whose active-screen frame is centred on
@@ -1313,6 +1536,9 @@ KWin.SceneEffect {
     function beginDrag(index) {
         const e = entries[index];
         if (!e) return;
+        // A hand on a window is a hand on the canvas: any flight - a step in,
+        // a cancel on the way back - is over, and the camera stops where it is.
+        camStop();
         dragRaw = {};
         dragIndex = index;
         const set = isSelected(e) ? entries.filter(isSelected) : [e];
@@ -1540,6 +1766,7 @@ KWin.SceneEffect {
     function requestSize(index, w, h, anchorRight, anchorBottom) {
         const e = entries[index];
         if (!e || e.window.deleted) return;
+        camStop();
         // Snap the edge being dragged. Left/top anchors keep the far edge fixed.
         const ids = {}; ids[e.window.internalId] = true;
         const cands = snapCandidates(ids, null);
@@ -1806,22 +2033,20 @@ KWin.SceneEffect {
     }
 
     // ---- backdrop: the desktop's own wallpaper on the plane ------------------
-    // The canvas's background is the wallpaper, not a void. One
-    // KWin.DesktopBackground per output sits at that output's place on the
-    // current activity's frames, so at 1:1 it is pixel-identical to the real
-    // desktop under the effect and rides the plane as the camera moves - and it
-    // is the desktop window itself, live, so a slideshow, a picture of the day
-    // or an animated wallpaper keeps going. Beyond the screens the same
-    // wallpaper is tiled at primary-screen steps (BackdropReach), each padding
-    // tile wearing the wallpaper of the output nearest to it, so the plane
-    // reads as the desktop continuing rather than a grid into nothing. Tiles
-    // are cheap: KWin shares one offscreen render per (view, window) between
-    // every item that shows it (WindowThumbnailSource::getOrCreate in
-    // windowthumbnailitem.cpp), so this costs draw calls, not renders.
-    //
-    // Only the effect draws this. While the canvas is closed the wallpaper is
-    // the real one, and the ground wallpaper plugin (with a grid, at 1:1)
-    // stands in for the plane.
+    // The canvas's background is the wallpaper, not a void. On the desks it is
+    // exact - every frame draws the real desktop window, so at 1:1 the
+    // overworld is pixel-identical to the desktop under the effect. Beyond the
+    // desks the plane shows the same wallpaper blurred (BackdropBlur) and
+    // dimmed (BackdropDim), screen-fixed like an overview's backdrop, with the
+    // ground grid over it: the desktop dissolving into a haze instead of the
+    // wallpaper repeating in tiles. The blur layer is the desktop window
+    // itself, live - a slideshow, a picture of the day or an animated
+    // wallpaper keeps going in the haze too - and it is hidden while the
+    // current activity's frame covers the view, which is where the blur would
+    // be invisible anyway (open at 1:1, an idle slide), so it costs nothing
+    // until the camera moves. Only the effect draws this; while the canvas is
+    // closed the wallpaper is the real one, and the ground wallpaper plugin
+    // (with a grid, at 1:1) stands in for the plane.
     property int screensRev: 0
 
     function backdropMode() {
@@ -1833,52 +2058,14 @@ KWin.SceneEffect {
         if (isNaN(d)) return 0.45;
         return Math.max(0, Math.min(1, d));
     }
-    // The tiles, in canvas units relative to the current activity's frames, so
-    // they ride with the frames exactly as the frames' wallpaper does. The
-    // model only changes when the screens or the activity do, so a camera move
-    // or a drag never rebuilds it.
-    readonly property var backdropTiles: {
-        screensRev; currentActivity; backdropMode();
-        return computeBackdropTiles();
+    function backdropBlur() {
+        const b = Number(configuration.BackdropBlur);
+        if (isNaN(b)) return 48;
+        return Math.max(0, Math.min(128, Math.round(b)));
     }
-    function computeBackdropTiles() {
-        if (backdropMode() !== "wallpaper") return [];
-        const ss = KWin.Workspace.screens;
-        if (!ss || ss.length === 0) return [];
-        const out = [];
-        for (let i = 0; i < ss.length; ++i) {
-            const g = ss[i].geometry;
-            out.push({ o: ss[i], dx: g.x, dy: g.y, w: g.width, h: g.height, z: 0 });
-        }
-        const reach = Math.max(0, Math.min(4, Math.round(Number(configuration.BackdropReach) || 0)));
-        if (reach === 0) return out;
-        const vs = KWin.Workspace.virtualScreenGeometry;
-        const cellW = Math.max(320, primaryScreen.geometry.width);
-        const cellH = Math.max(240, primaryScreen.geometry.height);
-        const cols = Math.ceil(vs.width / cellW) + 2 * reach;
-        const rows = Math.ceil(vs.height / cellH) + 2 * reach;
-        const x0 = vs.x - reach * cellW, y0 = vs.y - reach * cellH;
-        for (let r = 0; r < rows; ++r) {
-            for (let c = 0; c < cols; ++c) {
-                const dx = x0 + c * cellW, dy = y0 + r * cellH;
-                out.push({ o: nearestScreen(ss, dx + cellW / 2, dy + cellH / 2),
-                           dx: dx, dy: dy, w: cellW, h: cellH, z: -1 });
-            }
-        }
-        return out;
-    }
-    // The output whose wallpaper a padding tile wears: the nearest one, so the
-    // desktop's own edge is where its picture ends rather than a stranger's.
-    function nearestScreen(ss, x, y) {
-        let best = ss[0], bd = Infinity;
-        for (let i = 0; i < ss.length; ++i) {
-            const g = ss[i].geometry;
-            const ddx = g.x + g.width / 2 - x, ddy = g.y + g.height / 2 - y;
-            const d = ddx * ddx + ddy * ddy;
-            if (d < bd) { bd = d; best = ss[i]; }
-        }
-        return best;
-    }
+    // The blur layers drawn: one per output, in wallpaper mode. The state
+    // line reports this, so a scenario can see which mode is up.
+    readonly property int backdropLayers: backdropMode() === "wallpaper" ? KWin.Workspace.screens.length : 0
 
     // ---- 1:1 behaviours (effect closed) ------------------------------------
     // A window that rides with this activity's viewport: managed, not part of
@@ -2005,10 +2192,10 @@ KWin.SceneEffect {
     }
 
     // Pan by one step in a direction (dx, dy in {-1, 0, 1}): the camera moves
-    // that way. Closed, it is a slide; open, the camera just moves.
+    // that way. Closed, it is a slide; open, the camera springs one step.
     function panStepBy(dx, dy) {
+        if (canvasOpen) { panKey(dx, dy); return; }
         const st = panStep();
-        if (canvasOpen) { panBy(-dx * st.x, -dy * st.y); return; }
         slide(dx * st.x, dy * st.y);
     }
 
@@ -2166,7 +2353,7 @@ KWin.SceneEffect {
             // A held pan button parks the pointer at the edge on purpose:
             // pushing into the border to pan the canvas must not toggle it.
             onActivated: {
-                if (!effect.navHeld) effect.toggleFromBorder();
+                if (!effect.navHeld) effect.toggleFromBorder(modelData);
             }
         }
     }
@@ -2189,7 +2376,7 @@ KWin.SceneEffect {
         switch (a[0]) {
         case "open": open(); break;
         case "commit": commit(null); break;
-        case "cancel": cancel(); break;
+        case "cancel": doCancel(); break;
         case "toggle": toggle(); break;
         case "home": home(); break;
         case "origin": origin(); break;
@@ -2328,7 +2515,7 @@ KWin.SceneEffect {
     function logState() {
         let s = "kwin-canvas state visible=" + visible + (quiet ? " quiet" : "") + (passthroughLive ? " passthrough" : "") + (planeLive ? " plane" : "") + " zoom=" + zoom.toFixed(4) + " view=(" + viewX.toFixed(1) + "," + viewY.toFixed(1) + ") activity=" + labelOf(currentActivity) + " entries=" + entries.length
             + " popups=" + appPopups.length + " menus=" + canvasMenus + " nav=" + (navHeld ? "hold" : "-") + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
-            + " screens=" + KWin.Workspace.screens.length + " backdrop=" + backdropTiles.length
+            + " screens=" + KWin.Workspace.screens.length + " backdrop=" + backdropLayers
             + " cam=" + (camHasGoal ? "goal" : (camLive() ? "glide" : "-"))
             + " draglag=" + Math.round(Math.sqrt(dragLagX * dragLagX + dragLagY * dragLagY)) + " lean=" + dragLean.toFixed(2)
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
@@ -2476,6 +2663,7 @@ KWin.SceneEffect {
         cursor: Qt.SizeAllCursor
         width: tagRow.implicitWidth + 12
         height: tagRow.implicitHeight + 6
+        opacity: effect.chromeFade
         onDragStarted: effect.targetRaw = null
         onDragged: (dx, dy) => effect.dragTarget(activity, dx, dy)
 
@@ -2556,50 +2744,64 @@ KWin.SceneEffect {
         }
 
         // The plane's base: opaque, so nothing shows through to the real
-        // desktop under the effect wherever no wallpaper tile reaches (past
-        // BackdropReach, or with no shell behind the canvas at all). Below
-        // everything, tiles included: a padding tile's z is -1 (it belongs
-        // under the output's own tile), which would still put it behind this
-        // rect at z 0, and then the backdrop beyond the screens would never be
-        // drawn at all.
+        // desktop under the effect wherever no wallpaper reaches (grid mode,
+        // or a blur radius of 0 with the layer hidden). Below everything.
         Rectangle {
             anchors.fill: parent
             z: -100
             color: effect.configuration.Background
         }
 
-        // Backdrop: the desktop's wallpaper, at every output's place on the
-        // current activity's frames and tiled outward from the screens. At 1:1
-        // this is the wallpaper the desktop is showing, pixel for pixel, so a
-        // slide at 1:1 moves a desktop that looks untouched.
-        Repeater {
-            model: effect.backdropTiles
-            delegate: Item {
-                id: tile
-                required property var modelData
-                readonly property var spec: modelData
-                x: { effect.revision; return (effect.peekTarget(effect.currentActivity).x + spec.dx - effect.viewX) * effect.zoom - view.sg.x; }
-                y: { effect.revision; return (effect.peekTarget(effect.currentActivity).y + spec.dy - effect.viewY) * effect.zoom - view.sg.y; }
-                width: spec.w * effect.zoom
-                height: spec.h * effect.zoom
-                z: spec.z
-                KWin.DesktopBackground {
-                    anchors.fill: parent
-                    output: tile.spec.o
-                    desktop: KWin.Workspace.currentDesktop
-                    activity: effect.currentActivity || "default"
-                }
-            }
-        }
-
-        // The dim over the backdrop, so the desks and the windows stay the
-        // subject. Zero while the canvas slides at 1:1, where the plane has to
-        // be the desktop and nothing else.
-        Rectangle {
+        // Backdrop: the blurred continuation of the desktop's wallpaper,
+        // screen-fixed like an overview's backdrop. The desks keep the exact
+        // wallpaper - every frame draws the real desktop window - and beyond
+        // them the plane is the same wallpaper in a haze, dimmed so the desks
+        // and the windows stay the subject, with the ground grid over it. It
+        // is the desktop window itself, live, and it hides while the current
+        // activity's frame covers the view (open at 1:1, an idle slide),
+        // which is exactly where the blur would be invisible anyway, so it
+        // costs nothing until the camera moves.
+        Item {
+            id: blurLayer
             anchors.fill: parent
-            visible: effect.backdropMode() === "wallpaper" && !effect.quiet
-            color: effect.configuration.Background
-            opacity: effect.backdropDim()
+            z: -90
+            readonly property bool wallpaper: effect.backdropMode() === "wallpaper"
+            // The frame for this screen, drawn: does it cover the view?
+            readonly property bool covered: {
+                if (!wallpaper) return false;
+                effect.revision;
+                if (effect.isHidden(effect.currentActivity, view.screen)) return false;
+                const t = effect.peekTarget(effect.currentActivity);
+                const og = view.sg;
+                const x = (t.x + og.x - effect.viewX) * effect.zoom;
+                const y = (t.y + og.y - effect.viewY) * effect.zoom;
+                const w = og.width * effect.zoom, h = og.height * effect.zoom;
+                return x <= 0 && y <= 0 && x + w >= view.width && y + h >= view.height;
+            }
+            visible: wallpaper && !covered
+            KWin.DesktopBackground {
+                id: blurSource
+                anchors.fill: parent
+                output: view.screen
+                desktop: KWin.Workspace.currentDesktop
+                activity: effect.currentActivity || "default"
+            }
+            FastBlur {
+                anchors.fill: parent
+                source: blurSource
+                radius: effect.backdropBlur()
+                transparentBorder: false
+            }
+            // The dim over the blur only: the desks ride above it and stay
+            // bright. Zero while the canvas slides at 1:1, where the plane
+            // and the desktop have to be the same thing, and it fades in
+            // with the chrome on open and out with it on the step in, so
+            // stepping out and back never flashes the dim.
+            Rectangle {
+                anchors.fill: parent
+                color: effect.configuration.Background
+                opacity: effect.backdropDim() * effect.chromeFade * (effect.quiet ? 0 : 1)
+            }
         }
 
         Ground {
@@ -2814,12 +3016,13 @@ KWin.SceneEffect {
 
                     // Sheet tint: keeps the frame legible when no background
                     // window exists. It fades out toward 1:1, so stepping out
-                    // looks like the desktop until the camera moves.
+                    // looks like the desktop until the camera moves, and rides
+                    // the chrome fade on the way in.
                     Rectangle {
                         anchors.fill: parent
                         visible: !frame.bare
                         color: activityFrames.accent
-                        opacity: (activityFrames.current ? 0.10 : 0.06) * Math.min(1, Math.max(0, (1 - effect.zoom) * 4))
+                        opacity: (activityFrames.current ? 0.10 : 0.06) * Math.min(1, Math.max(0, (1 - effect.zoom) * 4)) * effect.chromeFade
                     }
 
                     Rectangle {
@@ -2828,7 +3031,7 @@ KWin.SceneEffect {
                         color: "transparent"
                         border.width: activityFrames.current ? 2 : 1
                         border.color: activityFrames.accent
-                        opacity: activityFrames.current ? 0.95 : 0.6
+                        opacity: (activityFrames.current ? 0.95 : 0.6) * effect.chromeFade
                     }
 
                     // A gesture on the frame's own area (windows sit above and
@@ -2878,6 +3081,7 @@ KWin.SceneEffect {
                 width: { effect.revision; return effect.entries[index].width * effect.zoom; }
                 height: { effect.revision; return effect.entries[index].height * effect.zoom; }
                 visible: !effect.quiet || entry.activity === effect.currentActivity
+                opacity: effect.thumbOpacity
                 z: 1000 + index
                 // Weight: the window lifts while the hand holds it, trails and
                 // leans with the hand, and springs back when the hand stops.
@@ -3069,10 +3273,16 @@ KWin.SceneEffect {
             const k = event.key;
             if (effect.bound("pan", k)) {
                 if (!event.isAutoRepeat) view.spaceHeld = true;
+            } else if (effect.bound("next", k) && !(event.modifiers & Qt.ShiftModifier)) {
+                if (!event.isAutoRepeat) effect.cycleSelection(1);
+            } else if (effect.bound("prev", k) || (effect.bound("next", k) && (event.modifiers & Qt.ShiftModifier))) {
+                // Shift+Tab arrives as Tab with the shift modifier, whatever
+                // the platform does about Backtab, so both count as previous.
+                if (!event.isAutoRepeat) effect.cycleSelection(-1);
             } else if (effect.bound("cancel", k)) {
                 effect.cancel();
             } else if (effect.bound("apply", k)) {
-                effect.enterHere();
+                effect.applyKey();
             } else if (effect.bound("home", k)) {
                 effect.home();
             } else if (effect.bound("origin", k)) {
@@ -3085,6 +3295,14 @@ KWin.SceneEffect {
             } else if (effect.bound("zoomOut", k)) {
                 const p = effect.cursorScreen();
                 effect.camZoomTo(effect.zoom / effect.zoomStep, p.x, p.y);
+            } else if (effect.bound("panLeft", k)) {
+                effect.panKey(-1, 0);
+            } else if (effect.bound("panRight", k)) {
+                effect.panKey(1, 0);
+            } else if (effect.bound("panUp", k)) {
+                effect.panKey(0, -1);
+            } else if (effect.bound("panDown", k)) {
+                effect.panKey(0, 1);
             } else {
                 return;
             }
@@ -3162,6 +3380,7 @@ KWin.SceneEffect {
             id: hud
             z: 100000
             visible: view.screen === effect.primaryScreen && !effect.quiet
+            opacity: effect.chromeFade
             readonly property string pos: String(effect.configuration.HudPosition || "Top").toLowerCase()
             readonly property bool atBottom: pos.indexOf("bottom") === 0
             readonly property bool atLeft: pos === "left" || pos === "topleft" || pos === "bottomleft"
@@ -3288,6 +3507,7 @@ KWin.SceneEffect {
         Rectangle {
             z: 100000
             visible: effect.helpOpen && hud.visible
+            opacity: effect.chromeFade
             anchors.top: hud.vertical ? hud.top : (hud.atBottom ? undefined : hud.bottom)
             anchors.bottom: !hud.vertical && hud.atBottom ? hud.top : undefined
             anchors.left: hud.vertical ? (hud.atLeft ? hud.right : undefined) : (hud.atLeft ? hud.left : undefined)
@@ -3330,7 +3550,9 @@ KWin.SceneEffect {
                 K { text: effect.gestureLabel(effect.configuration.MouseZoomToActivity) + " frame" }  V { text: "zoom to that activity" }
                 K { text: effect.gestureLabel(effect.configuration.MouseGotoActivity) + " frame" }    V { text: "apply with that activity current" }
                 K { text: effect.gestureLabel(effect.configuration.MouseNewActivityAt) + " window outside frames" } V { text: "new activity centred on it" }
-                K { text: effect.keyLabel(effect.configuration.KeyApply) }      V { text: "enter the location under the screen centre" }
+                K { text: effect.keyLabel(effect.configuration.KeyNext) + " / " + effect.keyLabel(effect.configuration.KeyPrev) } V { text: "step the selection through the windows; the camera follows" }
+                K { text: effect.keyLabel(effect.configuration.KeyPanLeft) + " / " + effect.keyLabel(effect.configuration.KeyPanRight) + " / " + effect.keyLabel(effect.configuration.KeyPanUp) + " / " + effect.keyLabel(effect.configuration.KeyPanDown) } V { text: "pan the camera one step" }
+                K { text: effect.keyLabel(effect.configuration.KeyApply) }      V { text: "enter the location under the screen centre; with a window selected, enter it focused" }
                 K { text: effect.keyLabel(effect.configuration.KeyCancel) }     V { text: "back to where you were, nothing moved" }
                 K { text: effect.keyLabel(effect.configuration.KeyHome) }       V { text: "look through this activity's frames" }
                 K { text: effect.keyLabel(effect.configuration.KeyOrigin) }     V { text: "camera to the canvas origin" }

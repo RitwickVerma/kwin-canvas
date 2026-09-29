@@ -25,7 +25,7 @@ off the plugin path (see below). `NEST_BORDERS=0,1,2,3,4,5,6,7` seeds every
 screen border into the effect's `BorderActivate` instead of the default 7
 (the top-left corner), the same numbers the Screen Edges page writes.
 `NEST_OUTPUTS=2` gives the nest two outputs (`--output-count 2`), a frame and a
-wallpaper tile each; `make test-two-outputs` runs the scenarios written for an
+wallpaper haze layer each; `make test-two-outputs` runs the scenarios written for an
 arrangement against one.
 
 The nest seeds the motion knobs off - `SmoothZoom`, `PanInertia` and
@@ -160,7 +160,8 @@ them at fixed canvas positions with `placeby`, then sources each
 - `c "command"` sends a debug command and keeps the state it printed.
 - `sget zoom|viewx|viewy|visible|activity|entries|nactivities|screens|backdrop|cam|draglag|lean`
   reads the state line: `screens` is the output count, `backdrop` the number of
-  wallpaper tiles the plane is drawing, `cam` `goal` or `glide` while the
+  wallpaper haze layers the plane is drawing (one per output in wallpaper mode,
+  none in grid mode), `cam` `goal` or `glide` while the
   camera moves, `draglag`/`lean` the weight a dragged window is wearing.
 - `eget CAPTION x|y|w|h|fx|fy|activity|index` reads an entry by caption substring.
 - `tget INDEX x|y|name|hidden` reads an activity target.

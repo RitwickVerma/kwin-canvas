@@ -43,20 +43,23 @@ This file arrived in one commit on top of those, together with `AGENTS.md` and
 
 ## Verified, and how
 
-On `4cbc21a`, in a live KDE Plasma 6.7.5 Wayland session (kwin 6.7.5):
+On this session's tree, in a nested KWin 6.7.5 (the nest; the live-session
+half stays untested, below):
 
-- `make lint` — exit 0, on `4cbc21a` and again with this file in the tree. REUSE 3.3
-  compliant: 111/111 files with copyright and licence information (108 before these
-  three).
-- `make test` — `== pass 244  fail 0  skip 2`. The full run was on `f8bd927`, whose
-  tree differs from `4cbc21a` only by `.gitlab-ci.yml`'s last newline and the three
-  scenarios that lost a shebang; `make test ARGS=94` was re-run after that commit
-  and passed 27/0/0.
-- `make fixtures` — regenerates the committed fixtures byte for byte.
-- The four CI job scripts, taken from `.gitlab-ci.yml` and run here by hand — all
-  four exit 0.
-- `make test ARGS=81` — 29/0/0, and `make test-two-outputs` for `91` — 17/0/0. Both
-  were re-run on this tree for this file, not remembered from an earlier session.
+- `make lint-qml` and `make lint-shell` — exit 0. `lint-reuse` still needs
+  `reuse`, which is not installed here (below).
+- `make test` — `== pass 281  fail 0  skip 2`, the skips the documented honest
+  ones (`85-passthrough` needs the plugin, `91-two-outputs` a two-output
+  nest). This run also pinned the new scenarios 100, 101 and 102 and the
+  reworked 93.
+- `make test-two-outputs` — `== pass 17  fail 0  skip 0` for `91-two-outputs`.
+- The goldens that moved with the new backdrop (zoom-pan, extents,
+  three-activities, hidden-frame, input-dragged, corner-zoom,
+  two-output-corner, and 93's set) were re-recorded and the diff pictures
+  checked; the 1:1 goldens (open-1to1, after-commit-1to1, resized) did not
+  move, as the haze is invisible under the frames.
+- `make fixtures` — the fixtures were not regenerated in this session's work;
+  the generator and its output are untouched.
 
 ## What cannot be checked on this machine
 
@@ -89,21 +92,43 @@ Open:
 
 ## Next candidates
 
-`docs/architecture.md` → `Next` holds upstream's own list (snap zoom to 1 on commit,
-drawing limits, an edge pan at 1:1, auto-pan while dragging to a screen edge,
-bookmarks and a minimap, persisting `view` on commit). Beyond those, from this
-side of the fork:
+`docs/architecture.md` → `Next` holds the remaining ideas (snap zoom to 1 on
+the plain commit paths, drawing limits, auto-pan while dragging to a screen
+edge at 1:1, bookmarks and a minimap, persisting `view` on commit). Beyond
+those, from this side of the fork:
 
 - Two-output goldens exist only for `91-two-outputs`; another arrangement would
   widen `make test-two-outputs`.
-- `93-backdrop` measures the tiling at its edges; the plane's behaviour past
-  `BackdropReach` and under a second output's tile is only partly pinned.
+- The haze is measured at one zoom and one blur; how the blur reads at
+  extreme zooms, and the per-view hiding under the frames on two outputs, is
+  only partly pinned.
 - The two skips in `make test` are honest ones: `85-passthrough` needs the plugin
   and `91-two-outputs` needs a two-output nest. A machine with matching KWin headers
   and ECM would turn the first into a real check — and `make test-shim` into a
   second runner rather than a skip — which is the biggest gap left in the suite.
 
 ## Sessions
+
+### 2026-09-28 — flights, the haze, border pan, the keyboard, and MB5
+
+The step in and the cancel become flights on the camera spring (`camOnArrive`,
+the chrome fade, the window fade-in on a moving opening view), home, origin
+and the swatches take the spring, and a goal starts with a push so springs
+move on the first frame. The backdrop becomes the wallpaper in a haze - exact
+on the desks, blurred and dimmed once per output beyond them - instead of
+repeated tiles (`BackdropBlur` replaces `BackdropReach`). `BorderSlide` turns
+a border push into a pan, one slide at 1:1 and a camera step in the open
+canvas. The open canvas gains keyboard navigation with collision-free
+defaults: arrow keys pan, Tab/Shift+Tab step the selection with the camera
+following, Enter with a selection steps into that window. `PanHold` defaults
+to MB5, which needed both of its Qt names in the mask - KWin delivers MB5 as
+ExtraButton3, not ForwardButton (verified against the 6.7.5 source's
+`buttonToQtMouseButton` table). `fakeinput` grew forward/back buttons.
+Scenarios 100/101/102 added, 81/91/93 reworked, the moved goldens re-recorded
+after pixel checks. One trap fixed: the debug `cancel` no longer restores a
+stale entry view when the canvas is already closed, which had corrupted the
+scenario after a slide. Verified: `make lint-qml`, `make lint-shell`,
+`make test` 281/0/2, `make test-two-outputs` 17/0/0, fixtures untouched.
 
 ### 2026-09-28 — repository hygiene, six commits
 
