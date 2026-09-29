@@ -48,7 +48,7 @@ built and loaded (the live-session half stays untested, below):
 
 - `make lint-qml` and `make lint-shell` — exit 0. `lint-reuse` still needs
   `reuse`, which is not installed here (below).
-- `make test` — `== pass 340  fail 0  skip 1`, the skip `91-two-outputs`
+- `make test` — `== pass 345  fail 0  skip 1`, the skip `91-two-outputs`
   needing a two-output nest; `85-passthrough` runs for real against the
   built plugin. `make test-two-outputs` — `== pass 17  fail 0  skip 0`.
 - The goldens were re-recorded in the full-run sequence (`make golden`),
@@ -101,6 +101,20 @@ those, from this side of the fork:
   pinned build-id - the biggest gap left in the suite.
 
 ## Sessions
+
+### 2026-09-29 — pinned windows with edge physics
+
+A pinned window is screen-fixed: it rides the camera and never leaves the
+screen, the plane model's "on all desktops". Dragged past a screen edge it
+bounces back inside on an underdamped spring (w=10, damping 5), and the pin
+survives restarts by caption (`PinnedWindows`). Pin and unpin live on the
+arrange menu; the debug channel gained pin/unpin/unpinall. Two bugs fell out
+of the drive: the bounce's spring kept rewriting the pin map and resurrected
+a pin the unpin had deleted (the spring now stops when the pin goes), and
+the grasp's fullscreen zoom-in commit could be lost to a grab mid-flight
+(it parks in deferredClose now). Verified: `make lint-qml`, `make
+lint-shell`, `make test` == pass 345 fail 0 skip 1, `make test-two-outputs`
+== 17/0/0, fixtures byte for byte.
 
 ### 2026-09-29 — clicks focus, the hover is the focus, and no more grab-on-click
 

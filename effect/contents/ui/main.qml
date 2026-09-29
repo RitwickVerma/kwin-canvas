@@ -182,10 +182,12 @@ KWin.SceneEffect {
             t.y = viewY;
         }
         // The fullscreen opening stepped out a little: spring back to 1:1 at
-        // the committed viewport instead of jumping.
+        // the committed viewport instead of jumping. A grab mid-zoom keeps
+        // the commit parked until the hand lets go.
         if (zoom < 0.999) {
             camGo(1, viewX, viewY);
-            camOnArrive = function () { commit(null); };
+            camOnArrive = function () { deferredClose = null; commit(null); };
+            deferredClose = function () { commit(null); };
             return;
         }
         commit(null);
@@ -280,6 +282,117 @@ KWin.SceneEffect {
     }
 
     property int lastDebugSeq: 0
+
+    // ---- pinned windows -----------------------------------------------------
+    // A pinned window is screen-fixed: it rides the camera and never leaves
+    // the screen, this model's "on all desktops". The anchor is its screen
+    // position in global pixels, keyed by caption (the config persists it).
+    // A drag moves the anchor; dragged past a screen edge it bounces back
+    // inside on an underdamped spring, the physics of the edges.
+    property var pinned: ({})          // caption -> { sx, sy }
+    property var bounce: null          // the spring back: { caption, sx, sy, vx, vy, tx, ty }
+    function isPinnedEntry(e) { return e && pinned[e.window.caption] !== undefined; }
+    function loadPinned() {
+        const list = configuration.PinnedWindows || [];
+        const set = {};
+        for (let i = 0; i < list.length; ++i) if (list[i]) set[list[i]] = null;
+        pinned = set;
+    }
+    function savePinned() {
+        const list = [];
+        for (const k in pinned) list.push(k);
+        configuration.PinnedWindows = list;
+        configuration.writeConfig();
+    }
+    function pinEntries(list) {
+        for (let i = 0; i < list.length; ++i) {
+            const e = list[i];
+            if (!e || e.window.deleted) continue;
+            if (pinned[e.window.caption] !== undefined) continue;
+            pinned[e.window.caption] = clampScreen(e);
+        }
+        savePinned();
+    }
+    function unpinEntries(list) {
+        let any = false;
+        for (let i = 0; i < list.length; ++i) {
+            const e = list[i];
+            if (!e) continue;
+            if (bounce && bounce.caption === e.window.caption) bounce = null;
+            if (delete pinned[e.window.caption]) any = true;
+        }
+        if (any) savePinned();
+    }
+    function togglePin() {
+        const list = arrangeTargets();
+        if (list.length === 0) return;
+        let allPinned = true;
+        for (let i = 0; i < list.length; ++i) if (!isPinnedEntry(list[i])) { allPinned = false; break; }
+        if (allPinned) unpinEntries(list); else pinEntries(list);
+        revision++;
+    }
+    // The screen spot that keeps the window wholly inside the screen the
+    // pointer is on, with a margin. The anchor the pin holds, and the place
+    // a bounced window settles.
+    function clampScreen(e) {
+        const g = actionScreen().geometry;
+        const w = e.width * zoom, h = e.height * zoom;
+        const m = 8;
+        let sx = (e.x - viewX) * zoom, sy = (e.y - viewY) * zoom;
+        if (w < g.width - 2 * m) sx = Math.max(g.x + m, Math.min(g.x + g.width - w - m, sx));
+        else sx = g.x + m;
+        if (h < g.height - 2 * m) sy = Math.max(g.y + m, Math.min(g.y + g.height - h - m, sy));
+        else sy = g.y + m;
+        return { sx: sx, sy: sy };
+    }
+    // One tick of the pin ride: every pinned window the hand is not dragging
+    // is kept at its anchor as the camera moves, and a window bounced back
+    // from an edge springs on its way. Runs while the canvas is visible, a
+    // slide included, so a pinned window rides a slide at 1:1 too.
+    function ridePinned(dt) {
+        if (bounce !== null) {
+            if (pinned[bounce.caption] === undefined) {
+                // Unpinned mid-bounce: the spring stops dead.
+                bounce = null;
+            } else {
+                const b = bounce;
+                const w = 10, c = 5;
+                b.vx += (-w * w * (b.sx - b.tx) - c * b.vx) * dt;
+                b.vy += (-w * w * (b.sy - b.ty) - c * b.vy) * dt;
+                b.sx += b.vx * dt;
+                b.sy += b.vy * dt;
+                if (Math.abs(b.sx - b.tx) < 0.4 && Math.abs(b.sy - b.ty) < 0.4
+                    && Math.abs(b.vx) < 1 && Math.abs(b.vy) < 1) {
+                    pinned[b.caption] = { sx: b.tx, sy: b.ty };
+                    bounce = null;
+                } else {
+                    pinned[b.caption] = { sx: b.sx, sy: b.sy };
+                }
+            }
+        }
+        for (let i = 0; i < entries.length; ++i) {
+            const e = entries[i];
+            if (!isPinnedEntry(e) || (dragIndex >= 0 && dragRaw[e.window.internalId])) continue;
+            const a = pinned[e.window.caption];
+            if (!a) {
+                // First sight: the pin takes the window where it is, clamped.
+                pinned[e.window.caption] = clampScreen(e);
+                continue;
+            }
+            const nx = viewX + a.sx / zoom, ny = viewY + a.sy / zoom;
+            if (e.x !== nx || e.y !== ny) {
+                e.x = nx;
+                e.y = ny;
+                revision++;
+            }
+        }
+    }
+    Timer {
+        interval: 16
+        repeat: true
+        running: effect.visible
+        onTriggered: effect.ridePinned(interval / 1000)
+    }
 
     // ---- hover navigation ----------------------------------------------------
     // The pointer rests on a window and the camera pans the least that brings
@@ -1855,6 +1968,21 @@ KWin.SceneEffect {
 
     // The drag is over: the grip's release, or anything that ends a gesture.
     function endDrag() {
+        // A pinned window dropped outside the screen bounces back in: the
+        // anchor springs from where the hand let go to the nearest spot
+        // wholly on screen, overshooting and settling - the physics of the
+        // edges.
+        for (let i = 0; i < entries.length; ++i) {
+            const e = entries[i];
+            if (!isPinnedEntry(e) || !dragRaw[e.window.internalId]) continue;
+            const sx0 = (e.x - viewX) * zoom, sy0 = (e.y - viewY) * zoom;
+            const cl = clampScreen(e);
+            if (Math.abs(sx0 - cl.sx) < 0.5 && Math.abs(sy0 - cl.sy) < 0.5) {
+                pinned[e.window.caption] = { sx: sx0, sy: sy0 };
+            } else {
+                bounce = { caption: e.window.caption, sx: sx0, sy: sy0, vx: 0, vy: 0, tx: cl.sx, ty: cl.sy };
+            }
+        }
         dragIndex = -1;
         endWindowDrag();
     }
@@ -1868,6 +1996,15 @@ KWin.SceneEffect {
         if (out.length === 0 && contextEntry) out.push(contextEntry);
         out.sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
         return out;
+    }
+
+    // Whether every window the pin menu would act on is already pinned, for
+    // the menu's label.
+    function pinTargetsPinned() {
+        const list = arrangeTargets();
+        if (list.length === 0) return false;
+        for (let i = 0; i < list.length; ++i) if (!isPinnedEntry(list[i])) return false;
+        return true;
     }
 
     function bbox(list) {
@@ -1911,6 +2048,11 @@ KWin.SceneEffect {
                 const idx = entries.indexOf(e);
                 if (idx >= 0) requestSize(idx, cw, ch, false, false);
             }
+        }
+        // A pinned window keeps its pin: the arrangement becomes the new
+        // anchor, clamped on screen.
+        for (let i = 0; i < list.length; ++i) {
+            if (isPinnedEntry(list[i])) pinned[list[i].window.caption] = clampScreen(list[i]);
         }
         revision++;
     }
@@ -1959,6 +2101,9 @@ KWin.SceneEffect {
             }
             if (!best) best = { x: l - box.width - gap, y: t - box.height - gap };
             for (let i = 0; i < list.length; ++i) { list[i].x += best.x - box.x; list[i].y += best.y - box.y; }
+        }
+        for (let i = 0; i < list.length; ++i) {
+            if (isPinnedEntry(list[i])) pinned[list[i].window.caption] = clampScreen(list[i]);
         }
         revision++;
     }
@@ -2816,6 +2961,9 @@ KWin.SceneEffect {
         case "selectadd": selectAdd(entries[Number(a[1])]); break;
         case "selecttoggle": selectToggle(entries[Number(a[1])]); break;
         case "clearsel": clearSelection(); break;
+        case "pin": pinEntries([entries[Number(a[1])]]); break;
+        case "unpin": unpinEntries([entries[Number(a[1])]]); break;
+        case "unpinall": pinned = {}; savePinned(); break;
         case "arrange": arrange(a[1], Number(a[2]), Number(a[3])); break;
         case "snap": {
             const on = a[2] === "on";
@@ -2885,6 +3033,7 @@ KWin.SceneEffect {
         rebuildBindings();
         readSwipeFingers();
         loadHiddenFrames();
+        loadPinned();
         refreshActivities();
         lastDebugSeq = configuration.DebugSeq;
         publishHold();
@@ -3542,6 +3691,20 @@ KWin.SceneEffect {
                     styleColor: "#000000"
                 }
 
+                // The pin: a pinned window wears its marker and never leaves
+                // the screen.
+                Kirigami.Icon {
+                    visible: effect.isPinnedEntry(thumb.entry) && !effect.quiet
+                    source: "window-pin"
+                    width: 14
+                    height: 14
+                    anchors.right: parent.right
+                    anchors.bottom: parent.top
+                    anchors.bottomMargin: 1
+                    anchors.rightMargin: 2
+                    color: effect.activityColor(thumb.entry.activity)
+                }
+
                 // The client decides the size it ends up with. Follow it.
                 Connections {
                     target: thumb.entry.window
@@ -3774,6 +3937,8 @@ KWin.SceneEffect {
             }
             PC3.MenuSeparator {}
             PC3.MenuItem { text: "Clear selection";      icon.name: "edit-select-none";      onTriggered: effect.clearSelection() }
+            PC3.MenuSeparator {}
+            PC3.MenuItem { text: effect.pinTargetsPinned() ? "Unpin from screen" : "Pin to screen"; icon.name: "window-pin"; onTriggered: effect.togglePin() }
         }
 
         // HUD: a Plasma toolbar, top centre. Camera state, the actions, help

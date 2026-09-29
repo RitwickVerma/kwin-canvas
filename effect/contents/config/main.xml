@@ -289,6 +289,10 @@
             <label>Frames switched off from their tag, as "activityId|outputName". A hidden frame is not drawn and takes no windows.</label>
             <default></default>
         </entry>
+        <entry name="PinnedWindows" type="StringList">
+            <label>Pinned windows, by caption. A pinned window is screen-fixed: it rides the camera and never leaves the screen - the one window that follows you everywhere on the plane, this model's "on all desktops". Drag it to move its spot; drag it past an edge and it bounces back into view.</label>
+            <default></default>
+        </entry>
         <entry name="FollowActivation" type="Bool">
             <label>Pan the canvas so an activated off-screen window comes on screen.</label>
             <default>true</default>

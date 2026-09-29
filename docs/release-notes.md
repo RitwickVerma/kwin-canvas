@@ -1,5 +1,12 @@
 Unreleased:
 
+- Pin a window and it follows you everywhere: a pinned window is screen-fixed
+  - it rides the camera and never leaves the screen, this model's "on all
+  desktops" - and it bounces with real physics when pushed past a screen
+  edge, overshooting and settling back into view. Pin and unpin from a
+  window's arrange menu; the pin survives restarts, by caption, in
+  `PinnedWindows`.
+
 - Clicks focus. A click on a window's title bar activates the window - with
   the pass-through plugin a client-area click already activates it natively,
   so a click anywhere on a window now means the same thing - and the hover
