@@ -253,10 +253,26 @@ const Transform &fileTransform()
 struct Canvas {
     QPointer<QObject> object;
     KWin::Effect *effect = nullptr;
-    QMetaProperty live, scale, offsetX, offsetY;
+    QMetaProperty live, scale, offsetX, offsetY, nav;
     bool warned = false;
 };
 Canvas g_canvas;
+
+// The buttons the canvas owns while they are down, from the effect: its
+// planeNavButtons, the same mask its pan handlers take, as a mask of
+// Qt::MouseButton values. Read at each gesture start rather than cached, so a
+// rebinding takes effect at once; a button in the mask is the canvas's
+// wherever the pointer is, which is what makes a held button a portal into the
+// canvas (drag a window on the plane, drag the ground, push an edge and keep
+// going).
+uint navButtons()
+{
+    if (!g_canvas.object || !g_canvas.nav.isValid()) {
+        return 0;
+    }
+    return g_canvas.nav.read(g_canvas.object).toUInt();
+}
+
 QTimer *g_attachTimer = nullptr;
 QTimer *g_nudge = nullptr;
 QTimer *g_logFlush = nullptr;
@@ -286,8 +302,9 @@ void attach()
     c.scale = prop("planeScale");
     c.offsetX = prop("planeOffsetX");
     c.offsetY = prop("planeOffsetY");
+    c.nav = prop("planeNavButtons");
     const QMetaProperty input = prop("planeInput");
-    if (!c.live.isValid() || !c.scale.isValid() || !c.offsetX.isValid() || !c.offsetY.isValid() || !input.isValid()
+    if (!c.live.isValid() || !c.scale.isValid() || !c.offsetX.isValid() || !c.offsetY.isValid() || !c.nav.isValid() || !input.isValid()
         || mo->indexOfMethod("planeTakes(QVariant,QVariant,QVariant)") < 0) {
         if (!g_canvas.warned) {
             logf("kwin-canvas effect has no plane interface; not attached");
@@ -957,11 +974,15 @@ bool _ZN4KWin14EffectsHandler13pointerButtonEPNS_18PointerButtonEventE(void *sel
         return fn(self, event);
     }
     // A press of the only button down starts a gesture, whatever a filter
-    // ahead of this one did with the last release. While an application
-    // popup holds a grab, a press the canvas would take goes on to KWin,
-    // which dismisses the popup as it does anywhere outside it.
+    // ahead of this one did with the last release. A canvas button is the
+    // canvas's wherever the pointer is, client areas included - that is what
+    // makes a held button a portal into the canvas rather than something the
+    // window under it sees. While an application popup holds a grab, a press
+    // the canvas would take goes on to KWin, which dismisses the popup as it
+    // does anywhere outside it.
     if (event->state == KWin::PointerButtonState::Pressed && event->buttons == event->button) {
-        g_owner = canvasTakes(event->position) && !popupGrabbed() ? Owner::Canvas : Owner::Kwin;
+        const bool nav = (uint(event->button) & navButtons()) != 0;
+        g_owner = !popupGrabbed() && (nav || canvasTakes(event->position)) ? Owner::Canvas : Owner::Kwin;
     }
     const bool r = g_owner == Owner::Kwin ? false : deliver(event, [&] { return fn(self, event); });
     if (event->buttons == Qt::NoButton) {

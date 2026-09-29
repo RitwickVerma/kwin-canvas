@@ -33,11 +33,13 @@ class SurfaceInterface;
  * fall through to the canvas.
  *
  * A press inside a window's client area raises the window and starts an
- * implicit grab that lasts until every button is up. A press on the ground
- * leaves the whole gesture to the canvas. Hover and wheel go to the window
- * under the pointer. Every key goes to the seat's focused surface, which
- * KWin keeps on the active window; global chords have already had their
- * turn, so the canvas's own chord still fires.
+ * implicit grab that lasts until every button is up. A press of a canvas
+ * button (setNavButtons) is the canvas's instead, wherever it lands, so a held
+ * button is a portal into the canvas rather than something the window sees. A
+ * press on the ground leaves the whole gesture to the canvas. Hover and wheel
+ * go to the window under the pointer. Every key goes to the seat's focused
+ * surface, which KWin keeps on the active window; global chords have already
+ * had their turn, so the canvas's own chord still fires.
  *
  * The canvas talks to it over D-Bus on KWin's bus name, object /KWinCanvas,
  * interface org.kde.kwin.canvas.Passthrough.
@@ -61,6 +63,16 @@ public Q_SLOTS:
      * the canvas point each activity's frames put at global (0,0).
      */
     Q_SCRIPTABLE void setCamera(double viewX, double viewY, double zoom, const QString &currentActivity, const QString &targetsJson);
+    /**
+     * The mouse buttons the canvas owns while they are down (its PanHold
+     * buttons, the middle button). A press of one of them is never handed to a
+     * window and never starts a grab, wherever the pointer is: it goes to the
+     * canvas, whose QML then owns the whole gesture - drag the ground to pan,
+     * drag a window to move it on the plane, hold still at a screen edge to
+     * keep panning. Motion and wheel while one is down stay the canvas's too.
+     * Zero restores the plain pass-through of every button.
+     */
+    Q_SCRIPTABLE void setNavButtons(uint buttons);
     /** One line of state for the nest harness: active, camera, grab, hover. */
     Q_SCRIPTABLE QString state() const;
 
@@ -90,6 +102,8 @@ private:
     QPointer<KWin::Window> m_grab;
     bool m_grabGround = false;
     Qt::MouseButtons m_buttons;
+    /** Buttons the canvas owns while they are down (setNavButtons), a mask of Qt::MouseButton values. */
+    uint m_nav = 0;
     QPointer<KWin::Window> m_hover;
     QPointer<KWin::SurfaceInterface> m_hoverSurface;
 };

@@ -71,6 +71,11 @@ void CanvasPassthrough::setCamera(double viewX, double viewY, double zoom, const
     }
 }
 
+void CanvasPassthrough::setNavButtons(uint buttons)
+{
+    m_nav = buttons;
+}
+
 QString CanvasPassthrough::state() const
 {
     return QStringLiteral("active=%1 view=(%2,%3) zoom=%4 grab=%5 ground=%6 hover=%7")
@@ -198,6 +203,12 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
     if (!m_active) {
         return false;
     }
+    // A canvas button is down: the whole gesture is the canvas's, wherever the
+    // pointer is (a window being dragged on the plane, a pan, an edge). The
+    // window under the pointer is not entered and no motion is notified to it.
+    if (event->buttons.toInt() & m_nav) {
+        return false;
+    }
     if (m_grabGround) {
         return false;
     }
@@ -224,6 +235,14 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
         return false;
     }
     const bool pressed = event->state == PointerButtonState::Pressed;
+    // A canvas button belongs to the canvas: it never starts a grab, never
+    // reaches a window, and never leaves one, wherever the pointer is. The
+    // release is the canvas's too - the window never saw the press, so it must
+    // not see the release - and the button is left out of the bookkeeping that
+    // decides when a grab is over.
+    if (uint(event->button) & m_nav) {
+        return false;
+    }
     const bool first = pressed && m_buttons == Qt::NoButton;
     if (pressed) {
         m_buttons |= event->button;
@@ -274,6 +293,11 @@ bool CanvasPassthrough::keyboardKey(KeyboardKeyEvent *event)
 bool CanvasPassthrough::pointerAxis(PointerAxisEvent *event)
 {
     if (!m_active || m_grabGround) {
+        return false;
+    }
+    // With a canvas button down the wheel is the canvas's too: a notch zooms
+    // the canvas at the pointer instead of scrolling the window under it.
+    if (event->buttons.toInt() & m_nav) {
         return false;
     }
     const QPointF canvas = toCanvas(event->position);
