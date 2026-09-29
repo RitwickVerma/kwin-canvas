@@ -1,10 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
 # What a container with no compositor can still check: the metadata linter, QML
-# and shell parse errors, and the tools and fixture builds. The scenarios drive
-# a nested KWin with real windows and virtual outputs, so they stay local; see
-# docs/testing.md. A runner that can host a KWin session can add
-# `tests/run.sh` to the same stage.
+# and shell parse errors, and the tools and fixture builds. The jobs run the
+# same `make lint-*` targets a local machine runs, so a red pipeline can be
+# reproduced here. The scenarios drive a nested KWin with real windows and
+# virtual outputs, so they stay local; see docs/testing.md. A runner that can
+# host a KWin session can add `tests/run.sh` to the same stage.
 
 image: archlinux:latest
 
@@ -24,34 +25,17 @@ default:
 reuse:
   stage: check
   script:
-    - reuse lint
+    - make lint-reuse
 
 qml:
   stage: check
   script:
-    # qmllint returns 0 for everything by default, and an unresolvable import
-    # off KDE is expected here, so only parse errors fail the job. The Qt5 build
-    # in /usr/bin answers to the same name and lints QML differently.
-    - |
-      status=0
-      for f in $(git ls-files '*.qml'); do
-          out=$(/usr/lib/qt6/bin/qmllint "$f" 2>&1)
-          if printf '%s' "$out" | grep -q '\[syntax\]'; then
-              printf '%s\n' "$f" "$out"
-              status=1
-          fi
-      done
-      exit $status
+    - make lint-qml
 
 shell:
   stage: check
   script:
-    - |
-      status=0
-      for f in $(git ls-files '*.sh'); do
-          bash -n "$f" || status=1
-      done
-      exit $status
+    - make lint-shell
 
 build:
   stage: build
@@ -60,3 +44,4 @@ build:
     - make fixtures
     # The fixtures in the tree are the generator's output; they must stay in step.
     - git diff --exit-code -- tests/fixtures
+

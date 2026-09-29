@@ -19,9 +19,11 @@ KPT         := kpackagetool6
 QDBUS       := qdbus6
 NEST        := ./dev/nest.sh
 PYTHON      := python3
+QMLLINT     := /usr/lib/qt6/bin/qmllint
 
 .DEFAULT_GOAL := help
 .PHONY: help deps deps-install install uninstall install-system uninstall-system reload enable disable status \
+        lint lint-reuse lint-qml lint-shell \
         tools fixtures play nest nest-down nest-clients nest-fixtures nest-reload nest-shot nest-log nest-clean nest-cmd \
         test test-shim test-two-outputs golden demo video clean stage dist pkgbuild aur aur-passthrough release tour \
         plugin plugin-try plugin-install-system plugin-status
@@ -41,6 +43,26 @@ deps: ## Check required tools; print what is missing and how to install it
 
 deps-install: ## Install missing dependencies with pacman (asks for sudo)
 	@dev/deps.sh --install
+
+# ---- checks -----------------------------------------------------------------
+# `make lint` is what the CI jobs run, so a pipeline failure can be reproduced
+# here. Both tools are in dev/deps.sh; the Qt6 qmllint is asked for by path
+# because the Qt5 build in /usr/bin answers to the same name.
+lint: lint-reuse lint-qml lint-shell ## Run the checks the CI jobs run
+
+lint-reuse: ## Check the copyright and licence metadata (REUSE 3.3)
+	@command -v reuse >/dev/null 2>&1 || { echo "reuse is not installed: sudo pacman -S reuse"; exit 1; }
+	@reuse lint
+
+lint-qml: ## Parse every QML file and fail on a syntax error (qmllint itself exits 0)
+	@[ -x $(QMLLINT) ] || { echo "$(QMLLINT) is not installed: sudo pacman -S qt6-declarative"; exit 1; }
+	@status=0; for f in $$(git ls-files "*.qml"); do \
+	    out=$$($(QMLLINT) "$$f" 2>&1); \
+	    if printf '%s' "$$out" | grep -q '\[syntax\]'; then printf '%s\n' "$$f" "$$out"; status=1; fi; \
+	done; exit $$status
+
+lint-shell: ## Parse every script with bash -n
+	@status=0; for f in $$(git ls-files "*.sh"); do bash -n "$$f" || status=1; done; exit $$status
 
 # ---- packages ---------------------------------------------------------------
 stage:

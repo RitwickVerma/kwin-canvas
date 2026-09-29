@@ -199,15 +199,24 @@ them at fixed canvas positions with `placeby`, then sources each
 
 `.gitlab-ci.yml` runs in an `archlinux:latest` container, which has no
 compositor, so it holds the checks that do not need one and skips the rest
-rather than pretending they passed: `reuse lint` for the copyright and
-licensing metadata (REUSE 3.3 — the headers in the files, plus `REUSE.toml`
-for the PNGs, the JSON and XML KWin parses, `VERSION` and the text fixtures),
-`qmllint` on every `.qml` file, `bash -n` on every script, `make tools`, and
-`make fixtures` followed by a `git diff` on `tests/fixtures` so the committed
-fixtures have to match the generator. `qmllint` returns 0 for everything by
-default and an unresolvable import is expected off KDE, so the QML job fails
-only on a `[syntax]` warning, and it calls `/usr/lib/qt6/bin/qmllint` by path
-because the Qt5 build in `/usr/bin` answers to the same name.
+rather than pretending they passed. The three check jobs are the three parts of
+`make lint`, so a red pipeline reproduces here:
+
+```bash
+make lint           # lint-reuse, lint-qml, lint-shell
+make lint-reuse     # reuse lint: copyright and licence metadata (REUSE 3.3)
+make lint-qml       # every .qml file, failing on a [syntax] warning
+make lint-shell     # bash -n on every script
+```
+
+`reuse lint` reads the headers in the files, plus `REUSE.toml` for the PNGs, the
+JSON and XML KWin parses, `VERSION` and the text fixtures. `qmllint` returns 0
+for everything by default and an unresolvable import is expected off KDE, so the
+QML job fails only on a `[syntax]` warning, and it calls
+`/usr/lib/qt6/bin/qmllint` by path because the Qt5 build in `/usr/bin` answers
+to the same name. The build job runs `make tools` and `make fixtures` and then
+`git diff` on `tests/fixtures`, so the committed fixtures have to match the
+generator.
 
 The scenarios, the demo, the plugin and the shim stay local: they need a
 nested KWin with real windows and virtual outputs, or KWin's headers to build
