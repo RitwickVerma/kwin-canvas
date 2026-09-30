@@ -7,6 +7,12 @@ Unreleased:
   the camera pans or zooms - its bindings had missed their dependencies,
   so the map was a still with an empty rectangle.
 
+- The minimap is a sheet of glass: bigger (a sixth of the screen), the
+  view behind it shows through blurred and a touch magnified - a lens -
+  the frames are tinted swatches with hairlines, the windows white specks,
+  the camera a bright rectangle, and the whole sheet springs in with the
+  zoom and grows under the pointer.
+
 - The minimap: a small map of the whole plane in the overworld's corner -
   the frames as swatches, the windows as specks, the camera as the white
   rectangle - and a click on it flies the camera there. It is the plane's

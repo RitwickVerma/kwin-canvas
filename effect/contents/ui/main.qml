@@ -4333,17 +4333,19 @@ KWin.SceneEffect {
             }
         }
 
-        // The minimap: the plane from above, in the overworld's corner. The
-        // frames as swatches, the windows as specks, the camera as the white
-        // rectangle; a click flies the camera there. It is how the plane's
-        // navigation ties together - the same picture the bracket keys tour.
+        // The minimap: the plane from above, in the overworld's corner. A
+        // sheet of glass - the view behind it shows through, blurred and a
+        // touch magnified, like a lens - carrying the frames as tinted
+        // swatches, the windows as white specks and the camera as the bright
+        // rectangle; a click flies the camera there. It springs in and out
+        // with the zoom, and grows under the pointer.
         Item {
             id: minimap
             anchors.right: parent.right
             anchors.bottom: parent.bottom
-            anchors.margins: Kirigami.Units.largeSpacing
-            width: 200
-            height: 140
+            anchors.margins: Kirigami.Units.largeSpacing * 2
+            width: Math.round(view.sg.width * 0.16)
+            height: Math.round(view.sg.height * 0.2)
             z: 80000
             visible: view.screen === effect.primaryScreen && effect.canvasOpen && !effect.quiet && effect.zoom < 0.9
             // The map lives: every binding depends on the revision and the
@@ -4355,12 +4357,42 @@ KWin.SceneEffect {
             readonly property real oy: { effect.revision; return (height - wb.height * sc) / 2; }
             function mx(cx) { return ox + (cx - wb.x) * sc; }
             function my(cy) { return oy + (cy - wb.y) * sc; }
+            // The lens: the scene behind the map, sampled a little smaller
+            // than the map and stretched back, so the glass magnifies what
+            // it refracts, then blurred into frosted glass.
+            ShaderEffectSource {
+                id: glass
+                anchors.fill: parent
+                sourceItem: view
+                recursive: false
+                sourceRect: Qt.rect(minimap.x + minimap.width * 0.02, minimap.y + minimap.height * 0.02, minimap.width * 0.96, minimap.height * 0.96)
+                layer.enabled: true
+                layer.effect: FastBlur {
+                    radius: 22
+                    transparentBorder: false
+                }
+            }
+            // The tint over the lens, and the hairline.
             Rectangle {
                 anchors.fill: parent
-                radius: 6
-                color: Qt.rgba(0.1, 0.1, 0.12, 0.72)
+                radius: 16
+                color: Qt.rgba(0.07, 0.07, 0.09, 0.42)
+            }
+            Rectangle {
+                anchors.fill: parent
+                radius: 16
+                color: "transparent"
                 border.width: 1
-                border.color: "#40ffffff"
+                border.color: minimapHover.hovered ? "#90ffffff" : "#3affffff"
+            }
+            // The map's shape: everything clipped to the glass sheet.
+            layer.enabled: true
+            // The spring: the map pops in and settles under the pointer.
+            scale: minimapHover.hovered ? 1.05 : 1.0
+            transformOrigin: Item.BottomRight
+            Behavior on scale { SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.01 } }
+            HoverHandler {
+                id: minimapHover
             }
             Repeater {
                 model: effect.frames().length
@@ -4371,8 +4403,11 @@ KWin.SceneEffect {
                     y: { effect.revision; effect.screensRev; return minimap.my(f.y); }
                     width: { effect.revision; return Math.max(2, f.width * minimap.sc); }
                     height: { effect.revision; return Math.max(2, f.height * minimap.sc); }
-                    color: effect.palette[index % effect.palette.length]
-                    opacity: 0.55
+                    radius: { effect.revision; return Math.max(1, 2 * minimap.sc); }
+                    readonly property color accent: effect.palette[index % effect.palette.length]
+                    color: Qt.rgba(accent.r, accent.g, accent.b, 0.30)
+                    border.width: 0.6
+                    border.color: Qt.rgba(accent.r, accent.g, accent.b, 0.75)
                 }
             }
             Repeater {
@@ -4382,20 +4417,21 @@ KWin.SceneEffect {
                     readonly property var e: effect.entries[index]
                     x: { effect.revision; return minimap.mx(e.x); }
                     y: { effect.revision; return minimap.my(e.y); }
-                    width: { effect.revision; return Math.max(1.5, e.width * minimap.sc); }
-                    height: { effect.revision; return Math.max(1.5, e.height * minimap.sc); }
+                    width: { effect.revision; return Math.max(1.6, e.width * minimap.sc); }
+                    height: { effect.revision; return Math.max(1.6, e.height * minimap.sc); }
                     radius: 1
-                    color: "#b0ffffff"
+                    color: "#ccffffff"
                 }
             }
             Rectangle {
                 x: { effect.revision; effect.viewX; effect.zoom; return minimap.mx(effect.viewX + view.sg.x / effect.zoom); }
                 y: { effect.revision; effect.viewY; effect.zoom; return minimap.my(effect.viewY + view.sg.y / effect.zoom); }
-                width: { effect.zoom; effect.revision; return Math.max(2, view.sg.width / effect.zoom * minimap.sc); }
-                height: { effect.zoom; effect.revision; return Math.max(2, view.sg.height / effect.zoom * minimap.sc); }
-                color: "transparent"
+                width: { effect.zoom; effect.revision; return Math.max(3, view.sg.width / effect.zoom * minimap.sc); }
+                height: { effect.zoom; effect.revision; return Math.max(3, view.sg.height / effect.zoom * minimap.sc); }
+                radius: 1.5
+                color: Qt.rgba(1, 1, 1, 0.12)
                 border.width: 1
-                border.color: "#ffffff"
+                border.color: "#e8ffffff"
             }
             TapHandler {
                 onTapped: (eventPoint) => {
