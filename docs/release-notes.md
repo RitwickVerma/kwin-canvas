@@ -1,5 +1,27 @@
 Unreleased:
 
+- The windows float: as the camera steps out of the location the
+  windows hover in Z, each bobbing gently at its own phase, the depth
+  ramping in with the zoom-out - and the cluster web rides the middle of
+  the float, weaving over some windows and under others as they bob, so
+  the overworld feels alive. The hold's sheets share the phases, and the
+  keyhole widens into the overworld only on a deeper zoom-out, so a
+  slight step back still commits the location.
+
+- The threads are a web: plain thin lines behind the windows, every
+  window in a cluster joined to every other - the constellation reads in
+  the gaps, never over the glass.
+
+- The hold's sheets are visible again, redesigned rather than diluted:
+  soft glass fills with clear hairlines, the hovered one brighter and
+  named - present without the busyness, since the frames' outlines and
+  the shroud stay gone.
+
+- The swap is fixed: MB5 during the hold flies once (its own flight
+  suppresses the activation's, so the windows no longer jump), and in
+  the overworld MB5 reaches the canvas through the plugin and tours the
+  clusters.
+
 - The camera's rectangle floats: a soft halo under a rounded glass chip,
   it melts away when the view dominates the map - the full zoom-out no
   longer paints a huge slab - and the moment a step in begins it expands

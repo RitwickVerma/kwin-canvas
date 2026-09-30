@@ -95,7 +95,7 @@ KWin.SceneEffect {
     // ground pans, and the screen edge keeps panning with the window in hand
     // (edgePanStep). It is the same mask the pan handlers already take, so
     // there is one answer to "which buttons navigate the canvas".
-    readonly property int planeNavButtons: (bindings.panHold || 0) | Qt.MiddleButton
+    readonly property int planeNavButtons: (bindings.panHold || 0) | Qt.MiddleButton | (bindings.swap || 0)
     // The swap buttons: while the canvas modifier is held, a press flies
     // between the two most recent windows.
     readonly property int swapButtons: bindings.swap || 0
@@ -198,7 +198,7 @@ KWin.SceneEffect {
         // fades in, and the map morphs from the full sheet into the corner
         // lens. Zoomed in, the release commits the location, as it always
         // has - a pan during the hold is the location's new viewport.
-        if (zoom < 0.999) {
+        if (zoom < 0.72) {
             quiet = false;
             chromeFade = 0;
             welcomeAnim.restart();
@@ -228,6 +228,11 @@ KWin.SceneEffect {
         }
         if (!target) return;
         KWin.Workspace.activeWindow = target;
+        // The swap's own flight is the move; the activation it caused must
+        // not fly again on the release, or the two flights fight and the
+        // windows jump.
+        pendingFly = null;
+        clickedWindow = null;
         const e = entryFor(target);
         if (e) flyToEntry(e, 2.0);
     }
@@ -308,6 +313,11 @@ KWin.SceneEffect {
     }
 
     property int lastDebugSeq: 0
+
+    // The float: the windows hover in Z as the camera steps out of the
+    // location, so the overworld feels alive - a gentle per-window bob,
+    // each at its own phase, ramping in with the zoom-out.
+    readonly property real floatAmt: windowPhysics && !quiet && visible ? Math.min(1, Math.max(0, (1 - zoom) * 3)) : 0
 
     // The grasp's map: which window the pointer rests on, and the jump.
     property int graspHover: 0
@@ -547,13 +557,10 @@ KWin.SceneEffect {
         camGo(zoom, c.cx - (g.x + g.width / 2) / zoom, c.cy - (g.y + g.height / 2) / zoom);
         toast("Cluster " + (k + 1) + " of " + clusters.length);
     }
-    // The thread through a cluster's windows, in this screen's coordinates:
-    // a polyline weaving through the members left to right. Re-evaluated
-    // with the camera, so the thread rides the same motion as the windows.
-    // The thread through a cluster's windows, in this screen's coordinates:
-    // a Catmull-Rom curve through the members in their stable order, so the
-    // thread is a smooth weaving rather than a zig-zag. Re-evaluated with
-    // the camera, so it rides the same motion as the windows.
+    // The threads through a cluster, in this screen's coordinates: every
+    // window joined to every other, a web in the gaps between them, drawn
+    // behind the windows. Re-evaluated with the camera, so the web rides
+    // the same motion as its windows.
     function clusterPath(i, sgx, sgy) {
         const c = clusters[i];
         if (!c || c.n < 2) return "";
@@ -567,12 +574,11 @@ KWin.SceneEffect {
             });
         }
         if (pts.length < 2) return "";
-        let s = "M " + pts[0].x.toFixed(1) + " " + pts[0].y.toFixed(1);
-        for (let k = 0; k < pts.length - 1; ++k) {
-            const p0 = pts[Math.max(0, k - 1)], p1 = pts[k], p2 = pts[k + 1], p3 = pts[Math.min(pts.length - 1, k + 2)];
-            const c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6;
-            const c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
-            s += " C " + c1x.toFixed(1) + " " + c1y.toFixed(1) + " " + c2x.toFixed(1) + " " + c2y.toFixed(1) + " " + p2.x.toFixed(1) + " " + p2.y.toFixed(1);
+        let s = "";
+        for (let a = 0; a < pts.length; ++a) {
+            for (let b = a + 1; b < pts.length; ++b) {
+                s += "M " + pts[a].x.toFixed(1) + " " + pts[a].y.toFixed(1) + " L " + pts[b].x.toFixed(1) + " " + pts[b].y.toFixed(1) + " ";
+            }
         }
         return s;
     }
@@ -4047,13 +4053,16 @@ KWin.SceneEffect {
                 // under the delegates, so a drag follows its entry, not its index.
                 property var held: null
                 readonly property int heldIndex: { effect.revision; return effect.entries.indexOf(held); }
+                // The float's bob: each window hovers at its own phase.
+                readonly property real phase: index * 137.508
+                readonly property real bob: { effect.floatRev; return Math.sin(effect.floatRev * 0.035 + phase) * 2.4 * effect.floatAmt; }
                 x: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].x - effect.viewX) * effect.zoom - view.sg.x; return f ? f.x : base; }
-                y: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; return f ? f.y : base; }
+                y: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; return (f ? f.y : base) + thumb.bob; }
                 width: { effect.revision; return effect.entries[index].width * effect.zoom; }
                 height: { effect.revision; return effect.entries[index].height * effect.zoom; }
                 visible: !effect.quiet || entry.activity === effect.currentActivity
                 opacity: effect.thumbOpacity
-                z: 1000 + index
+                z: 1000 + index + (index * 37) % 26
                 // Weight: the window lifts while the hand holds it, trails and
                 // leans with the hand, and springs back when the hand stops.
                 // The entry is exact throughout; this is the picture only.
@@ -4300,61 +4309,33 @@ KWin.SceneEffect {
                 // parent out of the frame layer.
                 width: view.width
                 height: view.height
-                // The thread floats above the windows it binds - a
-                // constellation over the desk - and below the badge and the
-                // tags. The z lives on the delegate: a child's z cannot lift
-                // its parent out of the frame layer.
-                z: 2000
-                // The thread's glow: a whisper of light under the thread, so
-                // the constellation reads as a glow rather than a drawn line.
-                Shape {
-                    id: threadGlow
-                    anchors.fill: parent
-                    opacity: threadShape.show * 0.55
-                    layer.enabled: true
-                    layer.effect: GaussianBlur {
-                        radius: 7
-                        samples: 17
-                        transparentBorder: false
-                    }
-                    ShapePath {
-                        strokeWidth: 3.5
-                        strokeColor: Qt.rgba(1, 1, 1, 0.22)
-                        fillColor: "transparent"
-                        capStyle: ShapePath.RoundCap
-                        joinStyle: ShapePath.RoundJoin
-                        PathSvg {
-                            path: { effect.revision; effect.clusterRev; effect.viewX; effect.viewY; effect.zoom; return effect.clusterPath(index, view.sg.x, view.sg.y); }
-                        }
-                    }
-                }
+                // The web weaves through the float: the windows hover at
+                // spread heights, and the web rides the middle, so it passes
+                // over some and under others as they bob. The z lives on the
+                // delegate: a child's z cannot lift its parent out of the
+                // frame layer.
+                z: 1013
+                // The cluster's web: plain thin lines joining every window
+                // to every other, behind the windows - the constellation
+                // reads in the gaps, never over the glass.
                 Shape {
                     id: threadShape
                     anchors.fill: parent
-                    readonly property real want: (parent.active || effect.zoom < 0.5) ? (parent.active ? 0.55 : 0.2) * cluster.co * (effect.quiet ? effect.quietReveal : 1) : 0
+                    readonly property real want: (parent.active || effect.zoom < 0.5) ? (parent.active ? 0.4 : 0.16) * cluster.co * (effect.quiet ? effect.quietReveal : 1) : 0
                     property real show: 0
                     opacity: show
                     Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
                     onWantChanged: show = want
                     Component.onCompleted: show = want
                     ShapePath {
-                        strokeWidth: 1.3
-                        strokeColor: Qt.rgba(1, 1, 1, 0.55)
+                        strokeWidth: 1.1
+                        strokeColor: Qt.rgba(1, 1, 1, 0.5)
                         fillColor: "transparent"
                         capStyle: ShapePath.RoundCap
                         joinStyle: ShapePath.RoundJoin
-                        dashPattern: [ 6, 16 ]
-                        // The dash drifts along the thread, slow and quiet.
-                        NumberAnimation on dashOffset {
-                            from: 0
-                            to: 22
-                            duration: 1600
-                            loops: Animation.Infinite
-                            running: threadShape.show > 0.02
-                        }
                         PathSvg {
                             // The camera is a dependency on purpose: the
-                            // thread rides every glide and pan with the
+                            // web rides every glide and pan with the
                             // windows it binds, not just the discrete moves.
                             path: { effect.revision; effect.clusterRev; effect.viewX; effect.viewY; effect.zoom; return effect.clusterPath(index, view.sg.x, view.sg.y); }
                         }
@@ -4531,15 +4512,15 @@ KWin.SceneEffect {
                     required property int index
                     readonly property var e: effect.entries[index]
                     x: { effect.revision; return planeMap.mx(e.x); }
-                    y: { effect.revision; return planeMap.my(e.y); }
+                    y: { effect.revision; effect.floatRev; return planeMap.my(e.y) + Math.sin(effect.floatRev * 0.035 + index * 137.508) * 1.2 * effect.floatAmt * planeMap.sc; }
                     width: { effect.revision; return Math.max(planeMap.asOverlay ? 6 : 1.6, e.width * planeMap.sc); }
                     height: { effect.revision; return Math.max(planeMap.asOverlay ? 6 : 1.6, e.height * planeMap.sc); }
                     radius: planeMap.asOverlay ? 3 : 1
                     color: planeMap.asOverlay
-                        ? (effect.graspHoverIndex === index ? Qt.rgba(1, 1, 1, 0.18) : "transparent")
+                        ? (effect.graspHoverIndex === index ? Qt.rgba(1, 1, 1, 0.28) : Qt.rgba(1, 1, 1, 0.16))
                         : Qt.rgba(1, 1, 1, 0.8)
-                    border.width: planeMap.asOverlay ? 0.8 : 0
-                    border.color: effect.graspHoverIndex === index ? "#ccffffff" : "#40ffffff"
+                    border.width: planeMap.asOverlay ? 1 : 0
+                    border.color: effect.graspHoverIndex === index ? "#e8ffffff" : "#80ffffff"
                     Text {
                         anchors.centerIn: parent
                         text: effect.graspHoverIndex === index && planeMap.asOverlay ? e.window.caption : ""
