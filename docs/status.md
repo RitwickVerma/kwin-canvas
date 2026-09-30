@@ -48,12 +48,13 @@ built and loaded (the live-session half stays untested, below):
 
 - `make lint-qml` and `make lint-shell` — exit 0. `lint-reuse` still needs
   `reuse`, which is not installed here (below).
-- `make test` — `== pass 353  fail 0  skip 1`, the skip `91-two-outputs`
+- `make test` — `== pass 365  fail 0  skip 1`, the skip `91-two-outputs`
   needing a two-output nest; `85-passthrough` runs for real against the
   built plugin. `make test-two-outputs` — `== pass 17  fail 0  skip 0`.
-- The goldens were re-recorded in the full-run sequence (`make golden`),
-  since the plugin and the now-running 85 changed what the scenarios after
-  them see; the 1:1 goldens did not move.
+- The goldens are recorded against the pinned nest (Breeze Dark, the dark
+  icon theme, the Breeze widget style and decoration; the fixture apps'
+  own configs are reset before each run), so they mean the same pixels on
+  every machine and every day.
 - `make fixtures` — regenerates the committed fixtures byte for byte.
 
 ## What cannot be checked on this machine
@@ -101,6 +102,30 @@ those, from this side of the fork:
   pinned build-id - the biggest gap left in the suite.
 
 ## Sessions
+
+### 2026-09-29 — clusters, the float, the honest hover, and a deterministic nest
+
+Clusters: windows within `ClusterGap` of each other form a cluster live
+(union-find on the entries, recomputed per revision), the active cluster
+wears a dashed thread that rides the camera with its windows and a glass
+badge naming its number, the rest are a faint constellation below half
+zoom, and `[` / `]` fly the camera between clusters in reading order with
+the travel's destination anchoring the next step. The pin became a float:
+the window keeps its home coordinates, floats at the screen edge - bouncing
+off it with the camera's velocity - when the camera would push it off, and
+its position follows the picture so the commit and 1:1 always keep it on
+screen; the flag is KWin's own onAllDesktops, repurposed, with the caption
+list persisting it. The click fly works for already-active windows (the
+plugin publishes the clicked window; the fly waits an event-loop turn so
+the release reaches the window first), the hover glow follows the effect's
+poll so it shows over client areas, the menus are opaque, and malformed
+debug commands can no longer write NaN geometry. The nest pins the fixture
+apps' look and resets their configs per run - the host's colour scheme had
+flipped to light across a reboot and leaked into the nest through
+kdedefaults, and the apps' leftover window state drifted the goldens.
+Scenario 106 covers the clusters, 105 the float, 104 the already-active
+click. Verified: `make lint-qml`, `make lint-shell`, `make test` == pass
+365 fail 0 skip 1, `make golden` re-recorded, fixtures byte for byte.
 
 ### 2026-09-29 — the plane's desks, the minimal fly, the radial pan, and a quiet harness
 

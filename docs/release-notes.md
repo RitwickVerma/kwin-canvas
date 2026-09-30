@@ -1,5 +1,56 @@
 Unreleased:
 
+- Clusters: windows that sit near each other on the plane are one cluster,
+  formed automatically as they are dragged together and parted as they are
+  dragged apart (`ClusterGap` is how near counts). A cluster wears its
+  thread - a dashed line weaving through its windows that rides every camera
+  move with them, lit where the eye's cluster is and a faint constellation
+  for the rest when zoomed out - and the bracket keys fly the camera between
+  clusters in reading order, the toast naming the stop. Everything is
+  derived: nothing is stored, so a cluster follows its windows.
+
+- The pin is a float. A floating window keeps its coordinates on the plane -
+  pinning never moves it - and only its picture is special: whenever the
+  camera would push it partly off the screen, the picture floats at the
+  screen's edge, bouncing off the edge with real physics when pushed there
+  fast, and the window's position follows the picture, so it is always on
+  screen in the canvas and at 1:1 alike; move the camera back and the
+  window is exactly its coordinates again. The flag is KWin's own "on all
+  desktops" - repurposed, so the title-bar menu and the canvas agree on
+  what floats, and a floating window follows you across virtual desktops
+  too. The menu says Float / Unfloat.
+
+- A click flies even when the window is already active: the plugin publishes
+  the window under a completed click, and the canvas flies to it on the
+  release whether or not an activation fired - a click on an off-screen
+  window always brings it wholly into view, and the fly waits one event-loop
+  turn so the release reaches the window first, never grabbing the click
+  that caused it.
+
+- The hover glow works everywhere: the glow, the shadow and the lift follow
+  the effect's own pointer poll, which sees the hover over a window's client
+  area where the pass-through plugin owns the pointer - hovering a window's
+  content now reads the same as hovering its title bar.
+
+- The right-click menu is legible: the Plasma menu background assumes the
+  desktop blur behind it, and over the canvas there is none, so the canvas
+  draws its menus opaque.
+
+- A malformed harness command can no longer write NaN into a window's
+  position: the geometry-writing debug commands check their numbers.
+
+- The nest pins the fixture apps' look - Breeze Dark, the dark icon theme,
+  the Breeze widget style and decoration - and resets the apps' own configs
+  before each run, so a golden screenshot means the same pixels every day
+  instead of following the host's theme and the apps' leftover window state.
+
+- The modifier's release lands again: releasing after a zoom-out could leave
+  the canvas stuck open because the spring back was asked for after the
+  camera timer had already been told to stop. The blur renders at half
+  resolution for a quarter of the GPU cost, and the plugin reads the hold
+  mask from the config itself, so a missed publish at login cannot leave
+  MB4 dead.
+
 - The plane's desks: the digit keys jump to saved views and Ctrl+digit saves
   the current one - named camera positions, the feature virtual desktops had
   that the plane lacked. A glass toast names what just happened.

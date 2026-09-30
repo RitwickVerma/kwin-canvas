@@ -98,6 +98,8 @@ private:
     QPointF targetOf(KWin::Window *window) const;
     bool drawn(KWin::Window *window) const;
     KWin::Window *windowAt(const QPointF &canvas) const;
+    /** The topmost client window under a real screen point: the click candidate at 1:1. */
+    KWin::Window *windowUnder(const QPointF &screen) const;
     /** Enter (or stay on) the input surface of @p window under @p canvas. False if no surface takes input there. */
     bool enter(KWin::Window *window, const QPointF &canvas);
     void leave();
@@ -133,4 +135,10 @@ private:
     QTimer m_holdTimer;
     QPointer<KWin::Window> m_hover;
     QPointer<KWin::SurfaceInterface> m_hoverSurface;
+    /** A left press on a window while the canvas is closed: a candidate click
+     * the effect flies to on the release - a click on an already-active window
+     * raises no activation, so the press is the only trace of it. */
+    QPointer<KWin::Window> m_clickWindow;
+    /** Where the candidate press landed: motion beyond a few pixels makes it a drag. */
+    QPointF m_clickPos;
 };

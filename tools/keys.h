@@ -24,6 +24,8 @@ static const struct keyname KEY_TABLE[] = {
     { "q", 16 }, { "w", 17 }, { "e", 18 }, { "r", 19 }, { "t", 20 },
     { "y", 21 }, { "u", 22 }, { "i", 23 }, { "o", 24 }, { "p", 25 },
     { "enter", 28 },
+    { "leftbrace", 26 }, { "bracketleft", 26 },
+    { "rightbrace", 27 }, { "bracketright", 27 },
     { "ctrl", 29 }, { "leftctrl", 29 },
     { "a", 30 }, { "s", 31 }, { "d", 32 }, { "f", 33 }, { "g", 34 },
     { "h", 35 }, { "j", 36 }, { "k", 37 }, { "l", 38 },

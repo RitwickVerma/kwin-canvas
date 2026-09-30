@@ -449,6 +449,11 @@ clients() {
 fixtures() {
     [ -f "$FIXTURES/wallpaper.png" ] || python3 "$FIXTURES/gen.py" >/dev/null
     rm -f "$FIXTURES"/.*.kate-swp "$FIXTURES"/*.swp 2>/dev/null
+    # The fixture apps write their window state back into the nest's config
+    # (the Dolphin sidebar, the Konsole size, the menus), so one run would
+    # drift the next run's goldens. Every run starts from the apps' own
+    # defaults.
+    rm -f "$CONF"/dolphinrc "$CONF"/gwenviewrc "$CONF"/konsolerc "$CONF"/katevirc "$CONF"/kwriterc "$CONF"/kcalcrc
     # One at a time: each launch waits for its window before the next.
     local n; n=$(nwindows)
     run kcalc >/dev/null; mapped $((n + 1))

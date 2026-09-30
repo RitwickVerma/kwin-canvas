@@ -8,9 +8,15 @@ run_scenario() {
     c "shift 3000 0"
     assert_eq "KCalc off-screen" "$(eget KCalc fx)" 3100
     c "activate KCalc"
-    sleep 0.4
-    c state
-    local fx; fx=$(eget KCalc fx)
+    # The fly is a 220 ms slide; wait until the window has actually arrived
+    # rather than racing it, which flakes under a loaded nest.
+    local fx
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        c state
+        fx=$(eget KCalc fx)
+        [ "$fx" -ge 0 ] && [ "$fx" -lt 1920 ] && break
+        sleep 0.15
+    done
     assert_true "KCalc on screen" "$(awk -v x="$fx" 'BEGIN{print (x>=0 && x<1920)}')" = 1
     assert_near "Dolphin kept its offset" "$(eget Dolphin fx)" "$(awk -v x="$fx" 'BEGIN{print x+680}')" 1
     # A window hanging half off the screen is not visible: focusing it slides
@@ -23,8 +29,12 @@ run_scenario() {
     sleep 0.3
     c "shift 1500 0"
     c "activate KCalc"
-    sleep 0.4
-    c state
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        c state
+        fx=$(eget KCalc fx)
+        [ "$fx" -ge 0 ] && [ $((fx + 480)) -le 1920 ] && break
+        sleep 0.15
+    done
     assert_true "a half-off window is brought wholly on screen" \
         "$(awk -v x="$(eget KCalc fx)" 'BEGIN{print (x>=0 && x+480<=1920)}')" = 1
     assert_true "with the least movement, its edge near the margin" \

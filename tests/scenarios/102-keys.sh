@@ -66,7 +66,11 @@ run_scenario() {
     c "placeby KCalc 100 120"
     c state
     printf 'move 340 142\nclick\n' | input
-    sleep 0.6; c state
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        sleep 0.15
+        c state
+        grep -q 'active="KCalc"' <<<"$LAST_STATE" && break
+    done
     assert_eq "a click focuses the window" "$(grep -c 'active="KCalc"' <<<"$LAST_STATE")" 1
     c cancel
     open_1to1

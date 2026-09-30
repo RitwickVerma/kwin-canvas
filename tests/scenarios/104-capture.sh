@@ -124,5 +124,18 @@ run_scenario() {
     sleep 0.8; c state
     assert_true "and flies once the hand lets go" \
         "$(awk -v x="$(eget KCalc fx)" 'BEGIN{print (x>=0 && x+480<=1920)}')" = 1
+    # A click on an off-screen window that is already active flies too: no
+    # activation fires for it, so the plugin's click publication is the only
+    # trace the canvas has, and it must be enough.
+    c cancel; c resetview
+    c "shift 1500 0"
+    c "activate KCalc"
+    sleep 0.3; c state
+    assert_true "the shift left KCalc half off" \
+        "$(awk -v x="$(eget KCalc fx)" 'BEGIN{print (x>=0 && x+480>1920)}')" = 1
+    printf 'move 1900 300\nsleep 60\ndown left\nsleep 80\nup left\n' | input
+    sleep 0.6; c state
+    assert_true "a click on an already-active off-screen window flies" \
+        "$(awk -v x="$(eget KCalc fx)" 'BEGIN{print (x>=0 && x+480<=1920)}')" = 1
     arrange >/dev/null
 }

@@ -35,6 +35,7 @@
 */
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Shapes
 import Qt5Compat.GraphicalEffects
 import org.kde.kirigami as Kirigami
 import org.kde.kcmutils as KCM
@@ -302,20 +303,29 @@ KWin.SceneEffect {
 
     property int lastDebugSeq: 0
 
-    // ---- pinned windows -----------------------------------------------------
-    // A pinned window is screen-fixed: it rides the camera and never leaves
-    // the screen, this model's "on all desktops". The anchor is its screen
-    // position in global pixels, keyed by caption (the config persists it).
-    // A drag moves the anchor; dragged past a screen edge it bounces back
-    // inside on an underdamped spring, the physics of the edges.
-    property var pinned: ({})          // caption -> { sx, sy }
-    property var bounce: null          // the spring back: { caption, sx, sy, vx, vy, tx, ty }
-    function isPinnedEntry(e) { return e && pinned[e.window.caption] !== undefined; }
+    // ---- floating windows ----------------------------------------------------
+    // A floating window keeps its coordinates on the plane - its home - and
+    // its picture is special only when the camera would push it partly off
+    // the screen: the picture then floats at the screen's edge, bouncing off
+    // the edge with the camera's velocity before settling against it, and
+    // the window's position follows the picture, so it is always on screen,
+    // in the canvas and at 1:1 alike. Move the camera back and the window
+    // returns to its home. The flag is KWin's own "on all desktops", so the
+    // window's title-bar menu and the canvas agree on what floats; the
+    // caption list persists the choice across sessions.
+    property var pinned: ({})          // caption -> { hx, hy }, the home on the plane
+    property var floatOf: ({})         // window internalId -> { x, y, vx, vy, wasInX, wasInY }
+    property int floatRev: 0
+    function isPinnedEntry(e) { return e && e.window && !e.window.deleted && e.window.onAllDesktops; }
     function loadPinned() {
         const list = configuration.PinnedWindows || [];
         const set = {};
-        for (let i = 0; i < list.length; ++i) if (list[i]) set[list[i]] = null;
+        for (let i = 0; i < list.length; ++i) if (list[i]) set[list[i]] = true;
         pinned = set;
+        const all = KWin.Workspace.stackingOrder;
+        for (let i = 0; i < all.length; ++i) {
+            if (pinned[all[i].caption] && !all[i].onAllDesktops) all[i].onAllDesktops = true;
+        }
     }
     function savePinned() {
         const list = [];
@@ -327,8 +337,8 @@ KWin.SceneEffect {
         for (let i = 0; i < list.length; ++i) {
             const e = list[i];
             if (!e || e.window.deleted) continue;
-            if (pinned[e.window.caption] !== undefined) continue;
-            pinned[e.window.caption] = clampScreen(e);
+            if (!e.window.onAllDesktops) e.window.onAllDesktops = true;
+            if (pinned[e.window.caption] === undefined || pinned[e.window.caption] === true) pinned[e.window.caption] = { hx: e.x, hy: e.y };
         }
         savePinned();
     }
@@ -337,7 +347,7 @@ KWin.SceneEffect {
         for (let i = 0; i < list.length; ++i) {
             const e = list[i];
             if (!e) continue;
-            if (bounce && bounce.caption === e.window.caption) bounce = null;
+            if (e.window.onAllDesktops) e.window.onAllDesktops = false;
             if (delete pinned[e.window.caption]) any = true;
         }
         if (any) savePinned();
@@ -350,67 +360,80 @@ KWin.SceneEffect {
         if (allPinned) unpinEntries(list); else pinEntries(list);
         revision++;
     }
-    // The screen spot that keeps the window wholly inside the screen the
-    // pointer is on, with a margin. The anchor the pin holds, and the place
-    // a bounced window settles.
-    function clampScreen(e) {
+    // The screen bounds a floating window's picture is kept inside, with a
+    // margin, on the screen the pointer is on.
+    function floatBounds(e) {
         const g = actionScreen().geometry;
-        const w = e.width * zoom, h = e.height * zoom;
         const m = 8;
-        let sx = (e.x - viewX) * zoom, sy = (e.y - viewY) * zoom;
-        if (w < g.width - 2 * m) sx = Math.max(g.x + m, Math.min(g.x + g.width - w - m, sx));
-        else sx = g.x + m;
-        if (h < g.height - 2 * m) sy = Math.max(g.y + m, Math.min(g.y + g.height - h - m, sy));
-        else sy = g.y + m;
-        return { sx: sx, sy: sy };
+        const w = e.width * zoom, h = e.height * zoom;
+        let l = g.x + m, r = g.x + g.width - w - m, t = g.y + m, b = g.y + g.height - h - m;
+        if (w >= g.width - 2 * m) l = r = g.x + m;
+        if (h >= g.height - 2 * m) t = b = g.y + m;
+        return { l: l, r: r, t: t, b: b };
     }
-    // One tick of the pin ride: every pinned window the hand is not dragging
-    // is kept at its anchor as the camera moves, and a window bounced back
-    // from an edge springs on its way. Runs while the canvas is visible, a
-    // slide included, so a pinned window rides a slide at 1:1 too.
-    function ridePinned(dt) {
-        if (bounce !== null) {
-            if (pinned[bounce.caption] === undefined) {
-                // Unpinned mid-bounce: the spring stops dead.
-                bounce = null;
-            } else {
-                const b = bounce;
-                const w = 10, c = 5;
-                b.vx += (-w * w * (b.sx - b.tx) - c * b.vx) * dt;
-                b.vy += (-w * w * (b.sy - b.ty) - c * b.vy) * dt;
-                b.sx += b.vx * dt;
-                b.sy += b.vy * dt;
-                if (Math.abs(b.sx - b.tx) < 0.4 && Math.abs(b.sy - b.ty) < 0.4
-                    && Math.abs(b.vx) < 1 && Math.abs(b.vy) < 1) {
-                    pinned[b.caption] = { sx: b.tx, sy: b.ty };
-                    bounce = null;
-                } else {
-                    pinned[b.caption] = { sx: b.sx, sy: b.sy };
-                }
-            }
-        }
+    // One tick of the float: while the home sits inside the screen the
+    // window is exactly at its home, carrying the camera's velocity, so a
+    // fast push into an edge becomes a real bounce off it - the carried
+    // velocity reflects, damped, and a critically damped spring settles the
+    // window back against the edge, its position following the picture all
+    // the way. The hand on a drag owns the home outright. Runs while the
+    // canvas is visible, a slide at 1:1 included.
+    function floatPinned(dt) {
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
-            if (!isPinnedEntry(e) || (dragIndex >= 0 && dragRaw[e.window.internalId])) continue;
-            const a = pinned[e.window.caption];
-            if (!a) {
-                // First sight: the pin takes the window where it is, clamped.
-                pinned[e.window.caption] = clampScreen(e);
-                continue;
-            }
-            const nx = viewX + a.sx / zoom, ny = viewY + a.sy / zoom;
-            if (e.x !== nx || e.y !== ny) {
-                e.x = nx;
-                e.y = ny;
-                revision++;
+            const id = e.window.internalId;
+            if (!isPinnedEntry(e)) { if (floatOf[id]) { delete floatOf[id]; floatRev++; } continue; }
+            const p = pinned[e.window.caption];
+            if (!p || p === true) { pinned[e.window.caption] = { hx: e.x, hy: e.y }; continue; }
+            const b = floatBounds(e);
+            const tx = (p.hx - viewX) * zoom, ty = (p.hy - viewY) * zoom;
+            const cx = Math.max(b.l, Math.min(b.r, tx)), cy = Math.max(b.t, Math.min(b.b, ty));
+            let f = floatOf[id];
+            if (!f) { floatOf[id] = f = { x: tx, y: ty, vx: 0, vy: 0, wasInX: true, wasInY: true }; }
+            const dragging = dragIndex >= 0 && dragRaw[id];
+            if (dragging) {
+                // The hand owns it: the home is where the hand puts it, and
+                // the picture follows exactly.
+                p.hx = e.x; p.hy = e.y;
+                f.x = tx; f.y = ty; f.vx = 0; f.vy = 0;
+                f.wasInX = cx === tx; f.wasInY = cy === ty;
+            } else if (cx === tx && cy === ty) {
+                // Inside: the window is its home, carrying the camera's
+                // velocity so an edge can bounce it.
+                if (dt > 0.0001) { f.vx = (tx - f.x) / dt; f.vy = (ty - f.y) / dt; }
+                f.x = tx; f.y = ty;
+                f.wasInX = true; f.wasInY = true;
+                if (e.x !== p.hx || e.y !== p.hy) { e.x = p.hx; e.y = p.hy; revision++; }
+            } else {
+                // The hit: the window reached an edge with the camera's
+                // velocity - bounce off it, once, then spring back against
+                // it, and the window's position follows the picture.
+                if (f.wasInX && tx !== cx) {
+                    if (tx < cx) { f.x = b.l; f.vx = Math.abs(f.vx) * 0.4; }
+                    else { f.x = b.r; f.vx = -Math.abs(f.vx) * 0.4; }
+                    f.wasInX = false;
+                }
+                if (f.wasInY && ty !== cy) {
+                    if (ty < cy) { f.y = b.t; f.vy = Math.abs(f.vy) * 0.4; }
+                    else { f.y = b.b; f.vy = -Math.abs(f.vy) * 0.4; }
+                    f.wasInY = false;
+                }
+                const w0 = 7, c0 = 14;
+                f.vx += (-w0 * w0 * (f.x - cx) - c0 * f.vx) * dt;
+                f.vy += (-w0 * w0 * (f.y - cy) - c0 * f.vy) * dt;
+                f.x += f.vx * dt;
+                f.y += f.vy * dt;
+                const nx = viewX + f.x / zoom, ny = viewY + f.y / zoom;
+                if (e.x !== nx || e.y !== ny) { e.x = nx; e.y = ny; revision++; }
             }
         }
+        floatRev++;
     }
     Timer {
         interval: 16
         repeat: true
         running: effect.visible
-        onTriggered: effect.ridePinned(interval / 1000)
+        onTriggered: effect.floatPinned(interval / 1000)
     }
 
     // ---- hover navigation ----------------------------------------------------
@@ -427,6 +450,141 @@ KWin.SceneEffect {
     property real hoverSince: 0
     property bool hoverBrought: false
     property real lastGestureAt: 0
+
+    // ---- clusters -------------------------------------------------------------
+    // Windows that sit near each other on the plane are a cluster: formed
+    // automatically as windows are dragged together, parted as they are
+    // dragged apart. A cluster wears a fluid thread through its windows - a
+    // constellation - and the bracket keys fly the camera between clusters in
+    // reading order, the plane's own tour. Everything is derived: nothing is
+    // stored, so a cluster follows its windows as they move.
+    property var clusters: []          // [{ cx, cy, n, ids }], centres in canvas pixels
+    property var clusterOf: ({})       // entry window internalId -> cluster index
+    property int clusterRev: 0
+    // Two windows are one cluster when the gap between their edges is no
+    // wider than ClusterGap, in either axis (Chebyshev: a diagonal neighbour
+    // counts too).
+    function clustersNear(a, b, gap) {
+        const dx = Math.max(a.x - (b.x + b.width), b.x - (a.x + a.width));
+        const dy = Math.max(a.y - (b.y + b.height), b.y - (a.y + a.height));
+        return Math.max(dx, dy) <= gap;
+    }
+    function recluster() {
+        const gap = Math.max(0, Number(configuration.ClusterGap) || 0);
+        const list = entries;
+        const parent = [];
+        for (let i = 0; i < list.length; ++i) parent.push(i);
+        for (let i = 0; i < list.length; ++i) {
+            for (let j = i + 1; j < list.length; ++j) {
+                if (clustersNear(list[i], list[j], gap)) {
+                    let a = i, b = j;
+                    while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; }
+                    while (parent[b] !== b) { parent[b] = parent[parent[b]]; b = parent[b]; }
+                    if (a !== b) parent[a] = b;
+                }
+            }
+        }
+        const byRoot = {};
+        for (let i = 0; i < list.length; ++i) {
+            let r = i;
+            while (parent[r] !== r) { parent[r] = parent[parent[r]]; r = parent[r]; }
+            if (!byRoot[r]) byRoot[r] = [];
+            byRoot[r].push(i);
+        }
+        const out = [];
+        const of = {};
+        for (const r in byRoot) {
+            const ids = byRoot[r];
+            let cx = 0, cy = 0;
+            for (let k = 0; k < ids.length; ++k) {
+                cx += list[ids[k]].x + list[ids[k]].width / 2;
+                cy += list[ids[k]].y + list[ids[k]].height / 2;
+            }
+            const c = { cx: cx / ids.length, cy: cy / ids.length, n: ids.length, ids: [] };
+            for (let k = 0; k < ids.length; ++k) {
+                c.ids.push(list[ids[k]].window.internalId);
+                of[list[ids[k]].window.internalId] = out.length;
+            }
+            out.push(c);
+        }
+        clusters = out;
+        clusterOf = of;
+        clusterRev++;
+    }
+    // The cluster the eye is on: the hovered window's, else the selected
+    // one's, else the focused window's. The travel starts from it, and the
+    // travel's own destination becomes the anchor for the next step, so the
+    // bracket keys walk the tour instead of ping-ponging back to whatever
+    // window happens to be focused.
+    property int travelCluster: -1
+    function clusterIndexOfEntry(e) {
+        if (!e || !e.window) return -1;
+        const i = clusterOf[e.window.internalId];
+        return i === undefined ? -1 : i;
+    }
+    function clusterIndex() {
+        let i = clusterIndexOfEntry(focusEntry);
+        if (i >= 0) return i;
+        for (let k = 0; k < entries.length; ++k) {
+            if (isSelected(entries[k])) {
+                i = clusterIndexOfEntry(entries[k]);
+                if (i >= 0) return i;
+            }
+        }
+        if (travelCluster >= 0 && travelCluster < clusters.length) return travelCluster;
+        const w = KWin.Workspace.activeWindow;
+        if (w && !w.deleted) { const e = entryFor(w); if (e) return clusterIndexOfEntry(e); }
+        return -1;
+    }
+    // Fly to the next or previous cluster in reading order (top to bottom,
+    // left to right), from the one the eye is on. The camera springs to the
+    // cluster's centre at the current zoom, the toast names the stop.
+    function clusterTravel(dir) {
+        if (clusters.length === 0) return;
+        const cur = clusterIndex();
+        const order = [];
+        for (let i = 0; i < clusters.length; ++i) order.push(i);
+        order.sort(function (p, q) { return (clusters[p].cy - clusters[q].cy) || (clusters[p].cx - clusters[q].cx); });
+        let k = 0;
+        if (cur >= 0) {
+            const pos = order.indexOf(cur);
+            k = (pos + dir + order.length) % order.length;
+        } else if (dir < 0) k = order.length - 1;
+        travelCluster = order[k];
+        const c = clusters[order[k]];
+        const g = actionScreen().geometry;
+        // The jump leaves the old hover behind: the tour anchors to the
+        // destination until the eye settles on something new.
+        hoverEntry = null;
+        focusEntry = null;
+        camGo(zoom, c.cx - (g.x + g.width / 2) / zoom, c.cy - (g.y + g.height / 2) / zoom);
+        toast("Cluster " + (k + 1) + " of " + clusters.length);
+    }
+    // The thread through a cluster's windows, in this screen's coordinates:
+    // a polyline weaving through the members left to right. Re-evaluated
+    // with the camera, so the thread rides the same motion as the windows.
+    function clusterPath(i, sgx, sgy) {
+        const c = clusters[i];
+        if (!c || c.n < 2) return "";
+        const pts = [];
+        for (let k = 0; k < c.ids.length; ++k) {
+            const e = entryById(c.ids[k]);
+            if (!e) continue;
+            pts.push({
+                x: (e.x + e.width / 2 - viewX) * zoom - sgx,
+                y: (e.y + e.height / 2 - viewY) * zoom - sgy
+            });
+        }
+        if (pts.length < 2) return "";
+        pts.sort(function (p, q) { return p.x - q.x; });
+        let s = "M " + pts[0].x + " " + pts[0].y;
+        for (let k = 1; k < pts.length; ++k) s += " L " + pts[k].x + " " + pts[k].y;
+        return s;
+    }
+    function entryById(id) {
+        for (let i = 0; i < entries.length; ++i) if (entries[i].window.internalId === id) return entries[i];
+        return null;
+    }
 
     // ---- bookmarks -----------------------------------------------------------
     // Saved views on the plane, the desks: the digit keys jump to them and
@@ -586,6 +744,8 @@ KWin.SceneEffect {
             panDown: keysFor(configuration.KeyPanDown),
             next: keysFor(configuration.KeyNext),
             prev: keysFor(configuration.KeyPrev),
+            clusterNext: keysFor(configuration.ClusterNextKey),
+            clusterPrev: keysFor(configuration.ClusterPrevKey),
             panHold: buttonsFor(configuration.PanHold),
             hold: buttonsFor(configuration.CanvasHold),
             swap: buttonsFor(configuration.SwapButton)
@@ -1012,7 +1172,12 @@ KWin.SceneEffect {
         const a = activityOf(w);
         const t = targetOf(a);
         const g = w.frameGeometry;
-        return { window: w, activity: a, x: g.x + t.x, y: g.y + t.y, width: g.width, height: g.height,
+        const p = pinned[w.caption];
+        // A floating window enters at its home, not at the geometry the last
+        // commit left it floating at.
+        const hx = p && p !== true ? p.hx : g.x + t.x;
+        const hy = p && p !== true ? p.hy : g.y + t.y;
+        return { window: w, activity: a, x: hx, y: hy, width: g.width, height: g.height,
                  frameX: g.x, frameY: g.y, anchorRight: false, anchorBottom: false, askW: 0, askH: 0 };
     }
 
@@ -1103,14 +1268,29 @@ KWin.SceneEffect {
 
     // The pointer's buttons, as the plugin publishes them: a focus fly must
     // wait until the hand lets go, or the opening canvas would grab the
-    // gesture mid-click.
+    // gesture mid-click. The window under a completed click, also from the
+    // plugin: a click on an already-active window raises no activation, so
+    // the fly has to learn about the click this way too.
     property int pointerButtons: 0
     property var pendingFly: null
+    property var clickedWindow: null
     onPointerButtonsChanged: {
-        if (pointerButtons === 0 && pendingFly !== null) {
-            const w = pendingFly;
-            pendingFly = null;
-            if (!w.deleted) flyToWindow(w);
+        console.warn("kwin-canvas DEBUG btns " + pointerButtons + " pending=" + (pendingFly ? pendingFly.caption : "null"));
+        if (pointerButtons === 0) {
+            // One event-loop turn later: the release finishes its delivery to
+            // the window under the pointer first, and the click publication
+            // from the plugin lands, so the fly never opens the canvas over a
+            // still-completing press.
+            Qt.callLater(function () {
+                const w = pendingFly !== null ? pendingFly : clickedWindow;
+                pendingFly = null;
+                clickedWindow = null;
+                if (!w || w.deleted || !isCanvasWindow(w, false)) return;
+                const g = w.frameGeometry;
+                const vs = KWin.Workspace.virtualScreenGeometry;
+                if (g.x >= vs.x && g.y >= vs.y && g.x + g.width <= vs.x + vs.width && g.y + g.height <= vs.y + vs.height) return;
+                flyToWindow(w);
+            });
         }
     }
 
@@ -2498,7 +2678,7 @@ KWin.SceneEffect {
             settled = true;
         }
     }
-    onRevisionChanged: if (planeLive) Qt.callLater(settle)
+    onRevisionChanged: { if (planeLive) Qt.callLater(settle); Qt.callLater(recluster); }
 
     // Cancel puts every window settle() moved back where it was at open.
     function unsettle() {
@@ -2661,7 +2841,13 @@ KWin.SceneEffect {
             if (e.window.deleted) continue;
             seen[e.window.internalId] = true;
             const t = targetOf(e.activity);
+            // Take the new frame position first, as commit does: the write
+            // below is this function's own projection of the entry, so the
+            // entry must absorb it as no move - a floating window's entry is
+            // where the float put it, not where the old frame was.
             const fx = Math.round(e.x - t.x), fy = Math.round(e.y - t.y);
+            e.frameX = fx;
+            e.frameY = fy;
             const g = e.window.frameGeometry;
             if (g.x !== fx || g.y !== fy) {
                 e.window.frameGeometry = Qt.rect(fx, fy, g.width, g.height);
@@ -2825,10 +3011,15 @@ KWin.SceneEffect {
             // must not leave behind. Fully inside, nothing moves.
             const vs = KWin.Workspace.virtualScreenGeometry;
             if (g.x >= vs.x && g.y >= vs.y && g.x + g.width <= vs.x + vs.width && g.y + g.height <= vs.y + vs.height) return;
-            // The hand is on the pointer: wait until it lets go, or the
-            // opening canvas would grab the gesture mid-click.
+            // The hand is on the pointer: remember the window, and the release
+            // handler flies once the buttons are up - the opening canvas would
+            // grab the gesture mid-click. A click on an already-active window
+            // raises no activation; the plugin's click publication covers that
+            // half, so the two meet in the same release handler. Without a
+            // button down (Alt-Tab, the task bar) the fly takes a turn of its
+            // own, so the activation finishes first.
             if (effect.pointerButtons !== 0) { effect.pendingFly = w; return; }
-            effect.flyToWindow(w);
+            Qt.callLater(function () { if (!w.deleted) effect.flyToWindow(w); });
         }
         function onActivitiesChanged(id) { Qt.callLater(effect.activitiesChanged); }
         // App popups come and go with these too; resync() refreshes them.
@@ -2926,6 +3117,10 @@ KWin.SceneEffect {
     // The harness writes DebugCommand + DebugSeq into kwinrc and calls reconfigure.
     function runDebug(cmd) {
         const a = cmd.trim().split(/\s+/);
+        // A malformed command must not touch the plane: the geometry-writing
+        // commands all take numbers, and a non-number would land as NaN in a
+        // window's committed position.
+        const numok = (i) => Number.isFinite(Number(a[i]));
         refreshActivities();
         switch (a[0]) {
         case "open": open(); break;
@@ -2935,25 +3130,27 @@ KWin.SceneEffect {
         case "home": home(); break;
         case "origin": origin(); break;
         case "extents": zoomExtents(); break;
-        case "pan": panBy(Number(a[1]), Number(a[2])); break;
+        case "pan": if (numok(1) && numok(2)) panBy(Number(a[1]), Number(a[2])); break;
         case "zoom": {
-            const p = a.length >= 4 ? Qt.point(Number(a[2]), Number(a[3])) : cursorScreen();
+            if (!numok(1)) break;
+            const p = a.length >= 4 && numok(2) && numok(3) ? Qt.point(Number(a[2]), Number(a[3])) : cursorScreen();
             setZoom(Number(a[1]), p);
             break;
         }
-        case "shift": shiftAll(Number(a[1]), Number(a[2])); break;
-        case "slide": slide(Number(a[1]), Number(a[2])); break;
+        case "shift": if (numok(1) && numok(2)) shiftAll(Number(a[1]), Number(a[2])); break;
+        case "slide": if (numok(1) && numok(2)) slide(Number(a[1]), Number(a[2])); break;
         case "enter": enterHere(); break;
-        case "panstep": panStepBy(Number(a[1]), Number(a[2])); break;
+        case "panstep": if (numok(1) && numok(2)) panStepBy(Number(a[1]), Number(a[2])); break;
         case "swipe": {
             // swipe DX DY PROGRESS | swipe DX DY end | swipe DX DY cancel
+            if (!numok(1) || !numok(2)) break;
             if (a[3] === "end") swipeEnd(Number(a[1]), Number(a[2]), true);
             else if (a[3] === "cancel") swipeEnd(Number(a[1]), Number(a[2]), false);
-            else swipeProgress(Number(a[1]), Number(a[2]), Number(a[3]));
+            else if (numok(3)) swipeProgress(Number(a[1]), Number(a[2]), Number(a[3]));
             break;
         }
-        case "drag": beginDrag(Number(a[1])); dragEntry(Number(a[1]), Number(a[2]), Number(a[3])); break;
-        case "resize": requestSize(Number(a[1]), Number(a[2]), Number(a[3]), false, false); break;
+        case "drag": if (numok(1) && numok(2) && numok(3)) { beginDrag(Number(a[1])); dragEntry(Number(a[1]), Number(a[2]), Number(a[3])); } break;
+        case "resize": if (numok(1) && numok(2) && numok(3)) requestSize(Number(a[1]), Number(a[2]), Number(a[3]), false, false); break;
         case "resetview": {
             // 1:1 only: forget the pan history so canvas == frame for this activity.
             if (visible) break;
@@ -2963,32 +3160,35 @@ KWin.SceneEffect {
         }
         case "placeby": {
             // placeby CAPTION_SUBSTR X Y [W H]: position (and size) an entry by caption.
+            if (!numok(2) || !numok(3)) break;
             for (let i = 0; i < entries.length; ++i) {
                 const e = entries[i];
                 if (e.window.caption.indexOf(a[1]) === -1) continue;
                 e.x = Number(a[2]); e.y = Number(a[3]);
-                if (a.length >= 6) requestSize(i, Number(a[4]), Number(a[5]), false, false);
+                if (a.length >= 6 && numok(4) && numok(5)) requestSize(i, Number(a[4]), Number(a[5]), false, false);
                 revision++;
                 break;
             }
             break;
         }
         case "place": {
+            if (!numok(1) || !numok(2) || !numok(3)) break;
             const e = entries[Number(a[1])];
             if (e) { e.x = Number(a[2]); e.y = Number(a[3]); revision++; }
             break;
         }
         case "frames": {
             // frames DX DY [activityIndex]
-            const id = a.length >= 4 ? activityIds[Number(a[3])] : currentActivity;
+            if (!numok(1) || !numok(2)) break;
+            const id = a.length >= 4 && numok(3) ? activityIds[Number(a[3])] : currentActivity;
             dragTarget(id, Number(a[1]), Number(a[2]));
             break;
         }
-        case "pick": pick(entries[Number(a[1])]); break;
-        case "focus": focusWindow(entries[Number(a[1])]); break;
-        case "goto": gotoActivity(activityIds[Number(a[1])]); break;
-        case "zoomto": zoomToActivity(activityIds[Number(a[1])]); break;
-        case "newactivityat": newActivityAt(entries[Number(a[1])]); break;
+        case "pick": if (numok(1)) pick(entries[Number(a[1])]); break;
+        case "focus": if (numok(1)) focusWindow(entries[Number(a[1])]); break;
+        case "goto": if (numok(1)) gotoActivity(activityIds[Number(a[1])]); break;
+        case "zoomto": if (numok(1)) zoomToActivity(activityIds[Number(a[1])]); break;
+        case "newactivityat": if (numok(1)) newActivityAt(entries[Number(a[1])]); break;
         case "activate": {
             const all = KWin.Workspace.stackingOrder;
             for (let i = 0; i < all.length; ++i) {
@@ -3005,9 +3205,9 @@ KWin.SceneEffect {
             }
             break;
         }
-        case "activity": KWin.Workspace.currentActivity = activityIds[Number(a[1])]; break;
+        case "activity": if (numok(1)) KWin.Workspace.currentActivity = activityIds[Number(a[1])]; break;
         case "addactivity": addActivity(); break;
-        case "rmactivity": removeActivity(activityIds[Number(a[1])]); break;
+        case "rmactivity": if (numok(1)) removeActivity(activityIds[Number(a[1])]); break;
         case "hide": case "show": {
             // hide|show ACTIVITY_INDEX [SCREEN_INDEX]
             const screens = KWin.Workspace.screens;
@@ -3059,8 +3259,8 @@ KWin.SceneEffect {
             break;
         }
         case "begindrag": beginDrag(Number(a[1])); break;
-        case "sendto": sendTo(a[1] === "none" ? null : activityIds[Number(a[1])]); break;
-        case "marquee": selectInRect(Number(a[1]), Number(a[2]), Number(a[3]), Number(a[4])); break;
+        case "sendto": sendTo(a[1] === "none" || !numok(1) ? null : activityIds[Number(a[1])]); break;
+        case "marquee": if (numok(1) && numok(2) && numok(3) && numok(4)) selectInRect(Number(a[1]), Number(a[2]), Number(a[3]), Number(a[4])); break;
         case "state": break;
         default: console.warn("kwin-canvas: unknown debug command", cmd);
         }
@@ -3084,6 +3284,7 @@ KWin.SceneEffect {
             + " screens=" + KWin.Workspace.screens.length + " backdrop=" + backdropLayers
             + " cam=" + (camHasGoal ? "goal" : (camLive() ? "glide" : "-"))
             + " focus=" + (focusEntry ? JSON.stringify(focusEntry.window.caption) : "-")
+            + " clusters=" + clusters.length + " cluster=" + (clusterIndex() >= 0 ? "#" + (clusterIndex() + 1) : "-")
             + " draglag=" + Math.round(Math.sqrt(dragLagX * dragLagX + dragLagY * dragLagY)) + " lean=" + dragLean.toFixed(2)
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
         const ids = activityIds, screens = KWin.Workspace.screens;
@@ -3100,7 +3301,9 @@ KWin.SceneEffect {
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
             const g = e.window.frameGeometry;
-            s += "\n  [" + i + "] " + (isSelected(e) ? "*" : " ") + e.window.caption + " canvas=(" + e.x.toFixed(0) + "," + e.y.toFixed(0) + " " + e.width + "x" + e.height + ") frame=(" + g.x + "," + g.y + ") activity=" + labelOf(e.activity);
+            const p = pinned[e.window.caption];
+            const fx = (p && p !== true) ? (e.x - p.hx) : 0, fy = (p && p !== true) ? (e.y - p.hy) : 0;
+            s += "\n  [" + i + "] " + (isSelected(e) ? "*" : " ") + e.window.caption + " canvas=(" + e.x.toFixed(0) + "," + e.y.toFixed(0) + " " + e.width + "x" + e.height + ") frame=(" + g.x + "," + g.y + ")" + (Math.abs(fx) > 0.4 || Math.abs(fy) > 0.4 ? " float=(+" + fx.toFixed(0) + ",+" + fy.toFixed(0) + ")" : "") + " activity=" + labelOf(e.activity);
         }
         console.log(s);
     }
@@ -3211,6 +3414,17 @@ KWin.SceneEffect {
             acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
             onTapped: (eventPoint, button) => grip.tapped(tapCount, point.modifiers, button)
         }
+    }
+
+    // The menus' background: opaque, because the Plasma style's translucent
+    // menu assumes the desktop blur behind it and the canvas provides none.
+    component MenuBackground : Rectangle {
+        implicitWidth: 220
+        implicitHeight: 24
+        radius: Kirigami.Units.cornerRadius
+        color: Kirigami.Theme.backgroundColor
+        border.width: 1
+        border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.25)
     }
 
     component IconButton : Rectangle {
@@ -3720,8 +3934,14 @@ KWin.SceneEffect {
                 // The lift follows the drag's dead zone, so a click with hand
                 // noise never grabs.
                 readonly property bool heavy: effect.windowPhysics && !effect.quiet
+                // Hovered: the scene's own hover, or the effect's poll. The
+                // poll is the one that works over a window's client area while
+                // the pass-through plugin owns the pointer there, so the glow,
+                // the shadow and the lift follow it; the scene's hover stays
+                // for the instant title-bar feel.
+                readonly property bool hovered: body.hovered || effect.hoverEntry === thumb.entry
                 property bool lifted: body.active && body.moving && heavy
-                scale: lifted ? 1.03 : (body.hovered && heavy ? 1.008 : 1)
+                scale: lifted ? 1.03 : (thumb.hovered && heavy ? 1.008 : 1)
                 Behavior on scale { enabled: thumb.heavy; SpringAnimation { spring: 3.6; damping: 0.5; epsilon: 0.001 } }
                 transform: [
                     Rotation {
@@ -3763,7 +3983,7 @@ KWin.SceneEffect {
                     color: "#000000"
                     visible: !effect.quiet
                     readonly property bool liftedNow: body.active && body.moving && thumb.heavy
-                    opacity: liftedNow ? 0.30 : (body.hovered ? 0.16 : 0)
+                    opacity: liftedNow ? 0.30 : (thumb.hovered ? 0.16 : 0)
                     Behavior on opacity { NumberAnimation { duration: 150 } }
                 }
 
@@ -3776,7 +3996,7 @@ KWin.SceneEffect {
                     z: -1
                     radius: 6
                     readonly property color accent: effect.activityColor(thumb.entry.activity)
-                    visible: { effect.selectionRev; return !effect.quiet && body.hovered && !effect.isSelected(thumb.entry); }
+                    visible: { effect.selectionRev; return !effect.quiet && thumb.hovered && !effect.isSelected(thumb.entry); }
                     color: Qt.rgba(accent.r, accent.g, accent.b, 0.16)
                     border.width: 1
                     border.color: Qt.rgba(accent.r, accent.g, accent.b, 0.5)
@@ -3787,9 +4007,9 @@ KWin.SceneEffect {
                     color: "transparent"
                     visible: !effect.quiet
                     readonly property bool sel: { effect.selectionRev; return effect.isSelected(thumb.entry); }
-                    border.width: sel ? 3 : (body.hovered || body.active ? 2 : 1)
+                    border.width: sel ? 3 : (thumb.hovered || body.active ? 2 : 1)
                     border.color: sel ? Kirigami.Theme.highlightColor
-                                : (body.hovered || body.active ? effect.activityColor(thumb.entry.activity) : "#40ffffff")
+                                : (thumb.hovered || body.active ? effect.activityColor(thumb.entry.activity) : "#40ffffff")
                 }
 
                 Text {
@@ -3799,7 +4019,7 @@ KWin.SceneEffect {
                     text: thumb.entry.window.caption
                     color: "#ffffff"
                     font.pixelSize: 12
-                    visible: effect.zoom < 0.6 || body.hovered
+                    visible: effect.zoom < 0.6 || thumb.hovered
                     style: Text.Outline
                     styleColor: "#000000"
                 }
@@ -3925,6 +4145,87 @@ KWin.SceneEffect {
             }
         }
 
+        // Clusters: the threads that bind nearby windows, and the badge that
+        // names the cluster the eye is on. The thread is the constellation -
+        // a polyline weaving through the members, riding the same motion as
+        // the windows, lit where the pointer's cluster is and a faint sketch
+        // for the rest when zoomed out far enough to see the plane. The
+        // badge floats over the active cluster's centre: a glass chip with
+        // its number, so the travel keys have a stop to point at.
+        Repeater {
+            model: effect.clusters.length
+            delegate: Item {
+                required property int index
+                readonly property var cluster: effect.clusters[index]
+                readonly property bool active: { effect.clusterRev; effect.focusEntry; effect.selectionRev; return effect.clusterIndex() === index; }
+                readonly property real cx: { effect.revision; effect.viewX; effect.viewY; effect.zoom; return (cluster.cx - effect.viewX) * effect.zoom - view.sg.x; }
+                readonly property real cy: { effect.revision; effect.viewX; effect.viewY; effect.zoom; return (cluster.cy - effect.viewY) * effect.zoom - view.sg.y; }
+                visible: !effect.quiet && cluster.n > 1
+                // The thread sits under the windows it binds. The Shape spans
+                // the whole view: the path is in view coordinates, and this
+                // wrapper item has no size of its own.
+                Shape {
+                    anchors.fill: view
+                    z: 500
+                    readonly property real want: (parent.active || effect.zoom < 0.5) ? (parent.active ? 0.9 : 0.28) : 0
+                    property real show: 0
+                    opacity: show
+                    Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
+                    onWantChanged: show = want
+                    Component.onCompleted: show = want
+                    layer.enabled: true
+                    layer.samples: 4
+                    readonly property color accent: effect.activityColor(effect.currentActivity)
+                    ShapePath {
+                        strokeWidth: 1.6
+                        strokeColor: Qt.rgba(accent.r, accent.g, accent.b, 0.75)
+                        fillColor: "transparent"
+                        capStyle: ShapePath.RoundCap
+                        joinStyle: ShapePath.RoundJoin
+                        dashPattern: [ 5, 7 ]
+                        PathSvg {
+                            // The camera is a dependency on purpose: the
+                            // thread rides every glide and pan with the
+                            // windows it binds, not just the discrete moves.
+                            path: { effect.revision; effect.clusterRev; effect.viewX; effect.viewY; effect.zoom; return effect.clusterPath(index, view.sg.x, view.sg.y); }
+                        }
+                    }
+                }
+                // The badge: the cluster's number in reading order, glass.
+                Rectangle {
+                    id: badge
+                    x: cx - width / 2
+                    y: cy - height - 14
+                    z: 59000
+                    visible: parent.active && cluster.n > 1 && !effect.quiet
+                    width: row.implicitWidth + 16
+                    height: 24
+                    radius: 12
+                    color: "#cc1e2126"
+                    border.width: 1
+                    border.color: "#66ffffff"
+                    Row {
+                        id: row
+                        anchors.centerIn: parent
+                        spacing: 5
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "#" + (index + 1)
+                            color: "#ffffff"
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: cluster.n + " windows"
+                            color: "#b8ffffff"
+                            font.pixelSize: 11
+                        }
+                    }
+                }
+            }
+        }
+
         // Frame tags, above the windows so they can always be grabbed.
         Repeater {
             model: effect.activityIds
@@ -3981,6 +4282,10 @@ KWin.SceneEffect {
                 effect.panKey(0, -1);
             } else if (effect.bound("panDown", k)) {
                 effect.panKey(0, 1);
+            } else if (effect.bound("clusterNext", k) && !(event.modifiers & Qt.ShiftModifier)) {
+                if (!event.isAutoRepeat) effect.clusterTravel(1);
+            } else if (effect.bound("clusterPrev", k) || (effect.bound("clusterNext", k) && (event.modifiers & Qt.ShiftModifier))) {
+                if (!event.isAutoRepeat) effect.clusterTravel(-1);
             } else if (k >= Qt.Key_1 && k <= Qt.Key_9) {
                 // The digits are the plane's desks: jump, or save with Ctrl.
                 const i = k - Qt.Key_1;
@@ -4021,12 +4326,16 @@ KWin.SceneEffect {
             title: "Arrange"
             onOpened: effect.canvasMenus++
             onClosed: effect.canvasMenus = Math.max(0, effect.canvasMenus - 1)
+            // The Plasma menu background assumes the desktop blur behind it;
+            // over the canvas there is none, so the menu is drawn opaque.
+            background: menuBackground
             PC3.MenuItem { text: "Arrange horizontally"; icon.name: "view-split-left-right"; onTriggered: effect.arrange("horizontal") }
             PC3.MenuItem { text: "Arrange vertically";   icon.name: "view-split-top-bottom"; onTriggered: effect.arrange("vertical") }
             PC3.MenuItem { text: "Tile";                 icon.name: "view-grid";             onTriggered: effect.arrange("tile") }
             PC3.Menu {
                 title: "Grid"
                 icon.name: "view-grid"
+                background: menuBackground
                 Repeater {
                     model: ["1x2", "2x1", "2x2", "3x1", "1x3", "3x2", "2x3", "3x3", "4x2", "2x4"]
                     delegate: PC3.MenuItem {
@@ -4041,6 +4350,7 @@ KWin.SceneEffect {
             PC3.Menu {
                 title: "Send to"
                 icon.name: "activities"
+                background: menuBackground
                 Repeater {
                     model: effect.activityIds
                     delegate: PC3.MenuItem {
@@ -4057,7 +4367,7 @@ KWin.SceneEffect {
             PC3.MenuSeparator {}
             PC3.MenuItem { text: "Clear selection";      icon.name: "edit-select-none";      onTriggered: effect.clearSelection() }
             PC3.MenuSeparator {}
-            PC3.MenuItem { text: effect.pinTargetsPinned() ? "Unpin from screen" : "Pin to screen"; icon.name: "window-pin"; onTriggered: effect.togglePin() }
+            PC3.MenuItem { text: effect.pinTargetsPinned() ? "Unfloat" : "Float"; icon.name: "window-pin"; onTriggered: effect.togglePin() }
         }
 
         // The toast: a brief glass chip naming what just happened (a saved
@@ -4201,6 +4511,7 @@ KWin.SceneEffect {
                         id: settingsMenu
                         onOpened: effect.canvasMenus++
                         onClosed: effect.canvasMenus = Math.max(0, effect.canvasMenus - 1)
+                        background: menuBackground
                         x: hud.vertical ? (hud.atRight ? -width : parent.width) : 0
                         y: hud.vertical ? 0 : parent.height
                         PC3.MenuItem { text: "Effect settings…";  icon.name: "preferences-desktop-effects"; onTriggered: KCM.KCMLauncher.openSystemSettings("kcm_kwin_effects") }

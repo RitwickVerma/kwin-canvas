@@ -301,6 +301,18 @@
             <label>Pan the canvas so an activated off-screen window comes on screen.</label>
             <default>true</default>
         </entry>
+        <entry name="ClusterGap" type="Int">
+            <label>How near two windows must sit, in canvas pixels between their edges, to belong to the same cluster. Windows cluster automatically as they are dragged together, and part when they are dragged apart; the clusters are where the cluster travel keys fly between.</label>
+            <default>160</default>
+        </entry>
+        <entry name="ClusterNextKey" type="String">
+            <label>The key that flies the camera to the next cluster, in reading order on the plane.</label>
+            <default>BracketRight</default>
+        </entry>
+        <entry name="ClusterPrevKey" type="String">
+            <label>The key that flies the camera to the previous cluster, in reading order on the plane.</label>
+            <default>BracketLeft</default>
+        </entry>
         <entry name="PublishGround" type="Bool">
             <label>Write the ground offset to the kwin-canvas-ground wallpaper via plasmashell.</label>
             <default>true</default>

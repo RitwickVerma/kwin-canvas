@@ -57,6 +57,8 @@ sget() {
         screens)  sed -n 's/.* screens=\([0-9]*\).*/\1/p' <<<"$line" ;;
         backdrop) sed -n 's/.* backdrop=\([0-9]*\).*/\1/p' <<<"$line" ;;
         cam)      sed -n 's/.* cam=\([a-z-]*\).*/\1/p' <<<"$line" ;;
+        clusters) sed -n 's/.* clusters=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        cluster)  sed -n 's/.* cluster=#\([0-9]*\).*/\1/p' <<<"$line" ;;
         draglag)  sed -n 's/.* draglag=\([0-9]*\).*/\1/p' <<<"$line" ;;
         lean)     sed -n 's/.* lean=\([-0-9.]*\).*/\1/p' <<<"$line" ;;
         nactivities) grep -c '^  {' <<<"$LAST_STATE" ;;

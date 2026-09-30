@@ -220,6 +220,27 @@ bool CanvasPassthrough::drawn(Window *window) const
     return window->isOnAllActivities() || window->isOnActivity(m_current);
 }
 
+Window *CanvasPassthrough::windowUnder(const QPointF &screen) const
+{
+    const QList<Window *> &stack = workspace()->stackingOrder();
+    for (auto it = stack.crbegin(); it != stack.crend(); ++it) {
+        Window *w = *it;
+        if (!w->isClient() || w->isDeleted() || w->isUnmanaged()) {
+            continue;
+        }
+        if (w->isDesktop() || w->isDock() || w->isSpecialWindow()) {
+            continue;
+        }
+        if (w->isMinimized() || w->isHidden() || !w->isOnCurrentDesktop()) {
+            continue;
+        }
+        if (QRectF(w->frameGeometry()).contains(screen)) {
+            return w;
+        }
+    }
+    return nullptr;
+}
+
 Window *CanvasPassthrough::windowAt(const QPointF &canvas) const
 {
     const QList<Window *> &stack = workspace()->stackingOrder();
@@ -292,6 +313,10 @@ void CanvasPassthrough::clearGrab()
 
 bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
 {
+    // A candidate click turned drag: the effect must not fly to it.
+    if (m_clickWindow && (event->position - m_clickPos).manhattanLength() > 6) {
+        m_clickWindow = nullptr;
+    }
     if (!m_active) {
         return false;
     }
@@ -369,6 +394,21 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
             }
         }
         return true;
+    }
+    // A left press on a window while the canvas is closed is a candidate
+    // click: the effect flies to that window on the release, which covers a
+    // click on a window that is already active, where no activation fires
+    // and the press is the only trace of the click. A press of a nav button
+    // is never one, and motion past a few pixels clears it (a drag).
+    if (event->state == PointerButtonState::Pressed && event->button == Qt::LeftButton
+        && !m_active && !(uint(event->button) & m_nav)) {
+        m_clickWindow = windowUnder(event->position);
+        m_clickPos = event->position;
+    } else if (event->state == PointerButtonState::Released && m_clickWindow && event->button == Qt::LeftButton) {
+        if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+            canvas->setProperty("clickedWindow", QVariant::fromValue<QObject *>(m_clickWindow.data()));
+        }
+        m_clickWindow = nullptr;
     }
     if (!m_active) {
         return false;
