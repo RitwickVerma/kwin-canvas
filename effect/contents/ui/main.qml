@@ -4476,7 +4476,9 @@ KWin.SceneEffect {
                 id: graspContent
                 anchors.fill: parent
                 property real graspFade: planeMap.asOverlay ? 1 : 0
-                opacity: planeMap.asOverlay ? graspFade : 1
+                // The step in fades the map's content with the chrome while
+                // the camera's rectangle expands to take the map.
+                opacity: (planeMap.asOverlay ? graspFade : 1) * effect.chromeFade
                 Behavior on graspFade { NumberAnimation { duration: 430; easing.type: Easing.OutCubic } }
                 layer.enabled: true
                 layer.effect: GaussianBlur {
@@ -4489,13 +4491,21 @@ KWin.SceneEffect {
                 anchors.fill: parent
                 radius: planeMap.asMinimap ? 16 : 0
                 color: planeMap.asMinimap ? Qt.rgba(0.07, 0.07, 0.09, 0.42) : Qt.rgba(0.04, 0.04, 0.06, 0.10)
+                // The minimap's dark region bleeds into the plane instead of
+                // ending at a line: the edge is a soft falloff.
+                layer.enabled: planeMap.asMinimap
+                layer.effect: GaussianBlur {
+                    radius: 5
+                    samples: 17
+                    transparentBorder: false
+                }
             }
             Rectangle {
                 anchors.fill: parent
                 radius: planeMap.asMinimap ? 16 : 0
                 color: "transparent"
                 border.width: 1
-                border.color: planeMap.asMinimap ? (mapHover.hovered ? "#90ffffff" : "#3affffff") : "transparent"
+                border.color: planeMap.asMinimap ? "#3affffff" : "transparent"
             }
 
             Repeater {
@@ -4547,15 +4557,47 @@ KWin.SceneEffect {
                     }
                 }
             }
-            Rectangle {
+            // The camera's viewport on the map: the rectangle that IS the
+            // screen. It floats - a soft halo under a rounded glass chip -
+            // melts away when the view dominates the map, and expands to
+            // take the map the moment a step in begins, while the map's
+            // content fades with the chrome.
+            Item {
+                id: cameraRect
                 x: { effect.revision; effect.viewX; effect.zoom; return planeMap.mx(effect.viewX + view.sg.x / effect.zoom); }
                 y: { effect.revision; effect.viewY; effect.zoom; return planeMap.my(effect.viewY + view.sg.y / effect.zoom); }
-                width: { effect.zoom; effect.revision; return Math.max(planeMap.asOverlay ? 3 : 3, view.sg.width / effect.zoom * planeMap.sc); }
+                width: { effect.zoom; effect.revision; return Math.max(3, view.sg.width / effect.zoom * planeMap.sc); }
                 height: { effect.zoom; effect.revision; return Math.max(3, view.sg.height / effect.zoom * planeMap.sc); }
-                radius: 1.5
-                color: Qt.rgba(1, 1, 1, planeMap.asOverlay ? 0.05 : 0.12)
-                border.width: 1
-                border.color: "#e8ffffff"
+                // The graceful extreme: a view that covers most of the map
+                // melts instead of becoming a huge slab.
+                readonly property real cover: Math.min(1, (width * height) / Math.max(1, planeMap.width * planeMap.height))
+                readonly property real fade: 0.35 + 0.65 * (1 - Math.min(1, Math.max(0, (cover - 0.55) / 0.45)))
+                // The step in: the world's window expands to take the map.
+                readonly property real expansion: effect.entering ? Math.max(1, planeMap.width / Math.max(1, width)) : 1
+                scale: expansion
+                transformOrigin: Item.Center
+                Behavior on scale { SpringAnimation { spring: 2.8; damping: 0.55; epsilon: 0.01 } }
+                // The halo, under the chip: the float.
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: -7
+                    radius: 8
+                    color: Qt.rgba(1, 1, 1, 0.08)
+                    layer.enabled: true
+                    layer.effect: GaussianBlur {
+                        radius: 6
+                        samples: 17
+                        transparentBorder: false
+                    }
+                }
+                Rectangle {
+                    anchors.fill: parent
+                    radius: planeMap.asMinimap ? 3 : 3
+                    color: Qt.rgba(1, 1, 1, planeMap.asOverlay ? 0.05 : 0.12)
+                    border.width: 1
+                    border.color: "#e8ffffff"
+                    opacity: cameraRect.fade
+                }
             }
             }
             // The minimap's own click flies the camera to the point; the

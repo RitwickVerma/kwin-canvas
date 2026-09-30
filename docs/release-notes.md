@@ -1,5 +1,12 @@
 Unreleased:
 
+- The camera's rectangle floats: a soft halo under a rounded glass chip,
+  it melts away when the view dominates the map - the full zoom-out no
+  longer paints a huge slab - and the moment a step in begins it expands
+  to take the whole map while the map's content fades with the chrome:
+  the world's window becoming the screen. The minimap's dark region
+  bleeds into the plane instead of ending at a line.
+
 - The pass-through lets go on its own: after four seconds with no input
   the canvas takes the input back - the keys, the wheel and the clicks
   are the canvas's, the Esc the user reaches for is the canvas's cancel,
