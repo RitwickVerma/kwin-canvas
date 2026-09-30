@@ -211,7 +211,13 @@ KWin.SceneEffect {
     // windows, an Alt-Tab on the plane. The camera springs to the other
     // window, the focus follows, and the release opens the location there.
     function swapWindow() {
-        if (!grasp) return;
+        if (!grasp && !canvasOpen) return;
+        if (!grasp) {
+            // In the overworld the swap tours the clusters - the bracket
+            // keys' own travel, at the speed of the click.
+            clusterTravel(1);
+            return;
+        }
         let target = null;
         for (let i = 0; i < focusHistory.length; ++i) {
             const w = focusHistory[i];
@@ -221,7 +227,7 @@ KWin.SceneEffect {
         if (!target) return;
         KWin.Workspace.activeWindow = target;
         const e = entryFor(target);
-        if (e) flyToEntry(e);
+        if (e) flyToEntry(e, 2.0);
     }
     // Frame positions at open, for cancel to put back what settle() wrote.
     property var openFrames: ({})
@@ -300,6 +306,39 @@ KWin.SceneEffect {
     }
 
     property int lastDebugSeq: 0
+
+    // The grasp's map: which window the pointer rests on, and the jump.
+    property int graspHover: 0
+    property int graspHoverIndex: -1
+    function graspPick(x, y) {
+        const wb = worldBounds();
+        const sc = Math.min((actionScreen().geometry.width - 48) / wb.width, (actionScreen().geometry.height - 48) / wb.height);
+        const ox = (actionScreen().geometry.width - wb.width * sc) / 2;
+        const oy = (actionScreen().geometry.height - wb.height * sc) / 2;
+        const cx = wb.x + (x - ox) / sc, cy = wb.y + (y - oy) / sc;
+        for (let i = entries.length - 1; i >= 0; --i) {
+            const e = entries[i];
+            if (cx >= e.x && cx < e.x + e.width && cy >= e.y && cy < e.y + e.height) return i;
+        }
+        return -1;
+    }
+    function graspJump(x, y) {
+        const i = graspPick(x, y);
+        if (i < 0) return;
+        const e = entries[i];
+        noteGesture();
+        flyToEntry(e, 2.0);
+    }
+    Timer {
+        interval: 100
+        repeat: true
+        running: effect.grasp
+        onTriggered: {
+            const p = effect.cursorScreen();
+            effect.graspHoverIndex = effect.graspPick(p.x, p.y);
+            effect.graspHover++;
+        }
+    }
 
     // ---- floating windows ----------------------------------------------------
     // A floating window's coordinates on the plane never change - only the
@@ -1345,6 +1384,7 @@ KWin.SceneEffect {
         camAnchored = false;
         camVX = 0; camVY = 0; camVZoom = 0;
         camOnArrive = null;
+        camRate = 1.0;
     }
 
     // A pan the hand let go of: keep the plane moving the way it was, under
@@ -1371,15 +1411,21 @@ KWin.SceneEffect {
     // Spring the camera to a scale, and - unless a screen point is given to pin
     // - to a place. Instant when SmoothZoom is off, so a script or a still hand
     // gets exactly what it asked for.
-    function camGo(z, goalX, goalY, gx, gy) {
+    // The rate the current spring runs at: a multiple of camSpring. The
+    // flights (the step in, the double-click's placement, the cancel) run
+    // at twice the casual rate, so an enter snaps while a pan glides.
+    property real camRate: 1.0
+    function camGo(z, goalX, goalY, gx, gy, rate) {
         z = clampZoom(z);
         const pinned = gx !== undefined && gx !== null;
         camStop();
+        camRate = rate === undefined ? 1.0 : Math.max(0.25, Number(rate));
         if (!smoothZoom) {
             if (pinned) setZoom(z, Qt.point(gx, gy));
             else { zoom = z; viewX = goalX; viewY = goalY; }
             return;
         }
+        const w = camSpring * camRate;
         camGoalZoom = z;
         if (pinned) {
             const c = globalToCanvas(gx, gy);
@@ -1392,13 +1438,13 @@ KWin.SceneEffect {
             // A push toward the goal, so a spring heading somewhere starts
             // moving this frame rather than the next. A fraction of the
             // critical speed cannot overshoot a critically damped spring.
-            if (camVX === 0) camVX = (camGoalX - viewX) * camSpring * 0.4;
-            if (camVY === 0) camVY = (camGoalY - viewY) * camSpring * 0.4;
+            if (camVX === 0) camVX = (camGoalX - viewX) * w * 0.4;
+            if (camVY === 0) camVY = (camGoalY - viewY) * w * 0.4;
         }
         camHasGoal = true;
         // A push off the mark, so a spring heading somewhere starts moving this
         // frame rather than the next.
-        if (camVZoom === 0) camVZoom = (z - zoom) * camSpring * 0.4;
+        if (camVZoom === 0) camVZoom = (z - zoom) * w * 0.4;
     }
 
     // A zoom about a screen point: the wheel at the cursor, a pinch, an edge
@@ -1417,7 +1463,7 @@ KWin.SceneEffect {
     // explicit Euler spring is only stable for a fraction of its period.
     function camStep(dt) {
         if (!camLive() || dt <= 0) return;
-        const w = camSpring, k = w * w, c = 2 * w;
+        const w = camSpring * camRate, k = w * w, c = 2 * w;
         if (camHasGoal) {
             camVZoom += (-k * (zoom - camGoalZoom) - c * camVZoom) * dt;
             if (!camAnchored) {
@@ -1758,7 +1804,7 @@ KWin.SceneEffect {
             doCancel();
             return;
         }
-        camGo(1, entryViewX, entryViewY);
+        camGo(1, entryViewX, entryViewY, undefined, undefined, 2.0);
         camOnArrive = doCancel;
     }
 
@@ -2033,7 +2079,7 @@ KWin.SceneEffect {
             done();
             return;
         }
-        camGo(1, tx, ty);
+        camGo(1, tx, ty, undefined, undefined, 2.0);
         camOnArrive = done;
     }
 
@@ -3030,10 +3076,10 @@ KWin.SceneEffect {
     }
     // Fly the camera so the window is wholly in view, centred on the screen
     // the pointer is on (the swap's flight, the hover's nudge).
-    function flyToEntry(e) {
+    function flyToEntry(e, rate) {
         if (!e) return;
         const g = actionScreen().geometry;
-        camGo(zoom, e.x + e.width / 2 - (g.x + g.width / 2), e.y + e.height / 2 - (g.y + g.height / 2));
+        camGo(zoom, e.x + e.width / 2 - (g.x + g.width / 2), e.y + e.height / 2 - (g.y + g.height / 2), undefined, undefined, rate);
     }
 
     Connections {
@@ -4330,6 +4376,77 @@ KWin.SceneEffect {
                         }
                     }
                 }
+            }
+        }
+
+        // The grasp's map: while the modifier is held, the whole plane is
+        // drawn translucent over the screen - the frames as border-only
+        // outlines, the windows as shaded sheets - and a click on a sheet
+        // flies the camera there, snappy. The hold becomes the switcher:
+        // see the whole plane, click where to be.
+        Item {
+            id: graspMap
+            anchors.fill: parent
+            z: 75000
+            visible: view.screen === effect.primaryScreen && effect.grasp
+            opacity: 0
+            Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+            onVisibleChanged: opacity = visible ? 1 : 0
+            readonly property rect wb: { effect.revision; effect.screensRev; return effect.worldBounds(); }
+            readonly property real sc: { effect.revision; return Math.min((width - 48) / wb.width, (height - 48) / wb.height); }
+            readonly property real ox: { effect.revision; return (width - wb.width * sc) / 2; }
+            readonly property real oy: { effect.revision; return (height - wb.height * sc) / 2; }
+            function mx(cx) { return ox + (cx - wb.x) * sc; }
+            function my(cy) { return oy + (cy - wb.y) * sc; }
+            // The dim behind the map, so the sheets read against the desktop.
+            Rectangle {
+                anchors.fill: parent
+                color: Qt.rgba(0.04, 0.04, 0.06, 0.35)
+            }
+            Repeater {
+                model: effect.frames().length
+                delegate: Rectangle {
+                    required property int index
+                    readonly property var f: effect.frames()[index]
+                    x: { effect.revision; effect.screensRev; return graspMap.mx(f.x); }
+                    y: { effect.revision; effect.screensRev; return graspMap.my(f.y); }
+                    width: { effect.revision; return f.width * graspMap.sc; }
+                    height: { effect.revision; return f.height * graspMap.sc; }
+                    color: "transparent"
+                    border.width: 1
+                    border.color: effect.palette[index % effect.palette.length]
+                    opacity: 0.8
+                }
+            }
+            Repeater {
+                model: effect.entries.length
+                delegate: Rectangle {
+                    required property int index
+                    readonly property var e: effect.entries[index]
+                    x: { effect.revision; return graspMap.mx(e.x); }
+                    y: { effect.revision; return graspMap.my(e.y); }
+                    width: { effect.revision; return Math.max(6, e.width * graspMap.sc); }
+                    height: { effect.revision; return Math.max(6, e.height * graspMap.sc); }
+                    radius: 3
+                    color: effect.graspHoverIndex === index ? Qt.rgba(1, 1, 1, 0.30) : Qt.rgba(1, 1, 1, 0.13)
+                    border.width: effect.graspHoverIndex === index ? 1 : 0
+                    border.color: "#aaffffff"
+                    // The hovered sheet names its window.
+                    Text {
+                        anchors.centerIn: parent
+                        text: effect.graspHoverIndex === index ? e.window.caption : ""
+                        color: "#ffffff"
+                        font.pixelSize: 10
+                        style: Text.Outline
+                        styleColor: "#80000000"
+                        visible: text !== "" && parent.width > 60
+                    }
+                }
+            }
+            // A click on a sheet flies there; the release of the modifier
+            // commits the location the camera landed on.
+            TapHandler {
+                onTapped: (eventPoint) => effect.graspJump(eventPoint.position.x, eventPoint.position.y)
             }
         }
 

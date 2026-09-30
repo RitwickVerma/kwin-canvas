@@ -1,5 +1,20 @@
 Unreleased:
 
+- The modifier's hold is the switcher: while MB4 is down the whole plane
+  appears as a translucent map over the screen - the frames as border-only
+  outlines, the windows as shaded sheets, the hovered one named - and a
+  click on a sheet flies the camera there, snappy; the release commits the
+  location the camera landed on. Go to a window you know the place of,
+  instantly.
+
+- MB5 is the quick hop: during the hold it swaps to the last-used window
+  at twice the casual camera rate - the speed of the click, still a
+  flight - and held in the overworld it tours the clusters instead, the
+  bracket keys' own travel at the thumb's speed.
+
+- The step in and the cancel fly at twice the casual rate, so an enter
+  snaps instead of arcing - fluid, but not a parade.
+
 - The thread glows white: the constellation is a white thread over a soft
   blurred halo of the same curve, instead of the activity colour.
 
