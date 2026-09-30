@@ -192,16 +192,18 @@ KWin.SceneEffect {
                 t.y = viewY;
             }
         }
-        // The fullscreen opening stepped out a little: spring back to 1:1 at
-        // the committed viewport instead of jumping. A grab mid-zoom keeps
-        // the commit parked until the hand lets go. Without the smooth
-        // camera the spring would never run, so the commit is taken at once.
+        // The zoom decides where the release leaves you. Zoomed out, the
+        // camera has stepped out of the location: the release keeps the
+        // overworld - the keyhole widens into the whole canvas, the chrome
+        // fades in, and the map morphs from the full sheet into the corner
+        // lens. Zoomed in, the release commits the location, as it always
+        // has - a pan during the hold is the location's new viewport.
         if (zoom < 0.999) {
-            if (!smoothZoom) { commit(null); return; }
-            const t = targetOf(currentActivity);
-            camGo(1, t.x, t.y);
-            camOnArrive = function () { deferredClose = null; commit(null); };
-            deferredClose = function () { commit(null); };
+            quiet = false;
+            chromeFade = 0;
+            welcomeAnim.restart();
+            thumbOpacity = 1;
+            if (passthrough) probeCall.call();
             return;
         }
         commit(null);
@@ -312,9 +314,11 @@ KWin.SceneEffect {
     property int graspHoverIndex: -1
     function graspPick(x, y) {
         const wb = worldBounds();
-        const sc = Math.min((actionScreen().geometry.width - 48) / wb.width, (actionScreen().geometry.height - 48) / wb.height);
-        const ox = (actionScreen().geometry.width - wb.width * sc) / 2;
-        const oy = (actionScreen().geometry.height - wb.height * sc) / 2;
+        const g = actionScreen().geometry;
+        const w = g.width - 48, h = g.height - 48;
+        const sc = Math.min((w - 12) / wb.width, (h - 12) / wb.height);
+        const ox = 24 + (w - wb.width * sc) / 2;
+        const oy = 24 + (h - wb.height * sc) / 2;
         const cx = wb.x + (x - ox) / sc, cy = wb.y + (y - oy) / sc;
         for (let i = entries.length - 1; i >= 0; --i) {
             const e = entries[i];
@@ -328,6 +332,11 @@ KWin.SceneEffect {
         const e = entries[i];
         noteGesture();
         flyToEntry(e, 2.0);
+    }
+    function graspJumpTo(i) {
+        if (i < 0 || i >= entries.length) return;
+        noteGesture();
+        flyToEntry(entries[i], 2.0);
     }
     Timer {
         interval: 100
@@ -4379,43 +4388,95 @@ KWin.SceneEffect {
             }
         }
 
-        // The grasp's map: while the modifier is held, the whole plane is
-        // drawn translucent over the screen - the frames as border-only
-        // outlines, the windows as shaded sheets - and a click on a sheet
-        // flies the camera there, snappy. The hold becomes the switcher:
-        // see the whole plane, click where to be.
+        // The plane map - one living picture, two homes. While the modifier
+        // is held it is the whole screen: the frames as border-only
+        // outlines, the windows as shaded sheets, a click flying the camera
+        // to a sheet. In the overworld it shrinks into the corner and turns
+        // to glass - the view behind it blurred and magnified - and the
+        // same click flies the camera. The two homes are one item, so the
+        // map morphs between them, springing from the full screen into the
+        // corner sheet and back.
         Item {
-            id: graspMap
-            anchors.fill: parent
-            z: 75000
-            visible: view.screen === effect.primaryScreen && effect.grasp
-            opacity: 0
+            id: planeMap
+            z: 80000
+            readonly property int mw: Math.round(view.sg.width * 0.16)
+            readonly property int mh: Math.round(view.sg.height * 0.2)
+            readonly property bool asOverlay: effect.grasp && view.screen === effect.primaryScreen
+            readonly property bool asMinimap: effect.canvasOpen && !effect.quiet && effect.zoom < 0.9 && !effect.grasp && view.screen === effect.primaryScreen
+            readonly property rect home: asOverlay
+                ? Qt.rect(24, 24, view.sg.width - 48, view.sg.height - 48)
+                : Qt.rect(view.sg.width - mw - Kirigami.Units.largeSpacing * 2, view.sg.height - mh - Kirigami.Units.largeSpacing * 2, mw, mh)
+            visible: asOverlay || asMinimap
+            property bool morphReady: false
+            Component.onCompleted: {
+                x = home.x; y = home.y; width = home.width; height = home.height;
+                morphReady = true;
+            }
+            onHomeChanged: {
+                if (!morphReady) return;
+                x = home.x; y = home.y; width = home.width; height = home.height;
+            }
+            Behavior on x { enabled: planeMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
+            Behavior on y { enabled: planeMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
+            Behavior on width { enabled: planeMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
+            Behavior on height { enabled: planeMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
+            opacity: visible ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-            onVisibleChanged: opacity = visible ? 1 : 0
+            // The map lives: every binding depends on the revision and the
+            // camera explicitly - a function's reads do not register as
+            // dependencies, so without these the map would be a still.
             readonly property rect wb: { effect.revision; effect.screensRev; return effect.worldBounds(); }
-            readonly property real sc: { effect.revision; return Math.min((width - 48) / wb.width, (height - 48) / wb.height); }
+            readonly property real sc: { effect.revision; return Math.min((width - 12) / wb.width, (height - 12) / wb.height); }
             readonly property real ox: { effect.revision; return (width - wb.width * sc) / 2; }
             readonly property real oy: { effect.revision; return (height - wb.height * sc) / 2; }
             function mx(cx) { return ox + (cx - wb.x) * sc; }
             function my(cy) { return oy + (cy - wb.y) * sc; }
-            // The dim behind the map, so the sheets read against the desktop.
+            // The lens: the scene behind the map, magnified a little and
+            // blurred - the glass the minimap wears. Hidden in the overlay.
+            ShaderEffectSource {
+                visible: false
+                id: glass
+                anchors.fill: parent
+                sourceItem: view
+                recursive: false
+                sourceRect: Qt.rect(planeMap.x + planeMap.width * 0.02, planeMap.y + planeMap.height * 0.02, planeMap.width * 0.96, planeMap.height * 0.96)
+                layer.enabled: true
+                layer.effect: FastBlur {
+                    radius: 22
+                    transparentBorder: false
+                }
+                opacity: planeMap.asMinimap ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 200 } }
+            }
+            // The dim behind the overlay, and the tint over the lens.
             Rectangle {
                 anchors.fill: parent
-                color: Qt.rgba(0.04, 0.04, 0.06, 0.35)
+                radius: planeMap.asMinimap ? 16 : 0
+                color: planeMap.asMinimap ? Qt.rgba(0.07, 0.07, 0.09, 0.42) : Qt.rgba(0.04, 0.04, 0.06, 0.35)
             }
+            Rectangle {
+                anchors.fill: parent
+                radius: planeMap.asMinimap ? 16 : 0
+                color: "transparent"
+                border.width: 1
+                border.color: planeMap.asMinimap ? (mapHover.hovered ? "#90ffffff" : "#3affffff") : "transparent"
+            }
+            scale: 1.0
+
             Repeater {
                 model: effect.frames().length
                 delegate: Rectangle {
                     required property int index
                     readonly property var f: effect.frames()[index]
-                    x: { effect.revision; effect.screensRev; return graspMap.mx(f.x); }
-                    y: { effect.revision; effect.screensRev; return graspMap.my(f.y); }
-                    width: { effect.revision; return f.width * graspMap.sc; }
-                    height: { effect.revision; return f.height * graspMap.sc; }
-                    color: "transparent"
+                    x: { effect.revision; effect.screensRev; return planeMap.mx(f.x); }
+                    y: { effect.revision; effect.screensRev; return planeMap.my(f.y); }
+                    width: { effect.revision; return f.width * planeMap.sc; }
+                    height: { effect.revision; return f.height * planeMap.sc; }
+                    readonly property color accent: effect.palette[index % effect.palette.length]
+                    color: planeMap.asMinimap ? Qt.rgba(accent.r, accent.g, accent.b, 0.30) : "transparent"
                     border.width: 1
-                    border.color: effect.palette[index % effect.palette.length]
-                    opacity: 0.8
+                    border.color: planeMap.asMinimap ? Qt.rgba(accent.r, accent.g, accent.b, 0.75) : accent
+                    opacity: planeMap.asMinimap ? 0.9 : 0.8
                 }
             }
             Repeater {
@@ -4423,137 +4484,50 @@ KWin.SceneEffect {
                 delegate: Rectangle {
                     required property int index
                     readonly property var e: effect.entries[index]
-                    x: { effect.revision; return graspMap.mx(e.x); }
-                    y: { effect.revision; return graspMap.my(e.y); }
-                    width: { effect.revision; return Math.max(6, e.width * graspMap.sc); }
-                    height: { effect.revision; return Math.max(6, e.height * graspMap.sc); }
-                    radius: 3
-                    color: effect.graspHoverIndex === index ? Qt.rgba(1, 1, 1, 0.30) : Qt.rgba(1, 1, 1, 0.13)
-                    border.width: effect.graspHoverIndex === index ? 1 : 0
+                    x: { effect.revision; return planeMap.mx(e.x); }
+                    y: { effect.revision; return planeMap.my(e.y); }
+                    width: { effect.revision; return Math.max(planeMap.asOverlay ? 6 : 1.6, e.width * planeMap.sc); }
+                    height: { effect.revision; return Math.max(planeMap.asOverlay ? 6 : 1.6, e.height * planeMap.sc); }
+                    radius: planeMap.asOverlay ? 3 : 1
+                    color: effect.graspHoverIndex === index && planeMap.asOverlay ? Qt.rgba(1, 1, 1, 0.30) : Qt.rgba(1, 1, 1, planeMap.asOverlay ? 0.13 : 0.8)
+                    border.width: effect.graspHoverIndex === index && planeMap.asOverlay ? 1 : 0
                     border.color: "#aaffffff"
-                    // The hovered sheet names its window.
                     Text {
                         anchors.centerIn: parent
-                        text: effect.graspHoverIndex === index ? e.window.caption : ""
+                        text: effect.graspHoverIndex === index && planeMap.asOverlay ? e.window.caption : ""
                         color: "#ffffff"
                         font.pixelSize: 10
                         style: Text.Outline
                         styleColor: "#80000000"
                         visible: text !== "" && parent.width > 60
                     }
-                }
-            }
-            // A click on a sheet flies there; the release of the modifier
-            // commits the location the camera landed on.
-            TapHandler {
-                onTapped: (eventPoint) => effect.graspJump(eventPoint.position.x, eventPoint.position.y)
-            }
-        }
-
-        // The minimap: the plane from above, in the overworld's corner. A
-        // sheet of glass - the view behind it shows through, blurred and a
-        // touch magnified, like a lens - carrying the frames as tinted
-        // swatches, the windows as white specks and the camera as the bright
-        // rectangle; a click flies the camera there. It springs in and out
-        // with the zoom, and grows under the pointer.
-        Item {
-            id: minimap
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.margins: Kirigami.Units.largeSpacing * 2
-            width: Math.round(view.sg.width * 0.16)
-            height: Math.round(view.sg.height * 0.2)
-            z: 80000
-            visible: view.screen === effect.primaryScreen && effect.canvasOpen && !effect.quiet && effect.zoom < 0.9
-            // The map lives: every binding depends on the revision and the
-            // camera explicitly - a function's reads do not register as
-            // dependencies, so without these the map would be a still.
-            readonly property rect wb: { effect.revision; effect.screensRev; return effect.worldBounds(); }
-            readonly property real sc: { effect.revision; return Math.min(width / wb.width, height / wb.height); }
-            readonly property real ox: { effect.revision; return (width - wb.width * sc) / 2; }
-            readonly property real oy: { effect.revision; return (height - wb.height * sc) / 2; }
-            function mx(cx) { return ox + (cx - wb.x) * sc; }
-            function my(cy) { return oy + (cy - wb.y) * sc; }
-            // The lens: the scene behind the map, sampled a little smaller
-            // than the map and stretched back, so the glass magnifies what
-            // it refracts, then blurred into frosted glass.
-            ShaderEffectSource {
-                id: glass
-                anchors.fill: parent
-                sourceItem: view
-                recursive: false
-                sourceRect: Qt.rect(minimap.x + minimap.width * 0.02, minimap.y + minimap.height * 0.02, minimap.width * 0.96, minimap.height * 0.96)
-                layer.enabled: true
-                layer.effect: FastBlur {
-                    radius: 22
-                    transparentBorder: false
-                }
-            }
-            // The tint over the lens, and the hairline.
-            Rectangle {
-                anchors.fill: parent
-                radius: 16
-                color: Qt.rgba(0.07, 0.07, 0.09, 0.42)
-            }
-            Rectangle {
-                anchors.fill: parent
-                radius: 16
-                color: "transparent"
-                border.width: 1
-                border.color: minimapHover.hovered ? "#90ffffff" : "#3affffff"
-            }
-            // The map's shape: everything clipped to the glass sheet.
-            layer.enabled: true
-            // The spring: the map pops in and settles under the pointer.
-            scale: minimapHover.hovered ? 1.05 : 1.0
-            transformOrigin: Item.BottomRight
-            Behavior on scale { SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.01 } }
-            HoverHandler {
-                id: minimapHover
-            }
-            Repeater {
-                model: effect.frames().length
-                delegate: Rectangle {
-                    required property int index
-                    readonly property var f: effect.frames()[index]
-                    x: { effect.revision; effect.screensRev; return minimap.mx(f.x); }
-                    y: { effect.revision; effect.screensRev; return minimap.my(f.y); }
-                    width: { effect.revision; return Math.max(2, f.width * minimap.sc); }
-                    height: { effect.revision; return Math.max(2, f.height * minimap.sc); }
-                    radius: { effect.revision; return Math.max(1, 2 * minimap.sc); }
-                    readonly property color accent: effect.palette[index % effect.palette.length]
-                    color: Qt.rgba(accent.r, accent.g, accent.b, 0.30)
-                    border.width: 0.6
-                    border.color: Qt.rgba(accent.r, accent.g, accent.b, 0.75)
-                }
-            }
-            Repeater {
-                model: effect.entries.length
-                delegate: Rectangle {
-                    required property int index
-                    readonly property var e: effect.entries[index]
-                    x: { effect.revision; return minimap.mx(e.x); }
-                    y: { effect.revision; return minimap.my(e.y); }
-                    width: { effect.revision; return Math.max(1.6, e.width * minimap.sc); }
-                    height: { effect.revision; return Math.max(1.6, e.height * minimap.sc); }
-                    radius: 1
-                    color: "#ccffffff"
+                    // The sheet itself is the click target; everywhere else
+                    // the map passes the pointer to the windows beneath.
+                    TapHandler {
+                        enabled: planeMap.asOverlay
+                        onTapped: effect.graspJumpTo(index)
+                    }
                 }
             }
             Rectangle {
-                x: { effect.revision; effect.viewX; effect.zoom; return minimap.mx(effect.viewX + view.sg.x / effect.zoom); }
-                y: { effect.revision; effect.viewY; effect.zoom; return minimap.my(effect.viewY + view.sg.y / effect.zoom); }
-                width: { effect.zoom; effect.revision; return Math.max(3, view.sg.width / effect.zoom * minimap.sc); }
-                height: { effect.zoom; effect.revision; return Math.max(3, view.sg.height / effect.zoom * minimap.sc); }
+                x: { effect.revision; effect.viewX; effect.zoom; return planeMap.mx(effect.viewX + view.sg.x / effect.zoom); }
+                y: { effect.revision; effect.viewY; effect.zoom; return planeMap.my(effect.viewY + view.sg.y / effect.zoom); }
+                width: { effect.zoom; effect.revision; return Math.max(planeMap.asOverlay ? 3 : 3, view.sg.width / effect.zoom * planeMap.sc); }
+                height: { effect.zoom; effect.revision; return Math.max(3, view.sg.height / effect.zoom * planeMap.sc); }
                 radius: 1.5
-                color: Qt.rgba(1, 1, 1, 0.12)
+                color: Qt.rgba(1, 1, 1, planeMap.asOverlay ? 0.05 : 0.12)
                 border.width: 1
                 border.color: "#e8ffffff"
             }
+            // The minimap's own click flies the camera to the point; the
+            // overlay's sheets carry their taps, so the rest of the map
+            // never steals the pointer from the windows beneath it.
             TapHandler {
+                enabled: planeMap.asMinimap
                 onTapped: (eventPoint) => {
-                    const cx = effect.worldBounds().x + (eventPoint.position.x - minimap.ox) / minimap.sc;
-                    const cy = effect.worldBounds().y + (eventPoint.position.y - minimap.oy) / minimap.sc;
+                    const wb = effect.worldBounds();
+                    const cx = wb.x + (eventPoint.position.x - planeMap.ox) / planeMap.sc;
+                    const cy = wb.y + (eventPoint.position.y - planeMap.oy) / planeMap.sc;
                     const g = effect.actionScreen().geometry;
                     effect.camGo(effect.zoom, cx - (g.x + g.width / 2) / effect.zoom, cy - (g.y + g.height / 2) / effect.zoom);
                 }

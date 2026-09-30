@@ -1,5 +1,13 @@
 Unreleased:
 
+- The map is one living picture with two homes, and the hold's release is
+  the path between them: hold MB4, zoom out - the camera steps out of the
+  location - and release, and the keyhole widens into the overworld: the
+  chrome fades in and the full-screen sheet morphs down into the corner
+  lens. Zoomed in, the release commits the location as it always has, so
+  the zoom is the semantic: in, you arranged the desk; out, you stepped
+  into the world.
+
 - The modifier's hold is the switcher: while MB4 is down the whole plane
   appears as a translucent map over the screen - the frames as border-only
   outlines, the windows as shaded sheets, the hovered one named - and a
@@ -27,6 +35,11 @@ Unreleased:
   the frames are tinted swatches with hairlines, the windows white specks,
   the camera a bright rectangle, and the whole sheet springs in with the
   zoom and grows under the pointer.
+
+- The map is one living picture with two homes: the modifier's hold and
+  the overworld share the same map, and it morphs between them - the
+  full-screen sheet of the hold springs down into the corner lens as the
+  overworld opens, and back, the glass fading in on the way.
 
 - The minimap: a small map of the whole plane in the overworld's corner -
   the frames as swatches, the windows as specks, the camera as the white

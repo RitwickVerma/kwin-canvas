@@ -133,7 +133,8 @@ disable the stock **Zoom** effect if it owns Meta+wheel.
 | Tab / Shift+Tab | | step the selection through the windows, wrapping; the camera follows to keep the chosen window in view |
 | WASD | | pan the camera one step |
 | click a window, or rest the pointer on one | | the camera pans the least that brings it wholly into view |
-| hold MB4 and tap MB5 (`SwapButton`) | on the desktop: the location becomes the canvas | fly between the two most recent windows; release opens the location there, focused |
+| hold MB4 and tap MB5 (`SwapButton`) | on the desktop: the location becomes the canvas | fly between the two most recent windows; release opens the location there, focused; in the open overworld it tours the clusters |
+| hold MB4, wheel out, release | on the desktop: the location becomes the canvas | the keyhole widens into the overworld - the map morphs from the full sheet into the corner lens; zoomed in, the release commits the location instead |
 | [ / ] | | fly the camera to the next / previous cluster of nearby windows, in reading order on the plane |
 | Float (a window's arrange menu) | | the window keeps its coordinates on the plane - only the hand moves them - and when the camera pushes it partly off the screen its picture floats at the edge, bouncing off it with real physics; move the camera back and the picture is the window again. The same flag as "on all desktops", so it follows you across virtual desktops too |
 
