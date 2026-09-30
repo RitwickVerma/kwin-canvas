@@ -1,5 +1,15 @@
 Unreleased:
 
+- The thread whispers: thinner and fainter, a sparse dash drifting slowly
+  along the curve over a soft halo - the constellation reads as light,
+  not a drawing.
+
+- The hold's map is quiet: the shroud is a whisper, the frames' outlines
+  are the minimap's alone, and the windows are hairline sheets - the
+  hovered one fills softly and names itself. The overlay sharpens out of
+  a haze on the hold and dissolves back on the release, the slow blur
+  transition.
+
 - The pass-through waits for the aim: the first pointer motion after the
   overworld opens settles the filter, and until then buttons and the
   wheel belong to the canvas - the wheel right after opening zooms the

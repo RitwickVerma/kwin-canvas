@@ -4305,21 +4305,21 @@ KWin.SceneEffect {
                 // tags. The z lives on the delegate: a child's z cannot lift
                 // its parent out of the frame layer.
                 z: 2000
-                // The thread's glow: the same curve, blurred white, under
-                // the sharp thread, so the constellation reads as light.
+                // The thread's glow: a whisper of light under the thread, so
+                // the constellation reads as a glow rather than a drawn line.
                 Shape {
                     id: threadGlow
                     anchors.fill: parent
-                    opacity: threadShape.show * 0.8
+                    opacity: threadShape.show * 0.55
                     layer.enabled: true
                     layer.effect: GaussianBlur {
-                        radius: 4
+                        radius: 7
                         samples: 17
                         transparentBorder: false
                     }
                     ShapePath {
-                        strokeWidth: 5
-                        strokeColor: Qt.rgba(1, 1, 1, 0.5)
+                        strokeWidth: 3.5
+                        strokeColor: Qt.rgba(1, 1, 1, 0.22)
                         fillColor: "transparent"
                         capStyle: ShapePath.RoundCap
                         joinStyle: ShapePath.RoundJoin
@@ -4331,25 +4331,24 @@ KWin.SceneEffect {
                 Shape {
                     id: threadShape
                     anchors.fill: parent
-                    readonly property real want: (parent.active || effect.zoom < 0.5) ? (parent.active ? 0.9 : 0.45) * cluster.co * (effect.quiet ? effect.quietReveal : 1) : 0
+                    readonly property real want: (parent.active || effect.zoom < 0.5) ? (parent.active ? 0.55 : 0.2) * cluster.co * (effect.quiet ? effect.quietReveal : 1) : 0
                     property real show: 0
                     opacity: show
                     Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
                     onWantChanged: show = want
                     Component.onCompleted: show = want
                     ShapePath {
-                        strokeWidth: 2.2
-                        strokeColor: "#ffffff"
+                        strokeWidth: 1.3
+                        strokeColor: Qt.rgba(1, 1, 1, 0.55)
                         fillColor: "transparent"
                         capStyle: ShapePath.RoundCap
                         joinStyle: ShapePath.RoundJoin
-                        dashPattern: [ 7, 9 ]
-                        // The dash marches along the thread, so the thread
-                        // reads as flowing rather than drawn.
+                        dashPattern: [ 6, 16 ]
+                        // The dash drifts along the thread, slow and quiet.
                         NumberAnimation on dashOffset {
                             from: 0
-                            to: 16
-                            duration: 900
+                            to: 22
+                            duration: 1600
                             loops: Animation.Infinite
                             running: threadShape.show > 0.02
                         }
@@ -4468,11 +4467,28 @@ KWin.SceneEffect {
                 opacity: planeMap.asMinimap ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 200 } }
             }
+            scale: 1.0
+            // The map's content, wrapped so the hold's entrance can be the
+            // slow blur transition: the sheets, the outlines and the dim
+            // sharpen out of a haze as the overlay fades in, and dissolve
+            // back into it on the release.
+            Item {
+                id: graspContent
+                anchors.fill: parent
+                property real graspFade: planeMap.asOverlay ? 1 : 0
+                opacity: planeMap.asOverlay ? graspFade : 1
+                Behavior on graspFade { NumberAnimation { duration: 430; easing.type: Easing.OutCubic } }
+                layer.enabled: true
+                layer.effect: GaussianBlur {
+                    radius: Math.max(0, 14 * (1 - graspContent.graspFade)) * (planeMap.asOverlay ? 1 : 0)
+                    samples: 17
+                    transparentBorder: false
+                }
             // The dim behind the overlay, and the tint over the lens.
             Rectangle {
                 anchors.fill: parent
                 radius: planeMap.asMinimap ? 16 : 0
-                color: planeMap.asMinimap ? Qt.rgba(0.07, 0.07, 0.09, 0.42) : Qt.rgba(0.04, 0.04, 0.06, 0.35)
+                color: planeMap.asMinimap ? Qt.rgba(0.07, 0.07, 0.09, 0.42) : Qt.rgba(0.04, 0.04, 0.06, 0.10)
             }
             Rectangle {
                 anchors.fill: parent
@@ -4481,22 +4497,22 @@ KWin.SceneEffect {
                 border.width: 1
                 border.color: planeMap.asMinimap ? (mapHover.hovered ? "#90ffffff" : "#3affffff") : "transparent"
             }
-            scale: 1.0
 
             Repeater {
                 model: effect.frames().length
                 delegate: Rectangle {
                     required property int index
                     readonly property var f: effect.frames()[index]
+                    visible: planeMap.asMinimap
                     x: { effect.revision; effect.screensRev; return planeMap.mx(f.x); }
                     y: { effect.revision; effect.screensRev; return planeMap.my(f.y); }
                     width: { effect.revision; return f.width * planeMap.sc; }
                     height: { effect.revision; return f.height * planeMap.sc; }
                     readonly property color accent: effect.palette[index % effect.palette.length]
-                    color: planeMap.asMinimap ? Qt.rgba(accent.r, accent.g, accent.b, 0.30) : "transparent"
+                    color: Qt.rgba(accent.r, accent.g, accent.b, 0.30)
                     border.width: 1
-                    border.color: planeMap.asMinimap ? Qt.rgba(accent.r, accent.g, accent.b, 0.75) : accent
-                    opacity: planeMap.asMinimap ? 0.9 : 0.8
+                    border.color: Qt.rgba(accent.r, accent.g, accent.b, 0.75)
+                    opacity: 0.9
                 }
             }
             Repeater {
@@ -4509,9 +4525,11 @@ KWin.SceneEffect {
                     width: { effect.revision; return Math.max(planeMap.asOverlay ? 6 : 1.6, e.width * planeMap.sc); }
                     height: { effect.revision; return Math.max(planeMap.asOverlay ? 6 : 1.6, e.height * planeMap.sc); }
                     radius: planeMap.asOverlay ? 3 : 1
-                    color: effect.graspHoverIndex === index && planeMap.asOverlay ? Qt.rgba(1, 1, 1, 0.30) : Qt.rgba(1, 1, 1, planeMap.asOverlay ? 0.13 : 0.8)
-                    border.width: effect.graspHoverIndex === index && planeMap.asOverlay ? 1 : 0
-                    border.color: "#aaffffff"
+                    color: planeMap.asOverlay
+                        ? (effect.graspHoverIndex === index ? Qt.rgba(1, 1, 1, 0.18) : "transparent")
+                        : Qt.rgba(1, 1, 1, 0.8)
+                    border.width: planeMap.asOverlay ? 0.8 : 0
+                    border.color: effect.graspHoverIndex === index ? "#ccffffff" : "#40ffffff"
                     Text {
                         anchors.centerIn: parent
                         text: effect.graspHoverIndex === index && planeMap.asOverlay ? e.window.caption : ""
@@ -4538,6 +4556,7 @@ KWin.SceneEffect {
                 color: Qt.rgba(1, 1, 1, planeMap.asOverlay ? 0.05 : 0.12)
                 border.width: 1
                 border.color: "#e8ffffff"
+            }
             }
             // The minimap's own click flies the camera to the point; the
             // overlay's sheets carry their taps, so the rest of the map
