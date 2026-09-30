@@ -113,6 +113,8 @@ private:
     void replayClick();
 
     bool m_active = false;
+    /** The pointer has moved since the activation: the passthrough is live. */
+    bool m_settled = false;
     double m_viewX = 0;
     double m_viewY = 0;
     double m_zoom = 1;

@@ -4184,6 +4184,10 @@ KWin.SceneEffect {
                     viewItem: view
                     tappable: true
                     dragDead: 14
+                    // The open hand: the window's own area - the title bar
+                    // and the edges - reads as grabbable, while the client
+                    // area keeps the app's cursor under the pass-through.
+                    cursor: Qt.OpenHandCursor
                     onDragStarted: { thumb.held = thumb.entry; effect.beginDrag(thumb.index); }
                     onDragged: (dx, dy) => { effect.dragEntry(thumb.heldIndex, dx, dy); effect.noteDrag(dx, dy); }
                     onDragEnded: effect.endDrag()

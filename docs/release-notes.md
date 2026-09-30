@@ -1,5 +1,12 @@
 Unreleased:
 
+- The pass-through waits for the aim: the first pointer motion after the
+  overworld opens settles the filter, and until then buttons and the
+  wheel belong to the canvas - the wheel right after opening zooms the
+  canvas instead of scrolling the window under the pointer. The window's
+  own area wears the open hand, so the title bar and the edges read as
+  grabbable while the client area keeps the app's cursor.
+
 - The float is the window's own "keep above": right-click any window and
   tick Keep Above Others, and it floats - the title-bar menu's
   always-visible entry and the canvas agree on what floats, and the

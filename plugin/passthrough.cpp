@@ -103,6 +103,11 @@ void CanvasPassthrough::setActive(bool active)
         return;
     }
     m_active = active;
+    // Fresh activation: the pointer has not aimed yet. The first motion
+    // settles the filter, and until it does, buttons and the wheel belong
+    // to the canvas - the wheel right after the overworld opens zooms it,
+    // not the window that happens to sit under the pointer.
+    m_settled = false;
     if (!active) {
         clearGrab();
         leave();
@@ -327,6 +332,9 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
     if (!m_active) {
         return false;
     }
+    // The first motion is the user aiming at the canvas: from here the
+    // passthrough is live and the window under the pointer takes input.
+    m_settled = true;
     // A canvas button is down: the whole gesture is the canvas's, wherever the
     // pointer is (a window being dragged on the plane, a pan, an edge). The
     // window under the pointer is not entered and no motion is notified to it.
@@ -420,6 +428,12 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     if (!m_active) {
         return false;
     }
+    // The passthrough waits for the aim: until the pointer's first motion
+    // after the activation, buttons belong to the canvas - the first click
+    // after the overworld opens is the canvas's, not the window's.
+    if (!m_settled) {
+        return false;
+    }
     const bool pressed = event->state == PointerButtonState::Pressed;
     // A canvas button belongs to the canvas: it never starts a grab, never
     // reaches a window, and never leaves one, wherever the pointer is. The
@@ -478,7 +492,7 @@ bool CanvasPassthrough::keyboardKey(KeyboardKeyEvent *event)
 
 bool CanvasPassthrough::pointerAxis(PointerAxisEvent *event)
 {
-    if (!m_active || m_grabGround) {
+    if (!m_active || !m_settled || m_grabGround) {
         return false;
     }
     // With a canvas button down the wheel is the canvas's too: a notch zooms

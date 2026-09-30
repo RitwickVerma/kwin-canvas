@@ -145,17 +145,22 @@ never left hanging off an edge. Everything that pulls focus on a window flies
 to it.
 
 **Pass-through** is the optional binary plugin, `kwin-canvas-passthrough`,
-and it is live whenever the canvas is open. The pointer over a window's
-client area goes to that window, so clicks land, drags select or move
-things inside it, the wheel scrolls it, and a click raises it; every key
-goes to the focused window, Esc included. Title bars and edges, frames,
-tags, the ground and the toolbar stay the canvas's: a drag on a title bar
-moves the window on the plane, a drag on the ground pans, the wheel over
-the ground zooms. Clicking a window's client area no longer selects it;
-select from the title bar. The plugin is built against the installed KWin,
-and KWin loads it only for that exact version; without it the overworld is
-a navigation view and the canvas keys, Esc included, are its own. `make
-plugin-status` says which. The `Passthrough` setting turns it off.
+and it is live whenever the canvas is open - but it waits for the aim:
+the first pointer motion after the overworld opens settles it, and until
+then the wheel and the clicks belong to the canvas, so the wheel right
+after opening zooms the canvas instead of scrolling whatever window
+happens to sit under the pointer. Once settled, the pointer over a
+window's client area goes to that window, so clicks land, drags select
+or move things inside it, the wheel scrolls it, and a click raises it;
+every key goes to the focused window, Esc included. Title bars and edges
+- wearing the open hand - frames, tags, the ground and the toolbar stay
+the canvas's: a drag on a title bar moves the window on the plane, a
+drag on the ground pans, the wheel over the ground zooms. Clicking a
+window's client area no longer selects it; select from the title bar.
+The plugin is built against the installed KWin, and KWin loads it only
+for that exact version; without it the overworld is a navigation view
+and the canvas keys, Esc included, are its own. `make plugin-status`
+says which. The `Passthrough` setting turns it off.
 
 Panning in a location is a **slide**: the effect opens for a moment at 1:1
 with no frames or toolbar, this activity's windows glide, and their new
