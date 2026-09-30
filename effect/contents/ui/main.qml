@@ -356,14 +356,15 @@ KWin.SceneEffect {
     // screen's edge and, pushed there fast, bounces off the edge with real
     // physics before settling against it; move the camera back and the
     // picture is the window again, at its coordinates. The flag is KWin's
-    // own "on all desktops", repurposed - the title-bar menu and the canvas
-    // agree on what floats - and the caption list persists the choice.
+    // own "keep above", repurposed - the title-bar menu's always-visible
+    // entry and the canvas agree on what floats - and the caption list
+    // persists the choice.
     property var pinned: ({})          // caption -> true, the persisted flag
     property var floatOf: ({})         // window internalId -> { x, y, vx, vy, wasInX, wasInY }, screen px
     property int floatRev: 0
     property real floatPrevViewX: 0
     property real floatPrevViewY: 0
-    function isPinnedEntry(e) { return e && e.window && !e.window.deleted && e.window.onAllDesktops; }
+    function isPinnedEntry(e) { return e && e.window && !e.window.deleted && e.window.keepAbove; }
     function loadPinned() {
         const list = configuration.PinnedWindows || [];
         const set = {};
@@ -371,7 +372,7 @@ KWin.SceneEffect {
         pinned = set;
         const all = KWin.Workspace.stackingOrder;
         for (let i = 0; i < all.length; ++i) {
-            if (pinned[all[i].caption] && !all[i].onAllDesktops) all[i].onAllDesktops = true;
+            if (pinned[all[i].caption] && !all[i].keepAbove) all[i].keepAbove = true;
         }
     }
     function savePinned() {
@@ -384,7 +385,7 @@ KWin.SceneEffect {
         for (let i = 0; i < list.length; ++i) {
             const e = list[i];
             if (!e || e.window.deleted) continue;
-            if (!e.window.onAllDesktops) e.window.onAllDesktops = true;
+            if (!e.window.keepAbove) e.window.keepAbove = true;
             pinned[e.window.caption] = true;
         }
         savePinned();
@@ -394,7 +395,7 @@ KWin.SceneEffect {
         for (let i = 0; i < list.length; ++i) {
             const e = list[i];
             if (!e) continue;
-            if (e.window.onAllDesktops) e.window.onAllDesktops = false;
+            if (e.window.keepAbove) e.window.keepAbove = false;
             if (delete pinned[e.window.caption]) any = true;
         }
         if (any) savePinned();
@@ -1736,6 +1737,21 @@ KWin.SceneEffect {
             return;
         }
         camStop();
+        // Entering syncs the floated windows to their pictures: the float's
+        // clamped spot - the place the eye saw the window - becomes the
+        // window's coordinates, so a floated window never lands off-screen
+        // when the camera leaves it behind.
+        for (let i = 0; i < entries.length; ++i) {
+            const e = entries[i];
+            if (!isPinnedEntry(e)) continue;
+            const f = floatOf[e.window.internalId];
+            if (!f) continue;
+            if (Math.abs(f.x - (e.x - viewX) * zoom) > 0.4 || Math.abs(f.y - (e.y - viewY) * zoom) > 0.4) {
+                e.x = viewX + f.x / zoom;
+                e.y = viewY + f.y / zoom;
+                revision++;
+            }
+        }
         for (const k in targets) {
             targets[k].x = Math.round(targets[k].x);
             targets[k].y = Math.round(targets[k].y);

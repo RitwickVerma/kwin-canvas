@@ -11,8 +11,8 @@ run_scenario() {
     c "pin $kx"
     sleep 0.3; c state
     assert_eq "the pin keeps the window at its coordinates" "$(eget KCalc x)" 100
-    js 'var ws = workspace.windowList(); for (var i = 0; i < ws.length; i++) if (ws[i].caption.indexOf("KCalc") >= 0) out("PINFLAG " + ws[i].onAllDesktops);'
-    assert_true "and the window is on all desktops" \
+    js 'var ws = workspace.windowList(); for (var i = 0; i < ws.length; i++) if (ws[i].caption.indexOf("KCalc") >= 0) out("PINFLAG " + ws[i].keepAbove);'
+    assert_true "and the window is kept above" \
         "$(grep -a 'PINFLAG true' "$STATE/kwin.log" | wc -l)" -ge 1
     # A pan pushes the window's coordinates off the screen: the coordinates
     # do not change, and the picture floats at the edge, inside the screen.
@@ -29,6 +29,21 @@ run_scenario() {
     sleep 0.5; c state
     assert_eq "the picture returns to the coordinates" "$(eget KCalc x)" 100
     assert_eq "with no float left" "$(grep -c 'float=(' <<<"$LAST_STATE")" 0
+    # Entering syncs the window to the picture: a hold that pans the camera
+    # off the window and releases commits the clamped spot, so the window
+    # never lands off-screen.
+    c cancel
+    sleep 0.2
+    printf 'move 1700 900\nsleep 60\ndown back\nsleep 1200\n' | input &
+    sleep 0.6
+    c "pan -1200 0"
+    sleep 0.4
+    printf 'up back\n' | input
+    sleep 0.8; c state
+    assert_true "the release commits the picture's clamped spot" \
+        "$(awk -v x="$(eget KCalc fx)" 'BEGIN{print (x >= 0 && x < 100)}')" = 1
+    c cancel
+    arrange >/dev/null
     # The hand can still move a floated window's coordinates: a drag moves
     # them, and the float follows without fighting the hand.
     c "drag $kx 200 0"
@@ -39,7 +54,7 @@ run_scenario() {
     # Unpin: the flag clears and the window is a plain window again.
     c "unpin $kx"
     sleep 0.3
-    js 'var ws = workspace.windowList(); for (var i = 0; i < ws.length; i++) if (ws[i].caption.indexOf("KCalc") >= 0) out("UNPINFLAG " + ws[i].onAllDesktops);'
+    js 'var ws = workspace.windowList(); for (var i = 0; i < ws.length; i++) if (ws[i].caption.indexOf("KCalc") >= 0) out("UNPINFLAG " + ws[i].keepAbove);'
     assert_true "unpinning clears the flag" \
         "$(grep -a 'UNPINFLAG false' "$STATE/kwin.log" | wc -l)" -ge 1
     c cancel

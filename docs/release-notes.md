@@ -1,5 +1,14 @@
 Unreleased:
 
+- The float is the window's own "keep above": right-click any window and
+  tick Keep Above Others, and it floats - the title-bar menu's
+  always-visible entry and the canvas agree on what floats, and the
+  canvas's Float/Unfloat toggles the same flag.
+
+- Entering syncs a floated window to its picture: a hold that pans the
+  camera off a floated window and releases commits the picture's clamped
+  spot, so the window never lands off-screen.
+
 - The map is one living picture with two homes, and the hold's release is
   the path between them: hold MB4, zoom out - the camera steps out of the
   location - and release, and the keyhole widens into the overworld: the
