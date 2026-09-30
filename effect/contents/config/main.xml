@@ -302,8 +302,8 @@
             <default>true</default>
         </entry>
         <entry name="ClusterGap" type="Int">
-            <label>How near two windows must sit, in canvas pixels between their edges, to belong to the same cluster. Windows cluster automatically as they are dragged together, and part when they are dragged apart; the clusters are where the cluster travel keys fly between.</label>
-            <default>160</default>
+            <label>How near two windows must sit, in canvas pixels between their edges, to belong to the same cluster. Windows cluster automatically as they are dragged together, and part when they are dragged apart; the clusters are where the cluster travel keys fly between. 0 picks the size of the screen: a third of its smaller side.</label>
+            <default>0</default>
         </entry>
         <entry name="ClusterNextKey" type="String">
             <label>The key that flies the camera to the next cluster, in reading order on the plane.</label>

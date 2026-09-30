@@ -36,7 +36,7 @@ run_scenario() {
     sleep 0.5; c state
     assert_near "the previous key steps back" "$(sget viewx)" "$(awk 'BEGIN{print 6520-960}')" 2
     # A window dragged out of range breaks the cluster it left.
-    c "placeby KCalc 1700 300"
+    c "placeby KCalc 2600 -800"
     sleep 0.5; c state
     assert_eq "dragging a window away breaks its cluster" "$(sget clusters)" 4
     c cancel

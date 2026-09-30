@@ -1,11 +1,31 @@
 Unreleased:
 
+- The float obeys physics and stays at rest. A floated window's coordinates
+  on the plane never change - only the hand moves them, in the canvas and
+  at 1:1 alike - and while the window sits fully inside the screen its
+  picture is the window, exactly, under any camera or zoom. Only when the
+  camera pushes it partly off the screen does the picture float at the
+  edge, and pushed there fast it bounces off the edge - the carried
+  velocity reflects, damped, then a critically damped spring settles it
+  back against the edge - scaling with the zoom, the zoom's own motion
+  left out of the bounce. Move the camera back and the picture is the
+  window again, at the same coordinates.
+
+- Releasing the canvas modifier after a zoom-out lands where the eye was
+  looking: the release springs back to 1:1 keeping the screen's centre,
+  instead of committing the zoom anchor's drift to arbitrary coordinates.
+
 - Clusters: windows that sit near each other on the plane are one cluster,
   formed automatically as they are dragged together and parted as they are
-  dragged apart (`ClusterGap` is how near counts). A cluster wears its
-  thread - a dashed line weaving through its windows that rides every camera
-  move with them, lit where the eye's cluster is and a faint constellation
-  for the rest when zoomed out - and the bracket keys fly the camera between
+  dragged apart. How near counts is dynamic: by default the gap is half the
+  pair's own scale - the average of the two windows' smaller sides - so a
+  cluster reads the same on a laptop and an ultrawide; `ClusterGap` sets a
+  fixed gap in pixels instead. Membership has hysteresis (a pair stays until
+  half again as far), and across that band the thread visibly dissolves
+  rather than snapping off. The thread is a smooth curve through the
+  windows in a stable order - it never re-routes while the hand only moves
+  windows - its dashes march so it reads as flowing, it rides every camera
+  move with the windows, and the bracket keys fly the camera between
   clusters in reading order, the toast naming the stop. Everything is
   derived: nothing is stored, so a cluster follows its windows.
 

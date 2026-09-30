@@ -135,7 +135,7 @@ disable the stock **Zoom** effect if it owns Meta+wheel.
 | click a window, or rest the pointer on one | | the camera pans the least that brings it wholly into view |
 | hold MB4 and tap MB5 (`SwapButton`) | on the desktop: the location becomes the canvas | fly between the two most recent windows; release opens the location there, focused |
 | [ / ] | | fly the camera to the next / previous cluster of nearby windows, in reading order on the plane |
-| Float (a window's arrange menu) | | the window keeps its coordinates on the plane and floats at the screen edge whenever the camera would push it off, bouncing off the edge with real physics - it is always on screen, in the canvas and at 1:1 alike, and it follows you across virtual desktops (the same flag as "on all desktops") |
+| Float (a window's arrange menu) | | the window keeps its coordinates on the plane - only the hand moves them - and when the camera pushes it partly off the screen its picture floats at the edge, bouncing off it with real physics; move the camera back and the picture is the window again. The same flag as "on all desktops", so it follows you across virtual desktops too |
 
 Activating a window from the task manager - or anything else that focuses it,
 Alt-Tab included - **slides the desktop to it through the canvas**: the plane

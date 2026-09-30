@@ -121,7 +121,7 @@
      <item row="4" column="1"><widget class="QSpinBox" name="kcfg_SnapDistance"><property name="minimum"><number>1</number></property><property name="maximum"><number>64</number></property></widget></item>
      <item row="5" column="0"><widget class="QLabel" name="label_ArrangeGap"><property name="text"><string>Gap between arranged windows (px)</string></property><property name="buddy"><cstring>kcfg_ArrangeGap</cstring></property></widget></item>
      <item row="5" column="1"><widget class="QSpinBox" name="kcfg_ArrangeGap"><property name="minimum"><number>0</number></property><property name="maximum"><number>256</number></property></widget></item>
-     <item row="6" column="0"><widget class="QLabel" name="label_ClusterGap"><property name="text"><string>Near enough to be one cluster: the gap between window edges (px)</string></property><property name="buddy"><cstring>kcfg_ClusterGap</cstring></property></widget></item>
+     <item row="6" column="0"><widget class="QLabel" name="label_ClusterGap"><property name="text"><string>Near enough to be one cluster: the gap between window edges (px, 0 = a third of the screen's smaller side)</string></property><property name="buddy"><cstring>kcfg_ClusterGap</cstring></property></widget></item>
      <item row="6" column="1"><widget class="QSpinBox" name="kcfg_ClusterGap"><property name="minimum"><number>0</number></property><property name="maximum"><number>1024</number></property></widget></item>
     </layout></widget></item>
    <item><widget class="QGroupBox" name="groupGround"><property name="title"><string>The ground and what lies beyond the desks</string></property>

@@ -71,14 +71,16 @@ LOW=(nice -n 10 ionice -c3)
 # The nest's XDG homes: config, state and cache live under $STATE for the
 # compositor, its bus and every client, so none of them writes session
 # state or caches (shader, sycoca, QML) into the real home. The data home
-# is the nest's for the compositor and its bus (the activity manager's
-# database); clients (nest_env client) keep the user's, which the fixture
-# apps' look depends on (Dolphin's view properties). ~/.local/share stays
-# first on the data search path for the installed packages.
+# is the nest's for the compositor, its bus and every client alike: the
+# fixture apps' window state (Dolphin's view properties, Gwenview's
+# history) must be the nest's own, or one golden run inherits whatever the
+# user's real apps saved last - the look itself is pinned by the config,
+# not borrowed. ~/.local/share stays first on the data search path for the
+# installed packages.
 nest_env() {
     printf '%s\n' "XDG_CONFIG_HOME=$CONF" "XDG_STATE_HOME=$STATE/state" "XDG_CACHE_HOME=$STATE/cache" \
+        "XDG_DATA_HOME=$STATE/data" \
         "XDG_DATA_DIRS=$HOME/.local/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
-    [ "${1:-}" = client ] || echo "XDG_DATA_HOME=$STATE/data"
 }
 # The nest's bus address, or a loud failure: an empty DBUS_SESSION_BUS_ADDRESS
 # makes D-Bus fall back to the live session's bus.

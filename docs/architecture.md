@@ -610,25 +610,33 @@ grasp acts on; elsewhere MB5 is the window's own back/forward button.
 ### Clusters
 
 Windows that sit near each other on the plane are one cluster, computed live
-from the entries: two windows link when the gap between their edges is no
-wider than `ClusterGap` in either axis (Chebyshev, so a diagonal neighbour
-counts), links are transitive (single-linkage, a union-find over the entries),
-and the result is a list of clusters, each with its members' centres averaged
-into a centroid. Nothing is stored and nothing persists: `recluster()` runs on
-every revision, so a window dragged into range joins a cluster and one dragged
+from the entries. The gap that makes a cluster is dynamic: by default half
+the pair's own scale - the average of the two windows' smaller sides - so a
+cluster reads the same on a laptop and an ultrawide, and `ClusterGap` (a
+fixed pixel gap) is the override. Links are transitive (single-linkage, a
+union-find over the entries) and hysteretic: a pair joins within its gap and
+stays until half again as far, so a window parked at the edge of the gap
+cannot flicker in and out; across that band the cluster's cohesion - the
+minimum over its links of the distance-to-gap ratio - fades the thread out,
+so a cluster visibly dissolves as it is pulled apart instead of snapping
+off. Nothing is stored and nothing persists: `recluster()` runs on every
+revision, so a window dragged into range joins a cluster and one dragged
 away leaves it, and the cluster travels with its windows. Every entry is in
-some cluster; a lone window is a cluster of one, which is what makes the tour
-below stop at every window.
+some cluster; a lone window is a cluster of one, which is what makes the
+tour below stop at every window.
 
-The thread is the cluster's picture: a dashed polyline weaving through the
-members left to right (`clusterPath()`, an SVG path in view coordinates). The
+The thread is the cluster's picture: a Catmull-Rom curve through the
+members in their stable order - each window keeps a rank, so the curve
+never re-routes while the hand only moves windows - dashed, with the dashes
+marching along it (`clusterPath()`, an SVG path in view coordinates). The
 path binding depends on the camera as well as the revision, so the thread
-rides every glide and pan exactly as the windows do. It is lit - at full
-strength - for the cluster the eye is on (the hovered window's, else the
-selected one's, else the focused one's, else the last travel stop), and the
-rest are a faint constellation below half zoom, where the plane is the
-subject. A glass badge floats over the active cluster's centroid naming its
-number and size.
+rides every glide and pan exactly as the windows do; it is drawn above the
+windows, a constellation over the desk. It is lit - near full strength -
+for the cluster the eye is on (the hovered window's, else the selected
+one's, else the focused one's, else the last travel stop), and the rest
+are a faint constellation below half zoom, where the plane is the subject.
+A glass badge floats over the active cluster's centroid - springing to it -
+naming its number and size.
 
 The bracket keys (`ClusterNextKey`, `ClusterPrevKey`; `[` and `]`) fly the
 camera between clusters in reading order - the centroids sorted top to
@@ -646,22 +654,24 @@ window's title-bar menu and the canvas agree on what floats and the window
 follows its user across virtual desktops. The caption list in
 `PinnedWindows` persists the choice; on load the effect reapplies the flag.
 
-The float's semantics: the window has a home - the coordinates it keeps on
-the plane, captured at the pin (which never moves the window) and moved only
-by the hand, which owns it outright during a drag. While the home's screen
-position lies inside the screen, the entry is exactly the home. When the
-camera would push the home partly off the screen, the entry floats at the
-edge instead: a 16 ms tick (`floatPinned`) keeps a small physics state per
-floating window - position and velocity - that tracks the home while inside
-(carrying the camera's velocity, so the crossing into an edge has a speed to
-bounce), reflects the velocity once, damped, when it hits an edge, and then
-springs back against the edge critically damped. The entry's position follows
-the picture throughout, so the commit - and therefore 1:1 - always has the
-window on screen, and moving the camera back to the home returns the window
-exactly to its coordinates. The entry enters at its home (not at the geometry
-the last commit left it floating at), and `endSlide` takes the new frame
-position first, as `commit` does, so the write the slide makes absorbs as no
-move rather than as a drag the float must then correct.
+The float's semantics: the window's coordinates on the plane never change -
+only the hand moves them, and a 1:1 KWin move is a move of the coordinates,
+since the entry is read from the geometry at every snapshot. The picture is
+what floats: a 16 ms tick (`floatPinned`) keeps a small physics state per
+floating window - its screen-space picture position and velocity. While the
+window's screen position lies inside the screen, the picture is the window,
+exactly, at rest - the coordinates never move, under any camera or zoom -
+carrying only the camera's own pan velocity (the zoom's contribution is
+left out, so the physics scales with the zoom instead of exploding under
+it). When the camera pushes the window partly off the screen, the picture
+hits the edge: the carried velocity reflects once, damped, and a critically
+damped spring settles the picture back against the edge, all in screen
+pixels, so the bounce reads the same on the plane at any zoom. The
+thumbnail draws at the picture, the entry stays put, and the commit writes
+the entry - the coordinates are sacred. Move the camera back and the
+picture is the window again at the same coordinates. `endSlide` takes the
+new frame position first, as `commit` does, so the write the slide makes
+absorbs as no move rather than as a drag the float must then correct.
 
 ## Motion
 

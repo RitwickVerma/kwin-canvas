@@ -178,9 +178,18 @@ KWin.SceneEffect {
             // during the hold becomes the new viewport - the release enters
             // the screen at that coordinate instead of snapping back - and a
             // hold that only moved windows keeps the viewport it started on.
+            // A zoom has shifted viewX with its anchor, so the destination
+            // keeps the screen's centre, the place the eye was looking,
+            // instead of committing the anchor's drift.
+            const g = actionScreen().geometry;
             const t = targetOf(currentActivity);
-            t.x = viewX;
-            t.y = viewY;
+            if (zoom < 0.999) {
+                t.x = viewX + (g.x + g.width / 2) / zoom - (g.x + g.width / 2);
+                t.y = viewY + (g.y + g.height / 2) / zoom - (g.y + g.height / 2);
+            } else {
+                t.x = viewX;
+                t.y = viewY;
+            }
         }
         // The fullscreen opening stepped out a little: spring back to 1:1 at
         // the committed viewport instead of jumping. A grab mid-zoom keeps
@@ -188,7 +197,8 @@ KWin.SceneEffect {
         // camera the spring would never run, so the commit is taken at once.
         if (zoom < 0.999) {
             if (!smoothZoom) { commit(null); return; }
-            camGo(1, viewX, viewY);
+            const t = targetOf(currentActivity);
+            camGo(1, t.x, t.y);
             camOnArrive = function () { deferredClose = null; commit(null); };
             deferredClose = function () { commit(null); };
             return;
@@ -304,18 +314,19 @@ KWin.SceneEffect {
     property int lastDebugSeq: 0
 
     // ---- floating windows ----------------------------------------------------
-    // A floating window keeps its coordinates on the plane - its home - and
-    // its picture is special only when the camera would push it partly off
-    // the screen: the picture then floats at the screen's edge, bouncing off
-    // the edge with the camera's velocity before settling against it, and
-    // the window's position follows the picture, so it is always on screen,
-    // in the canvas and at 1:1 alike. Move the camera back and the window
-    // returns to its home. The flag is KWin's own "on all desktops", so the
-    // window's title-bar menu and the canvas agree on what floats; the
-    // caption list persists the choice across sessions.
-    property var pinned: ({})          // caption -> { hx, hy }, the home on the plane
-    property var floatOf: ({})         // window internalId -> { x, y, vx, vy, wasInX, wasInY }
+    // A floating window's coordinates on the plane never change - only the
+    // hand moves them. Its picture is what floats: whenever the camera
+    // would push the window partly off the screen, the picture rides at the
+    // screen's edge and, pushed there fast, bounces off the edge with real
+    // physics before settling against it; move the camera back and the
+    // picture is the window again, at its coordinates. The flag is KWin's
+    // own "on all desktops", repurposed - the title-bar menu and the canvas
+    // agree on what floats - and the caption list persists the choice.
+    property var pinned: ({})          // caption -> true, the persisted flag
+    property var floatOf: ({})         // window internalId -> { x, y, vx, vy, wasInX, wasInY }, screen px
     property int floatRev: 0
+    property real floatPrevViewX: 0
+    property real floatPrevViewY: 0
     function isPinnedEntry(e) { return e && e.window && !e.window.deleted && e.window.onAllDesktops; }
     function loadPinned() {
         const list = configuration.PinnedWindows || [];
@@ -338,7 +349,7 @@ KWin.SceneEffect {
             const e = list[i];
             if (!e || e.window.deleted) continue;
             if (!e.window.onAllDesktops) e.window.onAllDesktops = true;
-            if (pinned[e.window.caption] === undefined || pinned[e.window.caption] === true) pinned[e.window.caption] = { hx: e.x, hy: e.y };
+            pinned[e.window.caption] = true;
         }
         savePinned();
     }
@@ -371,51 +382,46 @@ KWin.SceneEffect {
         if (h >= g.height - 2 * m) t = b = g.y + m;
         return { l: l, r: r, t: t, b: b };
     }
-    // One tick of the float: while the home sits inside the screen the
-    // window is exactly at its home, carrying the camera's velocity, so a
-    // fast push into an edge becomes a real bounce off it - the carried
+    // One tick of the float. The picture sits exactly on the window while
+    // the window is inside the screen - the coordinates never move, the
+    // picture is at rest - carrying only the camera's own velocity, so a
+    // fast push into an edge becomes a real bounce off it: the carried
     // velocity reflects, damped, and a critically damped spring settles the
-    // window back against the edge, its position following the picture all
-    // the way. The hand on a drag owns the home outright. Runs while the
-    // canvas is visible, a slide at 1:1 included.
+    // picture back against the edge. The hand on a drag owns the picture
+    // outright. The velocity is the camera's pan alone, the zoom's
+    // contribution left out, so the physics scales with the zoom instead of
+    // exploding under it. Runs while the canvas is visible, a slide at 1:1
+    // included.
     function floatPinned(dt) {
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
             const id = e.window.internalId;
             if (!isPinnedEntry(e)) { if (floatOf[id]) { delete floatOf[id]; floatRev++; } continue; }
-            const p = pinned[e.window.caption];
-            if (!p || p === true) { pinned[e.window.caption] = { hx: e.x, hy: e.y }; continue; }
             const b = floatBounds(e);
-            const tx = (p.hx - viewX) * zoom, ty = (p.hy - viewY) * zoom;
+            const tx = (e.x - viewX) * zoom, ty = (e.y - viewY) * zoom;
             const cx = Math.max(b.l, Math.min(b.r, tx)), cy = Math.max(b.t, Math.min(b.b, ty));
             let f = floatOf[id];
             if (!f) { floatOf[id] = f = { x: tx, y: ty, vx: 0, vy: 0, wasInX: true, wasInY: true }; }
             const dragging = dragIndex >= 0 && dragRaw[id];
             if (dragging) {
-                // The hand owns it: the home is where the hand puts it, and
-                // the picture follows exactly.
-                p.hx = e.x; p.hy = e.y;
                 f.x = tx; f.y = ty; f.vx = 0; f.vy = 0;
                 f.wasInX = cx === tx; f.wasInY = cy === ty;
             } else if (cx === tx && cy === ty) {
-                // Inside: the window is its home, carrying the camera's
-                // velocity so an edge can bounce it.
-                if (dt > 0.0001) { f.vx = (tx - f.x) / dt; f.vy = (ty - f.y) / dt; }
+                if (dt > 0.0001) {
+                    f.vx = -(viewX - floatPrevViewX) / dt * zoom;
+                    f.vy = -(viewY - floatPrevViewY) / dt * zoom;
+                }
                 f.x = tx; f.y = ty;
                 f.wasInX = true; f.wasInY = true;
-                if (e.x !== p.hx || e.y !== p.hy) { e.x = p.hx; e.y = p.hy; revision++; }
             } else {
-                // The hit: the window reached an edge with the camera's
-                // velocity - bounce off it, once, then spring back against
-                // it, and the window's position follows the picture.
                 if (f.wasInX && tx !== cx) {
-                    if (tx < cx) { f.x = b.l; f.vx = Math.abs(f.vx) * 0.4; }
-                    else { f.x = b.r; f.vx = -Math.abs(f.vx) * 0.4; }
+                    if (tx < cx) { f.x = b.l; f.vx = Math.abs(f.vx) * 0.45; }
+                    else { f.x = b.r; f.vx = -Math.abs(f.vx) * 0.45; }
                     f.wasInX = false;
                 }
                 if (f.wasInY && ty !== cy) {
-                    if (ty < cy) { f.y = b.t; f.vy = Math.abs(f.vy) * 0.4; }
-                    else { f.y = b.b; f.vy = -Math.abs(f.vy) * 0.4; }
+                    if (ty < cy) { f.y = b.t; f.vy = Math.abs(f.vy) * 0.45; }
+                    else { f.y = b.b; f.vy = -Math.abs(f.vy) * 0.45; }
                     f.wasInY = false;
                 }
                 const w0 = 7, c0 = 14;
@@ -423,10 +429,10 @@ KWin.SceneEffect {
                 f.vy += (-w0 * w0 * (f.y - cy) - c0 * f.vy) * dt;
                 f.x += f.vx * dt;
                 f.y += f.vy * dt;
-                const nx = viewX + f.x / zoom, ny = viewY + f.y / zoom;
-                if (e.x !== nx || e.y !== ny) { e.x = nx; e.y = ny; revision++; }
             }
         }
+        floatPrevViewX = viewX;
+        floatPrevViewY = viewY;
         floatRev++;
     }
     Timer {
@@ -435,7 +441,6 @@ KWin.SceneEffect {
         running: effect.visible
         onTriggered: effect.floatPinned(interval / 1000)
     }
-
     // ---- hover navigation ----------------------------------------------------
     // The pointer rests on a window and the camera pans the least that brings
     // it wholly into view. Polled from the event loop rather than the scene's
@@ -458,29 +463,49 @@ KWin.SceneEffect {
     // constellation - and the bracket keys fly the camera between clusters in
     // reading order, the plane's own tour. Everything is derived: nothing is
     // stored, so a cluster follows its windows as they move.
-    property var clusters: []          // [{ cx, cy, n, ids }], centres in canvas pixels
+    property var clusters: []          // [{ cx, cy, n, ids, co }], centroids in canvas px
     property var clusterOf: ({})       // entry window internalId -> cluster index
+    property var threadRank: ({})      // internalId -> rank, the thread's stable order
     property int clusterRev: 0
-    // Two windows are one cluster when the gap between their edges is no
-    // wider than ClusterGap, in either axis (Chebyshev: a diagonal neighbour
-    // counts too).
-    function clustersNear(a, b, gap) {
-        const dx = Math.max(a.x - (b.x + b.width), b.x - (a.x + a.width));
-        const dy = Math.max(a.y - (b.y + b.height), b.y - (a.y + a.height));
-        return Math.max(dx, dy) <= gap;
+    // The gap that makes one cluster. A configured ClusterGap is the gap in
+    // canvas pixels, the fixed behaviour. Left at 0 it is dynamic: half the
+    // pair's own scale - the average of the two windows' smaller sides - so
+    // a cluster follows the windows wherever they are and whatever size
+    // they are, on a laptop or an ultrawide alike. Two big windows half a
+    // window apart read as neighbours; two small ones must sit closer.
+    function clusterGapFor(a, b) {
+        const g0 = Number(configuration.ClusterGap) || 0;
+        if (g0 > 0) return g0;
+        const sa = Math.min(a.width, a.height), sb = Math.min(b.width, b.height);
+        return Math.max(24, (sa + sb) / 2 * 0.5);
+    }
+    // The closest distance between two window rectangles, in canvas px:
+    // the true gap a thread would have to bridge, whatever the diagonal.
+    function clusterDist(a, b) {
+        const dx = Math.max(0, Math.max(a.x - (b.x + b.width), b.x - (a.x + a.width)));
+        const dy = Math.max(0, Math.max(a.y - (b.y + b.height), b.y - (a.y + a.height)));
+        return Math.sqrt(dx * dx + dy * dy);
     }
     function recluster() {
-        const gap = Math.max(0, Number(configuration.ClusterGap) || 0);
         const list = entries;
         const parent = [];
         for (let i = 0; i < list.length; ++i) parent.push(i);
+        const edges = [];
         for (let i = 0; i < list.length; ++i) {
             for (let j = i + 1; j < list.length; ++j) {
-                if (clustersNear(list[i], list[j], gap)) {
+                const d = clusterDist(list[i], list[j]);
+                const gap = clusterGapFor(list[i], list[j]);
+                // Hysteresis: a pair joins within the gap and stays until it
+                // is half again as far, so a window parked right at the edge
+                // of the gap cannot flicker in and out. The band between is
+                // where the thread visibly dissolves.
+                const samePrev = clusterOf[list[i].window.internalId] !== undefined
+                    && clusterOf[list[i].window.internalId] === clusterOf[list[j].window.internalId];
+                if (d <= gap || (samePrev && d <= gap * 1.5)) {
                     let a = i, b = j;
                     while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; }
                     while (parent[b] !== b) { parent[b] = parent[parent[b]]; b = parent[b]; }
-                    if (a !== b) parent[a] = b;
+                    if (a !== b) { parent[a] = b; edges.push({ a: i, b: j, d: d }); }
                 }
             }
         }
@@ -491,20 +516,41 @@ KWin.SceneEffect {
             if (!byRoot[r]) byRoot[r] = [];
             byRoot[r].push(i);
         }
+        let maxRank = -1;
+        for (const id in threadRank) if (threadRank[id] > maxRank) maxRank = threadRank[id];
         const out = [];
         const of = {};
         for (const r in byRoot) {
             const ids = byRoot[r];
             let cx = 0, cy = 0;
+            const ordered = [];
             for (let k = 0; k < ids.length; ++k) {
-                cx += list[ids[k]].x + list[ids[k]].width / 2;
-                cy += list[ids[k]].y + list[ids[k]].height / 2;
+                const e = list[ids[k]];
+                cx += e.x + e.width / 2;
+                cy += e.y + e.height / 2;
+                const id = e.window.internalId;
+                if (threadRank[id] === undefined) threadRank[id] = ++maxRank;
+                ordered.push(id);
             }
-            const c = { cx: cx / ids.length, cy: cy / ids.length, n: ids.length, ids: [] };
-            for (let k = 0; k < ids.length; ++k) {
-                c.ids.push(list[ids[k]].window.internalId);
-                of[list[ids[k]].window.internalId] = out.length;
+            // The thread order is stable: members keep their rank, so the
+            // polyline never re-routes while the hand only moves windows.
+            ordered.sort(function (p, q) { return threadRank[p] - threadRank[q]; });
+            // The cohesion: 1 while every link is inside its own gap, fading
+            // to 0 across the hysteresis band, so the thread dissolves as
+            // the cluster is pulled apart instead of snapping off. The ratio
+            // distance-to-gap is what matters, since each link's gap is its
+            // own.
+            let co = 1;
+            for (let k = 0; k < edges.length; ++k) {
+                let rr = edges[k].a;
+                while (parent[rr] !== rr) { parent[rr] = parent[parent[rr]]; rr = parent[rr]; }
+                if (rr !== +r) continue;
+                const gp = clusterGapFor(list[edges[k].a], list[edges[k].b]);
+                const ratio = edges[k].d / gp;
+                co = Math.min(co, Math.max(0, 1 - (ratio - 1) / 0.5));
             }
+            const c = { cx: cx / ids.length, cy: cy / ids.length, n: ids.length, ids: ordered, co: co };
+            for (let k = 0; k < ids.length; ++k) of[list[ids[k]].window.internalId] = out.length;
             out.push(c);
         }
         clusters = out;
@@ -563,6 +609,10 @@ KWin.SceneEffect {
     // The thread through a cluster's windows, in this screen's coordinates:
     // a polyline weaving through the members left to right. Re-evaluated
     // with the camera, so the thread rides the same motion as the windows.
+    // The thread through a cluster's windows, in this screen's coordinates:
+    // a Catmull-Rom curve through the members in their stable order, so the
+    // thread is a smooth weaving rather than a zig-zag. Re-evaluated with
+    // the camera, so it rides the same motion as the windows.
     function clusterPath(i, sgx, sgy) {
         const c = clusters[i];
         if (!c || c.n < 2) return "";
@@ -576,9 +626,13 @@ KWin.SceneEffect {
             });
         }
         if (pts.length < 2) return "";
-        pts.sort(function (p, q) { return p.x - q.x; });
-        let s = "M " + pts[0].x + " " + pts[0].y;
-        for (let k = 1; k < pts.length; ++k) s += " L " + pts[k].x + " " + pts[k].y;
+        let s = "M " + pts[0].x.toFixed(1) + " " + pts[0].y.toFixed(1);
+        for (let k = 0; k < pts.length - 1; ++k) {
+            const p0 = pts[Math.max(0, k - 1)], p1 = pts[k], p2 = pts[k + 1], p3 = pts[Math.min(pts.length - 1, k + 2)];
+            const c1x = p1.x + (p2.x - p0.x) / 6, c1y = p1.y + (p2.y - p0.y) / 6;
+            const c2x = p2.x - (p3.x - p1.x) / 6, c2y = p2.y - (p3.y - p1.y) / 6;
+            s += " C " + c1x.toFixed(1) + " " + c1y.toFixed(1) + " " + c2x.toFixed(1) + " " + c2y.toFixed(1) + " " + p2.x.toFixed(1) + " " + p2.y.toFixed(1);
+        }
         return s;
     }
     function entryById(id) {
@@ -1172,12 +1226,7 @@ KWin.SceneEffect {
         const a = activityOf(w);
         const t = targetOf(a);
         const g = w.frameGeometry;
-        const p = pinned[w.caption];
-        // A floating window enters at its home, not at the geometry the last
-        // commit left it floating at.
-        const hx = p && p !== true ? p.hx : g.x + t.x;
-        const hy = p && p !== true ? p.hy : g.y + t.y;
-        return { window: w, activity: a, x: hx, y: hy, width: g.width, height: g.height,
+        return { window: w, activity: a, x: g.x + t.x, y: g.y + t.y, width: g.width, height: g.height,
                  frameX: g.x, frameY: g.y, anchorRight: false, anchorBottom: false, askW: 0, askH: 0 };
     }
 
@@ -1275,7 +1324,6 @@ KWin.SceneEffect {
     property var pendingFly: null
     property var clickedWindow: null
     onPointerButtonsChanged: {
-        console.warn("kwin-canvas DEBUG btns " + pointerButtons + " pending=" + (pendingFly ? pendingFly.caption : "null"));
         if (pointerButtons === 0) {
             // One event-loop turn later: the release finishes its delivery to
             // the window under the pointer first, and the click publication
@@ -3301,8 +3349,8 @@ KWin.SceneEffect {
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
             const g = e.window.frameGeometry;
-            const p = pinned[e.window.caption];
-            const fx = (p && p !== true) ? (e.x - p.hx) : 0, fy = (p && p !== true) ? (e.y - p.hy) : 0;
+            const f = floatOf[e.window.internalId];
+            const fx = f ? (f.x - (e.x - viewX) * zoom) : 0, fy = f ? (f.y - (e.y - viewY) * zoom) : 0;
             s += "\n  [" + i + "] " + (isSelected(e) ? "*" : " ") + e.window.caption + " canvas=(" + e.x.toFixed(0) + "," + e.y.toFixed(0) + " " + e.width + "x" + e.height + ") frame=(" + g.x + "," + g.y + ")" + (Math.abs(fx) > 0.4 || Math.abs(fy) > 0.4 ? " float=(+" + fx.toFixed(0) + ",+" + fy.toFixed(0) + ")" : "") + " activity=" + labelOf(e.activity);
         }
         console.log(s);
@@ -3312,6 +3360,7 @@ KWin.SceneEffect {
         rebuildBindings();
         readSwipeFingers();
         publishHold();
+        Qt.callLater(recluster);
         const seq = configuration.DebugSeq;
         if (seq !== lastDebugSeq) {
             lastDebugSeq = seq;
@@ -3921,8 +3970,8 @@ KWin.SceneEffect {
                 // under the delegates, so a drag follows its entry, not its index.
                 property var held: null
                 readonly property int heldIndex: { effect.revision; return effect.entries.indexOf(held); }
-                x: { effect.revision; return (effect.entries[index].x - effect.viewX) * effect.zoom - view.sg.x; }
-                y: { effect.revision; return (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; }
+                x: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].x - effect.viewX) * effect.zoom - view.sg.x; return f ? f.x : base; }
+                y: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; return f ? f.y : base; }
                 width: { effect.revision; return effect.entries[index].width * effect.zoom; }
                 height: { effect.revision; return effect.entries[index].height * effect.zoom; }
                 visible: !effect.quiet || entry.activity === effect.currentActivity
@@ -4161,28 +4210,43 @@ KWin.SceneEffect {
                 readonly property real cx: { effect.revision; effect.viewX; effect.viewY; effect.zoom; return (cluster.cx - effect.viewX) * effect.zoom - view.sg.x; }
                 readonly property real cy: { effect.revision; effect.viewX; effect.viewY; effect.zoom; return (cluster.cy - effect.viewY) * effect.zoom - view.sg.y; }
                 visible: !effect.quiet && cluster.n > 1
-                // The thread sits under the windows it binds. The Shape spans
-                // the whole view: the path is in view coordinates, and this
-                // wrapper item has no size of its own.
+                // The delegate fills the whole view - the wrapper has no size
+                // of its own, and the path is in view coordinates. The thread
+                // sits under the windows it binds but above the frames: the
+                // z lives on the delegate, since a child's z cannot lift its
+                // parent out of the frame layer.
+                width: view.width
+                height: view.height
+                // The thread floats above the windows it binds - a
+                // constellation over the desk - and below the badge and the
+                // tags. The z lives on the delegate: a child's z cannot lift
+                // its parent out of the frame layer.
+                z: 2000
                 Shape {
-                    anchors.fill: view
-                    z: 500
-                    readonly property real want: (parent.active || effect.zoom < 0.5) ? (parent.active ? 0.9 : 0.28) : 0
+                    id: threadShape
+                    anchors.fill: parent
+                    readonly property real want: (parent.active || effect.zoom < 0.5) ? (parent.active ? 0.9 : 0.45) * cluster.co : 0
                     property real show: 0
                     opacity: show
                     Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
                     onWantChanged: show = want
                     Component.onCompleted: show = want
-                    layer.enabled: true
-                    layer.samples: 4
-                    readonly property color accent: effect.activityColor(effect.currentActivity)
                     ShapePath {
-                        strokeWidth: 1.6
-                        strokeColor: Qt.rgba(accent.r, accent.g, accent.b, 0.75)
+                        strokeWidth: 2.2
+                        strokeColor: Qt.rgba(effect.activityColor(effect.currentActivity).r, effect.activityColor(effect.currentActivity).g, effect.activityColor(effect.currentActivity).b, 0.85)
                         fillColor: "transparent"
                         capStyle: ShapePath.RoundCap
                         joinStyle: ShapePath.RoundJoin
-                        dashPattern: [ 5, 7 ]
+                        dashPattern: [ 7, 9 ]
+                        // The dash marches along the thread, so the thread
+                        // reads as flowing rather than drawn.
+                        NumberAnimation on dashOffset {
+                            from: 0
+                            to: 16
+                            duration: 900
+                            loops: Animation.Infinite
+                            running: threadShape.show > 0.02
+                        }
                         PathSvg {
                             // The camera is a dependency on purpose: the
                             // thread rides every glide and pan with the
@@ -4196,6 +4260,8 @@ KWin.SceneEffect {
                     id: badge
                     x: cx - width / 2
                     y: cy - height - 14
+                    Behavior on x { SpringAnimation { spring: 2.6; damping: 0.62; epsilon: 0.5 } }
+                    Behavior on y { SpringAnimation { spring: 2.6; damping: 0.62; epsilon: 0.5 } }
                     z: 59000
                     visible: parent.active && cluster.n > 1 && !effect.quiet
                     width: row.implicitWidth + 16
@@ -4328,14 +4394,14 @@ KWin.SceneEffect {
             onClosed: effect.canvasMenus = Math.max(0, effect.canvasMenus - 1)
             // The Plasma menu background assumes the desktop blur behind it;
             // over the canvas there is none, so the menu is drawn opaque.
-            background: menuBackground
+            background: MenuBackground { }
             PC3.MenuItem { text: "Arrange horizontally"; icon.name: "view-split-left-right"; onTriggered: effect.arrange("horizontal") }
             PC3.MenuItem { text: "Arrange vertically";   icon.name: "view-split-top-bottom"; onTriggered: effect.arrange("vertical") }
             PC3.MenuItem { text: "Tile";                 icon.name: "view-grid";             onTriggered: effect.arrange("tile") }
             PC3.Menu {
                 title: "Grid"
                 icon.name: "view-grid"
-                background: menuBackground
+                background: MenuBackground { }
                 Repeater {
                     model: ["1x2", "2x1", "2x2", "3x1", "1x3", "3x2", "2x3", "3x3", "4x2", "2x4"]
                     delegate: PC3.MenuItem {
@@ -4350,7 +4416,7 @@ KWin.SceneEffect {
             PC3.Menu {
                 title: "Send to"
                 icon.name: "activities"
-                background: menuBackground
+                background: MenuBackground { }
                 Repeater {
                     model: effect.activityIds
                     delegate: PC3.MenuItem {
@@ -4511,7 +4577,7 @@ KWin.SceneEffect {
                         id: settingsMenu
                         onOpened: effect.canvasMenus++
                         onClosed: effect.canvasMenus = Math.max(0, effect.canvasMenus - 1)
-                        background: menuBackground
+                        background: MenuBackground { }
                         x: hud.vertical ? (hud.atRight ? -width : parent.width) : 0
                         y: hud.vertical ? 0 : parent.height
                         PC3.MenuItem { text: "Effect settings…";  icon.name: "preferences-desktop-effects"; onTriggered: KCM.KCMLauncher.openSystemSettings("kcm_kwin_effects") }
