@@ -505,6 +505,12 @@ bool CanvasPassthrough::keyboardKey(KeyboardKeyEvent *event)
     if (!m_active || event->state == KeyboardKeyState::Repeated) {
         return false;
     }
+    // Heavily scoped: the keys belong to the window only while the pointer
+    // hovers one of its kind. The moment the cursor is over the ground,
+    // the frames or the gaps, the canvas has the keys back.
+    if (!m_hover) {
+        return false;
+    }
     SeatInterface *seat = waylandServer()->seat();
     if (!seat->focusedKeyboardSurface()) {
         return false;

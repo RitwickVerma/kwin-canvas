@@ -16,8 +16,8 @@ run_scenario() {
       printf 'sleep 500\nup back\n'; } | input
     sleep 1.5; c state
     assert_eq "the grasp's map click flies and the release commits" "$(sget visible)" false
-    assert_true "the location is centred on the clicked window" \
-        "$(awk -v x="$(sget viewx)" 'BEGIN{print (x > 3000 && x < 3500)}')" = 1
+    assert_true "the location brings the clicked window wholly on screen" \
+        "$(awk -v x="$(eget Gwenview fx)" 'BEGIN{print (x >= 0 && x + 460 <= 1920)}')" = 1
     arrange >/dev/null
     # In the overworld, MB4 held and MB5 tapped tours the clusters.
     open_1to1

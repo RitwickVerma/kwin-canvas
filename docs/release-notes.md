@@ -1,5 +1,23 @@
 Unreleased:
 
+- Every fly is smart: the swap, the grasp's map jump and every path that
+  moves the canvas to include a window now take the least movement that
+  keeps the most of the desk in view, and a fly slides to a fresh
+  destination - it never chains onto a previous fly's half-travelled
+  slide, which is what had windows ending up past the screen when two
+  activations came close together.
+
+- The web is tethered: the threads ride the windows' own bob, so the
+  lines weave with the float instead of hanging where the centres were.
+
+- The pass-through is heavily scoped: the keys belong to the window only
+  while the pointer hovers one - the moment the cursor is over the
+  ground, the frames or the gaps, the canvas has the keys back - on top
+  of the idle release.
+
+- The hold's overlay is the essentials: no shroud, just the floating
+  window chips and the viewport, the desktop showing through untouched.
+
 - The windows float: as the camera steps out of the location the
   windows hover in Z, each bobbing gently at its own phase, the depth
   ramping in with the zoom-out - and the cluster web rides the middle of

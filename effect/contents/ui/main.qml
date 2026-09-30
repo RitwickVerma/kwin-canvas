@@ -568,9 +568,11 @@ KWin.SceneEffect {
         for (let k = 0; k < c.ids.length; ++k) {
             const e = entryById(c.ids[k]);
             if (!e) continue;
+            const idx = entries.indexOf(e);
+            const bob = Math.sin(floatRev * 0.035 + idx * 137.508) * 2.4 * floatAmt;
             pts.push({
                 x: (e.x + e.width / 2 - viewX) * zoom - sgx,
-                y: (e.y + e.height / 2 - viewY) * zoom - sgy
+                y: (e.y + e.height / 2 - viewY) * zoom - sgy + bob
             });
         }
         if (pts.length < 2) return "";
@@ -2925,6 +2927,16 @@ KWin.SceneEffect {
         slideAnim.restart();
     }
 
+    // A slide to a fresh destination, from wherever the camera is now: the
+    // fly's own slide. A fly is the destination itself, not a step to
+    // chain onto a previous one's half-travelled slide.
+    function slideTo(dx, dy) {
+        if (!beginSlide()) return;
+        slideToX = viewX + dx;
+        slideToY = viewY + dy;
+        slideAnim.restart();
+    }
+
     // Open quietly if closed. False while the real canvas is open.
     function beginSlide() {
         if (visible && !quiet) return false;
@@ -3091,7 +3103,7 @@ KWin.SceneEffect {
             others.push({ x: of.x + ot.x, y: of.y + ot.y, width: of.width, height: of.height });
         }
         const d = smartPan(rect, others, 24);
-        if (d.dx !== 0 || d.dy !== 0) slide(d.dx, d.dy);
+        if (d.dx !== 0 || d.dy !== 0) slideTo(d.dx, d.dy);
     }
     function noteFocus(w) {
         if (!w || w.deleted) return;
@@ -3109,8 +3121,13 @@ KWin.SceneEffect {
     // the pointer is on (the swap's flight, the hover's nudge).
     function flyToEntry(e, rate) {
         if (!e) return;
-        const g = actionScreen().geometry;
-        camGo(zoom, e.x + e.width / 2 - (g.x + g.width / 2), e.y + e.height / 2 - (g.y + g.height / 2), undefined, undefined, rate);
+        const others = [];
+        for (let i = 0; i < entries.length; ++i) {
+            if (entries[i] === e) continue;
+            others.push({ x: entries[i].x, y: entries[i].y, width: entries[i].width, height: entries[i].height });
+        }
+        const d = smartPan({ x: e.x, y: e.y, width: e.width, height: e.height }, others, 24);
+        camGo(zoom, viewX + d.dx, viewY + d.dy, undefined, undefined, rate);
     }
 
     Connections {
@@ -4334,10 +4351,10 @@ KWin.SceneEffect {
                         capStyle: ShapePath.RoundCap
                         joinStyle: ShapePath.RoundJoin
                         PathSvg {
-                            // The camera is a dependency on purpose: the
-                            // web rides every glide and pan with the
-                            // windows it binds, not just the discrete moves.
-                            path: { effect.revision; effect.clusterRev; effect.viewX; effect.viewY; effect.zoom; return effect.clusterPath(index, view.sg.x, view.sg.y); }
+                            // The camera and the float are dependencies on
+                            // purpose: the web rides every glide, pan and
+                            // bob with the windows it binds.
+                            path: { effect.revision; effect.clusterRev; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; return effect.clusterPath(index, view.sg.x, view.sg.y); }
                         }
                     }
                 }
@@ -4471,7 +4488,7 @@ KWin.SceneEffect {
             Rectangle {
                 anchors.fill: parent
                 radius: planeMap.asMinimap ? 16 : 0
-                color: planeMap.asMinimap ? Qt.rgba(0.07, 0.07, 0.09, 0.42) : Qt.rgba(0.04, 0.04, 0.06, 0.10)
+                color: planeMap.asMinimap ? Qt.rgba(0.07, 0.07, 0.09, 0.42) : "transparent"
                 // The minimap's dark region bleeds into the plane instead of
                 // ending at a line: the edge is a soft falloff.
                 layer.enabled: planeMap.asMinimap
@@ -4515,12 +4532,12 @@ KWin.SceneEffect {
                     y: { effect.revision; effect.floatRev; return planeMap.my(e.y) + Math.sin(effect.floatRev * 0.035 + index * 137.508) * 1.2 * effect.floatAmt * planeMap.sc; }
                     width: { effect.revision; return Math.max(planeMap.asOverlay ? 6 : 1.6, e.width * planeMap.sc); }
                     height: { effect.revision; return Math.max(planeMap.asOverlay ? 6 : 1.6, e.height * planeMap.sc); }
-                    radius: planeMap.asOverlay ? 3 : 1
+                    radius: planeMap.asOverlay ? 5 : 1
                     color: planeMap.asOverlay
-                        ? (effect.graspHoverIndex === index ? Qt.rgba(1, 1, 1, 0.28) : Qt.rgba(1, 1, 1, 0.16))
+                        ? (effect.graspHoverIndex === index ? Qt.rgba(1, 1, 1, 0.30) : Qt.rgba(1, 1, 1, 0.20))
                         : Qt.rgba(1, 1, 1, 0.8)
-                    border.width: planeMap.asOverlay ? 1 : 0
-                    border.color: effect.graspHoverIndex === index ? "#e8ffffff" : "#80ffffff"
+                    border.width: planeMap.asOverlay ? 0.8 : 0
+                    border.color: effect.graspHoverIndex === index ? "#f0ffffff" : "#70ffffff"
                     Text {
                         anchors.centerIn: parent
                         text: effect.graspHoverIndex === index && planeMap.asOverlay ? e.window.caption : ""
