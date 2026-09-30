@@ -4230,6 +4230,29 @@ KWin.SceneEffect {
                 // tags. The z lives on the delegate: a child's z cannot lift
                 // its parent out of the frame layer.
                 z: 2000
+                // The thread's glow: the same curve, blurred white, under
+                // the sharp thread, so the constellation reads as light.
+                Shape {
+                    id: threadGlow
+                    anchors.fill: parent
+                    opacity: threadShape.show * 0.8
+                    layer.enabled: true
+                    layer.effect: GaussianBlur {
+                        radius: 4
+                        samples: 17
+                        transparentBorder: false
+                    }
+                    ShapePath {
+                        strokeWidth: 5
+                        strokeColor: Qt.rgba(1, 1, 1, 0.5)
+                        fillColor: "transparent"
+                        capStyle: ShapePath.RoundCap
+                        joinStyle: ShapePath.RoundJoin
+                        PathSvg {
+                            path: { effect.revision; effect.clusterRev; effect.viewX; effect.viewY; effect.zoom; return effect.clusterPath(index, view.sg.x, view.sg.y); }
+                        }
+                    }
+                }
                 Shape {
                     id: threadShape
                     anchors.fill: parent
@@ -4241,7 +4264,7 @@ KWin.SceneEffect {
                     Component.onCompleted: show = want
                     ShapePath {
                         strokeWidth: 2.2
-                        strokeColor: Qt.rgba(effect.activityColor(effect.currentActivity).r, effect.activityColor(effect.currentActivity).g, effect.activityColor(effect.currentActivity).b, 0.85)
+                        strokeColor: "#ffffff"
                         fillColor: "transparent"
                         capStyle: ShapePath.RoundCap
                         joinStyle: ShapePath.RoundJoin
@@ -4323,10 +4346,13 @@ KWin.SceneEffect {
             height: 140
             z: 80000
             visible: view.screen === effect.primaryScreen && effect.canvasOpen && !effect.quiet && effect.zoom < 0.9
-            readonly property rect wb: effect.worldBounds()
-            readonly property real sc: Math.min(width / wb.width, height / wb.height)
-            readonly property real ox: (width - wb.width * sc) / 2
-            readonly property real oy: (height - wb.height * sc) / 2
+            // The map lives: every binding depends on the revision and the
+            // camera explicitly - a function's reads do not register as
+            // dependencies, so without these the map would be a still.
+            readonly property rect wb: { effect.revision; effect.screensRev; return effect.worldBounds(); }
+            readonly property real sc: { effect.revision; return Math.min(width / wb.width, height / wb.height); }
+            readonly property real ox: { effect.revision; return (width - wb.width * sc) / 2; }
+            readonly property real oy: { effect.revision; return (height - wb.height * sc) / 2; }
             function mx(cx) { return ox + (cx - wb.x) * sc; }
             function my(cy) { return oy + (cy - wb.y) * sc; }
             Rectangle {
@@ -4341,10 +4367,10 @@ KWin.SceneEffect {
                 delegate: Rectangle {
                     required property int index
                     readonly property var f: effect.frames()[index]
-                    x: minimap.mx(f.x)
-                    y: minimap.my(f.y)
-                    width: Math.max(2, f.width * minimap.sc)
-                    height: Math.max(2, f.height * minimap.sc)
+                    x: { effect.revision; effect.screensRev; return minimap.mx(f.x); }
+                    y: { effect.revision; effect.screensRev; return minimap.my(f.y); }
+                    width: { effect.revision; return Math.max(2, f.width * minimap.sc); }
+                    height: { effect.revision; return Math.max(2, f.height * minimap.sc); }
                     color: effect.palette[index % effect.palette.length]
                     opacity: 0.55
                 }
@@ -4354,19 +4380,19 @@ KWin.SceneEffect {
                 delegate: Rectangle {
                     required property int index
                     readonly property var e: effect.entries[index]
-                    x: minimap.mx(e.x)
-                    y: minimap.my(e.y)
-                    width: Math.max(1.5, e.width * minimap.sc)
-                    height: Math.max(1.5, e.height * minimap.sc)
+                    x: { effect.revision; return minimap.mx(e.x); }
+                    y: { effect.revision; return minimap.my(e.y); }
+                    width: { effect.revision; return Math.max(1.5, e.width * minimap.sc); }
+                    height: { effect.revision; return Math.max(1.5, e.height * minimap.sc); }
                     radius: 1
                     color: "#b0ffffff"
                 }
             }
             Rectangle {
-                x: minimap.mx(effect.viewX + view.sg.x / effect.zoom)
-                y: minimap.my(effect.viewY + view.sg.y / effect.zoom)
-                width: Math.max(2, view.sg.width / effect.zoom * minimap.sc)
-                height: Math.max(2, view.sg.height / effect.zoom * minimap.sc)
+                x: { effect.revision; effect.viewX; effect.zoom; return minimap.mx(effect.viewX + view.sg.x / effect.zoom); }
+                y: { effect.revision; effect.viewY; effect.zoom; return minimap.my(effect.viewY + view.sg.y / effect.zoom); }
+                width: { effect.zoom; effect.revision; return Math.max(2, view.sg.width / effect.zoom * minimap.sc); }
+                height: { effect.zoom; effect.revision; return Math.max(2, view.sg.height / effect.zoom * minimap.sc); }
                 color: "transparent"
                 border.width: 1
                 border.color: "#ffffff"

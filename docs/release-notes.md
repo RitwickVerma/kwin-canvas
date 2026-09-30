@@ -1,5 +1,12 @@
 Unreleased:
 
+- The thread glows white: the constellation is a white thread over a soft
+  blurred halo of the same curve, instead of the activity colour.
+
+- The minimap lives: it redraws as the windows move, the frames travel and
+  the camera pans or zooms - its bindings had missed their dependencies,
+  so the map was a still with an empty rectangle.
+
 - The minimap: a small map of the whole plane in the overworld's corner -
   the frames as swatches, the windows as specks, the camera as the white
   rectangle - and a click on it flies the camera there. It is the plane's
