@@ -103,6 +103,32 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-09-29 — one canvas: the vision, the reveal, the double-click, and unit tests
+
+The coherent model is written down (docs/vision.md): one plane, one skin,
+one physics, with the gaps listed. The keyhole and the overworld became
+one space - the quiet canvas's skin (frames, tags, threads, glow) fades
+in with the camera's departure (quietReveal). The double-click's first
+click no longer pans at once: the click-fit waits out the double-click
+interval, so the second tap keeps its count and the placement runs - the
+grasp double-click on a fullscreen game used to land the window at the
+wrong coordinates, and the placement now anchors on the camera's
+destination, never a mid-flight view. The fly covers every clickable
+window (isFlyableWindow - a utility window flies instead of KWin's
+keep-visible rule moving it alone), the hold delay is configurable
+(HoldDelay, published to the plugin), and the pure logic (the clustering,
+the dynamic gap, the float's physics) moved to
+effect/contents/ui/logic.js with `make unit` (30 assertions, node, no
+nest). The same round added: the margin-free fly for screen-sized windows
+(the task bar's click on a fullscreen app no longer lands it 24 px
+off-centre), the minimap (the plane from above, click-to-fly), the
+cluster drag (a hand on the badge moves the whole cluster), the quicker
+hover (200 ms settle, the grace only after a hand drag), the keyhole's
+toolbar at full reveal, and the persisted viewport (ViewX/ViewY written
+on commit). Verified: make unit, make lint-qml, make lint-shell, make
+test == pass 367 fail 0 skip 1, make test-two-outputs == pass 17 fail 0
+skip 0.
+
 ### 2026-09-29 — clusters, the float, the honest hover, and a deterministic nest
 
 Clusters: windows within `ClusterGap` of each other form a cluster live

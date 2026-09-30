@@ -421,7 +421,7 @@ shot() {
 # line, leaving sget() the summary and eget()/tget() nothing.
 state() {
     awk '/kwin-canvas state/{buf=$0; sub(/.*kwin-canvas state/, "state", buf); buf=buf "\n"; on=1; next}
-         on && /^  (\[|\{|screen\[)/{buf=buf $0 "\n"; next}
+         on && /^  (\[|\{|screen\[|c[0-9])/{buf=buf $0 "\n"; next}
          {on=0}
          END{printf "%s", buf}' "$LOG"
     grep -a -A30 "kwin-canvas windows:" "$LOG" | tail -n +2 | grep -a "^  [* ] " | tail -20 || true

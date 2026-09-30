@@ -37,6 +37,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Shapes
 import Qt5Compat.GraphicalEffects
+import "logic.js" as Logic
 import org.kde.kirigami as Kirigami
 import org.kde.kcmutils as KCM
 import org.kde.kwin as KWin
@@ -282,20 +283,7 @@ KWin.SceneEffect {
     // other windows stay in view precisely because nothing moved more than
     // it had to. A rect larger than the screen is left- and top-aligned.
     function smartPan(rect, others, pad) {
-        const g = actionScreen().geometry;
-        const padC = (pad === undefined ? 24 : pad) / zoom;
-        const sl = viewX + g.x / zoom, st = viewY + g.y / zoom;
-        const sw = g.width / zoom, sh = g.height / zoom;
-        let dx = 0, dy = 0;
-        if (rect.width <= sw - 2 * padC) {
-            if (rect.x < sl + padC) dx = rect.x - (sl + padC);
-            else if (rect.x + rect.width > sl + sw - padC) dx = rect.x + rect.width - (sl + sw - padC);
-        } else if (rect.x !== sl + padC) dx = rect.x - (sl + padC);
-        if (rect.height <= sh - 2 * padC) {
-            if (rect.y < st + padC) dy = rect.y - (st + padC);
-            else if (rect.y + rect.height > st + sh - padC) dy = rect.y + rect.height - (st + sh - padC);
-        } else if (rect.y !== st + padC) dy = rect.y - (st + padC);
-        return { dx: dx, dy: dy };
+        return Logic.smartPan(rect, actionScreen().geometry, viewX, viewY, zoom, pad);
     }
 
     // Enter with a window selected steps into that window, as the double-
@@ -403,33 +391,9 @@ KWin.SceneEffect {
             let f = floatOf[id];
             if (!f) { floatOf[id] = f = { x: tx, y: ty, vx: 0, vy: 0, wasInX: true, wasInY: true }; }
             const dragging = dragIndex >= 0 && dragRaw[id];
-            if (dragging) {
-                f.x = tx; f.y = ty; f.vx = 0; f.vy = 0;
-                f.wasInX = cx === tx; f.wasInY = cy === ty;
-            } else if (cx === tx && cy === ty) {
-                if (dt > 0.0001) {
-                    f.vx = -(viewX - floatPrevViewX) / dt * zoom;
-                    f.vy = -(viewY - floatPrevViewY) / dt * zoom;
-                }
-                f.x = tx; f.y = ty;
-                f.wasInX = true; f.wasInY = true;
-            } else {
-                if (f.wasInX && tx !== cx) {
-                    if (tx < cx) { f.x = b.l; f.vx = Math.abs(f.vx) * 0.45; }
-                    else { f.x = b.r; f.vx = -Math.abs(f.vx) * 0.45; }
-                    f.wasInX = false;
-                }
-                if (f.wasInY && ty !== cy) {
-                    if (ty < cy) { f.y = b.t; f.vy = Math.abs(f.vy) * 0.45; }
-                    else { f.y = b.b; f.vy = -Math.abs(f.vy) * 0.45; }
-                    f.wasInY = false;
-                }
-                const w0 = 7, c0 = 14;
-                f.vx += (-w0 * w0 * (f.x - cx) - c0 * f.vx) * dt;
-                f.vy += (-w0 * w0 * (f.y - cy) - c0 * f.vy) * dt;
-                f.x += f.vx * dt;
-                f.y += f.vy * dt;
-            }
+            const camVX = dt > 0.0001 ? -(viewX - floatPrevViewX) / dt * zoom : 0;
+            const camVY = dt > 0.0001 ? -(viewY - floatPrevViewY) / dt * zoom : 0;
+            Logic.floatStep(f, tx, ty, cx, cy, b.l, b.r, b.t, b.b, camVX, camVY, dragging, dt);
         }
         floatPrevViewX = viewX;
         floatPrevViewY = viewY;
@@ -455,6 +419,7 @@ KWin.SceneEffect {
     property real hoverSince: 0
     property bool hoverBrought: false
     property real lastGestureAt: 0
+    property bool handGesture: false
 
     // ---- clusters -------------------------------------------------------------
     // Windows that sit near each other on the plane are a cluster: formed
@@ -467,96 +432,23 @@ KWin.SceneEffect {
     property var clusterOf: ({})       // entry window internalId -> cluster index
     property var threadRank: ({})      // internalId -> rank, the thread's stable order
     property int clusterRev: 0
-    // The gap that makes one cluster. A configured ClusterGap is the gap in
-    // canvas pixels, the fixed behaviour. Left at 0 it is dynamic: half the
-    // pair's own scale - the average of the two windows' smaller sides - so
-    // a cluster follows the windows wherever they are and whatever size
-    // they are, on a laptop or an ultrawide alike. Two big windows half a
-    // window apart read as neighbours; two small ones must sit closer.
-    function clusterGapFor(a, b) {
-        const g0 = Number(configuration.ClusterGap) || 0;
-        if (g0 > 0) return g0;
-        const sa = Math.min(a.width, a.height), sb = Math.min(b.width, b.height);
-        return Math.max(24, (sa + sb) / 2 * 0.5);
-    }
-    // The closest distance between two window rectangles, in canvas px:
-    // the true gap a thread would have to bridge, whatever the diagonal.
-    function clusterDist(a, b) {
-        const dx = Math.max(0, Math.max(a.x - (b.x + b.width), b.x - (a.x + a.width)));
-        const dy = Math.max(0, Math.max(a.y - (b.y + b.height), b.y - (a.y + a.height)));
-        return Math.sqrt(dx * dx + dy * dy);
-    }
+    // The gap that makes one cluster and the clustering itself live in
+    // logic.js - the pure, unit-tested half - and this is the wiring: the
+    // entries become rects, the pure recluster runs, and the effect keeps
+    // the results.
     function recluster() {
-        const list = entries;
-        const parent = [];
-        for (let i = 0; i < list.length; ++i) parent.push(i);
-        const edges = [];
-        for (let i = 0; i < list.length; ++i) {
-            for (let j = i + 1; j < list.length; ++j) {
-                const d = clusterDist(list[i], list[j]);
-                const gap = clusterGapFor(list[i], list[j]);
-                // Hysteresis: a pair joins within the gap and stays until it
-                // is half again as far, so a window parked right at the edge
-                // of the gap cannot flicker in and out. The band between is
-                // where the thread visibly dissolves.
-                const samePrev = clusterOf[list[i].window.internalId] !== undefined
-                    && clusterOf[list[i].window.internalId] === clusterOf[list[j].window.internalId];
-                if (d <= gap || (samePrev && d <= gap * 1.5)) {
-                    let a = i, b = j;
-                    while (parent[a] !== a) { parent[a] = parent[parent[a]]; a = parent[a]; }
-                    while (parent[b] !== b) { parent[b] = parent[parent[b]]; b = parent[b]; }
-                    if (a !== b) { parent[a] = b; edges.push({ a: i, b: j, d: d }); }
-                }
-            }
+        const rects = [];
+        for (let i = 0; i < entries.length; ++i) {
+            const e = entries[i];
+            rects.push({ x: e.x, y: e.y, width: e.width, height: e.height, id: e.window.internalId });
         }
-        const byRoot = {};
-        for (let i = 0; i < list.length; ++i) {
-            let r = i;
-            while (parent[r] !== r) { parent[r] = parent[parent[r]]; r = parent[r]; }
-            if (!byRoot[r]) byRoot[r] = [];
-            byRoot[r].push(i);
-        }
-        let maxRank = -1;
-        for (const id in threadRank) if (threadRank[id] > maxRank) maxRank = threadRank[id];
-        const out = [];
-        const of = {};
-        for (const r in byRoot) {
-            const ids = byRoot[r];
-            let cx = 0, cy = 0;
-            const ordered = [];
-            for (let k = 0; k < ids.length; ++k) {
-                const e = list[ids[k]];
-                cx += e.x + e.width / 2;
-                cy += e.y + e.height / 2;
-                const id = e.window.internalId;
-                if (threadRank[id] === undefined) threadRank[id] = ++maxRank;
-                ordered.push(id);
-            }
-            // The thread order is stable: members keep their rank, so the
-            // polyline never re-routes while the hand only moves windows.
-            ordered.sort(function (p, q) { return threadRank[p] - threadRank[q]; });
-            // The cohesion: 1 while every link is inside its own gap, fading
-            // to 0 across the hysteresis band, so the thread dissolves as
-            // the cluster is pulled apart instead of snapping off. The ratio
-            // distance-to-gap is what matters, since each link's gap is its
-            // own.
-            let co = 1;
-            for (let k = 0; k < edges.length; ++k) {
-                let rr = edges[k].a;
-                while (parent[rr] !== rr) { parent[rr] = parent[parent[rr]]; rr = parent[rr]; }
-                if (rr !== +r) continue;
-                const gp = clusterGapFor(list[edges[k].a], list[edges[k].b]);
-                const ratio = edges[k].d / gp;
-                co = Math.min(co, Math.max(0, 1 - (ratio - 1) / 0.5));
-            }
-            const c = { cx: cx / ids.length, cy: cy / ids.length, n: ids.length, ids: ordered, co: co };
-            for (let k = 0; k < ids.length; ++k) of[list[ids[k]].window.internalId] = out.length;
-            out.push(c);
-        }
-        clusters = out;
-        clusterOf = of;
+        const r = Logic.recluster(rects, clusterOf, threadRank, configuration.ClusterGap);
+        clusters = r.clusters;
+        clusterOf = r.clusterOf;
+        threadRank = r.ranks;
         clusterRev++;
     }
+
     // The cluster the eye is on: the hovered window's, else the selected
     // one's, else the focused window's. The travel starts from it, and the
     // travel's own destination becomes the anchor for the next step, so the
@@ -682,7 +574,7 @@ KWin.SceneEffect {
     // window the canvas considers yours. Clicking, which also focuses the
     // window itself, is what hands the keyboard over.
     property var focusEntry: null
-    function noteGesture() { lastGestureAt = Date.now(); }
+    function noteGesture(hand) { lastGestureAt = Date.now(); handGesture = !!hand; }
     function hoverTick() {
         if (navHeld || closing || canvasMenus > 0 || camLive()) return;
         const p = cursorScreen();
@@ -699,11 +591,14 @@ KWin.SceneEffect {
             hoverBrought = false;
             return;
         }
-        if (now - lastGestureAt < 600) {
+        // A drag the hand just let go of keeps the grace, so the hover never
+        // un-pans a window the hand placed; a plain rest settles quicker.
+        const grace = handGesture ? 600 : 320;
+        if (now - lastGestureAt < grace) {
             hoverSince = now;
             return;
         }
-        if (e && now - hoverSince >= 250) {
+        if (e && now - hoverSince >= 200) {
             if (!hoverBrought) {
                 hoverBrought = true;
                 bringIntoView(e);
@@ -924,6 +819,16 @@ KWin.SceneEffect {
         return true;
     }
 
+    // A window the fly covers: every window the user can click, wider than
+    // what the canvas draws - a utility window flies too. KWin's own
+    // keep-visible rule must never be the thing that moves a window the
+    // user clicked.
+    function isFlyableWindow(w) {
+        if (!w || w.deleted || !w.managed) return false;
+        if (w.desktopWindow || w.dock || w.popupWindow || w.minimized || w.hidden) return false;
+        return onDesktop(w);
+    }
+
     function onDesktop(w) {
         if (w.onAllDesktops) return true;
         const cur = KWin.Workspace.currentDesktop;
@@ -1084,6 +989,24 @@ KWin.SceneEffect {
             }
         }
         return out;
+    }
+
+    // The plane's bounds: the frames and the windows together, for the
+    // minimap's fit. A sane screen-sized fallback when nothing is placed.
+    function worldBounds() {
+        let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+        const fs = frames();
+        for (let i = 0; i < fs.length; ++i) {
+            l = Math.min(l, fs[i].x); t = Math.min(t, fs[i].y);
+            r = Math.max(r, fs[i].x + fs[i].width); b = Math.max(b, fs[i].y + fs[i].height);
+        }
+        for (let i = 0; i < entries.length; ++i) {
+            const e = entries[i];
+            l = Math.min(l, e.x); t = Math.min(t, e.y);
+            r = Math.max(r, e.x + e.width); b = Math.max(b, e.y + e.height);
+        }
+        if (l === Infinity) { const g = actionScreen().geometry; return { x: 0, y: 0, width: g.width, height: g.height }; }
+        return { x: l, y: t, width: Math.max(1, r - l), height: Math.max(1, b - t) };
     }
 
     // The current activity's target is the camera. Activities never placed get
@@ -1321,6 +1244,19 @@ KWin.SceneEffect {
     // plugin: a click on an already-active window raises no activation, so
     // the fly has to learn about the click this way too.
     property int pointerButtons: 0
+    // How far the camera has left the location while the keyhole is open
+    // (the quiet grasp): 0 at home, growing with the zoom-out and the pan.
+    // The skin - the frames, the tags, the threads, the glow - fades in
+    // with it, so the keyhole and the overworld are one space wearing one
+    // skin, and a transient slide stays the seamless desktop it must be.
+    readonly property real quietReveal: {
+        effect.zoom; effect.viewX; effect.viewY;
+        if (!effect.quiet || !effect.grasp) return 0;
+        const t = effect.targetOf(effect.currentActivity);
+        const g = effect.actionScreen().geometry;
+        const away = Math.hypot(effect.viewX - t.x, effect.viewY - t.y);
+        return Math.min(1, Math.max(1 - effect.zoom, away / (Math.max(g.width, g.height) * 1.2)));
+    }
     property var pendingFly: null
     property var clickedWindow: null
     onPointerButtonsChanged: {
@@ -1333,7 +1269,7 @@ KWin.SceneEffect {
                 const w = pendingFly !== null ? pendingFly : clickedWindow;
                 pendingFly = null;
                 clickedWindow = null;
-                if (!w || w.deleted || !isCanvasWindow(w, false)) return;
+                if (!w || w.deleted || !isFlyableWindow(w)) return;
                 const g = w.frameGeometry;
                 const vs = KWin.Workspace.virtualScreenGeometry;
                 if (g.x >= vs.x && g.y >= vs.y && g.x + g.width <= vs.x + vs.width && g.y + g.height <= vs.y + vs.height) return;
@@ -1792,6 +1728,11 @@ KWin.SceneEffect {
         viewX = cur.x;
         viewY = cur.y;
         zoom = 1.0;
+        // The location survives the session: where the eye left the plane
+        // is where it comes back to after a restart.
+        configuration.ViewX = Math.round(viewX);
+        configuration.ViewY = Math.round(viewY);
+        configuration.writeConfig();
         publishGround();
         settled = false;
         swiping = false;
@@ -2011,9 +1952,11 @@ KWin.SceneEffect {
                 t.x = Math.round(entry.x + entry.width / 2 - (g.x + g.width / 2));
                 t.y = Math.round(entry.y + entry.height / 2 - (g.y + g.height / 2));
             } else {
-                const c = globalToCanvas(gx, gy);
-                t.x = Math.round(c.x - gx);
-                t.y = Math.round(c.y - gy);
+                // The first click of a double-click may have started a pan;
+                // anchor on the camera's destination, not a mid-flight view.
+                const vx = camHasGoal ? camGoalX : viewX, vy = camHasGoal ? camGoalY : viewY;
+                t.x = Math.round(vx + gx / zoom - gx);
+                t.y = Math.round(vy + gy / zoom - gy);
                 // The point clicked is kept under the pointer unless that would
                 // leave the window hanging over an edge of the screen: then the
                 // least shift that brings it wholly back in, because a window a
@@ -2040,6 +1983,8 @@ KWin.SceneEffect {
     }
 
     function focusWindow(entry, gx, gy) {
+        clickPanEntry = null;
+        clickPanTimer.stop();
         if (gx === undefined) { const p = cursorScreen(); gx = p.x; gy = p.y; }
         const inFrame = activityAt(entry);
         const a = inFrame !== null ? inFrame : (entry.activity || currentActivity);
@@ -2211,6 +2156,26 @@ KWin.SceneEffect {
         dragIndex = index;
         const set = isSelected(e) ? entries.filter(isSelected) : [e];
         for (let i = 0; i < set.length; ++i) dragRaw[set[i].window.internalId] = { x: set[i].x, y: set[i].y };
+    }
+    // A hand on a cluster's badge is a hand on the whole cluster: the drag
+    // set becomes its members, and the ordinary drag machinery moves them
+    // as one, their geometry kept.
+    function beginClusterDrag(i) {
+        const c = clusters[i];
+        if (!c) return;
+        camStop();
+        dragRaw = {};
+        dragIndex = -1;
+        for (let k = 0; k < c.ids.length; ++k) {
+            const e = entryById(c.ids[k]);
+            if (e) dragRaw[e.window.internalId] = { x: e.x, y: e.y };
+        }
+    }
+    function dragCluster(i, dx, dy) {
+        const c = clusters[i];
+        if (!c || c.ids.length === 0) return;
+        const e = entryById(c.ids[0]);
+        if (e) dragEntry(entries.indexOf(e), dx, dy);
     }
 
     // ---- the weight of a dragged window --------------------------------------
@@ -2430,9 +2395,27 @@ KWin.SceneEffect {
             // - mean the same thing. The focus also makes the keyboard
             // follow, so the next keys go to the clicked window.
             if (!entry.window.deleted) KWin.Workspace.activeWindow = entry.window;
-            // A click on a window brings it wholly into view: what is clicked
-            // on must be seen, so the camera pans the least that fits it.
-            bringIntoView(entry);
+            // A click brings the window wholly into view: what is clicked on
+            // must be seen, so the camera pans the least that fits it. The
+            // pan waits out the double-click interval first - the first
+            // click of a double-click must not move the window under the
+            // pointer mid-tap, which resets the double-click's detection and
+            // the placement that follows it.
+            clickPanEntry = entry;
+            clickPanTimer.restart();
+        }
+    }
+    property var clickPanEntry: null
+    Timer {
+        id: clickPanTimer
+        interval: 360
+        repeat: false
+        onTriggered: {
+            if (clickPanEntry) {
+                const e = clickPanEntry;
+                clickPanEntry = null;
+                bringIntoView(e);
+            }
         }
     }
 
@@ -2555,6 +2538,13 @@ KWin.SceneEffect {
         dbusInterface: "org.kde.kwin.canvas.Passthrough"
         method: "setHoldButtons"
     }
+    KWin.DBusCall {
+        id: holdDelayCall
+        service: "org.kde.KWin"
+        path: "/KWinCanvas"
+        dbusInterface: "org.kde.kwin.canvas.Passthrough"
+        method: "setHoldDelay"
+    }
     // The plugin answered: if the canvas is still open, switch it on and give it the camera.
     function passthroughProbed() {
         if (!canvasOpen || passthroughLive) return;
@@ -2588,6 +2578,9 @@ KWin.SceneEffect {
     function publishHold() {
         holdCall.arguments = [holdButtons];
         holdCall.call();
+        const delay = Number(configuration.HoldDelay) || 300;
+        holdDelayCall.arguments = [delay];
+        holdDelayCall.call();
     }
     function dropPassthrough() {
         if (!passthroughLive) return;
@@ -3052,7 +3045,7 @@ KWin.SceneEffect {
             // on-screen test below always sees geometry as drawn.
             if (effect.visible) { Qt.callLater(effect.resync); return; }
             if (!effect.configuration.FollowActivation) return;
-            if (!effect.isCanvasWindow(w, false)) return;
+            if (!effect.isFlyableWindow(w)) return;
             const g = w.frameGeometry;
             // A focused window must be wholly on screen: an intersection is
             // not enough - one hanging off an edge is exactly what a focus
@@ -3198,6 +3191,7 @@ KWin.SceneEffect {
             break;
         }
         case "drag": if (numok(1) && numok(2) && numok(3)) { beginDrag(Number(a[1])); dragEntry(Number(a[1]), Number(a[2]), Number(a[3])); } break;
+        case "cdrag": if (numok(1) && numok(2) && numok(3)) { beginClusterDrag(Number(a[1])); dragCluster(Number(a[1]), Number(a[2]), Number(a[3])); endDrag(); } break;
         case "resize": if (numok(1) && numok(2) && numok(3)) requestSize(Number(a[1]), Number(a[2]), Number(a[3]), false, false); break;
         case "resetview": {
             // 1:1 only: forget the pan history so canvas == frame for this activity.
@@ -3353,6 +3347,13 @@ KWin.SceneEffect {
             const fx = f ? (f.x - (e.x - viewX) * zoom) : 0, fy = f ? (f.y - (e.y - viewY) * zoom) : 0;
             s += "\n  [" + i + "] " + (isSelected(e) ? "*" : " ") + e.window.caption + " canvas=(" + e.x.toFixed(0) + "," + e.y.toFixed(0) + " " + e.width + "x" + e.height + ") frame=(" + g.x + "," + g.y + ")" + (Math.abs(fx) > 0.4 || Math.abs(fy) > 0.4 ? " float=(+" + fx.toFixed(0) + ",+" + fy.toFixed(0) + ")" : "") + " activity=" + labelOf(e.activity);
         }
+        for (let i = 0; i < clusters.length; ++i) {
+            const mem = [];
+            for (let k = 0; k < clusters[i].ids.length; ++k) {
+                for (let j = 0; j < entries.length; ++j) if (entries[j].window.internalId === clusters[i].ids[k]) { mem.push(j); break; }
+            }
+            s += "\n  c" + i + ": " + mem.join(" ");
+        }
         console.log(s);
     }
 
@@ -3378,6 +3379,11 @@ KWin.SceneEffect {
         refreshActivities();
         lastDebugSeq = configuration.DebugSeq;
         publishHold();
+        // The last committed viewport: the plane comes back where it was.
+        viewX = Number(configuration.ViewX) || 0;
+        viewY = Number(configuration.ViewY) || 0;
+        const t0 = targets[currentActivity];
+        if (t0) { t0.x = viewX; t0.y = viewY; }
         // The harness can write a command before the QML completes: KWin
         // reports the effect loaded first, and a reconfigure that lands
         // before onCompleted never fires onConfigurationChanged. Run the
@@ -3446,7 +3452,7 @@ KWin.SceneEffect {
             property point last: Qt.point(0, 0)
             onActiveChanged: {
                 effect.sceneGestures += active ? 1 : -1;
-                effect.noteGesture();
+                effect.noteGesture(true);
                 last = Qt.point(0, 0);
                 if (active) grip.dragStarted(); else grip.dragEnded();
             }
@@ -3518,7 +3524,7 @@ KWin.SceneEffect {
         cursor: Qt.SizeAllCursor
         width: tagRow.implicitWidth + 12
         height: tagRow.implicitHeight + 6
-        opacity: effect.chromeFade
+        opacity: effect.chromeFade * (effect.quiet ? effect.quietReveal : 1)
         onDragStarted: effect.targetRaw = null
         onDragged: (dx, dy) => effect.dragTarget(activity, dx, dy)
 
@@ -3677,7 +3683,7 @@ KWin.SceneEffect {
             Rectangle {
                 anchors.fill: parent
                 color: effect.configuration.Background
-                opacity: effect.backdropDim() * effect.chromeFade * (effect.quiet ? 0 : 1)
+                opacity: effect.backdropDim() * effect.chromeFade * (effect.quiet ? effect.quietReveal : 1)
             }
         }
 
@@ -3783,7 +3789,7 @@ KWin.SceneEffect {
                 // release needs the travel and the times the drag ended with,
                 // so zeroing them first would make every fling a no-op.
                 effect.sceneGestures += active ? 1 : -1;
-                effect.noteGesture();
+                effect.noteGesture(true);
                 if (active) {
                     last = Qt.point(0, 0);
                     travelX = 0; travelY = 0;
@@ -3911,18 +3917,18 @@ KWin.SceneEffect {
                     // the chrome fade on the way in.
                     Rectangle {
                         anchors.fill: parent
-                        visible: !frame.bare
+                        visible: !frame.bare || effect.quietReveal > 0.02
                         color: activityFrames.accent
-                        opacity: (activityFrames.current ? 0.10 : 0.06) * Math.min(1, Math.max(0, (1 - effect.zoom) * 4)) * effect.chromeFade
+                        opacity: (activityFrames.current ? 0.10 : 0.06) * Math.min(1, Math.max(0, (1 - effect.zoom) * 4)) * effect.chromeFade * (frame.bare ? effect.quietReveal : 1)
                     }
 
                     Rectangle {
                         anchors.fill: parent
-                        visible: !frame.bare
+                        visible: !frame.bare || effect.quietReveal > 0.02
                         color: "transparent"
                         border.width: activityFrames.current ? 2 : 1
                         border.color: activityFrames.accent
-                        opacity: (activityFrames.current ? 0.95 : 0.6) * effect.chromeFade
+                        opacity: (activityFrames.current ? 0.95 : 0.6) * effect.chromeFade * (frame.bare ? effect.quietReveal : 1)
                     }
 
                     // A gesture on the frame's own area (windows sit above and
@@ -4030,9 +4036,9 @@ KWin.SceneEffect {
                     z: -2
                     radius: 8
                     color: "#000000"
-                    visible: !effect.quiet
+                    visible: !effect.quiet || effect.quietReveal > 0.02
+                    opacity: effect.quiet ? effect.quietReveal * (liftedNow ? 0.30 : (thumb.hovered ? 0.16 : 0)) : (liftedNow ? 0.30 : (thumb.hovered ? 0.16 : 0))
                     readonly property bool liftedNow: body.active && body.moving && thumb.heavy
-                    opacity: liftedNow ? 0.30 : (thumb.hovered ? 0.16 : 0)
                     Behavior on opacity { NumberAnimation { duration: 150 } }
                 }
 
@@ -4045,7 +4051,8 @@ KWin.SceneEffect {
                     z: -1
                     radius: 6
                     readonly property color accent: effect.activityColor(thumb.entry.activity)
-                    visible: { effect.selectionRev; return !effect.quiet && thumb.hovered && !effect.isSelected(thumb.entry); }
+                    visible: { effect.selectionRev; effect.quietReveal; return (!effect.quiet || effect.quietReveal > 0.02) && thumb.hovered && !effect.isSelected(thumb.entry); }
+                    opacity: effect.quiet ? effect.quietReveal : 1
                     color: Qt.rgba(accent.r, accent.g, accent.b, 0.16)
                     border.width: 1
                     border.color: Qt.rgba(accent.r, accent.g, accent.b, 0.5)
@@ -4054,7 +4061,8 @@ KWin.SceneEffect {
                 Rectangle {
                     anchors.fill: parent
                     color: "transparent"
-                    visible: !effect.quiet
+                    visible: !effect.quiet || effect.quietReveal > 0.02
+                    opacity: effect.quiet ? effect.quietReveal : 1
                     readonly property bool sel: { effect.selectionRev; return effect.isSelected(thumb.entry); }
                     border.width: sel ? 3 : (thumb.hovered || body.active ? 2 : 1)
                     border.color: sel ? Kirigami.Theme.highlightColor
@@ -4076,7 +4084,7 @@ KWin.SceneEffect {
                 // The pin: a pinned window wears its marker and never leaves
                 // the screen.
                 Kirigami.Icon {
-                    visible: effect.isPinnedEntry(thumb.entry) && !effect.quiet
+                    visible: effect.isPinnedEntry(thumb.entry) && (!effect.quiet || effect.quietReveal > 0.02)
                     source: "window-pin"
                     width: 14
                     height: 14
@@ -4225,7 +4233,7 @@ KWin.SceneEffect {
                 Shape {
                     id: threadShape
                     anchors.fill: parent
-                    readonly property real want: (parent.active || effect.zoom < 0.5) ? (parent.active ? 0.9 : 0.45) * cluster.co : 0
+                    readonly property real want: (parent.active || effect.zoom < 0.5) ? (parent.active ? 0.9 : 0.45) * cluster.co * (effect.quiet ? effect.quietReveal : 1) : 0
                     property real show: 0
                     opacity: show
                     Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
@@ -4255,7 +4263,8 @@ KWin.SceneEffect {
                         }
                     }
                 }
-                // The badge: the cluster's number in reading order, glass.
+                // The badge: the cluster's number in reading order, glass. A
+                // hand on it drags the whole cluster across the plane.
                 Rectangle {
                     id: badge
                     x: cx - width / 2
@@ -4263,13 +4272,22 @@ KWin.SceneEffect {
                     Behavior on x { SpringAnimation { spring: 2.6; damping: 0.62; epsilon: 0.5 } }
                     Behavior on y { SpringAnimation { spring: 2.6; damping: 0.62; epsilon: 0.5 } }
                     z: 59000
-                    visible: parent.active && cluster.n > 1 && !effect.quiet
+                    visible: parent.active && cluster.n > 1 && (!effect.quiet || effect.quietReveal > 0.02)
                     width: row.implicitWidth + 16
                     height: 24
                     radius: 12
                     color: "#cc1e2126"
                     border.width: 1
                     border.color: "#66ffffff"
+                    Grip {
+                        id: badgeGrip
+                        anchors.fill: parent
+                        viewItem: view
+                        cursor: Qt.OpenHandCursor
+                        onDragStarted: effect.beginClusterDrag(index)
+                        onDragged: (dx, dy) => effect.dragCluster(index, dx, dy)
+                        onDragEnded: effect.endDrag()
+                    }
                     Row {
                         id: row
                         anchors.centerIn: parent
@@ -4292,6 +4310,77 @@ KWin.SceneEffect {
             }
         }
 
+        // The minimap: the plane from above, in the overworld's corner. The
+        // frames as swatches, the windows as specks, the camera as the white
+        // rectangle; a click flies the camera there. It is how the plane's
+        // navigation ties together - the same picture the bracket keys tour.
+        Item {
+            id: minimap
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: Kirigami.Units.largeSpacing
+            width: 200
+            height: 140
+            z: 80000
+            visible: view.screen === effect.primaryScreen && effect.canvasOpen && !effect.quiet && effect.zoom < 0.9
+            readonly property rect wb: effect.worldBounds()
+            readonly property real sc: Math.min(width / wb.width, height / wb.height)
+            readonly property real ox: (width - wb.width * sc) / 2
+            readonly property real oy: (height - wb.height * sc) / 2
+            function mx(cx) { return ox + (cx - wb.x) * sc; }
+            function my(cy) { return oy + (cy - wb.y) * sc; }
+            Rectangle {
+                anchors.fill: parent
+                radius: 6
+                color: Qt.rgba(0.1, 0.1, 0.12, 0.72)
+                border.width: 1
+                border.color: "#40ffffff"
+            }
+            Repeater {
+                model: effect.frames().length
+                delegate: Rectangle {
+                    required property int index
+                    readonly property var f: effect.frames()[index]
+                    x: minimap.mx(f.x)
+                    y: minimap.my(f.y)
+                    width: Math.max(2, f.width * minimap.sc)
+                    height: Math.max(2, f.height * minimap.sc)
+                    color: effect.palette[index % effect.palette.length]
+                    opacity: 0.55
+                }
+            }
+            Repeater {
+                model: effect.entries.length
+                delegate: Rectangle {
+                    required property int index
+                    readonly property var e: effect.entries[index]
+                    x: minimap.mx(e.x)
+                    y: minimap.my(e.y)
+                    width: Math.max(1.5, e.width * minimap.sc)
+                    height: Math.max(1.5, e.height * minimap.sc)
+                    radius: 1
+                    color: "#b0ffffff"
+                }
+            }
+            Rectangle {
+                x: minimap.mx(effect.viewX + view.sg.x / effect.zoom)
+                y: minimap.my(effect.viewY + view.sg.y / effect.zoom)
+                width: Math.max(2, view.sg.width / effect.zoom * minimap.sc)
+                height: Math.max(2, view.sg.height / effect.zoom * minimap.sc)
+                color: "transparent"
+                border.width: 1
+                border.color: "#ffffff"
+            }
+            TapHandler {
+                onTapped: (eventPoint) => {
+                    const cx = effect.worldBounds().x + (eventPoint.position.x - minimap.ox) / minimap.sc;
+                    const cy = effect.worldBounds().y + (eventPoint.position.y - minimap.oy) / minimap.sc;
+                    const g = effect.actionScreen().geometry;
+                    effect.camGo(effect.zoom, cx - (g.x + g.width / 2) / effect.zoom, cy - (g.y + g.height / 2) / effect.zoom);
+                }
+            }
+        }
+
         // Frame tags, above the windows so they can always be grabbed.
         Repeater {
             model: effect.activityIds
@@ -4302,7 +4391,7 @@ KWin.SceneEffect {
                 model: { effect.screensRev; return KWin.Workspace.screens; }
                 delegate: FrameTag {
                     required property var modelData
-                    visible: !effect.quiet
+                    visible: !effect.quiet || effect.quietReveal > 0.02
                     viewItem: view
                     activity: activityTags.modelData
                     activityIndex: activityTags.index
@@ -4464,8 +4553,8 @@ KWin.SceneEffect {
         Rectangle {
             id: hud
             z: 100000
-            visible: view.screen === effect.primaryScreen && !effect.quiet
-            opacity: effect.chromeFade
+            visible: view.screen === effect.primaryScreen && (!effect.quiet || effect.quietReveal > 0.5)
+            opacity: effect.chromeFade * (effect.quiet ? Math.max(0, Math.min(1, (effect.quietReveal - 0.5) * 2)) : 1)
             readonly property string pos: String(effect.configuration.HudPosition || "Top").toLowerCase()
             readonly property bool atBottom: pos.indexOf("bottom") === 0
             readonly property bool atLeft: pos === "left" || pos === "topleft" || pos === "bottomleft"

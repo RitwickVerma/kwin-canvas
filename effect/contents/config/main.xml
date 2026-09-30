@@ -136,6 +136,10 @@
             <label>Mouse buttons that navigate the open canvas while held down: any of LeftButton, MiddleButton, RightButton, BackButton, ForwardButton, comma separated. A held button is a portal into the canvas: wherever the pointer is, a drag on the ground pans and a drag on a window moves it on the plane, and the app under a window never sees the press. The middle button always navigates, whether or not it is listed here; empty by default, since the canvas hold below covers it.</label>
             <default></default>
         </entry>
+        <entry name="HoldDelay" type="Int">
+            <label>How long the canvas modifier must stay down before it opens the canvas, in milliseconds. Quicker presses pass through as the window's own clicks, so a game button bound to the same mouse button keeps working; raise this if a fast game click still opens the canvas.</label>
+            <default>300</default>
+        </entry>
         <entry name="CanvasHold" type="String">
             <label>The canvas modifier: mouse buttons (any of LeftButton, MiddleButton, RightButton, BackButton, ForwardButton, comma separated) that, held down for a moment anywhere on the normal desktop, make the location itself the canvas. A press shorter than a moment is the window's own click, so the button stays usable in games, browsers and every app that binds it; only a deliberate hold opens the canvas. While held, the desktop becomes the overworld at 1:1 - pixel for pixel, nothing visibly changes - and every canvas gesture works as if the overworld were open: the middle button grabs and navigates, a drag on a window moves it on the plane, the wheel zooms, a pointer parked at a screen edge keeps panning. Releasing applies the moves and closes again: hold, arrange, let go, done. Needs the kwin-canvas-passthrough plugin (or the plane-input shim) to see the press while the canvas is closed. BackButton (MB4, a mouse's side button) is the default.</label>
             <default>BackButton</default>
@@ -312,6 +316,12 @@
         <entry name="ClusterPrevKey" type="String">
             <label>The key that flies the camera to the previous cluster, in reading order on the plane.</label>
             <default>BracketLeft</default>
+        </entry>
+        <entry name="ViewX" type="Double">
+            <default>0</default>
+        </entry>
+        <entry name="ViewY" type="Double">
+            <default>0</default>
         </entry>
         <entry name="PublishGround" type="Bool">
             <label>Write the ground offset to the kwin-canvas-ground wallpaper via plasmashell.</label>

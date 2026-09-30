@@ -76,6 +76,11 @@ public Q_SLOTS:
      */
     Q_SCRIPTABLE void setNavButtons(int buttons);
     /**
+     * How long the canvas-modifier buttons must stay down (ms) before the
+     * press is the canvas rather than a click (the effect's HoldDelay).
+     */
+    Q_SCRIPTABLE void setHoldDelay(int ms);
+    /**
      * The canvas-modifier buttons (CanvasHold). A press of one of them is
      * consumed wherever the pointer is and flips the effect's canvasHold
      * property, so the effect can open quietly at 1:1 and commit on the

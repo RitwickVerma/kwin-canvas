@@ -72,7 +72,7 @@ CanvasPassthrough::CanvasPassthrough()
     // modifier dead; the effect's setHoldButtons keeps it current.
     m_hold = parseHoldButtons(KSharedConfig::openConfig(QStringLiteral("kwinrc"))->group(QStringLiteral("Effect-kwin-canvas")).readEntry("CanvasHold", QStringLiteral("BackButton")));
     m_holdTimer.setSingleShot(true);
-    m_holdTimer.setInterval(300);
+    m_holdTimer.setInterval(std::max(50, KSharedConfig::openConfig(QStringLiteral("kwinrc"))->group(QStringLiteral("Effect-kwin-canvas")).readEntry("HoldDelay", 300)));
     connect(&m_holdTimer, &QTimer::timeout, this, [this]() {
         // The hold outlasted the threshold: it is the canvas modifier, not a
         // click. The press was consumed from the start, so the window under
@@ -126,6 +126,13 @@ void CanvasPassthrough::setCamera(double viewX, double viewY, double zoom, const
 void CanvasPassthrough::setNavButtons(int buttons)
 {
     m_nav = uint(buttons);
+}
+
+void CanvasPassthrough::setHoldDelay(int ms)
+{
+    if (ms > 0) {
+        m_holdTimer.setInterval(ms);
+    }
 }
 
 void CanvasPassthrough::setHoldButtons(int buttons)

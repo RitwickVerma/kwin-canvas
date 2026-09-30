@@ -1,5 +1,62 @@
 Unreleased:
 
+- The minimap: a small map of the whole plane in the overworld's corner -
+  the frames as swatches, the windows as specks, the camera as the white
+  rectangle - and a click on it flies the camera there. It is the plane's
+  navigation seen from above, the same picture the bracket keys tour.
+
+- A cluster drags whole: a hand on its badge moves every window in it
+  across the plane together, their geometry kept.
+
+- A fullscreen - a screen-sized window - flies margin-free: the activation
+  fly used to align the window's edge at the margin, which pushed a
+  fullscreen 24 px off-centre; a window that is the screen now lands
+  exactly on it. The same fix covers the task bar's click on a fullscreen
+  app.
+
+- The hover settles quicker for a plain rest (200 ms, and the 600 ms grace
+  now only follows a drag the hand made), so resting the pointer feels
+  immediate without ever fighting the hand.
+
+- The keyhole grows the toolbar: at full reveal the modifier's hold shows
+  the overworld's controls too.
+
+- The viewport survives the session: the commit writes `ViewX`/`ViewY`,
+  and the canvas comes back where the eye left it.
+
+- The placement logic joined the unit tests (`fitRange`, `smartPan`), and
+  the harness's state dump names the clusters' members.
+
+- The keyhole and the overworld are one space. Holding MB4 opens the canvas
+  quietly - the desktop looks like itself, as it must - and the canvas's
+  skin (the frames' tint and outlines, the tags, the threads, the hover
+  glow) fades in as the camera departs from the location, so by the time
+  you are zoomed out the keyhole and the overworld are the same picture.
+  One space, one skin, one physics.
+
+- A double-click always places its window. The first click of a
+  double-click used to pan the camera at once (the click-fit), moving the
+  window under the pointer mid-tap, which reset the double-click's
+  detection - a fullscreen game double-clicked during the modifier's hold
+  ended up at the wrong coordinates. The click-fit now waits out the
+  double-click interval, and the double-click's placement anchors on the
+  camera's destination, never a mid-flight view.
+
+- The fly covers every window the user can click: a utility window (a
+  Steam helper, a chat) flies like any other, instead of falling back to
+  KWin's own keep-visible rule, which moved the window alone.
+
+- The modifier's hold is tunable: `HoldDelay` is how long MB4 must stay
+  down before it opens the canvas (300 ms by default; raise it and a fast
+  game click - cycling grenades on the same button - always stays the
+  game's). Quicker presses have always replayed as the window's own
+  clicks, and rapid ones now do too, over a fullscreen game as anywhere.
+
+- The pure logic - the clustering, the dynamic gap, the float's physics -
+  lives in `effect/contents/ui/logic.js`, unit-tested by
+  `tests/unit/logic.test.js` (`make unit`, 26 assertions in milliseconds);
+  the nest scenarios then verify the wiring.
+
 - The float obeys physics and stays at rest. A floated window's coordinates
   on the plane never change - only the hand moves them, in the canvas and
   at 1:1 alike - and while the window sits fully inside the screen its

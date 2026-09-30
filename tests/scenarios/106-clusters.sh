@@ -35,6 +35,24 @@ run_scenario() {
     printf 'key bracketleft\n' | input
     sleep 0.5; c state
     assert_near "the previous key steps back" "$(sget viewx)" "$(awk 'BEGIN{print 6520-960}')" 2
+    # A hand on the cluster drags it whole: the pair moves together, their
+    # geometry kept. The pair's cluster is whichever the state's cluster
+    # lines name both KCalc and Konsole.
+    local kx ks pair
+    kx=$(eget KCalc index)
+    ks=$(eget Konsole index)
+    pair=$(awk -v kx="$kx" -v ks="$ks" '
+        $1 ~ /^c[0-9]+:$/ {
+            hask = 0; hass = 0;
+            for (i = 2; i <= NF; i++) { if ($i == kx) hask = 1; if ($i == ks) hass = 1; }
+            if (hask && hass) { sub(/^c/, "", $1); sub(/:$/, "", $1); print $1; exit }
+        }' <<<"$LAST_STATE")
+    c "cdrag $pair 200 100"
+    sleep 0.4; c state
+    assert_eq "the cluster drag moves KCalc" "$(eget KCalc x)" 500
+    assert_eq "and Konsole with it, the gap kept" "$(eget Konsole x)" 1100
+    c "cdrag $pair -200 -100"
+    sleep 0.3
     # A window dragged out of range breaks the cluster it left.
     c "placeby KCalc 2600 -800"
     sleep 0.5; c state
