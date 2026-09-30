@@ -1,5 +1,11 @@
 Unreleased:
 
+- The pass-through lets go on its own: after four seconds with no input
+  the canvas takes the input back - the keys, the wheel and the clicks
+  are the canvas's, the Esc the user reaches for is the canvas's cancel,
+  not the window's - and the pointer's next touch takes the pass-through
+  back. Typing and scrolling never wake it; only the hand does.
+
 - The thread whispers: thinner and fainter, a sparse dash drifting slowly
   along the curve over a soft halo - the constellation reads as light,
   not a drawing.

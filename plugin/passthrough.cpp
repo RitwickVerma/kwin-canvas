@@ -71,6 +71,17 @@ CanvasPassthrough::CanvasPassthrough()
     // The hold mask from the config, so a missed publish cannot leave the
     // modifier dead; the effect's setHoldButtons keeps it current.
     m_hold = parseHoldButtons(KSharedConfig::openConfig(QStringLiteral("kwinrc"))->group(QStringLiteral("Effect-kwin-canvas")).readEntry("CanvasHold", QStringLiteral("BackButton")));
+    // The passthrough lets go on its own: after a while with no input -
+    // the pointer still, no keys - the canvas takes the input back, so
+    // the Esc the user reaches for is the canvas's, not the window's,
+    // until the next touch.
+    m_idleTimer.setInterval(4000);
+    m_idleTimer.setSingleShot(false);
+    connect(&m_idleTimer, &QTimer::timeout, this, [this]() {
+        if (m_active) {
+            m_idle = true;
+        }
+    });
     m_holdTimer.setSingleShot(true);
     m_holdTimer.setInterval(std::max(50, KSharedConfig::openConfig(QStringLiteral("kwinrc"))->group(QStringLiteral("Effect-kwin-canvas")).readEntry("HoldDelay", 300)));
     connect(&m_holdTimer, &QTimer::timeout, this, [this]() {
@@ -329,6 +340,8 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
     if (m_clickWindow && (event->position - m_clickPos).manhattanLength() > 6) {
         m_clickWindow = nullptr;
     }
+    m_idle = false;
+    m_idleTimer.start();
     if (!m_active) {
         return false;
     }
@@ -363,6 +376,8 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
 
 bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
 {
+    m_idle = false;
+    m_idleTimer.start();
     // Every button change is published to the effect: a focus fly must wait
     // until the hand lets go, or the opening canvas would grab the drag.
     const bool wasAny = m_allButtons != Qt::NoButton;
@@ -431,7 +446,7 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     // The passthrough waits for the aim: until the pointer's first motion
     // after the activation, buttons belong to the canvas - the first click
     // after the overworld opens is the canvas's, not the window's.
-    if (!m_settled) {
+    if (!m_settled || m_idle) {
         return false;
     }
     const bool pressed = event->state == PointerButtonState::Pressed;
@@ -479,6 +494,14 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
 
 bool CanvasPassthrough::keyboardKey(KeyboardKeyEvent *event)
 {
+    // The idle's keys are the canvas's - the Esc the user reaches for is
+    // the canvas's cancel, not the window's - and typing does not wake the
+    // passthrough; the pointer's touch does.
+    if (m_idle) {
+        return false;
+    }
+    m_idle = false;
+    m_idleTimer.start();
     if (!m_active || event->state == KeyboardKeyState::Repeated) {
         return false;
     }
@@ -492,6 +515,13 @@ bool CanvasPassthrough::keyboardKey(KeyboardKeyEvent *event)
 
 bool CanvasPassthrough::pointerAxis(PointerAxisEvent *event)
 {
+    // The idle's wheel is the canvas's, and it does not wake the
+    // passthrough - only the pointer's touch does.
+    if (m_idle) {
+        return false;
+    }
+    m_idle = false;
+    m_idleTimer.start();
     if (!m_active || !m_settled || m_grabGround) {
         return false;
     }

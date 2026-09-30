@@ -128,6 +128,12 @@ private:
     uint m_nav = 0;
     /** The canvas-modifier buttons (setHoldButtons), a mask of Qt::MouseButton values. */
     uint m_hold = 0;
+    /** The passthrough let go of the input: no input for a while, so the
+     * canvas has it back - the keys, the wheel and the clicks are the
+     * canvas's until the next touch. */
+    bool m_idle = false;
+    /** The idle clock: restarted on every input event. */
+    QTimer m_idleTimer;
     /** A hold button is currently down (one of m_hold). */
     bool m_holdDown = false;
     /** The hold button that is down, for the mask-change check in setHoldButtons. */
