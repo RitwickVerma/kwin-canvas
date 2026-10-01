@@ -46,9 +46,11 @@ built and loaded (the live-session half stays untested, below):
 
 - `make lint-qml` and `make lint-shell` — exit 0. `lint-reuse` still needs
   `reuse`, which is not installed here (below).
-- `make test` — `== pass 365  fail 0  skip 1`, the skip `91-two-outputs`
+- `make test` — `== pass 374  fail 0  skip 1`, the skip `91-two-outputs`
   needing a two-output nest; `85-passthrough` runs for real against the
   built plugin. `make test-two-outputs` — `== pass 17  fail 0  skip 0`.
+- `make unit` — 30 pure-logic assertions in node, in the CI's check stage
+  as well as locally.
 - The goldens are recorded against the pinned nest (Breeze Dark, the dark
   icon theme, the Breeze widget style and decoration; the fixture apps'
   own configs are reset before each run), so they mean the same pixels on
@@ -100,6 +102,28 @@ those, from this side of the fork:
   pinned build-id - the biggest gap left in the suite.
 
 ## Sessions
+
+### 2026-09-30 — the switcher, the scoped pass-through, and the public polish
+
+The switcher: SwitcherShortcut opens the hold's map as a toggle - Tab
+and Shift+Tab step the highlighted window, Enter enters it - the
+window switcher the plane deserves. The pass-through is heavily scoped:
+it engages on a rest (a 260 ms hover), the keys belong to the window
+only while the pointer hovers one, it lets go after four idle seconds,
+and the handover publishes itself so the canvas and the tests can see
+whose the input is. Every fly is smart (the least movement, the most of
+the desk in view) with a fresh destination, the web is tethered to the
+windows' float and weaves over and under them, the map is one living
+picture that morphs between the hold's sheets and the corner lens, the
+camera's rectangle is draggable, and the float is KWin's keep-above.
+The micro-feel: the click-pan responds after a beat (the double-click
+still cancels it), the camera lands instead of crawling, the glow
+fades. `make demo` drives the cinematic tour to docs/images/demo.gif,
+the README's hero. The CI gained the unit job. The fork is pushed to
+origin and the tree is FOSS-clean. Verified: `make unit` == pass 30
+fail 0, `make lint-qml`, `make lint-shell`, `make test` == pass 374
+fail 0 skip 1, `make test-two-outputs` == 17/0/0, fixtures byte for
+byte.
 
 ### 2026-09-29 — one canvas: the vision, the reveal, the double-click, and unit tests
 
