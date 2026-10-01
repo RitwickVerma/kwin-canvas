@@ -2,6 +2,18 @@
 
 ![kwin-canvas: the demo - the step out into the haze, the hover's glow, the double-click's flight, the clusters' web, the map's morph, and the step back in](docs/images/demo.gif)
 
+> **A fork, written by an agent under human direction.** This repository is a
+> fork of [`aaronsb/kwin-canvas`](https://github.com/aaronsb/kwin-canvas),
+> ahead of upstream. Every line of the fork's own work is AI-generated,
+> directed by a human: the switcher, a pass-through that waits for the aim
+> and lets go when idle, clusters and their web, the float, one morphing
+> map, the smart flights, the micro-feel, the tests, the docs and the
+> commits themselves. Upstream's code is upstream's. The work is proposed
+> upstream in stages; where it stands, and what is deliberately different,
+> is [docs/status.md](docs/status.md). Install this fork's work from the
+> checkout below; the AUR package is upstream's release until the stages
+> land.
+
 An infinite canvas for KDE Plasma, built on KWin's public scripting API. No
 patches, no forked compositor, no plugin against private headers.
 
@@ -60,8 +72,9 @@ it would be invisible anyway. `Backdrop=grid` is the old plane.
 
 ## Install
 
-Full walkthrough in [docs/install.md](docs/install.md). On Arch, from the
-[AUR](https://aur.archlinux.org/packages/kwin-canvas):
+Full walkthrough in [docs/install.md](docs/install.md). On Arch, upstream's
+latest release is on the [AUR](https://aur.archlinux.org/packages/kwin-canvas)
+(0.4.0; none of this fork's work is in it yet):
 
 ```bash
 yay -S kwin-canvas      # or paru, or makepkg from the AUR clone
@@ -69,8 +82,8 @@ yay -S kwin-canvas      # or paru, or makepkg from the AUR clone
 
 then enable **Canvas** in System Settings → Desktop Effects. The pass-through
 plugin is its own package, `kwin-canvas-passthrough`, built against your
-KWin; rebuild it after a KWin upgrade. From a release tarball with no
-checkout:
+KWin; rebuild it after a KWin upgrade. From upstream's release tarballs with
+no checkout:
 
 ```bash
 kpackagetool6 --type KWin/Effect --install kwin-canvas-0.4.0.kwineffect.tar.gz

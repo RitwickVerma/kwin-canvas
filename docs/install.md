@@ -9,7 +9,7 @@ shell script.
 From a checkout, a nested KWin opens as a window with the effect inside it:
 
 ```bash
-git clone https://github.com/aaronsb/kwin-canvas.git
+git clone https://gitlab.com/ritwick7/kwin-canvas.git   # the fork; upstream is github.com/aaronsb/kwin-canvas
 cd kwin-canvas
 make deps      # lists anything missing and the pacman line to install it
 make play      # nested KWin with five sample apps, canvas open
@@ -24,6 +24,9 @@ window's location. `make nest-down` closes it.
 
 ### On Arch, from the AUR
 
+Upstream's latest release is packaged on the AUR; this fork's additions are
+not in it yet — install them from the checkout below.
+
 ```bash
 yay -S kwin-canvas
 ```
@@ -36,7 +39,9 @@ upgrade, log out and in once: KWin keeps the version it compiled at login.
 ### From the release tarballs
 
 1. Download `kwin-canvas-0.4.0.kwineffect.tar.gz` from
-   https://github.com/aaronsb/kwin-canvas/releases/latest.
+   https://github.com/aaronsb/kwin-canvas/releases/latest — upstream's
+   release, without this fork's additions. For those, install from the
+   checkout instead.
    The wallpaper and applet tarballs are optional; see "The ground
    wallpaper" and "The panel applet" below.
 2. Install the effect as a user package:
