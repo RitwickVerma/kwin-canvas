@@ -3788,7 +3788,10 @@ KWin.SceneEffect {
             // in softens it out as the desk fills the view, stepping out
             // softens it back. At rest under a covering frame it is gone and
             // costs nothing.
-            readonly property bool wantShown: wallpaper && !covered
+            // The quiet hold and slide are the desktop itself: the wallpaper
+            // stays, sharp, wherever the frames fade - no grey base ever
+            // shows through a transient move.
+            readonly property bool wantShown: wallpaper && (!covered || effect.quiet)
             property real blurAlpha: wantShown ? 1 : 0
             Behavior on blurAlpha { NumberAnimation { duration: 280; easing.type: Easing.InOutCubic } }
             visible: wallpaper && (wantShown || blurAlpha > 0.004)
