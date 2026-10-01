@@ -1,5 +1,13 @@
 Unreleased:
 
+- The cluster threads now weave through the windows: each thread renders
+  at the z between its two windows, so the web passes over the lower and
+  under the higher - and re-threads live as the eye moves, since a hover
+  lifts its window above the whole web and the threads to it ride up with
+  it. (The web's z was previously inert, so the threads sat under every
+  window; the hover's raise also makes the canvas z order exactly the
+  desktop's.)
+
 - A pointer parked on the desk's outer seam - where deskflow and its kin
   leave the mouse while another machine has it - no longer hovers the
   window under it: the seam is a dead band for hover, in the canvas and

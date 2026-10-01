@@ -136,6 +136,14 @@ Three live-session bugs, each fixed with a measure first:
   order and the desktop's can never disagree and the raise survives the
   step back in - the picture-only re-stack from the earlier session is
   gone. `110-hover-raise` pins the raise, the sync and the survival.
+- **The threads' z.** The web's per-thread z was inert (a child's z
+  cannot lift it out of its parent), so every thread painted under every
+  window. The threads are now one flat Repeater at the view level with
+  the window z strict by stacking index (the hovered one at 2000), so
+  the web weaves over the lower and under the higher and re-threads with
+  the hover; `111-thread-z` proves the weave in pixels and the lift in
+  state. `94-physics` now waits out the cancel's slow home flight, the
+  flake that failed twice in a row.
 
 The full suite is not green on this machine: three runs failed with
 different sets (40, then a handful, then two scenarios), all passing
