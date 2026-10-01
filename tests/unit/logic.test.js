@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, floatStep, fitRange, smartPan };")();
+const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, floatStep, fitRange, smartPan, canvasOf, zoomView, fitBox };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -130,6 +130,44 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
     const f = { x: 8, y: 300, vx: 100, vy: 0, wasInX: false, wasInY: true };
     const n = L.floatStep(f, 500, 300, 500, 300, 8, 1900, 8, 1050, 0, 0, true, 1 / 60);
     ok("a drag moves the picture with the hand", n.x === 500 && n.vx === 0);
+}
+
+// ---- the plane transform ---------------------------------------------------
+{
+    const c = L.canvasOf(960, 540, 0, 0, 1);
+    ok("canvasOf is the identity at 1:1 on the origin", c.x === 960 && c.y === 540);
+}
+{
+    // The invariant that bit the pass-through: a global point on a second
+    // output maps with the same formula as its screen-local twin on the
+    // first, plus the output's origin over the zoom - the visual transform
+    // and its inverse cancel, so input and picture cannot drift apart.
+    const x1 = 1920, z = 0.5, vx = -960, vy = -540;
+    const a = L.canvasOf(x1 + 700, 400, vx, vy, z);
+    const b = L.canvasOf(700, 400, vx, vy, z);
+    ok("a second output's origin cancels in canvasOf", near(a.x - b.x, x1 / z) && near(a.y - b.y, 0));
+}
+{
+    // Zooming around an anchor keeps the canvas point under the anchor.
+    const ax = 960, ay = 540, vx = 100, vy = -40, z0 = 1, z1 = 0.4;
+    const c = L.canvasOf(ax, ay, vx, vy, z0);
+    const v = L.zoomView(c, ax, ay, z1);
+    const again = L.canvasOf(ax, ay, v.x, v.y, z1);
+    ok("the zoom keeps the anchor's canvas point", near(again.x, c.x) && near(again.y, c.y));
+}
+{
+    // A box twice the screen fits at half the screen minus the pads, and
+    // the view centres the box on the screen's own centre.
+    const g = { x: 0, y: 0, width: 1920, height: 1080 };
+    const f = L.fitBox(0, 0, 3840, 2160, g, 80, 0.1);
+    ok("a 2x box fits at the binding zoom minus pads",
+       near(f.zoom, Math.min((1920 - 160) / 3840, (1080 - 160) / 2160)));
+    ok("and the view centres it", near(f.viewX, 1920 - 960 / f.zoom) && near(f.viewY, 1080 - 540 / f.zoom));
+}
+{
+    const g = { x: 0, y: 0, width: 1920, height: 1080 };
+    const f = L.fitBox(10, 10, 100, 80, g, 80, 0.1);
+    ok("a small box clamps to 1:1", f.zoom === 1.0);
 }
 
 console.log("== unit pass " + pass + "  fail " + fail);

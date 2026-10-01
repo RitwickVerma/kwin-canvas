@@ -150,3 +150,27 @@ function smartPan(rect, g, viewX, viewY, zoom, pad) {
     } else if (rect.y !== st) dy = rect.y - st;
     return { dx: dx, dy: dy };
 }
+
+// The canvas point under a global screen position: the inverse of the
+// plane transform. The screen's own origin lives inside the global
+// position, so one formula serves every output - a pointer on a second
+// monitor maps the same way, no per-screen term.
+function canvasOf(gx, gy, viewX, viewY, zoom) {
+    return { x: viewX + gx / zoom, y: viewY + gy / zoom };
+}
+
+// The view that zooms to z with the canvas point `c` under the anchor
+// (a global screen position) staying put: setZoom's pure half. The view
+// is the canvas coordinate of the layout origin at that zoom.
+function zoomView(c, anchorX, anchorY, z) {
+    return { x: c.x - anchorX / z, y: c.y - anchorY / z };
+}
+
+// The zoom that fits the box (l, t, r, b) into the screen g with a pad
+// margin, and the view that centres the box: zoomExtents' pure half.
+function fitBox(l, t, r, b, g, pad, zoomMin) {
+    const z = Math.max(zoomMin, Math.min(1.0, Math.min((g.width - 2 * pad) / (r - l), (g.height - 2 * pad) / (b - t))));
+    const cx = (l + r) / 2 - (g.x + g.width / 2) / z;
+    const cy = (t + b) / 2 - (g.y + g.height / 2) / z;
+    return { zoom: z, viewX: cx, viewY: cy };
+}

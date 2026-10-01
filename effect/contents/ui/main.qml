@@ -1359,17 +1359,18 @@ KWin.SceneEffect {
     }
 
     // ---- camera ops --------------------------------------------------------
-    function globalToCanvas(gx, gy) { return Qt.point(viewX + gx / zoom, viewY + gy / zoom); }
+    function globalToCanvas(gx, gy) { const c = Logic.canvasOf(gx, gy, viewX, viewY, zoom); return Qt.point(c.x, c.y); }
 
     function clampZoom(z) { return Math.max(zoomMin, Math.min(1.0, Number(z))); }
 
     // Zoom while holding the canvas point under `anchor` (global px) fixed on screen.
     function setZoom(z, anchor) {
         z = clampZoom(z);
-        const c = globalToCanvas(anchor.x, anchor.y);
+        const c = Logic.canvasOf(anchor.x, anchor.y, viewX, viewY, zoom);
+        const v = Logic.zoomView(c, anchor.x, anchor.y, z);
         zoom = z;
-        viewX = c.x - anchor.x / zoom;
-        viewY = c.y - anchor.y / zoom;
+        viewX = v.x;
+        viewY = v.y;
     }
 
     function panBy(dx, dy) {
@@ -1660,15 +1661,12 @@ KWin.SceneEffect {
         }
         if (l === Infinity) { l = 0; t = 0; r = 1; b = 1; }
         const sg = actionScreen().geometry;
-        const pad = 80;
-        const z = Math.max(zoomMin, Math.min(1.0, Math.min((sg.width - 2 * pad) / (r - l), (sg.height - 2 * pad) / (b - t))));
-        const cx = (l + r) / 2 - (sg.x + sg.width / 2) / z;
-        const cy = (t + b) / 2 - (sg.y + sg.height / 2) / z;
-        if (animate) { camGo(z, cx, cy); return; }
+        const f = Logic.fitBox(l, t, r, b, sg, 80, zoomMin);
+        if (animate) { camGo(f.zoom, f.viewX, f.viewY); return; }
         camStop();
-        zoom = z;
-        viewX = cx;
-        viewY = cy;
+        zoom = f.zoom;
+        viewX = f.viewX;
+        viewY = f.viewY;
     }
 
     // ---- open / close ------------------------------------------------------
@@ -1957,13 +1955,7 @@ KWin.SceneEffect {
     // that centres it, and whether any offset fits at all (a window larger than
     // the screen fits nowhere). Everything here is in the units the target
     // moves in - canvas pixels, which at the applied 1:1 are screen pixels.
-    function fitRange(w, h, g, margin) {
-        const x0 = margin, x1 = g.width - w - margin;
-        const y0 = margin, y1 = g.height - h - margin;
-        return { x0: x0, x1: x1, y0: y0, y1: y1,
-                 cx: Math.round((g.width - w) / 2), cy: Math.round((g.height - h) / 2),
-                 fits: x1 >= x0 && y1 >= y0 };
-    }
+    // The range itself is Logic.fitRange, the pure half in logic.js.
 
     // The area of the windows on activity a, other than the one being placed,
     // that the screen g shows with that activity's target at (tx, ty). Windows
@@ -1999,7 +1991,7 @@ KWin.SceneEffect {
     // does not change.
     function smartOffset(entry, a, g) {
         const margin = 8;
-        const range = fitRange(entry.width, entry.height, g, margin);
+        const range = Logic.fitRange(entry.width, entry.height, g, margin);
         if (!range.fits) return { dx: range.cx, dy: range.cy };   // larger than the screen: centred, clipped
         const clamp = function (v, lo, hi) { return Math.max(lo, Math.min(hi, v)); };
         const xs = [range.x0, range.x1, range.cx], ys = [range.y0, range.y1, range.cy];
@@ -2066,7 +2058,7 @@ KWin.SceneEffect {
                 // least shift that brings it wholly back in, because a window a
                 // double-click focused should not be half off the screen.
                 const g = actionScreen().geometry;
-                const range = fitRange(entry.width, entry.height, g, 8);
+                const range = Logic.fitRange(entry.width, entry.height, g, 8);
                 if (range.fits) {
                     t.x = Math.round(entry.x - g.x - Math.max(range.x0, Math.min(range.x1, entry.x - t.x - g.x)));
                     t.y = Math.round(entry.y - g.y - Math.max(range.y0, Math.min(range.y1, entry.y - t.y - g.y)));
@@ -4486,20 +4478,29 @@ KWin.SceneEffect {
             function mx(cx) { return ox + (cx - wb.x) * sc; }
             function my(cy) { return oy + (cy - wb.y) * sc; }
             // The lens: the scene behind the map, magnified a little and
-            // blurred - the glass the minimap wears. Hidden in the overlay.
+            // blurred - the glass the minimap wears, and the frost the
+            // overlay's sheets melt the live windows behind into. The
+            // sourceRect follows the map's own rect, so one glass rides
+            // both homes through the morph, and it fades in with the
+            // sheet's entrance so the hold's zoom-out blurs the windows
+            // as the map sharpens over them.
             ShaderEffectSource {
-                visible: false
+                visible: planeMap.asMinimap || planeMap.asOverlay || opacity > 0.004
                 id: glass
                 anchors.fill: parent
                 sourceItem: view
                 recursive: false
                 sourceRect: Qt.rect(planeMap.x + planeMap.width * 0.02, planeMap.y + planeMap.height * 0.02, planeMap.width * 0.96, planeMap.height * 0.96)
+                // Half resolution, like the wallpaper haze: a quarter of the
+                // pixels for the same frost, which is the difference between
+                // a full-screen blur that runs and one that exhausts the GPU.
+                textureSize: Qt.size(Math.max(1, Math.round(width / 2)), Math.max(1, Math.round(height / 2)))
                 layer.enabled: true
                 layer.effect: FastBlur {
-                    radius: 22
+                    radius: 11
                     transparentBorder: false
                 }
-                opacity: planeMap.asMinimap ? 1 : 0
+                opacity: planeMap.asMinimap ? 1 : (planeMap.asOverlay ? graspContent.graspFade : 0)
                 Behavior on opacity { NumberAnimation { duration: 200 } }
             }
             scale: 1.0

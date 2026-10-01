@@ -1,5 +1,12 @@
 Unreleased:
 
+- The map wears real glass: the overlay's sheets frost the live windows
+  behind them as they sharpen in, and the corner lens keeps its blur - one
+  glass riding both homes through the morph, at half resolution so it costs
+  a quarter of the pixels.
+- The plane transform (screen-to-canvas, the zoom anchor, the fit) moved
+  into logic.js, the unit-tested pure half.
+
 - An applet's dropdown no longer flies the desktop: special overlays join
   panels, docks and popups on the never-fly list, so clicking around the
   panel leaves the camera alone.
