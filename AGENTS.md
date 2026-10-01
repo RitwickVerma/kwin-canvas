@@ -32,10 +32,11 @@ stands right now is [docs/status.md](docs/status.md).
 ```bash
 make deps                    # what is missing on this machine, and how to install it
 make deps-install            # ... with pacman
-make lint                    # REUSE metadata + QML syntax + shell syntax (what CI runs)
+make lint                    # REUSE metadata + QML syntax + shell syntax + the dead-code census (what CI runs)
 make lint-reuse              # copyright and licence metadata, REUSE 3.3
 make lint-qml                # every .qml file, failing on a [syntax] warning
 make lint-shell              # bash -n on every script
+make lint-deadcode           # tools/deadcode.sh: nothing declared may be referenced only at its declaration
 
 make tools                   # build/tools/fakeinput, the fake-input client
 make fixtures                # regenerate tests/fixtures (committed; CI diffs them)

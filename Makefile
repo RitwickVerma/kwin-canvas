@@ -48,7 +48,7 @@ deps-install: ## Install missing dependencies with pacman (asks for sudo)
 # `make lint` is what the CI jobs run, so a pipeline failure can be reproduced
 # here. Both tools are in dev/deps.sh; the Qt6 qmllint is asked for by path
 # because the Qt5 build in /usr/bin answers to the same name.
-lint: lint-reuse lint-qml lint-shell ## Run the checks the CI jobs run
+lint: lint-reuse lint-qml lint-shell lint-deadcode ## Run the checks the CI jobs run
 
 lint-reuse: ## Check the copyright and licence metadata (REUSE 3.3)
 	@command -v reuse >/dev/null 2>&1 || { echo "reuse is not installed: sudo pacman -S reuse"; exit 1; }
@@ -63,6 +63,9 @@ lint-qml: ## Parse every QML file and fail on a syntax error (qmllint itself exi
 
 lint-shell: ## Parse every script with bash -n
 	@status=0; for f in $$(git ls-files "*.sh"); do bash -n "$$f" || status=1; done; exit $$status
+
+lint-deadcode: ## The dead-code census: nothing declared may be referenced only at its declaration
+	@bash tools/deadcode.sh
 
 # ---- packages ---------------------------------------------------------------
 stage:

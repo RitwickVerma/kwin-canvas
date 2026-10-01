@@ -200,15 +200,22 @@ them at fixed canvas positions with `placeby`, then sources each
 
 `.gitlab-ci.yml` runs in an `archlinux:latest` container, which has no
 compositor, so it holds the checks that do not need one and skips the rest
-rather than pretending they passed. The three check jobs are the three parts of
+rather than pretending they passed. The four check jobs are the four parts of
 `make lint`, so a red pipeline reproduces here:
 
 ```bash
-make lint           # lint-reuse, lint-qml, lint-shell
-make lint-reuse     # reuse lint: copyright and licence metadata (REUSE 3.3)
-make lint-qml       # every .qml file, failing on a [syntax] warning
-make lint-shell     # bash -n on every script
+make lint            # lint-reuse, lint-qml, lint-shell, lint-deadcode
+make lint-reuse      # reuse lint: copyright and licence metadata (REUSE 3.3)
+make lint-qml        # every .qml file, failing on a [syntax] warning
+make lint-shell      # bash -n on every script
+make lint-deadcode   # the dead-code census (tools/deadcode.sh)
 ```
+
+The census is the QML dead-code graph by hand, since no graph tool parses
+QML: every function, property, signal and id in `main.qml` (plus the logic.js
+exports, the scenarios' helpers and the plugin's file-local helpers) must be
+referenced somewhere beyond its own declaration, or the check fails. graphify
+covers the bash surface and agrees, but its grammar list has no QML.
 
 `reuse lint` reads the headers in the files, plus `REUSE.toml` for the PNGs, the
 JSON and XML KWin parses, `VERSION` and the text fixtures. `qmllint` returns 0

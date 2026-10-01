@@ -44,7 +44,9 @@ This file arrived in one commit on top of those, together with `AGENTS.md` and
 On this session's tree, in a nested KWin 6.7.5 with the pass-through plugin
 built and loaded (the live-session half stays untested, below):
 
-- `make lint-qml` and `make lint-shell` — exit 0. `lint-reuse` still needs
+- `make lint-qml`, `make lint-shell` and `make lint-deadcode` — exit 0 (the
+  census in `tools/deadcode.sh` keeps the tree free of declarations nobody
+  references; it runs in CI too). `lint-reuse` still needs
   `reuse`, which is not installed here (below).
 - `make unit` — 50 pure-logic assertions in node, in the CI's check stage
   as well as locally (the seam band joined the tested half).
