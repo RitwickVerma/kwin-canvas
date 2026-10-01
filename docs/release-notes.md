@@ -1,5 +1,14 @@
 Unreleased:
 
+- The switcher: the hold's map as a toggle - `SwitcherShortcut`
+  (Meta+Tab; bind it over KWin's own Tabbox in the shortcut settings) -
+  the whole plane appears, Tab and Shift+Tab step the highlighted
+  window, Enter enters it, Esc or the chord steps back out. The window
+  switcher the plane deserves.
+
+- The camera's rectangle is an instrument: drag it across the map and
+  the view follows.
+
 - Every fly is smart: the swap, the grasp's map jump and every path that
   moves the canvas to include a window now take the least movement that
   keeps the most of the desk in view, and a fly slides to a fresh

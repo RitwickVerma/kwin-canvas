@@ -39,4 +39,16 @@ run_scenario() {
     sleep 0.4
     c cancel
     arrange >/dev/null
+    # The switcher: the map as a toggle - Tab steps the selection, Enter
+    # enters the chosen window.
+    c "switch"
+    sleep 0.5; c state
+    assert_eq "the switcher opens the map quietly" "$(sget visible)" true
+    printf 'key tab\n' | input
+    sleep 0.4; c state
+    assert_eq "tab steps the selection" "$(grep -cE '^  \[[0-9]+\] \*' <<<"$LAST_STATE")" 1
+    printf 'key enter\n' | input
+    sleep 0.8; c state
+    assert_eq "enter steps into the chosen window" "$(sget visible)" false
+    arrange >/dev/null
 }

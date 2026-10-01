@@ -1315,6 +1315,23 @@ KWin.SceneEffect {
         return Math.min(1, Math.max(1 - effect.zoom, away / (Math.max(g.width, g.height) * 1.2)));
     }
     property var pendingFly: null
+    // The switcher: the hold's map as a toggle. The chord opens the canvas
+    // quietly with the map up; Tab and Shift+Tab step the selection - the
+    // camera and the map's highlight follow - Enter enters the chosen
+    // window, Esc or the chord again steps back out.
+    property bool switcherActive: false
+    function switcherToggle() {
+        if (switcherActive) {
+            switcherActive = false;
+            doCancel();
+            return;
+        }
+        if (visible && !quiet) { switcherActive = false; return; }
+        if (!visible) open(true);
+        switcherActive = true;
+        clickPanEntry = null;
+        clickPanTimer.stop();
+    }
     property var clickedWindow: null
     onPointerButtonsChanged: {
         if (pointerButtons === 0) {
@@ -1740,6 +1757,7 @@ KWin.SceneEffect {
     // for the buttons to come up, so the canvas never hands a held button to
     // the desktop mid-press.
     function commit(activate) {
+        switcherActive = false;
         if (sceneGestures > 0) {
             deferredClose = function () { commit(activate); };
             return;
@@ -1842,6 +1860,7 @@ KWin.SceneEffect {
     }
 
     function doCancel() {
+        switcherActive = false;
         if (!visible) return;
         if (sceneGestures > 0) {
             deferredClose = doCancel;
@@ -3192,6 +3211,12 @@ KWin.SceneEffect {
         onActivated: effect.toggle()
     }
     KWin.ShortcutHandler {
+        name: "Canvas Switcher"
+        text: "Canvas: the switcher - the whole plane as a map, Tab to step, Enter to enter"
+        sequence: effect.configuration.SwitcherShortcut
+        onActivated: effect.switcherToggle()
+    }
+    KWin.ShortcutHandler {
         name: "Canvas Home"
         text: "Canvas: return this activity to the origin"
         sequence: effect.configuration.HomeShortcut
@@ -3398,6 +3423,7 @@ KWin.SceneEffect {
         case "sendto": sendTo(a[1] === "none" || !numok(1) ? null : activityIds[Number(a[1])]); break;
         case "marquee": if (numok(1) && numok(2) && numok(3) && numok(4)) selectInRect(Number(a[1]), Number(a[2]), Number(a[3]), Number(a[4])); break;
         case "state": break;
+        case "switch": switcherToggle(); break;
         default: console.warn("kwin-canvas: unknown debug command", cmd);
         }
         logState();
@@ -3696,7 +3722,7 @@ KWin.SceneEffect {
         // Input is live while the overworld is open, and while a grasp holds
         // the canvas quietly at 1:1 - a slide without a grasp stays inert,
         // which is what keeps a slide a brief animation and nothing more.
-        enabled: !effect.quiet || effect.grasp
+        enabled: !effect.quiet || effect.grasp || effect.switcherActive
         focus: true
         Connections {
             target: effect
@@ -4418,7 +4444,7 @@ KWin.SceneEffect {
             z: 80000
             readonly property int mw: Math.round(view.sg.width * 0.16)
             readonly property int mh: Math.round(view.sg.height * 0.2)
-            readonly property bool asOverlay: effect.grasp && view.screen === effect.primaryScreen
+            readonly property bool asOverlay: (effect.grasp || effect.switcherActive) && view.screen === effect.primaryScreen
             readonly property bool asMinimap: effect.canvasOpen && !effect.quiet && effect.zoom < 0.9 && !effect.grasp && view.screen === effect.primaryScreen
             readonly property rect home: asOverlay
                 ? Qt.rect(24, 24, view.sg.width - 48, view.sg.height - 48)
@@ -4534,10 +4560,10 @@ KWin.SceneEffect {
                     height: { effect.revision; return Math.max(planeMap.asOverlay ? 6 : 1.6, e.height * planeMap.sc); }
                     radius: planeMap.asOverlay ? 5 : 1
                     color: planeMap.asOverlay
-                        ? (effect.graspHoverIndex === index ? Qt.rgba(1, 1, 1, 0.30) : Qt.rgba(1, 1, 1, 0.20))
+                        ? (effect.graspHoverIndex === index || effect.isSelected(e) ? Qt.rgba(1, 1, 1, 0.30) : Qt.rgba(1, 1, 1, 0.20))
                         : Qt.rgba(1, 1, 1, 0.8)
                     border.width: planeMap.asOverlay ? 0.8 : 0
-                    border.color: effect.graspHoverIndex === index ? "#f0ffffff" : "#70ffffff"
+                    border.color: effect.graspHoverIndex === index || effect.isSelected(e) ? "#f0ffffff" : "#70ffffff"
                     Text {
                         anchors.centerIn: parent
                         text: effect.graspHoverIndex === index && planeMap.asOverlay ? e.window.caption : ""
@@ -4595,6 +4621,17 @@ KWin.SceneEffect {
                     border.width: 1
                     border.color: "#e8ffffff"
                     opacity: cameraRect.fade
+                    // The rectangle itself pans the camera: drag the
+                    // viewport across the map and the view follows.
+                    DragHandler {
+                        property point last: Qt.point(0, 0)
+                        onActiveChanged: { if (!active) last = Qt.point(0, 0); }
+                        onActiveTranslationChanged: {
+                            const t = activeTranslation;
+                            effect.panBy(t.x - last.x, t.y - last.y);
+                            last = t;
+                        }
+                    }
                 }
             }
             }

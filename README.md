@@ -136,6 +136,7 @@ disable the stock **Zoom** effect if it owns Meta+wheel.
 | hold MB4 and tap MB5 (`SwapButton`) | on the desktop: the location becomes the canvas | fly between the two most recent windows; release opens the location there, focused; in the open overworld it tours the clusters |
 | hold MB4, wheel out, release | on the desktop: the location becomes the canvas | the keyhole widens into the overworld - the map morphs from the full sheet into the corner lens; zoomed in, the release commits the location instead |
 | [ / ] | | fly the camera to the next / previous cluster of nearby windows, in reading order on the plane |
+| the switcher chord (`SwitcherShortcut`, Meta+Tab - bind it over KWin's Tabbox) | | the hold's map as a toggle: Tab and Shift+Tab step the highlighted window, Enter enters it, Esc steps back out |
 | Float (a window's arrange menu) | | the window keeps its coordinates on the plane - only the hand moves them - and when the camera pushes it partly off the screen its picture floats at the edge, bouncing off it with real physics; move the camera back and the picture is the window again. The same flag as "on all desktops", so it follows you across virtual desktops too |
 
 Activating a window from the task manager - or anything else that focuses it,

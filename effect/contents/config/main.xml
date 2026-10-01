@@ -228,6 +228,10 @@
             <label>Gesture on a window outside every frame that creates an activity centred on it.</label>
             <default>Shift+DoubleClick</default>
         </entry>
+        <entry name="SwitcherShortcut" type="String">
+            <label>The switcher's chord: the hold's map as a toggle - the whole plane appears, Tab and Shift+Tab step the highlighted window, Enter enters it, Esc or the chord again steps back out. The window switcher the plane deserves; bind it over KWin's own Tabbox if you want it on Meta+Tab.</label>
+            <default>Meta+Tab</default>
+        </entry>
         <entry name="ToggleShortcut" type="String">
             <label>Key sequence that steps out to the canvas and back in (enters the location under the screen centre).</label>
             <default>Meta+Ctrl+Alt+Space</default>
