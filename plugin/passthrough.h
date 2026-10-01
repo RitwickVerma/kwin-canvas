@@ -113,6 +113,8 @@ private:
     void replayClick();
 
     bool m_active = false;
+    /** The pointer's last global position, for the hover clock's re-check. */
+    QPointF m_lastPosition;
     /** The pointer has moved since the activation: the passthrough is live. */
     bool m_settled = false;
     double m_viewX = 0;
@@ -148,6 +150,12 @@ private:
     QTimer m_holdTimer;
     QPointer<KWin::Window> m_hover;
     QPointer<KWin::SurfaceInterface> m_hoverSurface;
+    /** The window the pointer rests on, before the hover delay has passed:
+     * a pass-over never hands the input over; a rest does. */
+    QPointer<KWin::Window> m_hoverCandidate;
+    /** The hover delay: how long the pointer must rest on a window before
+     * the passthrough takes it over. */
+    QTimer m_hoverTimer;
     /** A left press on a window while the canvas is closed: a candidate click
      * the effect flies to on the release - a click on an already-active window
      * raises no activation, so the press is the only trace of it. */

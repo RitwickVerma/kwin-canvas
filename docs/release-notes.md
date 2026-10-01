@@ -1,5 +1,10 @@
 Unreleased:
 
+- The pass-through engages on a rest: the pointer must hold still on a
+  window for a beat before the window takes the input - sweeping across
+  the overworld stays the canvas's, and only a deliberate rest hands it
+  over. A click is the intent itself and takes the window at once.
+
 - The switcher: the hold's map as a toggle - `SwitcherShortcut`
   (Meta+Tab; bind it over KWin's own Tabbox in the shortcut settings) -
   the whole plane appears, Tab and Shift+Tab step the highlighted

@@ -82,6 +82,19 @@ CanvasPassthrough::CanvasPassthrough()
             m_idle = true;
         }
     });
+    // The passthrough engages on a rest, not a pass-over: the pointer must
+    // hold still on a window for this long before the window takes the
+    // input - sweeping across the overworld stays the canvas's.
+    m_hoverTimer.setSingleShot(true);
+    m_hoverTimer.setInterval(260);
+    connect(&m_hoverTimer, &QTimer::timeout, this, [this]() {
+        if (m_hoverCandidate && m_active && !m_grabGround) {
+            const QPointF canvas = toCanvas(m_lastPosition);
+            if (windowAt(canvas) == m_hoverCandidate.data()) {
+                enter(m_hoverCandidate.data(), canvas);
+            }
+        }
+    });
     m_holdTimer.setSingleShot(true);
     m_holdTimer.setInterval(std::max(50, KSharedConfig::openConfig(QStringLiteral("kwinrc"))->group(QStringLiteral("Effect-kwin-canvas")).readEntry("HoldDelay", 300)));
     connect(&m_holdTimer, &QTimer::timeout, this, [this]() {
@@ -358,6 +371,7 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
         return false;
     }
     const QPointF canvas = toCanvas(event->position);
+    m_lastPosition = event->position;
     if (m_grab) {
         // Implicit grab: the window keeps the pointer until the buttons are up.
         if (!enter(m_grab, canvas)) {
@@ -367,9 +381,23 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
         return true;
     }
     Window *w = windowAt(canvas);
-    if (w && enter(w, canvas)) {
-        return true;
+    if (w) {
+        // The rest, not the pass-over: a new window under the pointer
+        // restarts the hover clock, and only the timeout hands the input
+        // over. The window already hovered keeps it through the motion.
+        // Until the clock fires the motion is the scene's, so the canvas
+        // still sees the pointer wherever the window will not take it.
+        if (w != m_hoverCandidate.data()) {
+            m_hoverCandidate = w;
+            m_hoverTimer.start();
+        }
+        if (m_hover == w) {
+            return enter(w, canvas);
+        }
+        return false;
     }
+    m_hoverCandidate = nullptr;
+    m_hoverTimer.stop();
     leave();
     return false;
 }
@@ -466,7 +494,9 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     }
     if (first) {
         // A new gesture: the window under the pointer takes it, or the ground does.
+        // A click is the intent itself, so the hover clock is overruled.
         const QPointF canvas = toCanvas(event->position);
+        m_hoverTimer.stop();
         Window *w = windowAt(canvas);
         if (w && enter(w, canvas)) {
             m_grab = w;
