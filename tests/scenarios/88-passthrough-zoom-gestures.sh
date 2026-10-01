@@ -35,7 +35,7 @@ run_scenario() {
     local dx1 dy1 dx2 dy2
     dx1=$((sx + sw * 3 / 10)); dy1=$((sy + sh / 2))
     dx2=$((sx + sw * 6 / 10)); dy2=$((sy + sh / 2))
-    printf "drag %d %d %d %d\n" "$dx1" "$dy1" "$dx2" "$dy2" | input
+    printf "move %d %d\nsleep 300\ndrag %d %d %d %d\n" "$dx1" "$dy1" "$dx1" "$dy1" "$dx2" "$dy2" | input
     sleep 0.6
     shot "$OUT/ptg-after.png" >/dev/null
     assert_true "the drag selected text in KWrite's picture" \
@@ -46,14 +46,16 @@ run_scenario() {
         printf "%d %d %d %d %d %d\n", (nx - vx) * z + nw * z / 2, (ny - vy) * z + nh * z / 2, nw * z, nh * z, (nx - vx) * z, (ny - vy) * z
     }')"
     input move "$ox" "$oy"
+    sleep 0.4
     printf 'wheel 3\n' | input
     sleep 0.6
     shot "$OUT/ptg-wheel.png" >/dev/null
     assert_true "the wheel scrolled Konsole's picture" \
         "$(changed "$(region_rmse "$OUT/ptg-after.png" "$OUT/ptg-wheel.png" "${cwx}x${cwy}+${cxo}+${cyo}")")" = 1
     # Leave the fixtures as found: undo the drag's selection and the scroll.
-    printf "move %d %d\nclick\nkey leftctrl down\nkey z\nkey leftctrl up\n" "$dx1" "$dy1" | input
+    printf "move %d %d\nsleep 300\nclick\nkey leftctrl down\nkey z\nkey leftctrl up\n" "$dx1" "$dy1" | input
     input move "$ox" "$oy"
+    sleep 0.4
     printf 'wheel -3\n' | input
     sleep 0.5
     c cancel

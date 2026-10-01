@@ -28,20 +28,21 @@ run_scenario() {
     assert_eq "hover reaches KWrite" "$(pt_state | grep -c 'hover=sample.txt')" 1
     input move 1700 1000; sleep 0.3
     assert_eq "ground clears the hover" "$(pt_state | grep -c 'hover=-')" 1
-    # A click raises and focuses; the thumbnails restack.
-    printf 'move 900 400\nclick\n' | input; sleep 0.8; c state
+    # A click raises and focuses; the thumbnails restack. The pointer rests
+    # first - the hover's delay is what hands the click over.
+    printf 'move 900 400\nsleep 300\nclick\n' | input; sleep 0.8; c state
     assert_eq "click focuses KWrite" "$(aget)" "sample.txt — KWrite"
     assert_eq "KWrite on top" "$(grep '^  \[' <<<"$LAST_STATE" | tail -1 | grep -c KWrite)" 1
     shot "$OUT/pt-clicked.png" >/dev/null
     # A drag inside KWrite selects text; the wheel over Konsole scrolls it.
-    printf 'drag 760 392 1000 424\n' | input; sleep 0.5
+    printf 'move 760 392\nsleep 300\ndrag 760 392 1000 424\n' | input; sleep 0.5
     printf 'move 400 900\nwheel 3\n' | input; sleep 0.5
     shot "$OUT/pt-after.png" >/dev/null
     assert_eq "drag selected text in KWrite" "$(changed "$(region_rmse "$OUT/pt-clicked.png" "$OUT/pt-after.png" 600x260+690+380)")" 1
     assert_eq "wheel scrolled Konsole" "$(changed "$(region_rmse "$OUT/pt-before.png" "$OUT/pt-after.png" 500x300+110+680)")" 1
     # Keys go to the focused window: a click drops the selection, then a typed
     # letter lands in KWrite's text.
-    printf 'move 900 400\nclick\nkey a\n' | input; sleep 0.6
+    printf 'move 900 400\nsleep 300\nclick\nkey a\n' | input; sleep 0.6
     shot "$OUT/pt-typed.png" >/dev/null
     assert_eq "typing reached KWrite" "$(changed "$(region_rmse "$OUT/pt-clicked.png" "$OUT/pt-typed.png" 600x260+690+380)")" 1
     # The ground still pans.
@@ -61,7 +62,7 @@ run_scenario() {
     # back, drop the selection, then the usual arrange, so the scenarios
     # that follow (and their goldens) see the same desk this one found.
     open_1to1; sleep 0.5
-    printf 'move 900 400\nclick\nkey leftctrl down\nkey z\nkey leftctrl up\nmove 400 900\nwheel -3\n' | input; sleep 0.5
+    printf 'move 900 400\nsleep 300\nclick\nkey leftctrl down\nkey z\nkey leftctrl up\nmove 400 900\nsleep 300\nwheel -3\n' | input; sleep 0.5
     c cancel
     c state
     assert_eq "layout kept" "$(eget KCalc fx)" 100

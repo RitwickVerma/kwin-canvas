@@ -501,12 +501,15 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
         m_buttons &= ~event->button;
     }
     if (first) {
-        // A new gesture: the window under the pointer takes it, or the ground does.
-        // A click is the intent itself, so the hover clock is overruled.
+        // A new gesture. The press belongs to the window only after the
+        // rest: a click, a grab and the double-click to enter all start
+        // with a press, and the hover's delay is what tells them apart - a
+        // rested pointer hands the press over, a fresh touch is the
+        // canvas's, so the enter and the selection never lose to the window.
         const QPointF canvas = toCanvas(event->position);
         m_hoverTimer.stop();
         Window *w = windowAt(canvas);
-        if (w && enter(w, canvas)) {
+        if (w && m_hover == w && enter(w, canvas)) {
             m_grab = w;
             m_grabGround = false;
             workspace()->activateWindow(w);
@@ -575,7 +578,11 @@ bool CanvasPassthrough::pointerAxis(PointerAxisEvent *event)
         return false;
     }
     const QPointF canvas = toCanvas(event->position);
-    Window *w = m_grab ? m_grab.data() : windowAt(canvas);
+    Window *w = m_grab ? m_grab.data() : nullptr;
+    if (!w) {
+        Window *cand = windowAt(canvas);
+        if (cand && m_hover == cand) w = cand;
+    }
     if (!w || !enter(w, canvas)) {
         return false;
     }
