@@ -1301,6 +1301,9 @@ KWin.SceneEffect {
     // plugin: a click on an already-active window raises no activation, so
     // the fly has to learn about the click this way too.
     property int pointerButtons: 0
+    // The pass-through has let go after the idle: the canvas owns the
+    // input again, until the pointer's next touch.
+    property bool passthroughIdle: false
     // How far the camera has left the location while the keyhole is open
     // (the quiet grasp): 0 at home, growing with the zoom-out and the pan.
     // The skin - the frames, the tags, the threads, the glow - fades in
@@ -1520,8 +1523,8 @@ KWin.SceneEffect {
         }
         const nearZoom = Math.abs(zoom - camGoalZoom) < 0.0004 && Math.abs(camVZoom) < 0.02;
         if (camHasGoal && nearZoom
-            && (camAnchored || (Math.abs(viewX - camGoalX) < 0.2 && Math.abs(viewY - camGoalY) < 0.2
-                                && Math.abs(camVX) < 0.5 && Math.abs(camVY) < 0.5))) {
+            && (camAnchored || (Math.abs(viewX - camGoalX) < 0.8 && Math.abs(viewY - camGoalY) < 0.8
+                                && Math.abs(camVX) < 3 && Math.abs(camVY) < 3))) {
             zoom = camGoalZoom;
             if (camAnchored) {
                 viewX = camAnchorX - camAnchorGX / zoom;
@@ -2506,7 +2509,7 @@ KWin.SceneEffect {
     property var clickPanEntry: null
     Timer {
         id: clickPanTimer
-        interval: 360
+        interval: 140
         repeat: false
         onTriggered: {
             if (clickPanEntry) {
@@ -2938,6 +2941,9 @@ KWin.SceneEffect {
         return Qt.point(Math.round(g.width * f), Math.round(g.height * f));
     }
 
+    // The slide's duration grows with its distance, sub-linearly: a short
+    // pan reads quick, a long one glides, and the PanDuration knob is the
+    // half-screen reference.
     function slide(dx, dy) {
         if (!beginSlide()) return;
         if (!slideAnim.running) { slideToX = viewX; slideToY = viewY; }
@@ -3448,6 +3454,7 @@ KWin.SceneEffect {
             + " focus=" + (focusEntry ? JSON.stringify(focusEntry.window.caption) : "-")
             + " clusters=" + clusters.length + " cluster=" + (clusterIndex() >= 0 ? "#" + (clusterIndex() + 1) : "-")
             + " draglag=" + Math.round(Math.sqrt(dragLagX * dragLagX + dragLagY * dragLagY)) + " lean=" + dragLean.toFixed(2)
+            + " idle=" + (passthroughIdle ? "1" : "0")
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
         const ids = activityIds, screens = KWin.Workspace.screens;
         for (let i = 0; i < screens.length; ++i) {
@@ -4174,8 +4181,9 @@ KWin.SceneEffect {
                     z: -1
                     radius: 6
                     readonly property color accent: effect.activityColor(thumb.entry.activity)
-                    visible: { effect.selectionRev; effect.quietReveal; return (!effect.quiet || effect.quietReveal > 0.02) && thumb.hovered && !effect.isSelected(thumb.entry); }
-                    opacity: effect.quiet ? effect.quietReveal : 1
+                    visible: { effect.selectionRev; effect.quietReveal; return (!effect.quiet || effect.quietReveal > 0.02) && !effect.isSelected(thumb.entry); }
+                    opacity: thumb.hovered ? (effect.quiet ? effect.quietReveal : 1) : 0
+                    Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
                     color: Qt.rgba(accent.r, accent.g, accent.b, 0.16)
                     border.width: 1
                     border.color: Qt.rgba(accent.r, accent.g, accent.b, 0.5)

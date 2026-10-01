@@ -224,8 +224,8 @@ test-shim: install fixtures tools ## Run the plane-input scenarios (tests/shim) 
 golden: install fixtures ## Re-record the golden screenshots from the current build
 	UPDATE_GOLDEN=1 tests/run.sh $(ARGS)
 
-demo: install fixtures tools ## Drive a scripted session with real input; screenshots and frames to build/demo
-	demo/demo.sh
+demo: install fixtures tools ## Drive a scripted session with real input; demo.gif and demo.mp4 in build/demo
+	dev/demo.sh
 
 tour: install fixtures ## Regenerate the screenshot tour images in docs/images
 	docs/tour.sh

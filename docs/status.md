@@ -13,10 +13,8 @@ what a user sees in [release-notes.md](release-notes.md).
 the pass-through work, and this repository's hygiene: the conventions files,
 per-file licensing, CI and `make lint`.
 
-- `origin` is `git@gitlab.com:ritwick7/kwin-canvas.git` and **does not exist yet**
-  (the API answers 404 as of 2026-09-28), so nothing has been pushed. Once the
-  empty project is there: `git push -u origin main`, which also moves `main`'s
-  tracking from `upstream/main` to `origin/main`.
+- `origin` is `git@gitlab.com:ritwick7/kwin-canvas.git`, and the fork is pushed
+  there (`main` ahead of `upstream/main` by the fork's own commits).
 - Upstream's tags `v0.3.0`, `v0.3.1` and `v0.4.0` are fetched locally and have not
   been pushed to the fork.
 - `make release`, `make aur` and `make aur-passthrough` publish to upstream's GitHub

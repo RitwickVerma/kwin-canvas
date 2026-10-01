@@ -1,5 +1,11 @@
 Unreleased:
 
+- The micro-feel: a single click pans after a beat instead of waiting out
+  the whole double-click window (the second tap still cancels it), the
+  camera lands instead of crawling its last pixels, the hover glow fades
+  in and out instead of popping, and the idle handover publishes itself,
+  so the canvas and the tests can see whose the input is.
+
 - The pass-through engages on a rest: the pointer must hold still on a
   window for a beat before the window takes the input - sweeping across
   the overworld stays the canvas's, and only a deliberate rest hands it

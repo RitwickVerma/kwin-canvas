@@ -78,8 +78,11 @@ CanvasPassthrough::CanvasPassthrough()
     m_idleTimer.setInterval(4000);
     m_idleTimer.setSingleShot(false);
     connect(&m_idleTimer, &QTimer::timeout, this, [this]() {
-        if (m_active) {
+        if (m_active && !m_idle) {
             m_idle = true;
+            if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+                canvas->setProperty("passthroughIdle", true);
+            }
         }
     });
     // The passthrough engages on a rest, not a pass-over: the pointer must
@@ -353,7 +356,12 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
     if (m_clickWindow && (event->position - m_clickPos).manhattanLength() > 6) {
         m_clickWindow = nullptr;
     }
-    m_idle = false;
+    if (m_idle) {
+        m_idle = false;
+        if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+            canvas->setProperty("passthroughIdle", false);
+        }
+    }
     m_idleTimer.start();
     if (!m_active) {
         return false;

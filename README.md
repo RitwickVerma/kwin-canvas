@@ -1,6 +1,6 @@
 # kwin-canvas
 
-![kwin-canvas: the canvas zoomed to fit, two activities as monitor frames on a grid, windows as live thumbnails](docs/images/02-hero.png)
+![kwin-canvas: the demo - the step out into the haze, the hover's glow, the double-click's flight, the clusters' web, the map's morph, and the step back in](docs/images/demo.gif)
 
 An infinite canvas for KDE Plasma, built on KWin's public scripting API. No
 patches, no forked compositor, no plugin against private headers.
