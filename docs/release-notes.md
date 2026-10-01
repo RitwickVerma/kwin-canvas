@@ -1,5 +1,19 @@
 Unreleased:
 
+- A pointer parked on the desk's outer seam - where deskflow and its kin
+  leave the mouse while another machine has it - no longer hovers the
+  window under it: the seam is a dead band for hover, in the canvas and
+  in the pass-through alike, so a shared mouse never glows a window or
+  pans the camera by itself.
+- The fly's landing no longer flickers: the quiet slide fades out over the
+  desktop it slid to (and in when it opens), so the inactive windows'
+  decorations, the panel and the shadows step back in under a fade instead
+  of a one-frame cut.
+- A hover in the overworld now raises the window for real: the rest that
+  focuses a window puts it on top of the canvas and of KWin's stacking
+  together, and the raise survives the step back in - what was on top in
+  the overworld is on top in the location.
+
 - The map wears real glass: the overlay's sheets frost the live windows
   behind them as they sharpen in, and the corner lens keeps its blur - one
   glass riding both homes through the morph, at half resolution so it costs

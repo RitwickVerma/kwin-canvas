@@ -275,6 +275,14 @@ recording, point OBS at the nest window while `DEMO_FRAMES=0 make demo` runs.
 
 ## Things that cost time
 
+- **The full suite flakes under GPU pressure, and the failing set differs
+  per run.** A scenario that passes alone, in its batch and in a clean full
+  run can fail when the machine's VRAM is exhausted by leftover nests (a
+  crashed nest's compositor keeps its buffers): the failures were 8 px frame
+  offsets, a stale caption, then 40 failures one run and two the next. `make
+  nest-clean`, a reboot, and judging by the named scenario batches rather
+  than a full-suite run are the workaround; a full-suite failure that does
+  not reproduce as a named scenario or a pair is not a code regression.
 - **The ScreenCast portal on a virtual nest streams one stale frame.** KWin's
   `--virtual` output presents the scene on damage, and the pipewire stream a
   ScreenCast session hands out repeats its last buffer: a recorder that

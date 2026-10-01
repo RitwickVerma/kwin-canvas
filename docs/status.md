@@ -46,15 +46,25 @@ built and loaded (the live-session half stays untested, below):
 
 - `make lint-qml` and `make lint-shell` — exit 0. `lint-reuse` still needs
   `reuse`, which is not installed here (below).
-- `make test` — `== pass 376  fail 0  skip 1`, the skip `91-two-outputs`
-  needing a two-output nest; `85-passthrough` and `87-passthrough-zoom`
-  run for real against the built plugin. `make test-two-outputs` — `== pass 17  fail 0  skip 0`.
-- `make unit` — 36 pure-logic assertions in node, in the CI's check stage
-  as well as locally.
+- `make unit` — 50 pure-logic assertions in node, in the CI's check stage
+  as well as locally (the seam band joined the tested half).
+- The scenarios, by the batches that pin them (the seam's hover dead band,
+  the fly's fade, and the hover's real raise are the newest work):
+  `make test ARGS=109` — 9/0, `110` — 5/0, `7[01]` — 18/0,
+  `10[013479]` — 87/0, `8[0-9]` — 62/2 (the panel and the two-output
+  skips), `10[49]` — 29/0, `70` and `71` with the poll-tolerant slide.
+- The full suite is not green on this machine right now: `make test`
+  failed with a different set of scenarios on each of three runs (40
+  failures, then a handful, then two scenarios), each of which passes
+  alone and in its batch. This is the documented GPU-pressure flake
+  (docs/testing.md → Things that cost time), amplified by leaked VRAM
+  from crashed nests - the next session should reboot before taking a
+  full-suite result as evidence, or judge by the named batches above.
 - The goldens are recorded against the pinned nest (Breeze Dark, the dark
   icon theme, the Breeze widget style and decoration; the fixture apps'
   own configs are reset before each run), so they mean the same pixels on
-  every machine and every day.
+  every machine and every day. The fly's fade moves no golden: the quiet
+  slide wears no chrome and the scenes snap before and after the fade.
 - `make fixtures` — regenerates the committed fixtures byte for byte.
 
 ## What cannot be checked on this machine
@@ -102,6 +112,35 @@ those, from this side of the fork:
   pinned build-id - the biggest gap left in the suite.
 
 ## Sessions
+
+### 2026-10-01 — the seam, the fly's fade, and the hover's real raise
+
+Three live-session bugs, each fixed with a measure first:
+
+- **The seam.** deskflow (running as this machine's server) parks the
+  pointer on the screen border it hands the mouse over across; the hover
+  poll read that parked pointer as a rest and glowed/paned the window
+  under the seam. The outer few pixels of the desk are now a hover dead
+  band (logic.js `seamPoint` + the plugin's `atSeam`), the bookkeeping
+  runs through the grasp too - the first cut went stale during the quiet
+  hold and handed the title-bar drags to the pan - and `109-seam` pins
+  both sides.
+- **The fly's flicker.** Measured in the nest: the quiet canvas at 1:1
+  differs from the real desktop exactly over every inactive window (the
+  thumbnails draw the active decoration; the active window matches pixel
+  for pixel), so the fly's instant close flashed every inactive title
+  bar at once. The quiet scene now fades in when the slide opens and out
+  when it lands.
+- **The hover's z.** A hover now raises the window in KWin's real
+  stacking (the picture follows through the resync), so the overworld's
+  order and the desktop's can never disagree and the raise survives the
+  step back in - the picture-only re-stack from the earlier session is
+  gone. `110-hover-raise` pins the raise, the sync and the survival.
+
+The full suite is not green on this machine: three runs failed with
+different sets (40, then a handful, then two scenarios), all passing
+alone and in their batches - the GPU-pressure flake now written down in
+docs/testing.md. The named batches are the evidence until a reboot.
 
 ### 2026-09-30 — the switcher, the scoped pass-through, and the public polish
 
