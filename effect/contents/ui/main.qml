@@ -64,6 +64,7 @@ KWin.SceneEffect {
     property bool helpOpen: false
     // Quiet: open at 1:1 for a slide, with no frames, tags, toolbar or input.
     property bool quiet: false
+    property bool slideWarm: false
     readonly property bool canvasOpen: visible && !quiet
     // Pass-through: the optional binary plugin is live while the canvas is
     // open. Every key, and every click, drag and wheel over a window, goes
@@ -596,7 +597,7 @@ KWin.SceneEffect {
     // thread renders between its two windows, over the lower and under the
     // higher, so the constellation re-threads live as the eye moves.
     function windowZ(e) {
-        return e === focusEntry ? 1020 : 1000 + Math.min(12, hoverStack.indexOf(e.window.internalId) + 1);
+        return e === focusEntry ? 1020 : 1000 + entries.indexOf(e) + (entries.indexOf(e) * 37) % 26;
     }
     function clusterPairs(i, sgx, sgy) {
         const c = clusters[i];
@@ -2985,7 +2986,7 @@ KWin.SceneEffect {
         if (!slideAnim.running) { slideToX = viewX; slideToY = viewY; }
         slideToX += dx;
         slideToY += dy;
-        slideAnim.restart();
+        slideGo();
     }
 
     // A slide to a fresh destination, from wherever the camera is now: the
@@ -2995,7 +2996,18 @@ KWin.SceneEffect {
         if (!beginSlide()) return;
         slideToX = viewX + dx;
         slideToY = viewY + dy;
-        slideAnim.restart();
+        slideGo();
+    }
+
+    // The slide starts a frame after the quiet open, so the scene's first
+    // paint - the cold thumbnails' warm-up - never flashes under the glide.
+    function slideGo() {
+        if (slideWarm) {
+            slideWarm = false;
+            Qt.callLater(function () { slideAnim.restart(); });
+        } else {
+            slideAnim.restart();
+        }
     }
 
     // Open quietly if closed. False while the real canvas is open.
@@ -3005,6 +3017,7 @@ KWin.SceneEffect {
             open(true);
             slideToX = viewX;
             slideToY = viewY;
+            slideWarm = true;
         }
         return true;
     }
@@ -4154,7 +4167,10 @@ KWin.SceneEffect {
                 height: { effect.revision; return effect.entries[index].height * effect.zoom; }
                 visible: !effect.quiet || entry.activity === effect.currentActivity
                 opacity: effect.thumbOpacity
-                z: thumb.entry === effect.focusEntry ? 1020 : 1000 + Math.min(12, effect.hoverStack.indexOf(thumb.entry.window.internalId) + 1)
+                // The entries are the real stacking order, so the index IS the
+                // actual z; the hovered window pops above the web on top of
+                // that, and nothing else re-orders.
+                z: thumb.entry === effect.focusEntry ? 1020 : 1000 + index + (index * 37) % 26
                 readonly property int zDep: { effect.hoverRev; effect.focusEntry; return 0; }
                 // Weight: the window lifts while the hand holds it, trails and
                 // leans with the hand, and springs back when the hand stops.
