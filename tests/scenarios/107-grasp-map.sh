@@ -9,12 +9,12 @@ run_scenario() {
     c "placeby Gwenview 4000 300 460 420"
     c commit
     sleep 0.3
-    # Hold MB4, click the far window's sheet on the map, release: the
-    # location opens centred on it.
-    { printf 'move 1700 900\nsleep 60\ndown back\nsleep 1200\n'; \
-      printf 'move 1780 520\nsleep 100\nclick\n'; \
-      printf 'sleep 500\nup back\n'; } | input
-    sleep 1.5; c state
+    # Hold MB4, zoom out so the map steps in, click the far window's sheet
+    # on it, release: the location opens centred on the window.
+    printf 'move 1700 900\nsleep 60\ndown back\nsleep 3000\nmove 1780 520\nsleep 100\nclick\nsleep 500\nup back\n' | input &
+    sleep 1.2
+    c "zoom 0.6 960 540"
+    sleep 3.0; c state
     assert_eq "the grasp's map click flies and the release commits" "$(sget visible)" false
     assert_true "the location brings the clicked window wholly on screen" \
         "$(awk -v x="$(eget Gwenview fx)" 'BEGIN{print (x >= 0 && x + 460 <= 1920)}')" = 1

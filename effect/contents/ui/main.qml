@@ -198,7 +198,7 @@ KWin.SceneEffect {
         // fades in, and the map morphs from the full sheet into the corner
         // lens. Zoomed in, the release commits the location, as it always
         // has - a pan during the hold is the location's new viewport.
-        if (zoom < 0.72) {
+        if (zoom < 0.72 && !graspJumped) {
             quiet = false;
             chromeFade = 0;
             welcomeAnim.restart();
@@ -336,17 +336,34 @@ KWin.SceneEffect {
         }
         return -1;
     }
+    // A sheet clicked on the grasp's map is the release's destination: the
+    // hold that jumped commits the clicked location, whatever the zoom.
+    property bool graspJumped: false
+    // The grasp's jump flies to the window's location at 1:1, whatever the
+    // hold's zoom: the destination is the location itself, and the release
+    // commits it.
+    function graspFly(e) {
+        const others = [];
+        for (let i = 0; i < entries.length; ++i) {
+            if (entries[i] === e) continue;
+            others.push({ x: entries[i].x, y: entries[i].y, width: entries[i].width, height: entries[i].height });
+        }
+        const d = Logic.smartPan({ x: e.x, y: e.y, width: e.width, height: e.height }, actionScreen().geometry, viewX, viewY, 1.0, 24);
+        camGo(1.0, viewX + d.dx, viewY + d.dy, undefined, undefined, 2.0);
+    }
     function graspJump(x, y) {
         const i = graspPick(x, y);
         if (i < 0) return;
         const e = entries[i];
         noteGesture();
-        flyToEntry(e, 2.0);
+        graspJumped = true;
+        graspFly(e);
     }
     function graspJumpTo(i) {
         if (i < 0 || i >= entries.length) return;
         noteGesture();
-        flyToEntry(entries[i], 2.0);
+        graspJumped = true;
+        graspFly(entries[i]);
     }
     Timer {
         interval: 100
@@ -1673,6 +1690,7 @@ KWin.SceneEffect {
     function open(quietMode, spec) {
         if (visible) return;
         camStop();
+        graspJumped = false;
         quiet = !!quietMode;
         entryViewX = viewX;
         entryViewY = viewY;
@@ -3770,7 +3788,10 @@ KWin.SceneEffect {
             // in softens it out as the desk fills the view, stepping out
             // softens it back. At rest under a covering frame it is gone and
             // costs nothing.
-            readonly property bool wantShown: wallpaper && !covered
+            // The quiet slide (a focus fly, a pan chord at 1:1) is the desktop
+            // gliding: the haze belongs to the deliberate zoom-out, so a
+            // transient move never flashes the overworld's blur.
+            readonly property bool wantShown: wallpaper && !covered && !effect.quiet
             property real blurAlpha: wantShown ? 1 : 0
             Behavior on blurAlpha { NumberAnimation { duration: 280; easing.type: Easing.InOutCubic } }
             visible: wallpaper && (wantShown || blurAlpha > 0.004)
@@ -4447,7 +4468,11 @@ KWin.SceneEffect {
             z: 80000
             readonly property int mw: Math.round(view.sg.width * 0.16)
             readonly property int mh: Math.round(view.sg.height * 0.2)
-            readonly property bool asOverlay: (effect.grasp || effect.switcherActive) && view.screen === effect.primaryScreen
+            // The grasp's hold starts as the quiet keyhole at 1:1; the map
+            // steps in only once the hold zooms out past the threshold,
+            // fading in as the windows shrink beneath it. The switcher
+            // opens the map outright.
+            readonly property bool asOverlay: ((effect.grasp && effect.zoom < 0.85) || effect.switcherActive) && view.screen === effect.primaryScreen
             readonly property bool asMinimap: effect.canvasOpen && !effect.quiet && effect.zoom < 0.9 && !effect.grasp && view.screen === effect.primaryScreen
             readonly property rect home: asOverlay
                 ? Qt.rect(24, 24, view.sg.width - 48, view.sg.height - 48)
@@ -4477,34 +4502,6 @@ KWin.SceneEffect {
             readonly property real oy: { effect.revision; return (height - wb.height * sc) / 2; }
             function mx(cx) { return ox + (cx - wb.x) * sc; }
             function my(cy) { return oy + (cy - wb.y) * sc; }
-            // The lens: the scene behind the map, magnified a little and
-            // blurred - the glass the minimap wears, and the frost the
-            // overlay's sheets melt the live windows behind into. The
-            // sourceRect follows the map's own rect, so one glass rides
-            // both homes through the morph, and it fades in with the
-            // sheet's entrance so the hold's zoom-out blurs the windows
-            // as the map sharpens over them.
-            ShaderEffectSource {
-                visible: planeMap.asMinimap || planeMap.asOverlay || opacity > 0.004
-                id: glass
-                anchors.fill: parent
-                sourceItem: view
-                recursive: false
-                sourceRect: Qt.rect(planeMap.x + planeMap.width * 0.02, planeMap.y + planeMap.height * 0.02, planeMap.width * 0.96, planeMap.height * 0.96)
-                // Half resolution, like the wallpaper haze: a quarter of the
-                // pixels for the same frost, which is the difference between
-                // a full-screen blur that runs and one that exhausts the GPU.
-                textureSize: Qt.size(Math.max(1, Math.round(width / 2)), Math.max(1, Math.round(height / 2)))
-                layer.enabled: true
-                layer.effect: FastBlur {
-                    radius: 11
-                    transparentBorder: false
-                }
-                // The lens wears the glass; the overlay does not - its blurred
-                // live background read as strobing on a real desktop.
-                opacity: planeMap.asMinimap ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 200 } }
-            }
             scale: 1.0
             // The map's content, wrapped so the hold's entrance can be the
             // slow blur transition: the sheets, the outlines and the dim
@@ -4524,11 +4521,13 @@ KWin.SceneEffect {
                     samples: 17
                     transparentBorder: false
                 }
-            // The dim behind the overlay, and the tint over the lens.
+            // The dim behind the overlay, and the tint over the lens. The
+            // overlay's veil is what makes the white sheets read as cards
+            // instead of a negative reflection over the desktop.
             Rectangle {
                 anchors.fill: parent
                 radius: planeMap.asMinimap ? 16 : 0
-                color: planeMap.asMinimap ? Qt.rgba(0.07, 0.07, 0.09, 0.42) : "transparent"
+                color: planeMap.asMinimap ? Qt.rgba(0.07, 0.07, 0.09, 0.42) : Qt.rgba(0.05, 0.05, 0.08, 0.5)
                 // The minimap's dark region bleeds into the plane instead of
                 // ending at a line: the edge is a soft falloff.
                 layer.enabled: planeMap.asMinimap
@@ -4574,10 +4573,10 @@ KWin.SceneEffect {
                     height: { effect.revision; return Math.max(planeMap.asOverlay ? 6 : 1.6, e.height * planeMap.sc); }
                     radius: planeMap.asOverlay ? 5 : 1
                     color: planeMap.asOverlay
-                        ? (effect.graspHoverIndex === index || effect.isSelected(e) ? Qt.rgba(1, 1, 1, 0.30) : Qt.rgba(1, 1, 1, 0.20))
-                        : Qt.rgba(1, 1, 1, 0.8)
-                    border.width: planeMap.asOverlay ? 0.8 : 0
-                    border.color: effect.graspHoverIndex === index || effect.isSelected(e) ? "#f0ffffff" : "#70ffffff"
+                        ? (effect.graspHoverIndex === index || effect.isSelected(e) ? Qt.rgba(1, 1, 1, 0.20) : Qt.rgba(1, 1, 1, 0.13))
+                        : Qt.rgba(1, 1, 1, 0.5)
+                    border.width: planeMap.asOverlay ? 0.8 : 0.6
+                    border.color: effect.graspHoverIndex === index || effect.isSelected(e) ? "#b8ffffff" : "#4affffff"
                     Text {
                         anchors.centerIn: parent
                         text: effect.graspHoverIndex === index && planeMap.asOverlay ? e.window.caption : ""
