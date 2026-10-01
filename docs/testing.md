@@ -275,6 +275,16 @@ recording, point OBS at the nest window while `DEMO_FRAMES=0 make demo` runs.
 
 ## Things that cost time
 
+- **The ScreenCast portal on a virtual nest streams one stale frame.** KWin's
+  `--virtual` output presents the scene on damage, and the pipewire stream a
+  ScreenCast session hands out repeats its last buffer: a recorder that
+  negotiated 30 fps gets 30 fps of the same picture while the scene visibly
+  changes (the Screenshot portal renders on demand and does reflect it). The
+  KDE portal backend also needs the nest to declare `XDG_CURRENT_DESKTOP=KDE`
+  (see `dev/nest.sh`), or the broker picks the GTK backend and hangs; and its
+  screen-sharing dialog is a KWin overlay with no window id, so there is
+  nothing to click programmatically but the pixels. `make demo` therefore
+  stays on the screenshot loop.
 - **Output goes to journald**, not stderr, when stderr is not a TTY. The nest
   sets `QT_LOGGING_TO_CONSOLE=1` so `kwin.log` gets it.
 - **The state block is matched by shape.** `state()` in `dev/nest.sh` reads the

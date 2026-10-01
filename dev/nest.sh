@@ -78,8 +78,11 @@ LOW=(nice -n 10 ionice -c3)
 # not borrowed. ~/.local/share stays first on the data search path for the
 # installed packages.
 nest_env() {
+    # XDG_CURRENT_DESKTOP=KDE: the portal broker the bus activates inherits
+    # this, so it picks the KDE backend instead of the GTK one, whose
+    # ScreenCast impl hangs on a compositor interface KWin does not speak.
     printf '%s\n' "XDG_CONFIG_HOME=$CONF" "XDG_STATE_HOME=$STATE/state" "XDG_CACHE_HOME=$STATE/cache" \
-        "XDG_DATA_HOME=$STATE/data" \
+        "XDG_DATA_HOME=$STATE/data" "XDG_CURRENT_DESKTOP=KDE" \
         "XDG_DATA_DIRS=$HOME/.local/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 }
 # The nest's bus address, or a loud failure: an empty DBUS_SESSION_BUS_ADDRESS
@@ -101,7 +104,10 @@ wallpaper_file() {
 }
 
 seed_config() {
-    mkdir -p "$CONF"
+    mkdir -p "$CONF" "$CONF/xdg-desktop-portal"
+    # The preferred portal backend, in case anything reads the broker's
+    # config before the bus env: KDE, whose screencast KWin serves.
+    printf '%s\n' '[preferred]' 'default=kde' > "$CONF/xdg-desktop-portal/portals.conf"
     cat > "$CONF/kwinrc" <<CFG
 [Plugins]
 kwin-canvasEnabled=true

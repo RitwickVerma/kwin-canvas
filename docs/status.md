@@ -120,7 +120,9 @@ The micro-feel: the click-pan responds after a beat (the double-click
 still cancels it), the camera lands instead of crawling, the glow
 fades. `make demo` drives the cinematic tour to docs/images/demo.gif,
 the README's hero. The CI gained the unit job. The fork is pushed to
-origin and the tree is FOSS-clean. Verified: `make unit` == pass 30
+origin and the tree is FOSS-clean. The demo stays on the screenshot loop:
+recording the virtual nest through the ScreenCast portal yields one stale
+frame (docs/testing.md has the trap). Verified: `make unit` == pass 30
 fail 0, `make lint-qml`, `make lint-shell`, `make test` == pass 374
 fail 0 skip 1, `make test-two-outputs` == 17/0/0, fixtures byte for
 byte.
