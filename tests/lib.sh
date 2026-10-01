@@ -89,6 +89,7 @@ eget() {
         h)       sed -n 's/.*canvas=([-0-9.]*,[-0-9.]* [0-9.]*x\([0-9.]*\)).*/\1/p' <<<"$line" ;;
         fx)      sed -n 's/.*frame=(\([-0-9.]*\),.*/\1/p' <<<"$line" ;;
         fy)      sed -n 's/.*frame=([-0-9.]*,\([-0-9.]*\)).*/\1/p' <<<"$line" ;;
+        z)       sed -n 's/.* z=\([0-9]*\).*/\1/p' <<<"$line" ;;
         activity) sed -n 's/.*activity=\(.*\)$/\1/p' <<<"$line" ;;
     esac
 }

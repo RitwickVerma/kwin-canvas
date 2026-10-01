@@ -620,42 +620,50 @@ KWin.SceneEffect {
         camGo(zoom, c.cx - (g.x + g.width / 2) / zoom, c.cy - (g.y + g.height / 2) / zoom);
         toast("Cluster " + (k + 1) + " of " + clusters.length);
     }
-    // The threads through a cluster, in this screen's coordinates: every
-    // window joined to every other, a web in the gaps between them, drawn
-    // behind the windows. Re-evaluated with the camera, so the web rides
-    // the same motion as its windows.
-    // A window's z in the overworld: the hovered one above the web, the rest
-    // by the hover's recency under it. The threads weave by the same rule: a
-    // thread renders between its two windows, over the lower and under the
-    // higher, so the constellation re-threads live as the eye moves.
+    // A window's z in the overworld: the stacking order itself - the entries
+    // are KWin's order, so the index IS the z - with the hovered window
+    // lifted above the whole web. The hover has just raised that window for
+    // real, so the picture and the desktop keep the same order. The threads
+    // weave by the same numbers: a thread renders at the z between its two
+    // windows, over the lower and under the higher, so the constellation
+    // re-threads live as the eye moves.
     function windowZ(e) {
-        return e === focusEntry ? 1020 : 1000 + entries.indexOf(e) + (entries.indexOf(e) * 37) % 26;
+        return e === focusEntry ? 2000 : 1000 + entries.indexOf(e);
     }
-    function clusterPairs(i, sgx, sgy) {
-        const c = clusters[i];
-        if (!c || c.n < 2) return [];
-        const pts = [];
-        for (let k = 0; k < c.ids.length; ++k) {
-            const e = entryById(c.ids[k]);
-            if (!e) continue;
-            const idx = entries.indexOf(e);
-            const bob = Math.sin(floatRev * 0.035 + idx * 137.508) * 2.4 * floatAmt;
-            pts.push({
-                x: (e.x + e.width / 2 - viewX) * zoom - sgx,
-                y: (e.y + e.height / 2 - viewY) * zoom - sgy + bob,
-                z: windowZ(e)
-            });
-        }
-        const pairs = [];
-        for (let a = 0; a < pts.length; ++a) {
-            for (let b = a + 1; b < pts.length; ++b) {
-                pairs.push({
-                    x1: pts[a].x, y1: pts[a].y, x2: pts[b].x, y2: pts[b].y,
-                    z: (pts[a].z + pts[b].z) / 2
+    // The cluster webs, flattened: every pair of windows in every cluster,
+    // in this screen's coordinates, one entry per thread. The z only counts
+    // at the view level - a child's z cannot lift it out of its parent - so
+    // the threads are one flat list, not nested under the clusters, and each
+    // carries the z that weaves it through the windows. Re-evaluated with
+    // the camera, the float and the hover, so the web rides the windows'
+    // motion and re-weaves as the eye moves.
+    function clusterThreads(sgx, sgy) {
+        if (quiet) return [];
+        const out = [];
+        for (let i = 0; i < clusters.length; ++i) {
+            const c = clusters[i];
+            if (!c || c.n < 2) continue;
+            const lit = clusterIndex() === i;
+            const pts = [];
+            for (let k = 0; k < c.ids.length; ++k) {
+                const e = entryById(c.ids[k]);
+                if (!e) continue;
+                const idx = entries.indexOf(e);
+                const bob = Math.sin(floatRev * 0.035 + idx * 137.508) * 2.4 * floatAmt;
+                pts.push({
+                    x: (e.x + e.width / 2 - viewX) * zoom - sgx,
+                    y: (e.y + e.height / 2 - viewY) * zoom - sgy + bob,
+                    z: windowZ(e)
                 });
             }
+            for (let a = 0; a < pts.length; ++a) {
+                for (let b = a + 1; b < pts.length; ++b) {
+                    out.push({ x1: pts[a].x, y1: pts[a].y, x2: pts[b].x, y2: pts[b].y,
+                               z: (pts[a].z + pts[b].z) / 2, lit: lit, co: c.co });
+                }
+            }
         }
-        return pairs;
+        return out;
     }
     function entryById(id) {
         for (let i = 0; i < entries.length; ++i) if (entries[i].window.internalId === id) return entries[i];
@@ -3609,7 +3617,7 @@ KWin.SceneEffect {
             const g = e.window.frameGeometry;
             const f = floatOf[e.window.internalId];
             const fx = f ? (f.x - (e.x - viewX) * zoom) : 0, fy = f ? (f.y - (e.y - viewY) * zoom) : 0;
-            s += "\n  [" + i + "] " + (isSelected(e) ? "*" : " ") + e.window.caption + " canvas=(" + e.x.toFixed(0) + "," + e.y.toFixed(0) + " " + e.width + "x" + e.height + ") frame=(" + g.x + "," + g.y + ")" + (Math.abs(fx) > 0.4 || Math.abs(fy) > 0.4 ? " float=(+" + fx.toFixed(0) + ",+" + fy.toFixed(0) + ")" : "") + " activity=" + labelOf(e.activity);
+            s += "\n  [" + i + "] " + (isSelected(e) ? "*" : " ") + e.window.caption + " canvas=(" + e.x.toFixed(0) + "," + e.y.toFixed(0) + " " + e.width + "x" + e.height + ") frame=(" + g.x + "," + g.y + ")" + (Math.abs(fx) > 0.4 || Math.abs(fy) > 0.4 ? " float=(+" + fx.toFixed(0) + ",+" + fy.toFixed(0) + ")" : "") + " z=" + windowZ(e) + " activity=" + labelOf(e.activity);
         }
         for (let i = 0; i < clusters.length; ++i) {
             const mem = [];
@@ -4260,9 +4268,9 @@ KWin.SceneEffect {
                 visible: !effect.quiet || entry.activity === effect.currentActivity
                 opacity: effect.thumbOpacity
                 // The entries are the real stacking order, so the index IS the
-                // actual z; the hovered window pops above the web on top of
-                // that, and nothing else re-orders.
-                z: thumb.entry === effect.focusEntry ? 1020 : 1000 + index + (index * 37) % 26
+                // z; the hovered window lifts above the web, and nothing else
+                // re-orders.
+                z: thumb.entry === effect.focusEntry ? 2000 : 1000 + index
                 readonly property int zDep: { effect.hoverRev; effect.focusEntry; return 0; }
                 // Weight: the window lifts while the hand holds it, trails and
                 // leans with the hand, and springs back when the hand stops.
@@ -4488,13 +4496,14 @@ KWin.SceneEffect {
             }
         }
 
-        // Clusters: the threads that bind nearby windows, and the badge that
-        // names the cluster the eye is on. The thread is the constellation -
-        // a polyline weaving through the members, riding the same motion as
-        // the windows, lit where the pointer's cluster is and a faint sketch
-        // for the rest when zoomed out far enough to see the plane. The
-        // badge floats over the active cluster's centre: a glass chip with
-        // its number, so the travel keys have a stop to point at.
+        // Clusters: the badge that names the cluster the eye is on, and -
+        // just outside this repeater, hoisted to the view level - the
+        // threads that bind the members: a polyline weaving through them,
+        // riding the same motion as the windows, lit where the pointer's
+        // cluster is and a faint sketch for the rest when zoomed out far
+        // enough to see the plane. The badge floats over the active
+        // cluster's centre: a glass chip with its number, so the travel
+        // keys have a stop to point at.
         Repeater {
             model: effect.clusters.length
             delegate: Item {
@@ -4505,55 +4514,14 @@ KWin.SceneEffect {
                 readonly property real cy: { effect.revision; effect.viewX; effect.viewY; effect.zoom; return (cluster.cy - effect.viewY) * effect.zoom - view.sg.y; }
                 visible: !effect.quiet && cluster.n > 1
                 // The delegate fills the whole view - the wrapper has no size
-                // of its own, and the path is in view coordinates. The thread
-                // sits under the windows it binds but above the frames: the
-                // z lives on the delegate, since a child's z cannot lift its
-                // parent out of the frame layer.
+                // of its own, and the badge positions from the cluster's
+                // centre. The badge floats above the windows, so the wrapper
+                // carries its z; the threads live outside it, at the view
+                // level, where their own z can weave them through the
+                // windows (a child's z cannot lift it out of its parent).
                 width: view.width
                 height: view.height
-                // The web weaves through the float: the windows hover at
-                // spread heights, and the web rides the middle, so it passes
-                // over some and under others as they bob. The z lives on the
-                // delegate: a child's z cannot lift its parent out of the
-                // frame layer.
-                // The cluster's web: one neon thread per pair of windows, each
-                // at the z between its two endpoints, so a thread passes over
-                // the lower window and under the higher - the constellation
-                // weaves through the float and the hover's re-stacking live.
-                Repeater {
-                    model: { effect.revision; effect.clusterRev; effect.floatRev; effect.hoverRev; effect.focusEntry; effect.viewX; effect.viewY; effect.zoom; return effect.clusterPairs(index, view.sg.x, view.sg.y); }
-                    delegate: Shape {
-                        required property var modelData
-                        anchors.fill: parent
-                        z: modelData.z
-                        readonly property real want: (parent.active || effect.zoom < 0.5) ? (parent.active ? 0.55 : 0.22) * cluster.co * (effect.quiet ? effect.quietReveal : 1) : 0
-                        property real show: 0
-                        opacity: show
-                        Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
-                        onWantChanged: show = want
-                        Component.onCompleted: show = want
-                        ShapePath {
-                            strokeWidth: 5
-                            strokeColor: Qt.rgba(1, 1, 1, 0.10)
-                            fillColor: "transparent"
-                            capStyle: ShapePath.RoundCap
-                            joinStyle: ShapePath.RoundJoin
-                            PathSvg {
-                                path: "M " + modelData.x1.toFixed(1) + " " + modelData.y1.toFixed(1) + " L " + modelData.x2.toFixed(1) + " " + modelData.y2.toFixed(1)
-                            }
-                        }
-                        ShapePath {
-                            strokeWidth: 1.6
-                            strokeColor: Qt.rgba(1, 1, 1, 0.8)
-                            fillColor: "transparent"
-                            capStyle: ShapePath.RoundCap
-                            joinStyle: ShapePath.RoundJoin
-                            PathSvg {
-                                path: "M " + modelData.x1.toFixed(1) + " " + modelData.y1.toFixed(1) + " L " + modelData.x2.toFixed(1) + " " + modelData.y2.toFixed(1)
-                            }
-                        }
-                    }
-                }
+                z: 59000
                 // The badge: the cluster's number in reading order, glass. A
                 // hand on it drags the whole cluster across the plane.
                 Rectangle {
@@ -4596,6 +4564,52 @@ KWin.SceneEffect {
                             color: "#b8ffffff"
                             font.pixelSize: 11
                         }
+                    }
+                }
+            }
+        }
+
+        // The cluster webs, hoisted to the view level: each thread's z is a
+        // sibling of the windows' z, so the web passes over the lower window
+        // and under the higher as the float bobs and the hover re-stacks -
+        // one neon thread per pair of windows, lit where the eye's cluster
+        // is, a faint sketch for the rest when zoomed out far enough to see
+        // the plane.
+        Repeater {
+            model: {
+                effect.revision; effect.clusterRev; effect.floatRev; effect.hoverRev;
+                effect.focusEntry; effect.selectionRev; effect.travelCluster;
+                effect.viewX; effect.viewY; effect.zoom; effect.quiet;
+                return effect.clusterThreads(view.sg.x, view.sg.y);
+            }
+            delegate: Shape {
+                required property var modelData
+                anchors.fill: parent
+                z: modelData.z
+                readonly property real want: (modelData.lit || effect.zoom < 0.5) ? (modelData.lit ? 0.55 : 0.22) * modelData.co : 0
+                property real show: 0
+                opacity: show
+                Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
+                onWantChanged: show = want
+                Component.onCompleted: show = want
+                ShapePath {
+                    strokeWidth: 5
+                    strokeColor: Qt.rgba(1, 1, 1, 0.10)
+                    fillColor: "transparent"
+                    capStyle: ShapePath.RoundCap
+                    joinStyle: ShapePath.RoundJoin
+                    PathSvg {
+                        path: "M " + modelData.x1.toFixed(1) + " " + modelData.y1.toFixed(1) + " L " + modelData.x2.toFixed(1) + " " + modelData.y2.toFixed(1)
+                    }
+                }
+                ShapePath {
+                    strokeWidth: 1.6
+                    strokeColor: Qt.rgba(1, 1, 1, 0.8)
+                    fillColor: "transparent"
+                    capStyle: ShapePath.RoundCap
+                    joinStyle: ShapePath.RoundJoin
+                    PathSvg {
+                        path: "M " + modelData.x1.toFixed(1) + " " + modelData.y1.toFixed(1) + " L " + modelData.x2.toFixed(1) + " " + modelData.y2.toFixed(1)
                     }
                 }
             }
