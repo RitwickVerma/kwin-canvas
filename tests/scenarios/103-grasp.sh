@@ -6,10 +6,6 @@ screen_of() {
     awk -v cx="$1" -v cy="$2" -v vx="$(sget viewx)" -v vy="$(sget viewy)" -v z="$(sget zoom)" \
         'BEGIN{printf "%d %d", (cx-vx)*z, (cy-vy)*z}'
 }
-# A point on a window's title bar, in screen coordinates.
-title_of() {
-    echo "$(screen_of $(( $(eget "$1" x) + 240 )) $(( $(eget "$1" y) + 22 )))"
-}
 run_scenario() {
     if ! have_input; then skip "fakeinput not built (make tools)"; return; fi
     if ! nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.probe >/dev/null 2>&1; then

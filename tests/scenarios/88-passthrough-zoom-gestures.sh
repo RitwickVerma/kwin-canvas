@@ -2,7 +2,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # shellcheck source=../tests/lib.sh
 scenario_desc="pass-through gestures at zoom: a drag selects text and the wheel scrolls at the picture's place"
-pt_state() { nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.state; }
 region_rmse() {   # before after region
     magick "$1" -crop "$3" +repage "$OUT/ptg-a.png"
     magick "$2" -crop "$3" +repage "$OUT/ptg-b.png"

@@ -360,14 +360,6 @@ KWin.SceneEffect {
         const d = Logic.smartPan({ x: e.x, y: e.y, width: e.width, height: e.height }, actionScreen().geometry, viewX, viewY, 1.0, 24);
         camGo(1.0, viewX + d.dx, viewY + d.dy, undefined, undefined, 2.0);
     }
-    function graspJump(x, y) {
-        const i = graspPick(x, y);
-        if (i < 0) return;
-        const e = entries[i];
-        noteGesture();
-        graspJumped = true;
-        graspFly(e);
-    }
     function graspJumpTo(i) {
         if (i < 0 || i >= entries.length) return;
         noteGesture();
@@ -1385,10 +1377,6 @@ KWin.SceneEffect {
     // runs the moment the buttons come up.
     property int sceneGestures: 0
     property var deferredClose: null
-    function closeWhenClear(fn) {
-        if (sceneGestures > 0) { deferredClose = fn; return; }
-        fn();
-    }
     onSceneGesturesChanged: {
         if (sceneGestures === 0 && deferredClose !== null) {
             const fn = deferredClose;
@@ -3247,10 +3235,6 @@ KWin.SceneEffect {
         }
     }
 
-    function intersects(a, b) {
-        return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
-    }
-
     // The two most recent windows, most recent first: what the canvas
     // modifier's swap (SwapButton while the modifier is held) flies between,
     // an Alt-Tab on the plane.
@@ -3736,8 +3720,7 @@ KWin.SceneEffect {
             }
         }
         TapHandler {
-            id: gripTap
-            enabled: grip.tappable && !grip.viewItem.spaceHeld
+                        enabled: grip.tappable && !grip.viewItem.spaceHeld
             acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
             onTapped: (eventPoint, button) => grip.tapped(tapCount, point.modifiers, button)
         }
@@ -3904,8 +3887,7 @@ KWin.SceneEffect {
         // which is exactly where the blur would be invisible anyway, so it
         // costs nothing until the camera moves.
         Item {
-            id: blurLayer
-            anchors.fill: parent
+                        anchors.fill: parent
             z: -90
             readonly property bool wallpaper: effect.backdropMode() === "wallpaper"
             // The frame for this screen, drawn: does it cover the view?
@@ -4036,8 +4018,7 @@ KWin.SceneEffect {
         // hands it to the window under the pointer, at 1:1 the window's own
         // back/forward gesture).
         TapHandler {
-            id: swapTap
-            acceptedButtons: effect.swapButtons
+                        acceptedButtons: effect.swapButtons
             onTapped: effect.swapWindow()
         }
 
@@ -4124,8 +4105,7 @@ KWin.SceneEffect {
         // as the camera's is, for the same reason: it steps from the event loop
         // rather than waiting for a frame, and its own step is what gets drawn.
         Timer {
-            id: edgePanTimer
-            interval: 16
+                        interval: 16
             repeat: true
             running: view.navHeld && effect.edgePan && (effect.canvasOpen || effect.grasp)
             onTriggered: effect.edgePanStep(view.sg, interval / 1000)
@@ -4271,7 +4251,6 @@ KWin.SceneEffect {
                 // z; the hovered window lifts above the web, and nothing else
                 // re-orders.
                 z: thumb.entry === effect.focusEntry ? 2000 : 1000 + index
-                readonly property int zDep: { effect.hoverRev; effect.focusEntry; return 0; }
                 // Weight: the window lifts while the hand holds it, trails and
                 // leans with the hand, and springs back when the hand stops.
                 // The entry is exact throughout; this is the picture only.
@@ -4539,8 +4518,7 @@ KWin.SceneEffect {
                     border.width: 1
                     border.color: "#66ffffff"
                     Grip {
-                        id: badgeGrip
-                        anchors.fill: parent
+                                                anchors.fill: parent
                         viewItem: view
                         cursor: Qt.OpenHandCursor
                         onDragStarted: effect.beginClusterDrag(index)
@@ -5099,7 +5077,7 @@ KWin.SceneEffect {
                 PC3.ToolButton { icon.name: "dialog-ok-apply"; text: "Enter";  display: hud.vertical || hud.square ? PC3.AbstractButton.IconOnly : PC3.AbstractButton.TextBesideIcon; PC3.ToolTip.text: "Enter the location under the screen centre (" + effect.keyLabel(effect.configuration.KeyApply) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.enterHere() }
                 PC3.ToolButton { icon.name: "dialog-cancel";   text: "Cancel"; display: hud.vertical || hud.square ? PC3.AbstractButton.IconOnly : PC3.AbstractButton.TextBesideIcon; PC3.ToolTip.text: "Back to where you were, nothing moved (" + effect.keyLabel(effect.configuration.KeyCancel) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.cancel() }
                 Sep {}
-                PC3.ToolButton { id: helpButton; icon.name: "help-contextual"; text: "Help"; display: PC3.AbstractButton.IconOnly; checkable: true; checked: effect.helpOpen; onToggled: effect.helpOpen = checked; PC3.ToolTip.text: "Controls"; PC3.ToolTip.visible: hovered }
+                PC3.ToolButton { icon.name: "help-contextual"; text: "Help"; display: PC3.AbstractButton.IconOnly; checkable: true; checked: effect.helpOpen; onToggled: effect.helpOpen = checked; PC3.ToolTip.text: "Controls"; PC3.ToolTip.visible: hovered }
                 PC3.ToolButton {
                     icon.name: "configure"; text: "Settings"; display: PC3.AbstractButton.IconOnly
                     PC3.ToolTip.text: "Settings"; PC3.ToolTip.visible: hovered
