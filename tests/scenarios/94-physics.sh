@@ -81,6 +81,10 @@ run_scenario() {
     setcfg WindowPhysics false
     c cancel; open_1to1
     c "snap edges off"; c "snap corners off"; c "snap grid off"
+    # The cancel's home flight runs on the slow spring (CamSpring 4): wait it
+    # out, or the drag's press lands while the window is still flying to the
+    # location and the hand grabs the ground instead.
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do c state; [ "$(sget cam)" = "-" ] && break; sleep 0.2; done
     # The injector runs in the background - a foreground one holds the shell
     # until its stream ends, so a read after it is a read after the release -
     # and the stream releases the button itself, so the read that follows lands
@@ -97,6 +101,7 @@ run_scenario() {
 
     setcfg WindowPhysics true
     c cancel; open_1to1
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do c state; [ "$(sget cam)" = "-" ] && break; sleep 0.2; done
     printf "$drag" | input &
     sleep 0.5; c state
     assert_true "the window trails the hand" \
