@@ -219,9 +219,9 @@ first:
   [`aaronsb/kwin-canvas`](https://github.com/aaronsb/kwin-canvas). The fork's own
   work is `git log --oneline upstream/main..HEAD`. Push to `origin`; upstream
   takes a merge request from a person's account, not a push.
-- **The pass-through plugin does not build here**: `extra-cmake-modules` is
-  missing (KWin's own headers are present, in `/usr/include/kwin`), so
-  `make plugin-try` reports the skip and `85-passthrough` skips with it.
+- **The pass-through plugin builds here** (`extra-cmake-modules` is
+  installed), so `85-passthrough` and `87-passthrough-zoom` run for real.
+  `make plugin` builds it; the nest loads it from `build/plugin/bin`.
 - **The shim does not build here either**: `dev/spike/preload/shim.cpp` pins the
   libkwin build-id it was written against (kwin 6.7.5-1) and this machine's
   libkwin differs, so `tests/run-shim.sh` reports the skip before compiling.

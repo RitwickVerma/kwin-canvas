@@ -1,5 +1,12 @@
 Unreleased:
 
+- An applet's dropdown no longer flies the desktop: special overlays join
+  panels, docks and popups on the never-fly list, so clicking around the
+  panel leaves the camera alone.
+- The pass-through is regression-tested at zoom: a new scenario proves the
+  handoff and the click land at the picture's own place when the overworld
+  is zoomed out.
+
 - The float follows the window's own screen on several outputs: a floated
   window bounces against the bounds of the monitor it lives on, not the
   pointer's.

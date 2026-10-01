@@ -46,9 +46,9 @@ built and loaded (the live-session half stays untested, below):
 
 - `make lint-qml` and `make lint-shell` — exit 0. `lint-reuse` still needs
   `reuse`, which is not installed here (below).
-- `make test` — `== pass 374  fail 0  skip 1`, the skip `91-two-outputs`
-  needing a two-output nest; `85-passthrough` runs for real against the
-  built plugin. `make test-two-outputs` — `== pass 17  fail 0  skip 0`.
+- `make test` — `== pass 376  fail 0  skip 1`, the skip `91-two-outputs`
+  needing a two-output nest; `85-passthrough` and `87-passthrough-zoom`
+  run for real against the built plugin. `make test-two-outputs` — `== pass 17  fail 0  skip 0`.
 - `make unit` — 30 pure-logic assertions in node, in the CI's check stage
   as well as locally.
 - The goldens are recorded against the pinned nest (Breeze Dark, the dark

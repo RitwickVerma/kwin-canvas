@@ -880,10 +880,12 @@ KWin.SceneEffect {
     // A window the fly covers: every window the user can click, wider than
     // what the canvas draws - a utility window flies too. KWin's own
     // keep-visible rule must never be the thing that moves a window the
-    // user clicked.
+    // user clicked. Panels, docks, popups and the special overlays (an
+    // applet's dropdown, a notification) never fly: clicking them must not
+    // drag the desktop.
     function isFlyableWindow(w) {
         if (!w || w.deleted || !w.managed) return false;
-        if (w.desktopWindow || w.dock || w.popupWindow || w.minimized || w.hidden) return false;
+        if (w.desktopWindow || w.dock || w.popupWindow || w.specialWindow || w.minimized || w.hidden) return false;
         return onDesktop(w);
     }
 
