@@ -5,6 +5,7 @@
 #include "passthrough.h"
 
 #include <config-kwin.h>
+#include <core/output.h>
 #include <effect/effecthandler.h>
 #include <wayland/seat.h>
 #include <wayland/surface.h>
@@ -207,7 +208,7 @@ void CanvasPassthrough::replayClick()
 
 QString CanvasPassthrough::state() const
 {
-    return QStringLiteral("active=%1 view=(%2,%3) zoom=%4 grab=%5 ground=%6 hover=%7 nav=%8 hold=%9")
+    return QStringLiteral("active=%1 view=(%2,%3) zoom=%4 grab=%5 ground=%6 hover=%7 nav=%8 hold=%9 seam=%10")
         .arg(m_active ? QStringLiteral("true") : QStringLiteral("false"))
         .arg(m_viewX)
         .arg(m_viewY)
@@ -216,7 +217,8 @@ QString CanvasPassthrough::state() const
         .arg(m_grabGround ? QStringLiteral("true") : QStringLiteral("false"))
         .arg(m_hover ? m_hover->caption() : QStringLiteral("-"))
         .arg(m_nav)
-        .arg(m_hold);
+        .arg(m_hold)
+        .arg(atSeam(waylandServer()->seat()->pointerPos()) ? QStringLiteral("1") : QStringLiteral("0"));
 }
 
 // ---- the plane ---------------------------------------------------------------
@@ -294,6 +296,58 @@ Window *CanvasPassthrough::windowAt(const QPointF &canvas) const
         }
     }
     return nullptr;
+}
+
+// Does another output's edge run flush along this output's edge at `at`?
+// The border between two local screens is a place a living hand rests; the
+// desk's outer border is where a shared mouse parks.
+static bool seamNeighbour(const QList<LogicalOutput *> &outputs, const LogicalOutput *s, char axis, qreal at)
+{
+    const Rect g = s->geometry();
+    for (const LogicalOutput *r : outputs) {
+        if (r == s) {
+            continue;
+        }
+        const Rect h = r->geometry();
+        if (axis == 'x') {
+            if ((at == h.x() || at == h.x() + h.width()) && h.y() < g.y() + g.height() && g.y() < h.y() + h.height()) {
+                return true;
+            }
+        } else if ((at == h.y() || at == h.y() + h.height()) && h.x() < g.x() + g.width() && g.x() < h.x() + h.width()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// The seam, mirroring the effect's seamPoint: within a few pixels of the
+// desk's outer border, where deskflow and its kin park the pointer while
+// another machine has the mouse. There a rest is not a hover - it is a
+// pointer nobody is holding - so no window under it may take the input.
+bool CanvasPassthrough::atSeam(const QPointF &screen) const
+{
+    constexpr qreal margin = 6;
+    const QList<LogicalOutput *> outputs = workspace()->outputs();
+    for (const LogicalOutput *s : outputs) {
+        const Rect g = s->geometry();
+        if (screen.x() < g.x() || screen.x() >= g.x() + g.width() || screen.y() < g.y() || screen.y() >= g.y() + g.height()) {
+            continue;
+        }
+        if (screen.x() - g.x() < margin && !seamNeighbour(outputs, s, 'x', g.x())) {
+            return true;
+        }
+        if (g.x() + g.width() - screen.x() < margin && !seamNeighbour(outputs, s, 'x', g.x() + g.width())) {
+            return true;
+        }
+        if (screen.y() - g.y() < margin && !seamNeighbour(outputs, s, 'y', g.y())) {
+            return true;
+        }
+        if (g.y() + g.height() - screen.y() < margin && !seamNeighbour(outputs, s, 'y', g.y() + g.height())) {
+            return true;
+        }
+        return false;
+    }
+    return false;
 }
 
 // ---- delivery ----------------------------------------------------------------
@@ -387,6 +441,15 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
             waylandServer()->seat()->notifyPointerFrame();
         }
         return true;
+    }
+    // The seam: a pointer parked on the desk's outer border is not a rest,
+    // it is a pointer nobody is holding (a shared mouse handed to another
+    // machine). No window under it may take the input; the canvas keeps it.
+    if (atSeam(event->position)) {
+        m_hoverCandidate = nullptr;
+        m_hoverTimer.stop();
+        leave();
+        return false;
     }
     Window *w = windowAt(canvas);
     if (w) {

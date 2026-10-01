@@ -674,8 +674,26 @@ KWin.SceneEffect {
     property var focusEntry: null
     function noteGesture(hand) { lastGestureAt = Date.now(); handGesture = !!hand; }
     function hoverTick() {
-        if (navHeld || closing || canvasMenus > 0 || camLive()) return;
+        if (closing || canvasMenus > 0 || camLive()) return;
         const p = cursorScreen();
+        // The seam bookkeeping runs whenever the canvas is up, grasp
+        // included: the grasp's grips read seamPark, and the tick that keeps
+        // it honest must not stop just because the hold is quiet - a stale
+        // "parked" would steal the drags from the hand for the whole hold.
+        if (seamAt(p)) {
+            if (hoverEntry !== null || focusEntry !== null || !seamPark) {
+                hoverEntry = null;
+                focusEntry = null;
+                hoverSince = 0;
+                hoverBrought = false;
+                seamPark = true;
+            }
+            return;
+        }
+        seamPark = false;
+        // A pointer parked on the seam is not a hover: the desk put it there
+        // (deskflow handing the mouse to another machine), not the hand.
+        if (navHeld || quiet) return;
         const c = globalToCanvas(p.x, p.y);
         let e = null;
         for (let i = entries.length - 1; i >= 0; --i) {
@@ -712,7 +730,7 @@ KWin.SceneEffect {
     Timer {
         interval: 100
         repeat: true
-        running: effect.canvasOpen && !effect.closing
+        running: effect.visible && !effect.closing
         onTriggered: effect.hoverTick()
     }
 
@@ -1716,6 +1734,8 @@ KWin.SceneEffect {
         camStop();
         graspJumped = false;
         quiet = !!quietMode;
+        // Fresh open: the pointer is the hand's until the tick sees the seam.
+        seamPark = false;
         entryViewX = viewX;
         entryViewY = viewY;
         zoom = 1.0;
@@ -3504,6 +3524,7 @@ KWin.SceneEffect {
             + " clusters=" + clusters.length + " cluster=" + (clusterIndex() >= 0 ? "#" + (clusterIndex() + 1) : "-")
             + " draglag=" + Math.round(Math.sqrt(dragLagX * dragLagX + dragLagY * dragLagY)) + " lean=" + dragLean.toFixed(2)
             + " idle=" + (passthroughIdle ? "1" : "0")
+            + " seam=" + (seamPark ? "1" : "0")
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
         const ids = activityIds, screens = KWin.Workspace.screens;
         for (let i = 0; i < screens.length; ++i) {
@@ -3605,7 +3626,7 @@ KWin.SceneEffect {
 
         HoverHandler {
             id: gripHover
-            enabled: !grip.viewItem.spaceHeld && !(grip.holdOff && effect.grasp)
+            enabled: !grip.viewItem.spaceHeld && !(grip.holdOff && effect.grasp) && !effect.seamPark
             cursorShape: gripDrag.active && grip.cursor === Qt.ArrowCursor ? Qt.ClosedHandCursor : grip.cursor
             onHoveredChanged: grip.viewItem.hoverCount += hovered ? 1 : -1
             Component.onDestruction: if (hovered) grip.viewItem.hoverCount -= 1

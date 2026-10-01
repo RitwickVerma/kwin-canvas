@@ -61,6 +61,7 @@ sget() {
         cluster)  sed -n 's/.* cluster=#\([0-9]*\).*/\1/p' <<<"$line" ;;
         draglag)  sed -n 's/.* draglag=\([0-9]*\).*/\1/p' <<<"$line" ;;
         lean)     sed -n 's/.* lean=\([-0-9.]*\).*/\1/p' <<<"$line" ;;
+        seam)     sed -n 's/.* seam=\([0-9]*\).*/\1/p' <<<"$line" ;;
         nactivities) grep -c '^  {' <<<"$LAST_STATE" ;;
     esac
 }

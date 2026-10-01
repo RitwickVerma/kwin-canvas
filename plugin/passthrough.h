@@ -105,6 +105,8 @@ private:
     KWin::Window *windowAt(const QPointF &canvas) const;
     /** The topmost client window under a real screen point: the click candidate at 1:1. */
     KWin::Window *windowUnder(const QPointF &screen) const;
+    /** The seam: within the margin of the desk's outer border, where a shared mouse parks its pointer. */
+    bool atSeam(const QPointF &screen) const;
     /** Enter (or stay on) the input surface of @p window under @p canvas. False if no surface takes input there. */
     bool enter(KWin::Window *window, const QPointF &canvas);
     void leave();

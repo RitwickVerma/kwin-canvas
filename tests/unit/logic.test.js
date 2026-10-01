@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, floatStep, fitRange, smartPan, canvasOf, zoomView, fitBox };")();
+const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, floatStep, fitRange, smartPan, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -168,6 +168,31 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
     const g = { x: 0, y: 0, width: 1920, height: 1080 };
     const f = L.fitBox(10, 10, 100, 80, g, 80, 0.1);
     ok("a small box clamps to 1:1", f.zoom === 1.0);
+}
+
+// ---- the seam: where a shared mouse parks its pointer ----
+{
+    const lone = [{ x: 0, y: 0, width: 1920, height: 1080 }];
+    ok("a lone screen's edges are all seam", L.seamPoint(lone, 3, 3, 6));
+    ok("its far edges too", L.seamPoint(lone, 1917, 1077, 6));
+    ok("its interior is not", !L.seamPoint(lone, 100, 100, 6));
+    ok("and just past the band is not", !L.seamPoint(lone, 7, 7, 6));
+    const pair = [{ x: 0, y: 0, width: 1920, height: 1080 }, { x: 1920, y: 0, width: 1920, height: 1080 }];
+    ok("an inner edge between two screens is not a seam", !L.seamPoint(pair, 1919, 500, 6));
+    ok("nor is the point just across it", !L.seamPoint(pair, 1921, 500, 6));
+    ok("the outer edges of two screens are", L.seamPoint(pair, 3, 500, 6));
+    ok("and the far outer edge", L.seamPoint(pair, 3837, 500, 6));
+    const stacked = [{ x: 0, y: 0, width: 1920, height: 1080 }, { x: 0, y: 1080, width: 1920, height: 1080 }];
+    ok("a stacked pair's shared edge is inner", !L.seamPoint(stacked, 500, 1079, 6));
+    ok("a stacked pair's outer top is seam", L.seamPoint(stacked, 500, 3, 6));
+    ok("and its outer bottom", L.seamPoint(stacked, 500, 2157, 6));
+    // An L-shaped layout: the point is near the left screen's top edge, but
+    // near the right screen's left edge - the first screen that contains it
+    // is the left one, whose top edge has no neighbour across it.
+    const el = [{ x: 0, y: 0, width: 1920, height: 1080 }, { x: 1920, y: 300, width: 1000, height: 780 }];
+    ok("an L's protruding outer edge is seam", L.seamPoint(el, 3, 500, 6));
+    ok("an L's shared stretch is inner", !L.seamPoint(el, 1919, 900, 6));
+    ok("off-layout points are not the desk's business", !L.seamPoint(pair, -10, 500, 6));
 }
 
 console.log("== unit pass " + pass + "  fail " + fail);

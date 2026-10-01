@@ -174,3 +174,41 @@ function fitBox(l, t, r, b, g, pad, zoomMin) {
     const cy = (t + b) / 2 - (g.y + g.height / 2) / z;
     return { zoom: z, viewX: cx, viewY: cy };
 }
+
+// The seam: the outer few pixels of the desk. A tool that shares the mouse
+// with another machine (deskflow, synergy) parks the pointer on the screen
+// border it hands the mouse over across, and there it sits - a pointer the
+// desk itself put there, not the hand. A hover that reads the parked pointer
+// would glow and pan to whatever window the seam touches. seamPoint says
+// whether a point lies in that band: within `margin` of a screen's edge, but
+// only an edge with no other screen across it - the border between two local
+// screens is a place a living hand rests, the desk's outer border is where a
+// shared mouse parks.
+function seamPoint(screens, x, y, margin) {
+    for (let i = 0; i < screens.length; ++i) {
+        const s = screens[i];
+        if (x < s.x || x >= s.x + s.width || y < s.y || y >= s.y + s.height) continue;
+        if (x - s.x < margin && !seamNeighbour(screens, s, "x", s.x)) return true;
+        if (s.x + s.width - x < margin && !seamNeighbour(screens, s, "x", s.x + s.width)) return true;
+        if (y - s.y < margin && !seamNeighbour(screens, s, "y", s.y)) return true;
+        if (s.y + s.height - y < margin && !seamNeighbour(screens, s, "y", s.y + s.height)) return true;
+        return false;
+    }
+    return false;
+}
+
+// Does another screen's edge run flush along this screen's edge at `at`?
+// Flush along the whole span the two share: an edge is inner only where a
+// neighbour actually abuts it, so an L-shaped layout keeps its outer corners.
+function seamNeighbour(screens, s, axis, at) {
+    for (let i = 0; i < screens.length; ++i) {
+        const r = screens[i];
+        if (r === s) continue;
+        if (axis === "x") {
+            if ((at === r.x || at === r.x + r.width) && r.y < s.y + s.height && s.y < r.y + r.height) return true;
+        } else if ((at === r.y || at === r.y + r.height) && r.x < s.x + s.width && s.x < r.x + r.width) {
+            return true;
+        }
+    }
+    return false;
+}
