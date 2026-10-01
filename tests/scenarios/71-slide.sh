@@ -6,7 +6,7 @@ run_scenario() {
     local x0 y0 d0; x0=$(eget KCalc fx); y0=$(eget KCalc fy); d0=$(eget Dolphin fx)
     c "slide 500 300"
     assert_eq "opened quietly" "$(head -1 <<<"$LAST_STATE" | grep -c 'visible=true quiet')" 1
-    c state
+    for _ in 1 2 3 4 5 6 7 8 9 10; do c state; [ "$(sget visible)" = false ] && break; sleep 0.1; done
     assert_eq "closed after the slide" "$(sget visible)" false
     assert_near "KCalc moved left" "$(eget KCalc fx)" $((x0 - 500)) 1
     assert_near "KCalc moved up" "$(eget KCalc fy)" $((y0 - 300)) 1
@@ -17,13 +17,13 @@ run_scenario() {
     assert_eq "swipe opened quietly" "$(head -1 <<<"$LAST_STATE" | grep -c 'visible=true quiet')" 1
     local vx; vx=$(sget viewx)
     c "swipe -1 0 end"
-    c state
+    for _ in 1 2 3 4 5 6 7 8 9 10; do c state; [ "$(sget visible)" = false ] && break; sleep 0.1; done
     assert_eq "closed after the swipe" "$(sget visible)" false
     assert_near "swipe left moved the camera right one step" "$(sget viewx)" $(awk -v x="$vx" 'BEGIN{print x+480}') 1
     # A cancelled swipe slides back and writes nothing.
     c "swipe 0 1 0.3"
     c "swipe 0 1 cancel"
-    c state
+    for _ in 1 2 3 4 5 6 7 8 9 10; do c state; [ "$(sget visible)" = false ] && break; sleep 0.1; done
     assert_eq "closed after the cancel" "$(sget visible)" false
     assert_near "cancel kept KCalc" "$(eget KCalc fx)" $((x0 - 500 - 960)) 1
     c "slide -1460 -300"

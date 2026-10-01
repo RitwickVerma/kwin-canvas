@@ -65,6 +65,14 @@ KWin.SceneEffect {
     // Quiet: open at 1:1 for a slide, with no frames, tags, toolbar or input.
     property bool quiet: false
     property bool slideWarm: false
+    // The quiet scene's own fade: a slide opens and closes the canvas at 1:1,
+    // where it must be pixel-identical to the desktop - but the thumbnails
+    // draw every window with its active decoration, and no shadow, and the
+    // panel is covered, so a cut would flash every inactive title bar at
+    // once. The scene fades in over the desktop when the slide opens and out
+    // over it when the slide lands, hiding the swap.
+    property real quietFade: 1
+    property bool quietFadeOut: false
     readonly property bool canvasOpen: visible && !quiet
     // Pass-through: the optional binary plugin is live while the canvas is
     // open. Every key, and every click, drag and wheel over a window, goes
@@ -3058,10 +3066,23 @@ KWin.SceneEffect {
     function beginSlide() {
         if (visible && !quiet) return false;
         if (!visible) {
+            // The quiet scene fades in over the desktop it will slide: the
+            // two differ where the eye would catch the cut (active
+            // decorations, no shadows, no panel), so the first paint is
+            // invisible and the slide starts under the fade.
+            quietFade = 0;
             open(true);
             slideToX = viewX;
             slideToY = viewY;
             slideWarm = true;
+            quietFadeOut = false;
+            quietFadeAnim.to = 1;
+            quietFadeAnim.restart();
+        } else if (quietFadeOut) {
+            // A new slide asked while the last one fades out: keep the canvas.
+            quietFadeOut = false;
+            quietFadeAnim.to = 1;
+            quietFadeAnim.restart();
         }
         return true;
     }
@@ -3113,8 +3134,14 @@ KWin.SceneEffect {
         viewX = cur.x;
         viewY = cur.y;
         publishGround();
-        visible = false;
-        quiet = false;
+        // The reveal fades: the quiet canvas and the real desktop differ
+        // where the eye would catch the cut - every inactive window's
+        // decoration switches from the thumbnail's active look to its real
+        // one, and the panel and the shadows step back in - so the canvas
+        // fades out over the desk it just slid to, hiding the swap.
+        quietFadeOut = true;
+        quietFadeAnim.to = 0;
+        quietFadeAnim.restart();
     }
 
     // Jump to the destination and settle now (another action wants the canvas).
@@ -3129,6 +3156,22 @@ KWin.SceneEffect {
         NumberAnimation { target: effect; property: "viewX"; to: effect.slideToX; duration: effect.panDuration; easing.type: Easing.OutCubic }
         NumberAnimation { target: effect; property: "viewY"; to: effect.slideToY; duration: effect.panDuration; easing.type: Easing.OutCubic }
         onFinished: effect.endSlide()
+    }
+
+    NumberAnimation {
+        id: quietFadeAnim
+        target: effect
+        property: "quietFade"
+        duration: 140
+        easing.type: Easing.InOutCubic
+        onFinished: {
+            if (effect.quietFadeOut) {
+                effect.quietFadeOut = false;
+                effect.quietFade = 1;
+                effect.visible = false;
+                effect.quiet = false;
+            }
+        }
     }
 
     // Pan by one step in a direction (dx, dy in {-1, 0, 1}): the camera moves
@@ -3795,6 +3838,10 @@ KWin.SceneEffect {
         id: view
         readonly property var screen: KWin.SceneView.screen
         readonly property rect sg: KWin.SceneView.screen.geometry
+        // The quiet scene fades in and out as a whole: at 1:1 it must be the
+        // desktop, and the fade is what hides the places it is not (active
+        // decorations, no shadows, no panel) at the slide's two ends.
+        opacity: effect.quiet ? effect.quietFade : 1
         property bool spaceHeld: false
         // Number of grips and buttons under the pointer. The pan handler
         // refuses a left press while this is non-zero, so a drag that starts
