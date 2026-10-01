@@ -1,5 +1,9 @@
 Unreleased:
 
+- The float follows the window's own screen on several outputs: a floated
+  window bounces against the bounds of the monitor it lives on, not the
+  pointer's.
+
 - The micro-feel: a single click pans after a beat instead of waiting out
   the whole double-click window (the second tap still cancels it), the
   camera lands instead of crawling its last pixels, the hover glow fades

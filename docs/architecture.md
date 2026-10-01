@@ -860,8 +860,13 @@ the settings pages through `KCMLauncher.openSystemSettings`, as Overview does.
   KWin's; the effect can watch `Window.move` and shift the plane on a timer.
 - A minimap while the canvas is open.
 - Persist `view` in the effect's config on commit.
-- Cluster gestures: dragging a cluster's thread or badge to move the whole
-  cluster, and a springy re-arrangement when a window joins or leaves.
+- Cluster gestures beyond the badge: dragging the web's lines to move the
+  cluster conflicts with the windows' own drags in Qt's handler
+  arbitration (the badge is the reliable handle), so the web drag stays
+  out until the arbitration can be scoped to the gaps.
 - Float at 1:1 beyond the slide: a floating window kept on screen during
   KWin's own window-move animations, and a home the pin returns to across
   sessions.
+- A distance-proportional slide duration read the run-order invariants
+  wrong; the fixed PanDuration stands until the slide's timing can change
+  without the chained steps depending on it.
