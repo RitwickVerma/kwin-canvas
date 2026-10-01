@@ -574,7 +574,9 @@ bool CanvasPassthrough::pointerAxis(PointerAxisEvent *event)
     }
     // With a canvas button down the wheel is the canvas's too: a notch zooms
     // the canvas at the pointer instead of scrolling the window under it.
-    if (event->buttons.toInt() & m_nav) {
+    // The hold counts: a wheel during the grasp zooms the keyhole into the
+    // map, wherever the pointer sits.
+    if ((event->buttons.toInt() & m_nav) || m_holdDown) {
         return false;
     }
     const QPointF canvas = toCanvas(event->position);
