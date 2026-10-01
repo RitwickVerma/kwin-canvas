@@ -4500,7 +4500,9 @@ KWin.SceneEffect {
                     radius: 11
                     transparentBorder: false
                 }
-                opacity: planeMap.asMinimap ? 1 : (planeMap.asOverlay ? graspContent.graspFade : 0)
+                // The lens wears the glass; the overlay does not - its blurred
+                // live background read as strobing on a real desktop.
+                opacity: planeMap.asMinimap ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 200 } }
             }
             scale: 1.0
