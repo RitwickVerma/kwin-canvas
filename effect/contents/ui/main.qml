@@ -495,21 +495,45 @@ KWin.SceneEffect {
     // edge stays there, and it acts once per rest.
     property var hoverEntry: null
     property real hoverSince: 0
-    // The overworld's z-order: the windows stack by how recently the eye
-    // has rested on them, the most recent on top. The hovered window pops
-    // above the cluster web, so the threads re-weave under it live.
-    property var hoverStack: []
+    // The overworld's z-order IS the real stacking order: a hover raises the
+    // window for real the moment the eye has rested on it (the focus
+    // settle), so the picture, the web and the desktop can never disagree,
+    // and the raise survives the step back in. The restack comes back
+    // through KWin's own stacking signal and the resync, so the canvas never
+    // moves a window twice. A pass-over, a menu and a gesture never raise -
+    // only the rest does.
     property int hoverRev: 0
     function noteHovered(e) {
-        const id = e.window.internalId;
-        const i = hoverStack.indexOf(id);
-        if (i > 0) hoverStack.splice(i, 1);
-        if (i !== 0) hoverStack.unshift(id);
         hoverRev++;
+        const stack = KWin.Workspace.stackingOrder;
+        if (stack.length === 0 || stack[stack.length - 1] === e.window) return;
+        KWin.Workspace.raiseWindow(e.window);
     }
     property bool hoverBrought: false
     property real lastGestureAt: 0
     property bool handGesture: false
+
+    // The seam: the desk's outer few pixels. A tool that shares the mouse
+    // with another machine (deskflow, synergy) parks the pointer on the
+    // screen border it hands the mouse over across, and there it sits - a
+    // pointer the desk itself put there, not the hand. A hover that reads
+    // the parked pointer would glow and pan to whatever window the seam
+    // touches, so points inside this band hover nothing: a living hand
+    // never rests in it.
+    readonly property real seamMargin: 6
+    property bool seamPark: false
+    function screensAsRects() {
+        const ss = KWin.Workspace.screens;
+        const out = [];
+        for (let i = 0; i < ss.length; ++i) {
+            const g = ss[i].geometry;
+            out.push({ x: g.x, y: g.y, width: g.width, height: g.height });
+        }
+        return out;
+    }
+    function seamAt(p) {
+        return Logic.seamPoint(screensAsRects(), p.x, p.y, seamMargin);
+    }
 
     // ---- clusters -------------------------------------------------------------
     // Windows that sit near each other on the plane are a cluster: formed
