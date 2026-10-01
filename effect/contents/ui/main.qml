@@ -3788,10 +3788,7 @@ KWin.SceneEffect {
             // in softens it out as the desk fills the view, stepping out
             // softens it back. At rest under a covering frame it is gone and
             // costs nothing.
-            // The quiet slide (a focus fly, a pan chord at 1:1) is the desktop
-            // gliding: the haze belongs to the deliberate zoom-out, so a
-            // transient move never flashes the overworld's blur.
-            readonly property bool wantShown: wallpaper && !covered && !effect.quiet
+            readonly property bool wantShown: wallpaper && !covered
             property real blurAlpha: wantShown ? 1 : 0
             Behavior on blurAlpha { NumberAnimation { duration: 280; easing.type: Easing.InOutCubic } }
             visible: wallpaper && (wantShown || blurAlpha > 0.004)
@@ -3815,7 +3812,10 @@ KWin.SceneEffect {
             FastBlur {
                 anchors.fill: parent
                 source: blurSourceHost
-                radius: effect.backdropBlur()
+                // The quiet slide (a focus fly, a pan chord at 1:1) is the
+                // desktop gliding: the wallpaper stays, sharp, so a
+                // transient move never flashes grey or the overworld's blur.
+                radius: effect.quiet ? 0 : effect.backdropBlur()
                 transparentBorder: false
             }
             // The dim over the blur only: the desks ride above it and stay
