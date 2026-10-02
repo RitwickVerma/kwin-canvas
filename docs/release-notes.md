@@ -1,5 +1,12 @@
 Unreleased:
 
+- The fly no longer blinks or cuts: the overworld's open and close at 1:1
+  now fade the view across the desktop like the quiet slide always did,
+  so stepping into a location and stepping back out cross smoothly
+  instead of flashing the whole screen at both ends. The chrome stays up
+  through a flight too - the frames, the tags and the toolbar no longer
+  wink out when the camera sets off and back when it lands.
+
 - The hover that hands the pointer over is now a knob - HoverDelay, a
   deliberate 900 ms by default: a quicker pass-over stays the canvas's,
   so sweeping across the overworld never activates a window by accident;

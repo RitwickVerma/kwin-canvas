@@ -73,6 +73,11 @@ KWin.SceneEffect {
     // over it when the slide lands, hiding the swap.
     property real quietFade: 1
     property bool quietFadeOut: false
+    // The overworld's open and close at 1:1 fade the view like the quiet
+    // slide does: the canvas and the real desktop differ where the eye
+    // catches the cut, so the swap is hidden under the fade instead of
+    // flashing. 1 while the canvas simply shows.
+    property real viewFade: 1
     readonly property bool canvasOpen: visible && !quiet
     // Pass-through: the optional binary plugin is live while the canvas is
     // open. Every key, and every click, drag and wheel over a window, goes
@@ -1694,8 +1699,11 @@ KWin.SceneEffect {
     property real chromeFade: 1
     readonly property bool entering: camOnArrive !== null
     onEnteringChanged: {
-        if (entering) farewellAnim.restart();
-        else if (visible) welcomeAnim.restart();
+        // The chrome stays up through a flight: hiding the frames, the tags
+        // and the toolbar at the flight's start and showing them again at its
+        // end reads as a blink. The fade is for a close asked while the
+        // chrome is up, which farewellHide restarts itself.
+        if (!entering && visible) welcomeAnim.restart();
     }
     NumberAnimation {
         id: farewellAnim
@@ -1734,6 +1742,13 @@ KWin.SceneEffect {
         farewellThen = then;
         farewellAnim.restart();
         closeTimer.restart();
+        // The view fades out with the chrome, so the real desktop comes
+        // back through the landing scene instead of cutting in over it.
+        // (A quiet slide fades itself out in endSlide.)
+        if (!quiet) {
+            viewFadeAnim.to = 0;
+            viewFadeAnim.restart();
+        }
     }
     Timer {
         id: closeTimer
@@ -1844,6 +1859,17 @@ KWin.SceneEffect {
             welcomeAnim.restart();
             if (moved) { thumbOpacity = 0; thumbFadeAnim.restart(); }
             else thumbOpacity = 1;
+        }
+        // The overworld opens over the desktop it will show, and the two
+        // differ where the eye catches the cut (inactive decorations, no
+        // shadows), so an open that does not move the camera fades the view
+        // in instead of flashing it. A flight's motion covers its own open.
+        viewFadeAnim.stop();
+        viewFade = 1;
+        viewFadeAnim.to = 1;
+        if (!quiet && !moved) {
+            viewFade = 0;
+            viewFadeAnim.restart();
         }
         dbg("open", (quiet ? "quiet slide" : "overworld") + (moved ? " (camera moved)" : "") + ", spec=" + spec);
     }
@@ -3247,6 +3273,14 @@ KWin.SceneEffect {
         }
     }
 
+    NumberAnimation {
+        id: viewFadeAnim
+        target: effect
+        property: "viewFade"
+        duration: 160
+        easing.type: Easing.InOutCubic
+    }
+
     // Pan by one step in a direction (dx, dy in {-1, 0, 1}): the camera moves
     // that way. Closed, it is a slide; open, the camera springs one step.
     function panStepBy(dx, dy) {
@@ -3914,7 +3948,7 @@ KWin.SceneEffect {
         // The quiet scene fades in and out as a whole: at 1:1 it must be the
         // desktop, and the fade is what hides the places it is not (active
         // decorations, no shadows, no panel) at the slide's two ends.
-        opacity: effect.quiet ? effect.quietFade : 1
+        opacity: effect.quiet ? effect.quietFade : effect.viewFade
         property bool spaceHeld: false
         // Number of grips and buttons under the pointer. The pan handler
         // refuses a left press while this is non-zero, so a drag that starts
