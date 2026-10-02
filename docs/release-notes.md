@@ -1,5 +1,15 @@
 Unreleased:
 
+- One map everywhere: the overlay wears what the minimap wears - the
+  desks and a chip per cluster - and a tap is judged once, against the
+  chips first and then the sheets, so a chip that sits inside a window's
+  sheet flies to its cluster instead of both firing and the sheet's fly
+  overriding it. A cluster chip flies the camera to fit the cluster (at
+  most 0.75, so the overlay stays up), and the release lands the location
+  with the cluster centred. The overlay teaches itself while it is up:
+  a one-line hint names what the hand can do - click to fly, drag to pan,
+  wheel to zoom, release to land.
+
 - The cluster threads are now real depth: each thread travels the z
   between its two windows - over the lower, under the higher - and ducks
   under any window that covers a stretch of it, the way a line through

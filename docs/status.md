@@ -140,6 +140,20 @@ those, from this side of the fork:
   to be translucent (the wallpaper bleeds through it in the goldens), so
   the cover in the scenario is Dolphin. The debug channel gained
   `threads`, which dumps every stretch with its z.
+- **One map everywhere.** The overlay now wears what the minimap wears -
+  the desks and a chip per cluster - and the map's taps are judged once
+  by a single resolver instead of per-item handlers: a chip inside a
+  window's sheet wins its tap (the first cut fired both, and the sheet's
+  fly overrode the chip's), and a chip flies the camera to fit its
+  cluster at 0.75 - the cap that keeps the overlay up - with the release
+  landing the location centred on the cluster. The chips and the desks
+  ride the map's morph: their reads of the map's scale inside mx()/my()
+  never registered as binding dependencies and froze them at the size
+  the map wore when they were laid out - the house trap, fixed with
+  explicit reads of the map's size. The overlay also teaches itself: a
+  one-line hint (click to fly · drag to pan · wheel to zoom · release to
+  land). `114-overlay-map` pins the chips, the desks, the resolver and
+  the landing (10/0).
 
 The full suite still is not green on this machine: the GPU-pressure
 flake stands (docs/testing.md), and the named batches remain the

@@ -406,6 +406,31 @@ KWin.SceneEffect {
         graspJumped = true;
         graspFly(entries[i]);
     }
+    // The map's cluster chips fly the camera to fit the cluster: the hold
+    // keeps its map (the fit never passes zoom 0.75, below the overlay's
+    // 0.85 gate), and the release lands the overworld there.
+    function graspClusterTo(ci) {
+        if (!grasp || ci < 0 || ci >= clusters.length) return;
+        const c = clusters[ci];
+        if (!c.ids || !c.ids.length) return;
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (let i = 0; i < c.ids.length; ++i) {
+            // ids holds window internalIds (logic.js sorts the cluster's
+            // members by their thread rank), so each one is looked up in
+            // the live entries rather than used as an index.
+            const e = entries.find(en => en.window.internalId === c.ids[i]);
+            if (!e) continue;
+            x0 = Math.min(x0, e.x); y0 = Math.min(y0, e.y);
+            x1 = Math.max(x1, e.x + e.width); y1 = Math.max(y1, e.y + e.height);
+        }
+        const w = x1 - x0, h = y1 - y0;
+        const sg = actionScreen().geometry;
+        const z = Math.min(0.75, Math.max(0.2, Math.min(sg.width / (w + 48), sg.height / (h + 48))));
+        const cx = x0 + w / 2, cy = y0 + h / 2;
+        dbg("map", "cluster " + (ci + 1) + " chip: flying to zoom " + z.toFixed(2) + " at (" + Math.round(cx) + "," + Math.round(cy) + ")");
+        noteGesture();
+        camGo(z, cx - sg.width / (2 * z), cy - sg.height / (2 * z), undefined, undefined, 2.0);
+    }
     Timer {
         interval: 100
         repeat: true
@@ -4813,6 +4838,32 @@ KWin.SceneEffect {
             readonly property real oy: { effect.revision; return (height - wb.height * sc) / 2; }
             function mx(cx) { return ox + (cx - wb.x) * sc; }
             function my(cy) { return oy + (cy - wb.y) * sc; }
+            // One map, one resolver: a tap is judged once, against the
+            // chips first and then the sheets, so a chip sitting inside a
+            // window's sheet wins its tap instead of both firing and the
+            // sheet's fly overriding the chip's. Iterated backwards so the
+            // topmost item at the point is the one that answers.
+            function sheetIndexAt(p) {
+                if (!asOverlay) return -1;
+                for (let i = effect.entries.length - 1; i >= 0; --i) {
+                    const e = effect.entries[i];
+                    const r = Qt.rect(mx(e.x), my(e.y) + Math.sin(effect.floatRev * 0.035 + i * 137.508) * 1.2 * effect.floatAmt * sc,
+                                      Math.max(6, e.width * sc), Math.max(6, e.height * sc));
+                    if (p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height) return i;
+                }
+                return -1;
+            }
+            function chipIndexAt(p) {
+                if (!asOverlay || !effect.grasp || effect.switcherActive) return -1;
+                const cs = effect.clusters;
+                for (let i = cs.length - 1; i >= 0; --i) {
+                    const c = cs[i];
+                    if (!c || c.n <= 1) continue;
+                    const cx0 = mx(c.cx) - 12, cy0 = my(c.cy) - 12;
+                    if (p.x >= cx0 && p.x <= cx0 + 24 && p.y >= cy0 && p.y <= cy0 + 24) return i;
+                }
+                return -1;
+            }
             scale: 1.0
             // The map's content, wrapped so the hold's entrance can be the
             // slow blur transition: the sheets, the outlines and the dim
@@ -4861,11 +4912,11 @@ KWin.SceneEffect {
                 delegate: Rectangle {
                     required property int index
                     readonly property var f: effect.frames()[index]
-                    visible: planeMap.asMinimap
-                    x: { effect.revision; effect.screensRev; return planeMap.mx(f.x); }
-                    y: { effect.revision; effect.screensRev; return planeMap.my(f.y); }
-                    width: { effect.revision; return f.width * planeMap.sc; }
-                    height: { effect.revision; return f.height * planeMap.sc; }
+                    visible: planeMap.asMinimap || planeMap.asOverlay
+                    x: { effect.revision; effect.screensRev; planeMap.width; planeMap.height; return planeMap.mx(f.x); }
+                    y: { effect.revision; effect.screensRev; planeMap.width; planeMap.height; return planeMap.my(f.y); }
+                    width: { effect.revision; planeMap.width; planeMap.height; return f.width * planeMap.sc; }
+                    height: { effect.revision; planeMap.width; planeMap.height; return f.height * planeMap.sc; }
                     readonly property color accent: effect.palette[index % effect.palette.length]
                     color: Qt.rgba(accent.r, accent.g, accent.b, 0.30)
                     border.width: 1
@@ -4897,15 +4948,43 @@ KWin.SceneEffect {
                         styleColor: "#80000000"
                         visible: text !== "" && parent.width > 60
                     }
-                    // The sheet itself is the click target; everywhere else
-                    // the map passes the pointer to the windows beneath.
-                    // Left only: a right or middle click is a menu and a
-                    // pan, not a jump.
-                    TapHandler {
-                        enabled: planeMap.asOverlay
-                        acceptedButtons: Qt.LeftButton
-                        onTapped: effect.graspJumpTo(index)
+                    // The tap is judged by the map's one resolver, not by
+                    // the sheet: a chip inside a sheet must win its tap,
+                    // and two handlers on the same press would both fire.
+                }
+            }
+            // The cluster chips: the map's own business, one per cluster.
+            // A chip flies the camera to fit its cluster; the number is
+            // the cluster's number in reading order, the same number the
+            // world's badge wears.
+            Repeater {
+                model: { effect.clusterRev; return effect.clusters.length; }
+                delegate: Rectangle {
+                    required property int index
+                    readonly property var c: effect.clusters[index]
+                    // The map morphs between its homes, and the morph moves
+                    // sc/ox/oy - reads that live inside mx()/my() and so do
+                    // not register as binding dependencies. The map's size
+                    // is read here, explicitly, so the chips ride the morph
+                    // instead of freezing at the size the map wore when the
+                    // clusters were first laid out.
+                    x: { effect.clusterRev; effect.revision; planeMap.width; planeMap.height; return planeMap.mx(c.cx) - width / 2; }
+                    y: { effect.clusterRev; effect.revision; planeMap.width; planeMap.height; return planeMap.my(c.cy) - height / 2; }
+                    width: 24
+                    height: 24
+                    radius: 12
+                    visible: { effect.clusterRev; return planeMap.asOverlay && effect.grasp && !effect.switcherActive && index < effect.clusters.length && effect.clusters[index].n > 1; }
+                    color: "#cc1e2126"
+                    border.width: 1
+                    border.color: "#66ffffff"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "#" + (index + 1)
+                        color: "#ffffff"
+                        font.pixelSize: 11
                     }
+                    // The tap is the map's one resolver's, which asks the
+                    // chips before the sheets.
                 }
             }
             // The map is the navigation surface: a left drag anywhere on it
@@ -4942,8 +5021,8 @@ KWin.SceneEffect {
             // content fades with the chrome.
             Item {
                 id: cameraRect
-                x: { effect.revision; effect.viewX; effect.zoom; return planeMap.mx(effect.viewX + view.sg.x / effect.zoom); }
-                y: { effect.revision; effect.viewY; effect.zoom; return planeMap.my(effect.viewY + view.sg.y / effect.zoom); }
+                x: { effect.revision; effect.viewX; effect.zoom; planeMap.width; planeMap.height; return planeMap.mx(effect.viewX + view.sg.x / effect.zoom); }
+                y: { effect.revision; effect.viewY; effect.zoom; planeMap.width; planeMap.height; return planeMap.my(effect.viewY + view.sg.y / effect.zoom); }
                 width: { effect.zoom; effect.revision; return Math.max(3, view.sg.width / effect.zoom * planeMap.sc); }
                 height: { effect.zoom; effect.revision; return Math.max(3, view.sg.height / effect.zoom * planeMap.sc); }
                 // The graceful extreme: a view that covers most of the map
@@ -4994,6 +5073,52 @@ KWin.SceneEffect {
                             last = t;
                         }
                     }
+                }
+            }
+            // The map's one resolver: a left tap is judged once, against
+            // the chips first and then the sheets, so a chip that sits
+            // inside a window's sheet wins its tap instead of both firing
+            // and the sheet's fly overriding the chip's. Empty-ground taps
+            // do nothing - the map never steals the pointer from the
+            // windows beneath it.
+            TapHandler {
+                enabled: planeMap.asOverlay
+                acceptedButtons: Qt.LeftButton
+                onTapped: (eventPoint) => {
+                    const p = eventPoint.position;
+                    const chi = planeMap.chipIndexAt(p);
+                    if (chi >= 0) {
+                        effect.graspClusterTo(chi);
+                        return;
+                    }
+                    const si = planeMap.sheetIndexAt(p);
+                    if (si >= 0) effect.graspJumpTo(si);
+                }
+            }
+            // The grasp teaches itself: one line, while the overlay is up,
+            // naming what the hand can do.
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 12
+                visible: planeMap.asOverlay && effect.grasp && !effect.switcherActive
+                width: hintRow.implicitWidth + 20
+                height: 26
+                radius: 13
+                color: "#cc1e2126"
+                border.width: 1
+                border.color: "#33ffffff"
+                Row {
+                    id: hintRow
+                    anchors.centerIn: parent
+                    spacing: 9
+                    Text { text: "click to fly"; color: "#ffffff"; font.pixelSize: 11 }
+                    Text { text: "·"; color: "#77ffffff"; font.pixelSize: 11 }
+                    Text { text: "drag to pan"; color: "#ffffff"; font.pixelSize: 11 }
+                    Text { text: "·"; color: "#77ffffff"; font.pixelSize: 11 }
+                    Text { text: "wheel to zoom"; color: "#ffffff"; font.pixelSize: 11 }
+                    Text { text: "·"; color: "#77ffffff"; font.pixelSize: 11 }
+                    Text { text: "release to land"; color: "#ffffff"; font.pixelSize: 11 }
                 }
             }
             }
