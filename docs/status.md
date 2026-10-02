@@ -115,6 +115,31 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-02 — the seams crossfade, and the threads travel the stack
+
+- **The fly's remaining cut.** The fade fixed the slide but the enter and
+  exit still cut: the canvas only faded its windows, so they dissolved
+  into the wallpaper and the real windows (inactive decorations, shadows,
+  panel) popped in after. The whole scene now crossfades against the real
+  desktop - measured as a ramp (981→5337→365→0 RMSE between consecutive
+  shots) where the old build swapped 6260 in one frame - the flight's
+  spring starts as a gentle acceleration, and the chrome stays up
+  through a flight.
+- **The threads' depth.** A thread was flat: one z per pair, its
+  endpoints' midpoint, so it ignored every window it crossed in the
+  middle. Now each thread travels the depth between its two windows
+  (the z at a point is the mix of the endpoints'), cut at every window
+  crossing so each stretch renders at its own z: over the lower, under
+  the higher, ducking under whatever covers the middle. `113-thread-duck`
+  proves the duck in pixels; writing it also showed the nest's Konsole
+  to be translucent (the wallpaper bleeds through it in the goldens), so
+  the cover in the scenario is Dolphin. The debug channel gained
+  `threads`, which dumps every stretch with its z.
+
+The full suite still is not green on this machine: the GPU-pressure
+flake stands (docs/testing.md), and the named batches remain the
+evidence until a reboot.
+
 ### 2026-10-01 — the seam, the fly's fade, and the hover's real raise
 
 Three live-session bugs, each fixed with a measure first:
