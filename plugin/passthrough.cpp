@@ -21,7 +21,7 @@
 #include <QLoggingCategory>
 #include <QTimer>
 
-Q_LOGGING_CATEGORY(KWIN_CANVAS, "kwin_canvas_passthrough", QtWarningMsg)
+Q_LOGGING_CATEGORY(KWIN_CANVAS, "kwin_canvas_passthrough", QtDebugMsg)
 
 using namespace KWin;
 
@@ -192,6 +192,12 @@ void CanvasPassthrough::setHoldButtons(int buttons)
     }
 }
 
+void CanvasPassthrough::setVerbose(bool verbose)
+{
+    m_verbose = verbose;
+    qCDebug(KWIN_CANVAS) << "canvas-passthrough: verbose" << (verbose ? "on" : "off");
+}
+
 // The press of a hold button that turned out to be a click, not a hold:
 // deliver it to the window under the pointer, press and release, at the
 // pointer's own place. The seat's pointer state is whatever the normal
@@ -199,6 +205,7 @@ void CanvasPassthrough::setHoldButtons(int buttons)
 // - so only the buttons need replaying.
 void CanvasPassthrough::replayClick()
 {
+    if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: replaying the click the hold threshold did not outlast";
     SeatInterface *seat = waylandServer()->seat();
     seat->notifyPointerButton(m_candidateButton, PointerButtonState::Pressed);
     seat->notifyPointerFrame();
@@ -377,6 +384,7 @@ bool CanvasPassthrough::enter(Window *window, const QPointF &canvas)
         seat->notifyPointerEnter(surface, global, toChild * toSurface);
         m_hoverSurface = surface;
         m_hover = window;
+        if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: entered" << window->caption();
     } else {
         seat->notifyPointerMotion(global);
     }
@@ -390,6 +398,7 @@ void CanvasPassthrough::leave()
         SeatInterface *seat = waylandServer()->seat();
         seat->notifyPointerLeave();
         seat->notifyPointerFrame();
+        if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: left the hover";
     }
     m_hoverSurface = nullptr;
     m_hover = nullptr;
@@ -423,6 +432,18 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
     // The first motion is the user aiming at the canvas: from here the
     // passthrough is live and the window under the pointer takes input.
     m_settled = true;
+    // The grasp's overlay owns the pointer outright: once the hold zooms
+    // out past the overlay's threshold, the map under the pointer takes
+    // every motion - no window under it may hover, or the pointer's rest
+    // would hand the input to the real window drawn under a sheet and the
+    // sheet's click or drag would never reach the canvas.
+    if (m_holdDown && m_zoom < 0.85) {
+        if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: overlay owns the pointer, motion stays in the canvas";
+        leave();
+        m_grab = nullptr;
+        m_grabGround = true;
+        return false;
+    }
     // A canvas button is down: the whole gesture is the canvas's, wherever the
     // pointer is (a window being dragged on the plane, a pan, an edge). The
     // window under the pointer is not entered and no motion is notified to it.
@@ -507,10 +528,12 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
                 m_holdCandidate = true;
                 m_candidateButton = Qt::MouseButton(uint(event->button));
                 m_holdTimer.start();
+                if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: hold candidate pressed, waiting the delay";
             }
         } else {
             if (m_holdDown) {
                 m_holdDown = false;
+                if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: hold released, canvas closes";
                 if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
                     canvas->setProperty("canvasHold", false);
                 }
@@ -540,6 +563,15 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
         m_clickWindow = nullptr;
     }
     if (!m_active) {
+        return false;
+    }
+    // The grasp's overlay owns the pointer outright (see pointerMotion):
+    // a press over a sheet is the sheet's, never the real window drawn
+    // under the map.
+    if (m_holdDown && m_zoom < 0.85) {
+        leave();
+        m_grab = nullptr;
+        m_grabGround = true;
         return false;
     }
     // The passthrough waits for the aim: until the pointer's first motion

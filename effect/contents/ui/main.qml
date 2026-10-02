@@ -142,17 +142,47 @@ KWin.SceneEffect {
     property bool canvasHold: false
     property bool grasp: false
     property var graspStartActive: null
+    // The hold came down while the overworld was already open: it is the
+    // grasp from the overworld's side, so the map comes back for it and the
+    // release returns to the overworld, not to the location.
+    property bool graspOverworld: false
     onCanvasHoldChanged: {
         if (canvasHold) {
-            // Held in the open overworld it is navigation only: the views
-            // count it into navHeld, and releasing does nothing.
+            // Held while the overworld is open: the hold itself IS the
+            // navigation - bring the grasp back, map and all.
             if (!visible) graspStart();
+            else if (!grasp) {
+                grasp = true;
+                graspOverworld = true;
+                graspJumped = false;
+                dbg("hold", "grasp from the open overworld");
+            }
         } else if (grasp) {
+            dbg("hold", "released");
             graspEnd();
         }
     }
+    // The verbose trace: every decision the canvas takes, at the moment it
+    // takes it, with the state it leaves behind. Toggled by the Verbose
+    // knob or the debug channel's "verbose" command; the lines land in
+    // KWin's log as "[canvas] tag: message zoom=... view=...".
+    property bool verb: configuration.Verbose
+    function dbg(tag, msg) {
+        if (!verb) return;
+        console.log("[canvas] " + tag + ": " + msg
+            + " zoom=" + zoom.toFixed(4)
+            + " view=(" + Math.round(viewX) + "," + Math.round(viewY) + ")"
+            + " quiet=" + quiet + " grasp=" + grasp
+            + " clusters=" + clusters.length);
+    }
+    // The map's two homes, mirrored out of the map item: the effect's own
+    // functions read these, so logState can say where the map lives without
+    // reaching into the scene tree.
+    property bool mapOverlay: false
+    property bool mapMinimap: false
     function graspStart() {
         if (visible) return;
+        dbg("graspStart", "hold from the location at 1:1");
         grasp = true;
         graspStartActive = KWin.Workspace.activeWindow;
         open(true);
@@ -167,12 +197,13 @@ KWin.SceneEffect {
         if (fullscreenOpen()) fullscreenZoomTo();
     }
     function graspEnd() {
-        if (!quiet || !grasp) { grasp = false; return; }
+        if (!quiet || !grasp) { grasp = false; graspOverworld = false; return; }
         if (sceneGestures > 0) {
             deferredClose = graspEnd;
             return;
         }
         grasp = false;
+        dbg("graspEnd", "release, quiet at zoom " + zoom.toFixed(3));
         // The swap moved the focus: the location opens where the swapped-to
         // window is, focused on it, as a pick would place it - the frames,
         // their windows and the wallpaper slide to it and nothing else moves.
@@ -208,6 +239,7 @@ KWin.SceneEffect {
         // lens. Zoomed in, the release commits the location, as it always
         // has - a pan during the hold is the location's new viewport.
         if (zoom < 0.72 && !graspJumped) {
+            dbg("graspEnd", "widening into the overworld");
             quiet = false;
             chromeFade = 0;
             welcomeAnim.restart();
@@ -215,6 +247,7 @@ KWin.SceneEffect {
             if (passthrough) probeCall.call();
             return;
         }
+        dbg("graspEnd", "committing the location");
         commit(null);
     }
 
@@ -223,9 +256,11 @@ KWin.SceneEffect {
     // window, the focus follows, and the release opens the location there.
     function swapWindow() {
         if (!grasp && !canvasOpen) return;
-        if (!grasp) {
+        if (!grasp || graspOverworld) {
             // In the overworld the swap tours the clusters - the bracket
-            // keys' own travel, at the speed of the click.
+            // keys' own travel, at the speed of the click. A hold in the
+            // overworld is the overworld still, so the swap keeps touring.
+            dbg("swap", "overworld: touring the clusters");
             clusterTravel(1);
             return;
         }
@@ -358,10 +393,12 @@ KWin.SceneEffect {
             others.push({ x: entries[i].x, y: entries[i].y, width: entries[i].width, height: entries[i].height });
         }
         const d = Logic.smartPan({ x: e.x, y: e.y, width: e.width, height: e.height }, actionScreen().geometry, viewX, viewY, 1.0, 24);
+        dbg("map", "flying to " + Math.round(viewX + d.dx) + "," + Math.round(viewY + d.dy) + " (" + Math.round(d.dx) + "," + Math.round(d.dy) + " delta)");
         camGo(1.0, viewX + d.dx, viewY + d.dy, undefined, undefined, 2.0);
     }
     function graspJumpTo(i) {
         if (i < 0 || i >= entries.length) return;
+        dbg("map", "sheet " + i + " (" + entries[i].window.caption + ") jumped to");
         noteGesture();
         graspJumped = true;
         graspFly(entries[i]);
@@ -1805,6 +1842,7 @@ KWin.SceneEffect {
             if (moved) { thumbOpacity = 0; thumbFadeAnim.restart(); }
             else thumbOpacity = 1;
         }
+        dbg("open", (quiet ? "quiet slide" : "overworld") + (moved ? " (camera moved)" : "") + ", spec=" + spec);
     }
 
     // Where the camera starts: fit everything, stay at 1:1, or a zoom anchored
@@ -1854,6 +1892,7 @@ KWin.SceneEffect {
     // for the buttons to come up, so the canvas never hands a held button to
     // the desktop mid-press.
     function commit(activate) {
+        dbg("commit", "entering at zoom " + zoom.toFixed(3) + ", activate=" + activate);
         switcherActive = false;
         if (sceneGestures > 0) {
             deferredClose = function () { commit(activate); };
@@ -1957,6 +1996,7 @@ KWin.SceneEffect {
     }
 
     function doCancel() {
+        dbg("cancel", "switcher=" + switcherActive);
         switcherActive = false;
         if (!visible) return;
         if (sceneGestures > 0) {
@@ -2734,6 +2774,13 @@ KWin.SceneEffect {
         dbusInterface: "org.kde.kwin.canvas.Passthrough"
         method: "setHoldDelay"
     }
+    KWin.DBusCall {
+        id: verboseCall
+        service: "org.kde.KWin"
+        path: "/KWinCanvas"
+        dbusInterface: "org.kde.kwin.canvas.Passthrough"
+        method: "setVerbose"
+    }
     // The plugin answered: if the canvas is still open, switch it on and give it the camera.
     function passthroughProbed() {
         if (!canvasOpen || passthroughLive) return;
@@ -2741,6 +2788,7 @@ KWin.SceneEffect {
         publishCamera();
         publishNav();
         publishHold();
+        publishVerbose();
         activeCall.arguments = [true];
         activeCall.call();
     }
@@ -2771,6 +2819,14 @@ KWin.SceneEffect {
         holdDelayCall.arguments = [delay];
         holdDelayCall.call();
     }
+    // The trace flag reaches the plugin too, so its side of every decision
+    // lands in the same log.
+    function publishVerbose() {
+        if (!passthroughLive) return;
+        verboseCall.arguments = [verb];
+        verboseCall.call();
+    }
+    onVerbChanged: publishVerbose()
     function dropPassthrough() {
         if (!passthroughLive) return;
         passthroughLive = false;
@@ -3560,6 +3616,7 @@ KWin.SceneEffect {
         case "sendto": sendTo(a[1] === "none" || !numok(1) ? null : activityIds[Number(a[1])]); break;
         case "marquee": if (numok(1) && numok(2) && numok(3) && numok(4)) selectInRect(Number(a[1]), Number(a[2]), Number(a[3]), Number(a[4])); break;
         case "state": break;
+        case "verbose": verb = a[1] !== "off"; publishVerbose(); break;
         case "switch": switcherToggle(); break;
         default: console.warn("kwin-canvas: unknown debug command", cmd);
         }
@@ -3587,6 +3644,8 @@ KWin.SceneEffect {
             + " draglag=" + Math.round(Math.sqrt(dragLagX * dragLagX + dragLagY * dragLagY)) + " lean=" + dragLean.toFixed(2)
             + " idle=" + (passthroughIdle ? "1" : "0")
             + " seam=" + (seamPark ? "1" : "0")
+            + " map=" + (mapOverlay ? "overlay" : (mapMinimap ? "minimap" : "-"))
+            + " verb=" + (verb ? "1" : "0")
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
         const ids = activityIds, screens = KWin.Workspace.screens;
         for (let i = 0; i < screens.length; ++i) {
@@ -4619,9 +4678,20 @@ KWin.SceneEffect {
             // The grasp's hold starts as the quiet keyhole at 1:1; the map
             // steps in only once the hold zooms out past the threshold,
             // fading in as the windows shrink beneath it. The switcher
-            // opens the map outright.
-            readonly property bool asOverlay: ((effect.grasp && effect.zoom < 0.85) || effect.switcherActive) && view.screen === effect.primaryScreen
+            // opens the map outright. The overlay is a navigation tool,
+            // worth the screen only when there is somewhere to navigate:
+            // with one cluster the plane is one hop, so it stays out of
+            // the way - the switcher keeps its map regardless.
+            readonly property bool asOverlay: {
+                effect.clusterRev;
+                return ((effect.grasp && effect.zoom < 0.85 && effect.clusters.length > 1) || effect.switcherActive) && view.screen === effect.primaryScreen;
+            }
             readonly property bool asMinimap: effect.canvasOpen && !effect.quiet && effect.zoom < 0.9 && !effect.grasp && view.screen === effect.primaryScreen
+            // Mirrored into the effect's own flags: logState and the other
+            // effect functions cannot see this item's id, so the map
+            // publishes its homes for them.
+            onAsOverlayChanged: effect.mapOverlay = asOverlay
+            onAsMinimapChanged: effect.mapMinimap = asMinimap
             readonly property rect home: asOverlay
                 ? Qt.rect(24, 24, view.sg.width - 48, view.sg.height - 48)
                 : Qt.rect(view.sg.width - mw - Kirigami.Units.largeSpacing * 2, view.sg.height - mh - Kirigami.Units.largeSpacing * 2, mw, mh)
@@ -4736,9 +4806,39 @@ KWin.SceneEffect {
                     }
                     // The sheet itself is the click target; everywhere else
                     // the map passes the pointer to the windows beneath.
+                    // Left only: a right or middle click is a menu and a
+                    // pan, not a jump.
                     TapHandler {
                         enabled: planeMap.asOverlay
+                        acceptedButtons: Qt.LeftButton
                         onTapped: effect.graspJumpTo(index)
+                    }
+                }
+            }
+            // The map is the navigation surface: a left drag anywhere on it
+            // pans the camera, and it must never fall through to the window
+            // drawn under the pointer - a drag that started on a sheet or
+            // on the map's empty ground would otherwise grab that window
+            // and drag the canvas with it. The sheets and the camera
+            // rectangle sit above this and keep their own gestures.
+            Item {
+                anchors.fill: parent
+                DragHandler {
+                    target: null
+                    acceptedButtons: Qt.LeftButton
+                    enabled: planeMap.asOverlay || planeMap.asMinimap
+                    property point last: Qt.point(0, 0)
+                    onActiveChanged: {
+                        effect.sceneGestures += active ? 1 : -1;
+                        if (active) {
+                            effect.noteGesture(true);
+                            last = Qt.point(0, 0);
+                        }
+                    }
+                    onActiveTranslationChanged: {
+                        const t = activeTranslation;
+                        effect.panBy(t.x - last.x, t.y - last.y);
+                        last = t;
                     }
                 }
             }
@@ -4783,10 +4883,18 @@ KWin.SceneEffect {
                     border.color: "#e8ffffff"
                     opacity: cameraRect.fade
                     // The rectangle itself pans the camera: drag the
-                    // viewport across the map and the view follows.
+                    // viewport across the map and the view follows. The
+                    // drag counts as a scene gesture so a release asked
+                    // for mid-drag waits for the hand to come up.
                     DragHandler {
                         property point last: Qt.point(0, 0)
-                        onActiveChanged: { if (!active) last = Qt.point(0, 0); }
+                        onActiveChanged: {
+                            effect.sceneGestures += active ? 1 : -1;
+                            if (active) {
+                                effect.noteGesture(true);
+                                last = Qt.point(0, 0);
+                            }
+                        }
                         onActiveTranslationChanged: {
                             const t = activeTranslation;
                             effect.panBy(t.x - last.x, t.y - last.y);

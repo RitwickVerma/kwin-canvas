@@ -1,5 +1,23 @@
 Unreleased:
 
+- The grasp's overlay now waits for its business: it steps in only while
+  the hold has zoomed out and there is more than one cluster to navigate
+  - with one cluster the plane is a single hop, so the map stays out of
+  the way. A hold in the open overworld brings the map back the same way,
+  and releasing it returns to the overworld where it started.
+- The map is the navigation surface: a drag that starts on a sheet or the
+  map's empty ground pans the camera - it never falls through to the
+  window drawn underneath and grabs it - and the camera rectangle's drag
+  counts as a gesture, so a release mid-drag defers the close like every
+  other hold. Only a left click flies a sheet; right and middle are for
+  the windows' own menus, not for jumps.
+- The canvas can narrate itself: the `verbose` debug command (or the
+  `Verbose` knob) writes every decision - opens, commits, cancels, hold
+  branches, map clicks - to KWin's log as a `[canvas]` line with the
+  state it left behind, and the pass-through plugin's own
+  `canvas-passthrough:` lines follow the hold, the hover and the click
+  replay.
+
 - The cluster web is overworld chrome: the threads fade out as the camera
   returns toward 1:1 and are gone by the time the location itself is
   showing, so the normal-mode flights - hover nudges, pick steps, Tab

@@ -342,5 +342,9 @@
         <entry name="DebugSeq" type="Int">
             <default>0</default>
         </entry>
+        <entry name="Verbose" type="Bool">
+            <label>Write a trace of every decision the canvas takes to KWin's log, as [canvas] lines. Toggled live by the debug channel's "verbose" command.</label>
+            <default>false</default>
+        </entry>
     </group>
 </kcfg>

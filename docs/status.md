@@ -46,13 +46,16 @@ built and loaded (the live-session half stays untested, below):
 
 - `make lint-qml`, `make lint-shell` and `make lint-deadcode` — exit 0 (the
   census in `tools/deadcode.sh` keeps the tree free of declarations nobody
-  references; it runs in CI too). `lint-reuse` still needs
-  `reuse`, which is not installed here (below).
+  references; it runs in CI too). `lint-reuse`, `lint-shell` with
+  shellcheck and `lint-python` with vulture all run here now too (the
+  tools were installed in the session that added them).
 - `make unit` — 50 pure-logic assertions in node, in the CI's check stage
   as well as locally (the seam band joined the tested half).
-- The scenarios, by the batches that pin them (the seam's hover dead band,
-  the fly's fade, and the hover's real raise are the newest work):
-  `make test ARGS=109` — 9/0, `110` — 5/0, `7[01]` — 18/0,
+- The scenarios, by the batches that pin them (the overlay's cluster gate,
+  the hold in the open overworld, the map's drag-eater and the verbose
+  trace are the newest work): `make test ARGS=112-overlay` — 20/0,
+  `107` — 6/0, `85` — 17/0, `87` and `88` — 2/0 each (`89` skips, two
+  outputs), `103` — 24/0, `109` — 9/0, `110` — 5/0, `7[01]` — 18/0,
   `10[013479]` — 87/0, `8[0-9]` — 62/2 (the panel and the two-output
   skips), `10[49]` — 29/0, `70` and `71` with the poll-tolerant slide.
 - The full suite is not green on this machine right now: `make test`
@@ -78,8 +81,6 @@ built and loaded (the live-session half stays untested, below):
   now (the dependencies were installed) and `85-passthrough` runs for real.
 - **The live-session half**: the `evaluateScript` handoff, and the wallpaper inside
   a real plasmashell, have been rendered in isolation only.
-- `reuse` itself is not installed here, so `make lint-reuse` needs
-  `sudo pacman -S reuse`; it lived only in a scratch venv that has been deleted.
 
 ## Decisions taken, and the ones still open
 

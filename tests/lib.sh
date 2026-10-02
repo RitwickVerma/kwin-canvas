@@ -62,6 +62,8 @@ sget() {
         draglag)  sed -n 's/.* draglag=\([0-9]*\).*/\1/p' <<<"$line" ;;
         lean)     sed -n 's/.* lean=\([-0-9.]*\).*/\1/p' <<<"$line" ;;
         seam)     sed -n 's/.* seam=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        map)      sed -n 's/.* map=\([a-z-]*\).*/\1/p' <<<"$line" ;;
+        verb)     sed -n 's/.* verb=\([0-9]*\).*/\1/p' <<<"$line" ;;
         nactivities) grep -c '^  {' <<<"$LAST_STATE" ;;
     esac
 }

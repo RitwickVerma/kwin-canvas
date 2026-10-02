@@ -101,11 +101,21 @@ make nest-cmd CMD=resetview               # 1:1 only: forget the pan so canvas =
 make nest-cmd CMD=list                    # every window with its frame and activity
 make nest-cmd CMD=cancel
 make nest-cmd CMD="locate In"             # log the global centre of the toolbar control labelled In
+make nest-cmd CMD="verbose on"            # every decision the canvas takes, into KWin's log
 ```
 
 Each command prints the effect state afterwards: `visible`, `zoom`, `view`,
 the current activity, every activity's target (and hidden outputs), and
 every entry's canvas rect, frame and activity.
+
+`verbose on` (or the `Verbose` knob) turns the effect into its own witness:
+every decision lands in KWin's log as a `[canvas]` line - `open`, `commit`,
+`cancel`, the hold's branches, the map's sheet clicks - each with the zoom,
+view, quiet and grasp state it left behind, and the pass-through plugin's
+matching `canvas-passthrough:` lines for the hold, the hover and the click
+replay. A failing scenario is a `grep '\[canvas\]'` away from the exact call
+sequence and end state; `make nest-log` tails the nest's log, `journalctl`
+the live session's.
 
 The same channel works against the live session, so a change can be checked
 without a nest. The effect logs its state to the journal rather than to a file

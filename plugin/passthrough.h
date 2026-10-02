@@ -89,6 +89,13 @@ public Q_SLOTS:
      * sees the press before any window does. Zero turns the modifier off.
      */
     Q_SCRIPTABLE void setHoldButtons(int buttons);
+    /**
+     * The trace flag: with it on, every decision this filter takes (hold
+     * press and release, click replay, enter and leave, the overlay's
+     * ownership of the pointer) is logged, so the effect's and the
+     * plugin's halves of a gesture can be read side by side in KWin's log.
+     */
+    Q_SCRIPTABLE void setVerbose(bool verbose);
     /** One line of state for the nest harness: active, camera, grab, hover. */
     Q_SCRIPTABLE QString state() const;
 
@@ -124,6 +131,8 @@ private:
     double m_zoom = 1;
     QString m_current;
     QHash<QString, QPointF> m_targets;
+    /** The trace flag (setVerbose): log every decision this filter takes. */
+    bool m_verbose = false;
 
     QPointer<KWin::Window> m_grab;
     bool m_grabGround = false;
