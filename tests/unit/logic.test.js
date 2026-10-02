@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, floatStep, fitRange, smartPan, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour };")();
+const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, floatStep, fitRange, smartPan, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -193,6 +193,58 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
     ok("an L's protruding outer edge is seam", L.seamPoint(el, 3, 500, 6));
     ok("an L's shared stretch is inner", !L.seamPoint(el, 1919, 900, 6));
     ok("off-layout points are not the desk's business", !L.seamPoint(pair, -10, 500, 6));
+}
+
+// ---- the threads travel the depth between their windows ----
+{
+    // A bare thread: one span, and its z is the mix of the endpoints' z,
+    // a hair under the midpoint.
+    const spans = L.threadSpans(0, 0, 100, 0, 1000, 1004, []);
+    ok("an uncovered thread is one span", spans.length === 1);
+    ok("its z is the endpoints' mix", near(spans[0].z, 1002 - 0.001));
+}
+{
+    // A window covering the middle of the thread cuts it into three: the
+    // stretch inside the window keeps the thread's own depth there, and the
+    // cut points are exactly the window's edges.
+    const spans = L.threadSpans(0, 0, 100, 0, 1000, 1004, [{ x: 40, y: -5, w: 20, h: 10 }]);
+    ok("a covering window cuts the thread into three spans", spans.length === 3);
+    ok("the first span ends at the window's near edge", near(spans[0].x2, 40) && near(spans[0].y2, 0));
+    ok("the middle span is the stretch inside the window", near(spans[1].x1, 40) && near(spans[1].x2, 60));
+    ok("the last span begins at the far edge", near(spans[2].x1, 60) && near(spans[2].x2, 100));
+    // The middle span sits at the thread's depth at t=0.5: 1002 - the hair.
+    ok("the covered span keeps the thread's own depth", near(spans[1].z, 1002 - 0.001));
+    ok("the z runs along the thread", spans[0].z < spans[1].z && spans[1].z < spans[2].z);
+}
+{
+    // The tuck at the attach: a window one step above the endpoint covers
+    // the first stretch, and the thread there sits beneath it - the case a
+    // window overlapping another, with the thread meeting the lower one
+    // under the higher.
+    const spans = L.threadSpans(0, 0, 100, 0, 1000, 1002, [{ x: -5, y: -5, w: 30, h: 10 }]);
+    ok("the covered stretch sits beneath the covering window", spans[0].z < 1001);
+}
+{
+    // A window that misses the thread changes nothing.
+    const spans = L.threadSpans(0, 0, 100, 0, 1000, 1004, [{ x: 10, y: 20, w: 20, h: 10 }]);
+    ok("a window off the thread leaves it whole", spans.length === 1);
+}
+{
+    // A window that swallows the whole thread still leaves spans - all of
+    // them beneath the window's z when it sits above the thread's depth.
+    const spans = L.threadSpans(0, 0, 100, 0, 1000, 1002, [{ x: -10, y: -10, w: 130, h: 20 }]);
+    ok("a window covering the whole thread keeps spans to draw", spans.length === 1);
+    ok("and the whole thread sits beneath it", spans[0].z < 1001);
+}
+{
+    // The crossing test itself: inside, crossing, past the end, and a miss.
+    const inT = L.segRectT(0, 0, 100, 0, 40, -5, 20, 10);
+    ok("a crossing segment clips to the rect", inT !== null && near(inT[0], 0.4) && near(inT[1], 0.6));
+    ok("a segment wholly inside spans the rect", (function () { const t = L.segRectT(0, 0, 100, 0, -5, -5, 120, 10); return t !== null && near(t[0], 0) && near(t[1], 1); })());
+    ok("a segment that stops inside is clipped at 1", (function () { const t = L.segRectT(0, 0, 50, 0, 0, -5, 100, 10); return t !== null && near(t[0], 0) && near(t[1], 1); })());
+    ok("a parallel miss is null", L.segRectT(0, 0, 100, 0, 0, 10, 100, 10) === null);
+    ok("a side miss is null", L.segRectT(0, 0, 100, 0, 200, 0, 50, 10) === null);
+    ok("a reversed segment clips the same stretch", (function () { const t = L.segRectT(100, 0, 0, 0, 40, -5, 20, 10); return t !== null && near(t[0], 0.4) && near(t[1], 0.6); })());
 }
 
 console.log("== unit pass " + pass + "  fail " + fail);

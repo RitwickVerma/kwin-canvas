@@ -212,3 +212,68 @@ function seamNeighbour(screens, s, axis, at) {
     }
     return false;
 }
+
+// The stretch of a segment that lies inside a rectangle, as the fraction
+// pair [t0, t1] of the segment, or null when they never meet. Liang-Barsky:
+// four half-planes, each clips a parameter range, and the intersection of
+// the ranges is the visible stretch.
+function segRectT(x1, y1, x2, y2, rx, ry, rw, rh) {
+    const dx = x2 - x1, dy = y2 - y1;
+    let t0 = 0, t1 = 1;
+    const halfPlanes = [
+        [-dx, x1 - rx],          // left of the rect
+        [dx, rx + rw - x1],      // right
+        [-dy, y1 - ry],          // top
+        [dy, ry + rh - y1]       // bottom
+    ];
+    for (let i = 0; i < 4; ++i) {
+        const p = halfPlanes[i][0], q = halfPlanes[i][1];
+        if (p === 0) {
+            if (q < 0) return null;   // parallel and outside
+        } else {
+            const t = q / p;
+            if (p < 0) {
+                if (t > t1) return null;
+                if (t > t0) t0 = t;
+            } else {
+                if (t < t0) return null;
+                if (t < t1) t1 = t;
+            }
+        }
+    }
+    if (t0 >= t1) return null;
+    return [t0, t1];
+}
+
+// A cluster thread is a line THROUGH the stack, not a flat sticker: at any
+// point along it its z is the linear mix of its two windows' z, so a window
+// occludes exactly the stretch where the window's z is above the thread's
+// there. The thread is cut at every window crossing and each stretch is
+// returned with its own z, so the view's sibling ordering does the weaving
+// - over the lower, under the higher, and ducking under any window that
+// covers a middle stretch. rects are { x, y, w, h } in the endpoints'
+// coordinates; zA and zB are the endpoints' z.
+function threadSpans(x1, y1, x2, y2, zA, zB, rects) {
+    const ts = [0, 1];
+    for (let i = 0; i < rects.length; ++i) {
+        const r = rects[i];
+        const t = segRectT(x1, y1, x2, y2, r.x, r.y, r.w, r.h);
+        if (t) ts.push(t[0], t[1]);
+    }
+    ts.sort(function (a, b) { return a - b; });
+    const out = [];
+    for (let i = 0; i < ts.length - 1; ++i) {
+        const t0 = ts[i], t1 = ts[i + 1];
+        if (t1 - t0 < 1e-6) continue;
+        const tm = (t0 + t1) / 2;
+        // The hair below the mix: an exact tie with a window's z would
+        // leave the order to the delegates' creation order, so the thread
+        // always sits a hair under the window whose depth it shares.
+        out.push({
+            x1: x1 + (x2 - x1) * t0, y1: y1 + (y2 - y1) * t0,
+            x2: x1 + (x2 - x1) * t1, y2: y1 + (y2 - y1) * t1,
+            z: zA + (zB - zA) * tm - 0.001
+        });
+    }
+    return out;
+}

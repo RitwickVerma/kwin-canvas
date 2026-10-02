@@ -1,5 +1,12 @@
 Unreleased:
 
+- The cluster threads are now real depth: each thread travels the z
+  between its two windows - over the lower, under the higher - and ducks
+  under any window that covers a stretch of it, the way a line through
+  the stack should. A thread no longer sails over a window that happens
+  to sit on top of its path; the constellation re-weaves live with every
+  hover and restack.
+
 - The transitions are now a true crossfade: the whole scene - windows,
   frames, chrome and all - fades against the real desktop at every seam,
   instead of the windows dissolving on their own and the real ones popping

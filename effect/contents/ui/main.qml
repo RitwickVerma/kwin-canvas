@@ -652,21 +652,41 @@ KWin.SceneEffect {
     // are KWin's order, so the index IS the z - with the hovered window
     // lifted above the whole web. The hover has just raised that window for
     // real, so the picture and the desktop keep the same order. The threads
-    // weave by the same numbers: a thread renders at the z between its two
-    // windows, over the lower and under the higher, so the constellation
-    // re-threads live as the eye moves.
+    // travel the depth between their two windows - each stretch of a thread
+    // carries the mix of the two endpoints' z at that point - so the
+    // constellation weaves over the lower, under the higher, and ducks under
+    // any window in the way, re-threading live as the eye moves.
     function windowZ(e) {
         return e === focusEntry ? 2000 : 1000 + entries.indexOf(e);
     }
     // The cluster webs, flattened: every pair of windows in every cluster,
     // in this screen's coordinates, one entry per thread. The z only counts
     // at the view level - a child's z cannot lift it out of its parent - so
-    // the threads are one flat list, not nested under the clusters, and each
-    // carries the z that weaves it through the windows. Re-evaluated with
-    // the camera, the float and the hover, so the web rides the windows'
-    // motion and re-weaves as the eye moves.
+    // the threads are one flat list, not nested under the clusters. Each
+    // thread is cut at every window crossing and each stretch carries the z
+    // the thread has at that point - the linear mix of its two windows' z -
+    // so the web weaves over the lower, under the higher, and ducks under
+    // any window that covers a middle stretch. Re-evaluated with the
+    // camera, the float and the hover, so the web rides the windows' motion
+    // and re-weaves as the eye moves.
     function clusterThreads(sgx, sgy) {
         if (quiet) return [];
+        // The windows as occlusion rects in this screen's coordinates (the
+        // float's picture included, since that is what the eye sees), each
+        // at its stack z: the threads cross them like a wire through the
+        // stack, above the lower and beneath the higher.
+        const rects = [];
+        for (let k = 0; k < entries.length; ++k) {
+            const e = entries[k];
+            const f = floatOf[e.window.internalId];
+            const bob = Math.sin(floatRev * 0.035 + k * 137.508) * 2.4 * floatAmt;
+            rects.push({
+                x: f ? f.x : (e.x - viewX) * zoom - sgx,
+                y: (f ? f.y : (e.y - viewY) * zoom - sgy) + bob,
+                w: e.width * zoom,
+                h: e.height * zoom
+            });
+        }
         const out = [];
         for (let i = 0; i < clusters.length; ++i) {
             const c = clusters[i];
@@ -686,8 +706,12 @@ KWin.SceneEffect {
             }
             for (let a = 0; a < pts.length; ++a) {
                 for (let b = a + 1; b < pts.length; ++b) {
-                    out.push({ x1: pts[a].x, y1: pts[a].y, x2: pts[b].x, y2: pts[b].y,
-                               z: (pts[a].z + pts[b].z) / 2, lit: lit, co: c.co });
+                    const spans = Logic.threadSpans(pts[a].x, pts[a].y, pts[b].x, pts[b].y, pts[a].z, pts[b].z, rects);
+                    for (let s = 0; s < spans.length; ++s) {
+                        const sp = spans[s];
+                        out.push({ x1: sp.x1, y1: sp.y1, x2: sp.x2, y2: sp.y2,
+                                   z: sp.z, lit: lit, co: c.co });
+                    }
                 }
             }
         }
@@ -3660,6 +3684,20 @@ KWin.SceneEffect {
         case "marquee": if (numok(1) && numok(2) && numok(3) && numok(4)) selectInRect(Number(a[1]), Number(a[2]), Number(a[3]), Number(a[4])); break;
         case "state": break;
         case "verbose": verb = a[1] !== "off"; publishVerbose(); break;
+        case "threads": {
+            // threads: every stretch of every thread the view is about to
+            // draw, with its z - the wiring of the weave, for when the
+            // picture and the model disagree.
+            const g = actionScreen().geometry;
+            const spans = clusterThreads(g.x, g.y);
+            let s = "kwin-canvas threads: " + spans.length;
+            for (let i = 0; i < spans.length; ++i) {
+                const t = spans[i];
+                s += "\nkwin-canvas thread: " + Math.round(t.x1) + "," + Math.round(t.y1) + " -> " + Math.round(t.x2) + "," + Math.round(t.y2) + " z=" + t.z.toFixed(3) + (t.lit ? " lit" : "");
+            }
+            console.log(s);
+            break;
+        }
         case "switch": switcherToggle(); break;
         default: console.warn("kwin-canvas: unknown debug command", cmd);
         }
@@ -4672,12 +4710,13 @@ KWin.SceneEffect {
             }
         }
 
-        // The cluster webs, hoisted to the view level: each thread's z is a
-        // sibling of the windows' z, so the web passes over the lower window
-        // and under the higher as the float bobs and the hover re-stacks -
-        // one neon thread per pair of windows, lit where the eye's cluster
-        // is, a faint sketch for the rest when zoomed out far enough to see
-        // the plane.
+        // The cluster webs, hoisted to the view level: every stretch of
+        // every thread carries its own z, a sibling of the windows' z, so
+        // the web weaves over the lower window, under the higher, and ducks
+        // under every window a thread passes beneath in the stack - as the
+        // float bobs and the hover re-stacks. One neon thread per pair of
+        // windows, lit where the eye's cluster is, a faint sketch for the
+        // rest when zoomed out far enough to see the plane.
         Repeater {
             model: {
                 effect.revision; effect.clusterRev; effect.floatRev; effect.hoverRev;
