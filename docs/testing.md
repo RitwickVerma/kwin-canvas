@@ -200,16 +200,22 @@ them at fixed canvas positions with `placeby`, then sources each
 
 `.gitlab-ci.yml` runs in an `archlinux:latest` container, which has no
 compositor, so it holds the checks that do not need one and skips the rest
-rather than pretending they passed. The four check jobs are the four parts of
+rather than pretending they passed. The six check jobs are the six parts of
 `make lint`, so a red pipeline reproduces here:
 
 ```bash
-make lint            # lint-reuse, lint-qml, lint-shell, lint-deadcode
+make lint            # lint-reuse, lint-qml, lint-shell, lint-deadcode, lint-python
 make lint-reuse      # reuse lint: copyright and licence metadata (REUSE 3.3)
 make lint-qml        # every .qml file, failing on a [syntax] warning
-make lint-shell      # bash -n on every script
+make lint-shell      # bash -n on every script, then shellcheck at error severity
 make lint-deadcode   # the dead-code census (tools/deadcode.sh)
+make lint-python     # vulture over the Python (tests/fixtures/gen.py)
 ```
+
+Shellcheck reads `.shellcheckrc` for the standing policy: the shell is bash
+(the scenarios are sourced fragments with no shebang), and SC2046 is off -
+the word splitting in `dev/nest.sh`'s command assembly is the point. The gate
+is error severity, so the deliberate warnings print without failing.
 
 The census is the QML dead-code graph by hand, since no graph tool parses
 QML: every function, property, signal and id in `main.qml` (plus the logic.js

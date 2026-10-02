@@ -19,8 +19,8 @@ run_scenario() {
     c "pan -600 0"
     sleep 0.5; c state
     assert_eq "the coordinates never change" "$(eget KCalc x)" 100
-    local fx fy
-    read -r fx fy <<<"$(grep -oE 'float=\([+-][0-9]+,[+-][0-9]+\)' <<<"$LAST_STATE" | head -1 | grep -oE '[-0-9]+' | paste -sd' ')"
+    local fx
+    read -r fx _ <<<"$(grep -oE 'float=\([+-][0-9]+,[+-][0-9]+\)' <<<"$LAST_STATE" | head -1 | grep -oE '[-0-9]+' | paste -sd' ')"
     assert_true "the picture floats at the edge" \
         "$(awk -v x="$(eget KCalc x)" -v v="$(sget viewx)" -v d="$fx" 'BEGIN{print ((x-v+d) >= 0 && (x-v+d) + 480 <= 1920 && d > 100)}')" = 1
     # Move the camera back and the picture is the window again, at the same

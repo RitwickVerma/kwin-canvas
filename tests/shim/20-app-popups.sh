@@ -86,7 +86,7 @@ run_scenario() {
     n=$(logged "submenu opened")
     at_plane $((px + pw / 2)) $((py + 85)); sleep 1
     assert_eq "hovering More opens the submenu" "$(logged "submenu opened")" $((n + 1))
-    local sx sy sw sh; read -r sx sy sw sh <<<"$(popup 2)"
+    local sx sy sw; read -r sx sy sw _ <<<"$(popup 2)"
     if [ -z "$sx" ]; then fail "no submenu window"; return; fi
     c state
     assert_eq "the canvas draws both" "$(sget popups)" 2
@@ -121,7 +121,7 @@ run_scenario() {
     # would keep the menu inside the output's own rectangle, x < 1920.
     place Menu 2400 1000
     c home; c "zoom 0.3 960 540"
-    read -r mx my mw mh <<<"$(client "Probe Menu")"
+    read -r mx my mw _ <<<"$(client "Probe Menu")"
     click_plane $((mx + 60)) $((my + 40)) right
     read -r px py pw ph <<<"$(popup 1)"
     if [ -z "$px" ]; then fail "no popup window for Probe Menu outside the output"; return; fi

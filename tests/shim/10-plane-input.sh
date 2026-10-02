@@ -138,8 +138,8 @@ run_scenario() {
 
     echo "   twenty open/close cycles"
     kcalc=$(eget KCalc fx)
-    local i set; set=$(grep -ac 'kwin-canvas-preload: transform s=0.5 o=(480,270)' "$LOG")
-    for i in $(seq 1 20); do
+    local set; set=$(grep -ac 'kwin-canvas-preload: transform s=0.5 o=(480,270)' "$LOG")
+    for _ in $(seq 1 20); do
         chord; zoomed; c home; chord
     done
     c state

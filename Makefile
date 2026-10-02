@@ -48,7 +48,7 @@ deps-install: ## Install missing dependencies with pacman (asks for sudo)
 # `make lint` is what the CI jobs run, so a pipeline failure can be reproduced
 # here. Both tools are in dev/deps.sh; the Qt6 qmllint is asked for by path
 # because the Qt5 build in /usr/bin answers to the same name.
-lint: lint-reuse lint-qml lint-shell lint-deadcode ## Run the checks the CI jobs run
+lint: lint-reuse lint-qml lint-shell lint-deadcode lint-python ## Run the checks the CI jobs run
 
 lint-reuse: ## Check the copyright and licence metadata (REUSE 3.3)
 	@command -v reuse >/dev/null 2>&1 || { echo "reuse is not installed: sudo pacman -S reuse"; exit 1; }
@@ -61,11 +61,17 @@ lint-qml: ## Parse every QML file and fail on a syntax error (qmllint itself exi
 	    if printf '%s' "$$out" | grep -q '\[syntax\]'; then printf '%s\n' "$$f" "$$out"; status=1; fi; \
 	done; exit $$status
 
-lint-shell: ## Parse every script with bash -n
-	@status=0; for f in $$(git ls-files "*.sh"); do bash -n "$$f" || status=1; done; exit $$status
+lint-shell: ## Parse every script with bash -n, then shellcheck at error severity
+	@status=0; for f in $$(git ls-files "*.sh"); do bash -n "$$f" || status=1; done; \
+	command -v shellcheck >/dev/null 2>&1 || { echo "shellcheck is not installed: sudo pacman -S shellcheck"; exit 1; }; \
+	shellcheck --severity=error -x $$(git ls-files "*.sh") || status=1; exit $$status
 
 lint-deadcode: ## The dead-code census: nothing declared may be referenced only at its declaration
 	@bash tools/deadcode.sh
+
+lint-python: ## vulture over the Python: no dead functions, imports or variables
+	@command -v vulture >/dev/null 2>&1 || { echo "vulture is not installed: sudo pacman -S vulture"; exit 1; }
+	@vulture $$(git ls-files "*.py")
 
 # ---- packages ---------------------------------------------------------------
 stage:

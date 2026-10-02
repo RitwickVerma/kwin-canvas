@@ -84,16 +84,15 @@ built and loaded (the live-session half stays untested, below):
 ## Decisions taken, and the ones still open
 
 Taken, with the reasoning in `AGENTS.md` → *Deliberate, not accidental*: no
-`.clang-format`; docs and images stay `GPL-2.0-or-later`; no shellcheck and no test
-job in CI; `qmllint` by absolute path; the scenarios stay local because they need a
-nested KWin.
+`.clang-format`; docs and images stay `GPL-2.0-or-later`; no test job in CI (the
+linters run there, shellcheck at error severity included); `qmllint` by absolute
+path; the scenarios stay local because they need a nested KWin.
 
 Open:
 
 - Whether the fork publishes anything of its own (tags, GitLab releases) or upstream
   stays the only publisher.
 - Whether a runner can host a nested KWin — that is what a CI test job would need.
-- Whether `shellcheck` earns a job once it is installed.
 - Whether docs and images should move to `CC-BY-SA-4.0`, KDE's own choice for them.
 
 ## Next candidates

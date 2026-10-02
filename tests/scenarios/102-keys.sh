@@ -74,7 +74,8 @@ run_scenario() {
     c "placeby KCalc 100 120"
     c state
     printf 'move 340 142\n' | input
-    for attempt in 1 2 3; do
+    # A click focuses on the first try; the loop absorbs a lost one.
+    for _ in 1 2 3; do
         printf 'click\n' | input
         for _ in 1 2 3 4 5; do
             sleep 0.15

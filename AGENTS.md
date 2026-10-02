@@ -35,8 +35,9 @@ make deps-install            # ... with pacman
 make lint                    # REUSE metadata + QML syntax + shell syntax + the dead-code census (what CI runs)
 make lint-reuse              # copyright and licence metadata, REUSE 3.3
 make lint-qml                # every .qml file, failing on a [syntax] warning
-make lint-shell              # bash -n on every script
+make lint-shell              # bash -n on every script, then shellcheck at error severity (.shellcheckrc)
 make lint-deadcode           # tools/deadcode.sh: nothing declared may be referenced only at its declaration
+make lint-python             # vulture over the Python: no dead functions, imports or variables
 
 make tools                   # build/tools/fakeinput, the fake-input client
 make fixtures                # regenerate tests/fixtures (committed; CI diffs them)
@@ -173,8 +174,9 @@ Cheapest first, and stop where the change warrants:
   commit that makes it true.
 - **Docs and images are GPL-2.0-or-later**, not `CC-BY-SA-4.0`: one licence
   across the tree. Revisit in `REUSE.toml` if that ever matters.
-- **CI has no test job and no shellcheck job.** `.gitlab-ci.yml` runs in a bare
-  `archlinux:latest` with no compositor: it lints and builds, and the scenarios
+- **CI has no test job.** `.gitlab-ci.yml` runs in a bare
+  `archlinux:latest` with no compositor: it lints (REUSE, QML, shellcheck at
+  error severity, the dead-code census, vulture) and builds, and the scenarios
   stay local because they need a nested KWin with real windows. `docs/testing.md`
   says this out loud rather than pretending.
 - **Goldens and fixtures are committed**, and CI checks that `make fixtures`
