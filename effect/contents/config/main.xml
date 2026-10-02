@@ -278,7 +278,7 @@
             <default>true</default>
         </entry>
         <entry name="CamSpring" type="Double">
-            <label>Camera spring rate in 1/s: how fast a smooth zoom or an animated camera arrives. 14 (the default) is about a third of a second, critically damped, so it does not overshoot; higher is snappier.</label>
+            <label>Camera spring rate in 1/s: how fast a smooth zoom or an animated camera arrives. 14 (the default) is about a third of a second, critically damped, so it does not overshoot; higher is snappier. Above 32 the spring's stepping becomes unstable, so the effective rate is capped there.</label>
             <default>14.0</default>
         </entry>
         <entry name="WindowPhysics" type="Bool">

@@ -1,5 +1,16 @@
 Unreleased:
 
+- The cluster web is overworld chrome: the threads fade out as the camera
+  returns toward 1:1 and are gone by the time the location itself is
+  showing, so the normal-mode flights - hover nudges, pick steps, Tab
+  travel - are a plain canvas slide with no threads, no badge and no
+  overworld dressing around the windows. (At 1:1 the lit web was painting
+  white lines straight over the desktop.)
+- The camera spring's rate is capped at 32: above that the spring's
+  stepping becomes unstable (measured: a CamSpring of 30 on a flight
+  diverged the view to 2.7e253), so the knob is honest about the cap in
+  its description.
+
 - The cluster threads now weave through the windows: each thread renders
   at the z between its two windows, so the web passes over the lower and
   under the higher - and re-threads live as the eye moves, since a hover

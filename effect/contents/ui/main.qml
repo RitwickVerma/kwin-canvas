@@ -1592,7 +1592,10 @@ KWin.SceneEffect {
     // explicit Euler spring is only stable for a fraction of its period.
     function camStep(dt) {
         if (!camLive() || dt <= 0) return;
-        const w = camSpring * camRate, k = w * w, c = 2 * w;
+        // (The Euler spring is only stable while w*dt stays well under 1:
+        // above ~32/s a fly with the knobs high diverges - a state read
+        // once caught the view at 2.7e253 - so cap at the stability edge.)
+        const w = Math.min(32, camSpring * camRate), k = w * w, c = 2 * w;
         if (camHasGoal) {
             camVZoom += (-k * (zoom - camGoalZoom) - c * camVZoom) * dt;
             if (!camAnchored) {
@@ -4510,7 +4513,10 @@ KWin.SceneEffect {
                     Behavior on x { SpringAnimation { spring: 2.6; damping: 0.62; epsilon: 0.5 } }
                     Behavior on y { SpringAnimation { spring: 2.6; damping: 0.62; epsilon: 0.5 } }
                     z: 59000
-                    visible: parent.active && cluster.n > 1 && (!effect.quiet || effect.quietReveal > 0.02)
+                    // Overworld chrome like the web: hidden at 1:1, where a
+                    // cluster chip would float over the desktop and its grip
+                    // would catch drags the hand means for the windows.
+                    visible: parent.active && cluster.n > 1 && effect.zoom < 0.95 && (!effect.quiet || effect.quietReveal > 0.02)
                     width: row.implicitWidth + 16
                     height: 24
                     radius: 12
@@ -4564,7 +4570,11 @@ KWin.SceneEffect {
                 required property var modelData
                 anchors.fill: parent
                 z: modelData.z
-                readonly property real want: (modelData.lit || effect.zoom < 0.5) ? (modelData.lit ? 0.55 : 0.22) * modelData.co : 0
+                // The web is overworld chrome: it fades out with the zoom,
+                // like the frames' tint, so a 1:1 view - the normal mode the
+                // fly slides across - is the desktop alone. Full strength by
+                // zoom 0.75, gone at 1:1.
+                readonly property real want: (modelData.lit || effect.zoom < 0.5) ? (modelData.lit ? 0.55 : 0.22) * modelData.co * Math.min(1, Math.max(0, (1 - effect.zoom) * 4)) : 0
                 property real show: 0
                 opacity: show
                 Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
