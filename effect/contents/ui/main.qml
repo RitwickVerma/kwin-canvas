@@ -65,19 +65,13 @@ KWin.SceneEffect {
     // Quiet: open at 1:1 for a slide, with no frames, tags, toolbar or input.
     property bool quiet: false
     property bool slideWarm: false
-    // The quiet scene's own fade: a slide opens and closes the canvas at 1:1,
-    // where it must be pixel-identical to the desktop - but the thumbnails
-    // draw every window with its active decoration, and no shadow, and the
-    // panel is covered, so a cut would flash every inactive title bar at
-    // once. The scene fades in over the desktop when the slide opens and out
-    // over it when the slide lands, hiding the swap.
-    property real quietFade: 1
-    property bool quietFadeOut: false
-    // The overworld's open and close at 1:1 fade the view like the quiet
-    // slide does: the canvas and the real desktop differ where the eye
-    // catches the cut, so the swap is hidden under the fade instead of
-    // flashing. 1 while the canvas simply shows.
-    property real viewFade: 1
+    // The scene's own fade: a slide opens and closes the canvas at 1:1, the
+    // grasp holds there, and the overworld opens and closes at 1:1, where
+    // the canvas must be the desktop. The scene fades in over the desktop
+    // when it opens and out over it when it lands, crossfading the two
+    // instead of letting the cut flash every inactive title bar at once.
+    property real sceneFade: 1
+    property bool sceneFadeOut: false
     readonly property bool canvasOpen: visible && !quiet
     // Pass-through: the optional binary plugin is live while the canvas is
     // open. Every key, and every click, drag and wheel over a window, goes
@@ -1608,16 +1602,18 @@ KWin.SceneEffect {
         } else {
             camAnchored = false;
             camGoalX = goalX; camGoalY = goalY;
-            // A push toward the goal, so a spring heading somewhere starts
-            // moving this frame rather than the next. A fraction of the
-            // critical speed cannot overshoot a critically damped spring.
-            if (camVX === 0) camVX = (camGoalX - viewX) * w * 0.4;
-            if (camVY === 0) camVY = (camGoalY - viewY) * w * 0.4;
+            // A gentle push toward the goal, so a spring heading somewhere
+            // starts moving this frame rather than the next without
+            // snapping: a tenth of the critical speed moves a few percent
+            // of the distance in the first frame, an acceleration the eye
+            // reads as the flight getting under way, not a jerk.
+            if (camVX === 0) camVX = (camGoalX - viewX) * w * 0.12;
+            if (camVY === 0) camVY = (camGoalY - viewY) * w * 0.12;
         }
         camHasGoal = true;
         // A push off the mark, so a spring heading somewhere starts moving this
         // frame rather than the next.
-        if (camVZoom === 0) camVZoom = (z - zoom) * w * 0.4;
+        if (camVZoom === 0) camVZoom = (z - zoom) * w * 0.12;
     }
 
     // A zoom about a screen point: the wheel at the cursor, a pinch, an edge
@@ -1734,21 +1730,20 @@ KWin.SceneEffect {
     property var farewellThen: null
     function farewellHide(then) {
         dropPassthrough();
-        if (!smoothZoom || chromeFade <= 0.02) {
+        if (!smoothZoom) {
             then();
             return;
         }
         closing = true;
         farewellThen = then;
-        farewellAnim.restart();
+        if (chromeFade > 0.02) farewellAnim.restart();
+        // The scene fades out over the real desktop it is closing onto: the
+        // real windows sit exactly where the thumbnails do, so the swap
+        // crossfades instead of the windows dissolving into the wallpaper
+        // and popping back in. (A quiet slide fades itself out in endSlide.)
+        sceneFadeAnim.to = 0;
+        sceneFadeAnim.restart();
         closeTimer.restart();
-        // The view fades out with the chrome, so the real desktop comes
-        // back through the landing scene instead of cutting in over it.
-        // (A quiet slide fades itself out in endSlide.)
-        if (!quiet) {
-            viewFadeAnim.to = 0;
-            viewFadeAnim.restart();
-        }
     }
     Timer {
         id: closeTimer
@@ -1860,16 +1855,18 @@ KWin.SceneEffect {
             if (moved) { thumbOpacity = 0; thumbFadeAnim.restart(); }
             else thumbOpacity = 1;
         }
-        // The overworld opens over the desktop it will show, and the two
-        // differ where the eye catches the cut (inactive decorations, no
-        // shadows), so an open that does not move the camera fades the view
-        // in instead of flashing it. A flight's motion covers its own open.
-        viewFadeAnim.stop();
-        viewFade = 1;
-        viewFadeAnim.to = 1;
-        if (!quiet && !moved) {
-            viewFade = 0;
-            viewFadeAnim.restart();
+        // The canvas opens over the desktop it will show, and the two differ
+        // where the eye catches the cut (inactive decorations, no shadows,
+        // the covered panel), so an open that does not move the camera fades
+        // the whole scene in over the desktop - a true crossfade, the real
+        // windows showing through until the canvas is fully there. A
+        // flight's motion covers its own open.
+        sceneFadeAnim.stop();
+        sceneFade = 1;
+        sceneFadeAnim.to = 1;
+        if (!moved) {
+            sceneFade = 0;
+            sceneFadeAnim.restart();
         }
         dbg("open", (quiet ? "quiet slide" : "overworld") + (moved ? " (camera moved)" : "") + ", spec=" + spec);
     }
@@ -3169,19 +3166,19 @@ KWin.SceneEffect {
             // two differ where the eye would catch the cut (active
             // decorations, no shadows, no panel), so the first paint is
             // invisible and the slide starts under the fade.
-            quietFade = 0;
+            sceneFade = 0;
             open(true);
             slideToX = viewX;
             slideToY = viewY;
             slideWarm = true;
-            quietFadeOut = false;
-            quietFadeAnim.to = 1;
-            quietFadeAnim.restart();
-        } else if (quietFadeOut) {
+            sceneFadeOut = false;
+            sceneFadeAnim.to = 1;
+            sceneFadeAnim.restart();
+        } else if (sceneFadeOut) {
             // A new slide asked while the last one fades out: keep the canvas.
-            quietFadeOut = false;
-            quietFadeAnim.to = 1;
-            quietFadeAnim.restart();
+            sceneFadeOut = false;
+            sceneFadeAnim.to = 1;
+            sceneFadeAnim.restart();
         }
         return true;
     }
@@ -3233,14 +3230,15 @@ KWin.SceneEffect {
         viewX = cur.x;
         viewY = cur.y;
         publishGround();
-        // The reveal fades: the quiet canvas and the real desktop differ
-        // where the eye would catch the cut - every inactive window's
-        // decoration switches from the thumbnail's active look to its real
-        // one, and the panel and the shadows step back in - so the canvas
-        // fades out over the desk it just slid to, hiding the swap.
-        quietFadeOut = true;
-        quietFadeAnim.to = 0;
-        quietFadeAnim.restart();
+        // The reveal crossfades: the quiet canvas and the real desktop
+        // differ where the eye would catch the cut - every inactive
+        // window's decoration switches from the thumbnail's active look to
+        // its real one, and the panel and the shadows step back in - so the
+        // whole scene fades out over the desk it just slid to, and the real
+        // windows show through where the thumbnails were.
+        sceneFadeOut = true;
+        sceneFadeAnim.to = 0;
+        sceneFadeAnim.restart();
     }
 
     // Jump to the destination and settle now (another action wants the canvas).
@@ -3258,27 +3256,19 @@ KWin.SceneEffect {
     }
 
     NumberAnimation {
-        id: quietFadeAnim
+        id: sceneFadeAnim
         target: effect
-        property: "quietFade"
+        property: "sceneFade"
         duration: 140
         easing.type: Easing.InOutCubic
         onFinished: {
-            if (effect.quietFadeOut) {
-                effect.quietFadeOut = false;
-                effect.quietFade = 1;
+            if (effect.sceneFadeOut) {
+                effect.sceneFadeOut = false;
+                effect.sceneFade = 1;
                 effect.visible = false;
                 effect.quiet = false;
             }
         }
-    }
-
-    NumberAnimation {
-        id: viewFadeAnim
-        target: effect
-        property: "viewFade"
-        duration: 160
-        easing.type: Easing.InOutCubic
     }
 
     // Pan by one step in a direction (dx, dy in {-1, 0, 1}): the camera moves
@@ -3940,15 +3930,19 @@ KWin.SceneEffect {
         }
     }
 
-    // ---- per-screen view ---------------------------------------------------
+        // ---- per-screen view ---------------------------------------------------
     delegate: Item {
         id: view
         readonly property var screen: KWin.SceneView.screen
         readonly property rect sg: KWin.SceneView.screen.geometry
-        // The quiet scene fades in and out as a whole: at 1:1 it must be the
-        // desktop, and the fade is what hides the places it is not (active
-        // decorations, no shadows, no panel) at the slide's two ends.
-        opacity: effect.quiet ? effect.quietFade : effect.viewFade
+        // The whole scene fades against the real desktop at every seam: the
+        // canvas and the desktop differ where the eye catches the cut - every
+        // inactive window's thumbnail wears its active decoration and no
+        // shadow, and the panel is covered - so a transition that only fades
+        // the windows dissolves them into the wallpaper and then pops the
+        // real ones in. Fading the scene itself crossfades the two, because
+        // the real windows sit at exactly the same place underneath it.
+        opacity: effect.sceneFade
         property bool spaceHeld: false
         // Number of grips and buttons under the pointer. The pan handler
         // refuses a left press while this is non-zero, so a drag that starts
