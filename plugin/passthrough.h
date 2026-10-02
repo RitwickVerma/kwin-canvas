@@ -81,6 +81,11 @@ public Q_SLOTS:
      */
     Q_SCRIPTABLE void setHoldDelay(int ms);
     /**
+     * How long the pointer must rest on a window (ms) before input passes
+     * through to it (the effect's HoverDelay).
+     */
+    Q_SCRIPTABLE void setHoverDelay(int ms);
+    /**
      * The canvas-modifier buttons (CanvasHold). A press of one of them is
      * consumed wherever the pointer is and flips the effect's canvasHold
      * property, so the effect can open quietly at 1:1 and commit on the

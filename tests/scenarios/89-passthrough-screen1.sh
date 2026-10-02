@@ -11,6 +11,9 @@ run_scenario() {
     fi
     c state
     if [ "$(sget screens)" != 2 ]; then skip "needs two outputs (make test-two-outputs)"; return; fi
+    # The scenario's rests assume the tightest hover delay; pin it so the
+    # suite's pace does not depend on the knob.
+    setcfg HoverDelay 260
     c "activate Dolphin"
     c state
     local kx ky kw kh vx vy z x1 y1 w1 h1
@@ -40,5 +43,6 @@ run_scenario() {
     sleep 0.6; c state
     assert_eq "the click reaches KWrite there too" "$(aget)" "sample.txt — KWrite"
     c cancel
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key HoverDelay --delete
     arrange >/dev/null
 }

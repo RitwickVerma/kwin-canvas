@@ -88,9 +88,11 @@ CanvasPassthrough::CanvasPassthrough()
     });
     // The passthrough engages on a rest, not a pass-over: the pointer must
     // hold still on a window for this long before the window takes the
-    // input - sweeping across the overworld stays the canvas's.
+    // input - sweeping across the overworld stays the canvas's. The delay is
+    // the effect's HoverDelay knob, a deliberate pause by default so looking
+    // around never activates a window.
     m_hoverTimer.setSingleShot(true);
-    m_hoverTimer.setInterval(260);
+    m_hoverTimer.setInterval(std::max(50, KSharedConfig::openConfig(QStringLiteral("kwinrc"))->group(QStringLiteral("Effect-kwin-canvas")).readEntry("HoverDelay", 900)));
     connect(&m_hoverTimer, &QTimer::timeout, this, [this]() {
         if (m_hoverCandidate && m_active && !m_grabGround) {
             const QPointF canvas = toCanvas(m_lastPosition);
@@ -165,6 +167,14 @@ void CanvasPassthrough::setHoldDelay(int ms)
 {
     if (ms > 0) {
         m_holdTimer.setInterval(ms);
+    }
+}
+
+void CanvasPassthrough::setHoverDelay(int ms)
+{
+    if (ms > 0) {
+        m_hoverTimer.setInterval(ms);
+        qCDebug(KWIN_CANVAS) << "hover delay set to" << ms << "ms";
     }
 }
 
@@ -678,7 +688,14 @@ bool CanvasPassthrough::pointerAxis(PointerAxisEvent *event)
     Window *w = m_grab ? m_grab.data() : nullptr;
     if (!w) {
         Window *cand = windowAt(canvas);
-        if (cand && m_hover == cand) w = cand;
+        if (cand && m_hover == cand) {
+            w = cand;
+        } else if (cand) {
+            // Over a window the wheel is that window's business, and the
+            // window is not active until the rest completes: a wheel during
+            // the rest must not zoom the canvas out from under the eye.
+            return true;
+        }
     }
     if (!w || !enter(w, canvas)) {
         return false;

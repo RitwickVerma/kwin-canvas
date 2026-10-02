@@ -331,7 +331,7 @@ KWin.SceneEffect {
             others.push({ x: entries[i].x, y: entries[i].y, width: entries[i].width, height: entries[i].height });
         }
         const d = smartPan({ x: e.x, y: e.y, width: e.width, height: e.height }, others, 24);
-        if (d.dx !== 0 || d.dy !== 0) camGo(zoom, viewX + d.dx, viewY + d.dy);
+        if (d.dx !== 0 || d.dy !== 0) { dbg("camGo", "bringIntoView " + (e.window ? e.window.caption : "?") + " d=(" + Math.round(d.dx) + "," + Math.round(d.dy) + ")"); camGo(zoom, viewX + d.dx, viewY + d.dy); }
     }
 
     // The best camera pan for a canvas rect: the least movement that keeps
@@ -717,6 +717,7 @@ KWin.SceneEffect {
     function gotoBookmark(i) {
         const b = bookmarks[i];
         if (!b) return;
+        dbg("camGo", "bookmark " + i + " to (" + Math.round(b.x) + "," + Math.round(b.y) + ")");
         camGo(b.z || 1, b.x, b.y);
         toast("Spot " + (i + 1) + (b.n ? ": " + b.n : ""));
     }
@@ -1582,6 +1583,7 @@ KWin.SceneEffect {
     // at twice the casual rate, so an enter snaps while a pan glides.
     property real camRate: 1.0
     function camGo(z, goalX, goalY, gx, gy, rate) {
+        dbg("camGo", "z=" + z + " goal=(" + Math.round(goalX) + "," + Math.round(goalY) + ")");
         z = clampZoom(z);
         const pinned = gx !== undefined && gx !== null;
         camStop();
@@ -1763,6 +1765,7 @@ KWin.SceneEffect {
     // once, which is what the scenarios measure.
     function home() {
         const t = targetOf(currentActivity);
+        dbg("home", "target (" + Math.round(t.x) + "," + Math.round(t.y) + ")");
         camGo(1, t.x, t.y);
     }
 
@@ -2078,6 +2081,7 @@ KWin.SceneEffect {
         const t = targetOf(a);
         t.x = Math.round(c.x - cx);
         t.y = Math.round(c.y - cy);
+        dbg("enterHere", "c=(" + Math.round(c.x) + "," + Math.round(c.y) + ") -> (" + t.x + "," + t.y + ")");
         flyEnter(a, t.x, t.y, function () { finishEnter(a); });
     }
 
@@ -2244,6 +2248,7 @@ KWin.SceneEffect {
         const sg = actionScreen().geometry;
         const pad = 60;
         const z = Math.max(zoomMin, Math.min(1.0, Math.min((sg.width - 2 * pad) / (r - l), (sg.height - 2 * pad) / (b - t))));
+        dbg("camGo", "zoomToActivity z=" + z.toFixed(3) + " to (" + Math.round((l + r) / 2 - (sg.x + sg.width / 2) / z) + "," + Math.round((t + b) / 2 - (sg.y + sg.height / 2) / z) + ")");
         camGo(z, (l + r) / 2 - (sg.x + sg.width / 2) / z, (t + b) / 2 - (sg.y + sg.height / 2) / z);
     }
 
@@ -2775,6 +2780,13 @@ KWin.SceneEffect {
         method: "setHoldDelay"
     }
     KWin.DBusCall {
+        id: hoverDelayCall
+        service: "org.kde.KWin"
+        path: "/KWinCanvas"
+        dbusInterface: "org.kde.kwin.canvas.Passthrough"
+        method: "setHoverDelay"
+    }
+    KWin.DBusCall {
         id: verboseCall
         service: "org.kde.KWin"
         path: "/KWinCanvas"
@@ -2816,8 +2828,14 @@ KWin.SceneEffect {
         holdCall.arguments = [holdButtons];
         holdCall.call();
         const delay = Number(configuration.HoldDelay) || 300;
-        holdDelayCall.arguments = [delay];
+        // The | 0 is load-bearing: QML numbers are doubles, and QDBus does
+        // not demote a double argument to the plugin's int slot, so the call
+        // would vanish. (holdButtons above is already an int property.)
+        holdDelayCall.arguments = [delay | 0];
         holdDelayCall.call();
+        const hover = Number(configuration.HoverDelay) || 900;
+        hoverDelayCall.arguments = [hover | 0];
+        hoverDelayCall.call();
     }
     // The trace flag reaches the plugin too, so its side of every decision
     // lands in the same log.
@@ -3339,6 +3357,7 @@ KWin.SceneEffect {
             others.push({ x: entries[i].x, y: entries[i].y, width: entries[i].width, height: entries[i].height });
         }
         const d = smartPan({ x: e.x, y: e.y, width: e.width, height: e.height }, others, 24);
+        dbg("camGo", "flyToEntry " + e.window.caption + " d=(" + Math.round(d.dx) + "," + Math.round(d.dy) + ")");
         camGo(zoom, viewX + d.dx, viewY + d.dy, undefined, undefined, rate);
     }
 
@@ -3646,6 +3665,7 @@ KWin.SceneEffect {
             + " seam=" + (seamPark ? "1" : "0")
             + " map=" + (mapOverlay ? "overlay" : (mapMinimap ? "minimap" : "-"))
             + " verb=" + (verb ? "1" : "0")
+            + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
         const ids = activityIds, screens = KWin.Workspace.screens;
         for (let i = 0; i < screens.length; ++i) {

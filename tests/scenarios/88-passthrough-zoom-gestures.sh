@@ -13,6 +13,9 @@ run_scenario() {
     if ! nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.probe >/dev/null 2>&1; then
         skip "pass-through plugin not loaded (make plugin)"; return
     fi
+    # The scenario's rests assume the tightest hover delay; pin it so the
+    # suite's pace does not depend on the knob.
+    setcfg HoverDelay 260
     c "activate Dolphin"
     c state
     local kx ky kw kh nx ny nw nh vx vy z
@@ -58,5 +61,6 @@ run_scenario() {
     printf 'wheel -3\n' | input
     sleep 0.5
     c cancel
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key HoverDelay --delete
     arrange >/dev/null
 }

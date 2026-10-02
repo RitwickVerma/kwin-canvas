@@ -1,5 +1,14 @@
 Unreleased:
 
+- The hover that hands the pointer over is now a knob - HoverDelay, a
+  deliberate 900 ms by default: a quicker pass-over stays the canvas's,
+  so sweeping across the overworld never activates a window by accident;
+  only a real pause lets the pointer through to the window under it.
+  (The wheel is held to the same rule: a wheel over a window during the
+  rest stays the canvas's instead of zooming it.) Underneath, the delay
+  knobs had been silently dead - QML numbers are doubles and QDBus does
+  not demote them to the plugin's integer slots - and now they land.
+
 - The stacking is now visible: every window wears its height in the stack
   as a standing shadow and a hair of size - the higher a window sits, the
   deeper its shadow falls on what is below and the larger it reads - and

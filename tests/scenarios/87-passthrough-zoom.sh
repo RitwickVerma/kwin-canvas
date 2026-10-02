@@ -9,6 +9,9 @@ run_scenario() {
     if ! nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.probe >/dev/null 2>&1; then
         skip "pass-through plugin not loaded (make plugin)"; return
     fi
+    # The scenario's rests assume the tightest hover delay; pin it so the
+    # suite's pace does not depend on the knob.
+    setcfg HoverDelay 260
     # Zoomed out, the pointer rests on KWrite's picture at nine tenths of
     # its width. The canvas point under the pointer is inside the window, so
     # the hover must engage and hand the click over; the window's surface
@@ -34,5 +37,6 @@ run_scenario() {
     sleep 0.6; c state
     assert_eq "the click reaches KWrite at the picture's place" "$(aget)" "sample.txt — KWrite"
     c cancel
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key HoverDelay --delete
     arrange >/dev/null
 }
