@@ -1,5 +1,13 @@
 Unreleased:
 
+- The stacking is now visible: every window wears its height in the stack
+  as a standing shadow and a hair of size - the higher a window sits, the
+  deeper its shadow falls on what is below and the larger it reads - and
+  the stack re-settles live as the eye moves, since the hover that raises
+  a window for real slides the whole pile up with it. The quiet slide is
+  untouched: at 1:1 the shadows and the size stay off, so the fly remains
+  the seamless desktop it is.
+
 - The grasp's overlay now waits for its business: it steps in only while
   the hold has zoomed out and there is more than one cluster to navigate
   - with one cluster the plane is a single hop, so the map stays out of

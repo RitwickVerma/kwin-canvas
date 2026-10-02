@@ -4326,8 +4326,17 @@ KWin.SceneEffect {
                 // for the instant title-bar feel.
                 readonly property bool hovered: body.hovered || effect.hoverEntry === thumb.entry
                 property bool lifted: body.active && body.moving && heavy
-                scale: lifted ? 1.03 : (thumb.hovered && heavy ? 1.008 : 1)
-                Behavior on scale { enabled: thumb.heavy; SpringAnimation { spring: 3.6; damping: 0.5; epsilon: 0.001 } }
+                // Depth: how far up the stack this window sits. The stack IS
+                // the z - the focused window paints on top, the entries' order
+                // below it - so the visual depth rises and falls with every
+                // restack: a hover raising a window for real slides the whole
+                // stack up with it. Rank 1 is the top, and the shadow and the
+                // size below follow the rank, so the stacking is legible at a
+                // glance instead of being a property only the pointer sees.
+                readonly property real depth: { effect.revision; effect.focusEntry; effect.selectionRev; return ((thumb.entry === effect.focusEntry ? effect.entries.length + 1 : index + 1) / (effect.entries.length + (effect.focusEntry ? 1 : 0))); }
+                readonly property real depthScale: effect.quiet ? 1 : (0.99 + 0.025 * thumb.depth)
+                scale: depthScale * (lifted ? 1.03 : (thumb.hovered && heavy ? 1.008 : 1))
+                Behavior on scale { enabled: !effect.quiet; SpringAnimation { spring: 3.6; damping: 0.5; epsilon: 0.001 } }
                 transform: [
                     Rotation {
                         origin.x: thumb.width / 2
@@ -4358,16 +4367,19 @@ KWin.SceneEffect {
                 }
 
                 // The soft shadow under the window: the lifted and the
-                // hovered one float a little, glass over the plane.
+                // hovered one float a little, glass over the plane - and the
+                // stack's own height shows as a standing shadow, deeper the
+                // higher the window sits, so a restack is visible in the
+                // shadows before the pointer even moves.
                 Rectangle {
                     anchors.fill: parent
                     anchors.topMargin: 3
-                    anchors.margins: -2
+                    anchors.margins: -2 - (effect.quiet ? 0 : 6 * thumb.depth)
                     z: -2
                     radius: 8
                     color: "#000000"
                     visible: !effect.quiet || effect.quietReveal > 0.02
-                    opacity: effect.quiet ? effect.quietReveal * (liftedNow ? 0.30 : (thumb.hovered ? 0.16 : 0)) : (liftedNow ? 0.30 : (thumb.hovered ? 0.16 : 0))
+                    opacity: effect.quiet ? effect.quietReveal * (liftedNow ? 0.30 : (thumb.hovered ? 0.16 : 0)) : (liftedNow ? 0.30 : (thumb.hovered ? 0.16 : 0.05 + 0.13 * thumb.depth))
                     readonly property bool liftedNow: body.active && body.moving && thumb.heavy
                     Behavior on opacity { NumberAnimation { duration: 150 } }
                 }
