@@ -115,16 +115,21 @@ those, from this side of the fork:
 
 ## Sessions
 
-### 2026-10-02 — the seams crossfade, and the threads travel the stack
+### 2026-10-02 — the seams swap instantly, and the threads travel the stack
 
-- **The fly's remaining cut.** The fade fixed the slide but the enter and
-  exit still cut: the canvas only faded its windows, so they dissolved
-  into the wallpaper and the real windows (inactive decorations, shadows,
-  panel) popped in after. The whole scene now crossfades against the real
-  desktop - measured as a ramp (981→5337→365→0 RMSE between consecutive
-  shots) where the old build swapped 6260 in one frame - the flight's
-  spring starts as a gentle acceleration, and the chrome stays up
-  through a flight.
+- **The fly's flash, chased to the ground.** Three fade-shaped fixes
+  (window, view, scene) all flashed because KWin composites the canvas's
+  framebuffer over black, not over the desktop - measured with the fade
+  slowed to 3 s, every pixel ramps through black - and the black was the
+  flash. The same measurement showed the quiet scene at 1:1 to be
+  pixel-identical to the real desktop (Klassy has no active/inactive
+  decoration delta), so the seams no longer fade at 1:1 at all: the quiet
+  slide opens opaque, glides after the first paint warms the thumbnails,
+  writes the geometries and closes the moment it arrives. A fade remains
+  only where the picture genuinely jumps - a close from a zoomed-out
+  overworld - and there it fades through black, the honest mask for that
+  jump. The flight's spring still starts as a gentle acceleration, and
+  the chrome stays up through a flight.
 - **The threads' depth.** A thread was flat: one z per pair, its
   endpoints' midpoint, so it ignored every window it crossed in the
   middle. Now each thread travels the depth between its two windows

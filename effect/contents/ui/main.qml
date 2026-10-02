@@ -64,14 +64,18 @@ KWin.SceneEffect {
     property bool helpOpen: false
     // Quiet: open at 1:1 for a slide, with no frames, tags, toolbar or input.
     property bool quiet: false
-    property bool slideWarm: false
     // The scene's own fade: a slide opens and closes the canvas at 1:1, the
     // grasp holds there, and the overworld opens and closes at 1:1, where
     // the canvas must be the desktop. The scene fades in over the desktop
     // when it opens and out over it when it lands, crossfading the two
     // instead of letting the cut flash every inactive title bar at once.
     property real sceneFade: 1
-    property bool sceneFadeOut: false
+    // The one-frame warm-up: the quiet slide opens opaque (a fade-in here
+    // would run through black - KWin composites the scene's framebuffer
+    // over black, not over the desktop), and the glide waits one
+    // event-loop turn so the scene's first paint warms the cold
+    // thumbnails under their real selves.
+    property bool slideWarm: false
     readonly property bool canvasOpen: visible && !quiet
     // Pass-through: the optional binary plugin is live while the canvas is
     // open. Every key, and every click, drag and wheel over a window, goes
@@ -1761,12 +1765,17 @@ KWin.SceneEffect {
         closing = true;
         farewellThen = then;
         if (chromeFade > 0.02) farewellAnim.restart();
-        // The scene fades out over the real desktop it is closing onto: the
-        // real windows sit exactly where the thumbnails do, so the swap
-        // crossfades instead of the windows dissolving into the wallpaper
-        // and popping back in. (A quiet slide fades itself out in endSlide.)
-        sceneFadeAnim.to = 0;
-        sceneFadeAnim.restart();
+        // A close from a zoomed-out overworld fades the scene out: the
+        // camera must jump to 1:1 for the close, and the fade masks the
+        // jump - through black, KWin's composition under the scene, which
+        // is the honest choice for that jump. At 1:1 the scene and the
+        // desktop are the same picture (the thumbnails cover the real
+        // windows at the same pixels), so the close is instant there - a
+        // fade would only flash black.
+        if (zoom !== 1) {
+            sceneFadeAnim.to = 0;
+            sceneFadeAnim.restart();
+        }
         closeTimer.restart();
     }
     Timer {
@@ -1879,19 +1888,16 @@ KWin.SceneEffect {
             if (moved) { thumbOpacity = 0; thumbFadeAnim.restart(); }
             else thumbOpacity = 1;
         }
-        // The canvas opens over the desktop it will show, and the two differ
-        // where the eye catches the cut (inactive decorations, no shadows,
-        // the covered panel), so an open that does not move the camera fades
-        // the whole scene in over the desktop - a true crossfade, the real
-        // windows showing through until the canvas is fully there. A
-        // flight's motion covers its own open.
+        // The canvas opens instantly, opaque: KWin composites the scene's
+        // framebuffer over black, so a fade-in here would flash black, and
+        // at 1:1 the scene and the desktop it covers are the same picture
+        // (the thumbnails sit over the real windows at the same pixels), so
+        // nothing needs bridging. A flight's motion covers its own open; a
+        // stale fade-out from a zoomed close is stopped so a quick reopen
+        // never catches it mid-fade.
         sceneFadeAnim.stop();
         sceneFade = 1;
         sceneFadeAnim.to = 1;
-        if (!moved) {
-            sceneFade = 0;
-            sceneFadeAnim.restart();
-        }
         dbg("open", (quiet ? "quiet slide" : "overworld") + (moved ? " (camera moved)" : "") + ", spec=" + spec);
     }
 
@@ -3142,6 +3148,7 @@ KWin.SceneEffect {
     property real slideToX: 0
     property real slideToY: 0
     readonly property int panDuration: Math.max(0, Number(configuration.PanDuration) || 0)
+    readonly property int sceneFadeMs: Math.max(1, Number(configuration.SceneFadeMs) || 90)
 
     // One pan step in screen pixels: a fraction of the active screen.
     function panStep() {
@@ -3171,38 +3178,35 @@ KWin.SceneEffect {
         slideGo();
     }
 
-    // The slide starts a frame after the quiet open, so the scene's first
-    // paint - the cold thumbnails' warm-up - never flashes under the glide.
+    // The glide waits one event-loop turn for the scene's first paint: the
+    // quiet canvas at 1:1 paints the same pixels as the desktop it covers,
+    // so the warm frame is invisible, and the cold thumbnails never flash
+    // under the glide.
     function slideGo() {
         if (slideWarm) {
             slideWarm = false;
-            Qt.callLater(function () { slideAnim.restart(); });
-        } else {
-            slideAnim.restart();
+            Qt.callLater(slideGo);
+            return;
         }
+        slideAnim.restart();
     }
 
     // Open quietly if closed. False while the real canvas is open.
     function beginSlide() {
         if (visible && !quiet) return false;
         if (!visible) {
-            // The quiet scene fades in over the desktop it will slide: the
-            // two differ where the eye would catch the cut (active
-            // decorations, no shadows, no panel), so the first paint is
-            // invisible and the slide starts under the fade.
-            sceneFade = 0;
+            // The quiet scene opens instantly, opaque: KWin composites the
+            // scene's framebuffer over black, so a fade-in here would flash
+            // black, and at 1:1 the scene and the desktop it covers are the
+            // same picture - the thumbnails over the real windows at the
+            // same pixels - so the seam needs no bridging.
+            sceneFadeAnim.stop();
+            sceneFade = 1;
             open(true);
             slideToX = viewX;
             slideToY = viewY;
             slideWarm = true;
-            sceneFadeOut = false;
-            sceneFadeAnim.to = 1;
-            sceneFadeAnim.restart();
-        } else if (sceneFadeOut) {
-            // A new slide asked while the last one fades out: keep the canvas.
-            sceneFadeOut = false;
-            sceneFadeAnim.to = 1;
-            sceneFadeAnim.restart();
+            dbg("slide", "quiet open, gliding " + panDuration + "ms after the first paint");
         }
         return true;
     }
@@ -3254,15 +3258,13 @@ KWin.SceneEffect {
         viewX = cur.x;
         viewY = cur.y;
         publishGround();
-        // The reveal crossfades: the quiet canvas and the real desktop
-        // differ where the eye would catch the cut - every inactive
-        // window's decoration switches from the thumbnail's active look to
-        // its real one, and the panel and the shadows step back in - so the
-        // whole scene fades out over the desk it just slid to, and the real
-        // windows show through where the thumbnails were.
-        sceneFadeOut = true;
-        sceneFadeAnim.to = 0;
-        sceneFadeAnim.restart();
+        dbg("slide", "arrived at (" + Math.round(viewX) + "," + Math.round(viewY) + "), geometries written, closing");
+        // The close is instant: the canvas's last frame sits exactly over
+        // the real windows at the destination (the thumbnails cover them at
+        // the same pixels), so cutting to the real desktop is invisible. A
+        // fade-out here would run through black and flash.
+        visible = false;
+        quiet = false;
     }
 
     // Jump to the destination and settle now (another action wants the canvas).
@@ -3283,16 +3285,8 @@ KWin.SceneEffect {
         id: sceneFadeAnim
         target: effect
         property: "sceneFade"
-        duration: 140
+        duration: effect.sceneFadeMs
         easing.type: Easing.InOutCubic
-        onFinished: {
-            if (effect.sceneFadeOut) {
-                effect.sceneFadeOut = false;
-                effect.sceneFade = 1;
-                effect.visible = false;
-                effect.quiet = false;
-            }
-        }
     }
 
     // Pan by one step in a direction (dx, dy in {-1, 0, 1}): the camera moves

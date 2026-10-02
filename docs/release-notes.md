@@ -7,15 +7,18 @@ Unreleased:
   to sit on top of its path; the constellation re-weaves live with every
   hover and restack.
 
-- The transitions are now a true crossfade: the whole scene - windows,
-  frames, chrome and all - fades against the real desktop at every seam,
-  instead of the windows dissolving on their own and the real ones popping
-  in after them. Because the real windows sit exactly where the canvas
-  drew them, stepping into a location and stepping back out now cross
-  smoothly, and the flight's spring starts as a gentle acceleration
-  instead of a jerk. The chrome stays up through a flight too - the
-  frames, the tags and the toolbar no longer wink out when the camera
-  sets off and back when it lands.
+- The seams no longer fade through black: KWin composites the canvas's
+  scene over black, not over the desktop, so the earlier crossfade was
+  really a fade-to-black, and the black was the flash. The quiet scene at
+  1:1 paints the same pixels as the desktop it covers - the thumbnails sit
+  over the real windows at the same place - so the seams are now instant
+  swaps, invisible where the pictures match, and a fade only remains where
+  the picture genuinely jumps (a close from a zoomed-out overworld). The
+  quiet slide opens opaque and glides after the first paint has warmed the
+  thumbnails; it writes the geometries and closes the moment it arrives.
+  The chrome stays up through a flight too - the frames, the tags and the
+  toolbar no longer wink out when the camera sets off and back when it
+  lands.
 
 - The hover that hands the pointer over is now a knob - HoverDelay, a
   deliberate 900 ms by default: a quicker pass-over stays the canvas's,
