@@ -293,6 +293,18 @@
             <label>The busy percentage at which Auto steps down to the bare minimum. A hidden knob.</label>
             <default>95</default>
         </entry>
+        <entry name="GpuReduced" type="Int">
+            <label>The GPU's busy percentage at which Auto steps down to reduced fidelity. A hidden knob, alongside its CPU twin: whichever channel sees the worse pressure sets the step.</label>
+            <default>60</default>
+        </entry>
+        <entry name="GpuMinimal" type="Int">
+            <label>The GPU's busy percentage at which Auto steps down to minimal fidelity. A hidden knob.</label>
+            <default>80</default>
+        </entry>
+        <entry name="GpuBare" type="Int">
+            <label>The GPU's busy percentage at which Auto steps down to the bare minimum. A hidden knob.</label>
+            <default>95</default>
+        </entry>
         <entry name="PanInertia" type="Bool">
             <label>A pan the hand lets go of keeps the plane moving, slowing by PanFriction, so a flick carries. A drag that pauses before the release, or a slow one, stops where it is put.</label>
             <default>true</default>

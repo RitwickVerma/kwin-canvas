@@ -100,6 +100,7 @@ KWin.SceneEffect {
     // busy and back up only after two calm readings, so it never flutters.
     property int ql: 0
     property real cpuBusy: 0
+    property real gpuBusy: 0
     property int quietSamples: 0
     function qualityCap() {
         switch (String(configuration.QualityMode)) {
@@ -110,17 +111,26 @@ KWin.SceneEffect {
             default: return 3; // Auto
         }
     }
-    function qualityApply(cpu) {
+    function qualityApply(cpu, gpu) {
         cpuBusy = cpu;
+        gpuBusy = gpu === undefined ? 0 : gpu;
         if (String(configuration.QualityMode) !== "Auto") {
             ql = qualityCap();
             quietSamples = 0;
             return;
         }
-        const reduced = Number(configuration.CpuReduced);
-        const minimal = Number(configuration.CpuMinimal);
-        const bare = Number(configuration.CpuBare);
-        const target = Logic.qualityFor(cpu, Number.isFinite(reduced) ? reduced : 60, Number.isFinite(minimal) ? minimal : 80, Number.isFinite(bare) ? bare : 95);
+        const cpuReduced = Number(configuration.CpuReduced);
+        const cpuMinimal = Number(configuration.CpuMinimal);
+        const cpuBare = Number(configuration.CpuBare);
+        const cpuQl = Logic.qualityFor(cpu, Number.isFinite(cpuReduced) ? cpuReduced : 60, Number.isFinite(cpuMinimal) ? cpuMinimal : 80, Number.isFinite(cpuBare) ? cpuBare : 95);
+        const gpuReduced = Number(configuration.GpuReduced);
+        const gpuMinimal = Number(configuration.GpuMinimal);
+        const gpuBare = Number(configuration.GpuBare);
+        const gpuQl = Logic.qualityFor(gpu, Number.isFinite(gpuReduced) ? gpuReduced : 60, Number.isFinite(gpuMinimal) ? gpuMinimal : 80, Number.isFinite(gpuBare) ? gpuBare : 95);
+        // The two channels race each other: whichever sees the worse pressure
+        // sets the step, and a calm machine must clear BOTH before the ladder
+        // climbs back up.
+        const target = Math.max(cpuQl, gpuQl);
         if (target > ql) {
             ql = target;
             quietSamples = 0;
@@ -3015,8 +3025,9 @@ KWin.SceneEffect {
         onTriggered: { if (effect.passthroughLive) pluginStateCall.call(); }
     }
     // The machine's load, for the fidelity ladder. The plugin reads /proc
-    // itself (three small reads) and answers "cpu=N load=NN.NN mem=MMMM";
-    // cpu is the busy percentage since the previous call. Polled every two
+    // itself (three small reads) and answers "cpu=N load=NN.NN mem=MMMM
+    // gpu=N"; cpu and gpu are the busy percentages since the previous call,
+    // gpu via NVML when the NVIDIA driver is present. Polled every two
     // seconds while the overworld is open - a fixed mode needs no probe,
     // the ladder applies the cap directly.
     KWin.DBusCall {
@@ -3029,7 +3040,9 @@ KWin.SceneEffect {
             const s = String(result || "");
             const ci = s.indexOf("cpu=");
             const cpu = ci >= 0 ? Number(s.slice(ci + 4).split(" ")[0]) : 0;
-            effect.qualityApply(Number.isFinite(cpu) ? cpu : 0);
+            const gi = s.indexOf("gpu=");
+            const gpu = gi >= 0 ? Number(s.slice(gi + 4).split(" ")[0]) : 0;
+            effect.qualityApply(Number.isFinite(cpu) ? cpu : 0, Number.isFinite(gpu) ? gpu : 0);
         }
     }
     Timer {
@@ -3038,7 +3051,7 @@ KWin.SceneEffect {
         repeat: true
         running: effect.visible && !effect.quiet
         onTriggered: {
-            if (String(effect.configuration.QualityMode) !== "Auto") effect.qualityApply(0);
+            if (String(effect.configuration.QualityMode) !== "Auto") effect.qualityApply(0, 0);
             else loadCall.call();
         }
     }
@@ -3936,6 +3949,7 @@ KWin.SceneEffect {
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
             + " ql=" + ql
             + " cpu=" + Math.round(cpuBusy)
+            + " gpu=" + Math.round(gpuBusy)
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
         const ids = activityIds, screens = KWin.Workspace.screens;
         for (let i = 0; i < screens.length; ++i) {

@@ -45,6 +45,7 @@ run_scenario() {
     open_1to1
     c state
     assert_eq "an idle machine wears everything" "$(sget ql)" 0
+    assert_true "the gpu channel reports" -n "$(sget gpu)"
     c "zoom 0.5 960 540"
     sleep 0.2
     c state

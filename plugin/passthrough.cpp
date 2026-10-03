@@ -19,6 +19,7 @@
 #include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLibrary>
 #include <QLoggingCategory>
 #include <QTimer>
 
@@ -239,14 +240,53 @@ QString CanvasPassthrough::state() const
         .arg(atSeam(waylandServer()->seat()->pointerPos()) ? QStringLiteral("1") : QStringLiteral("0"));
 }
 
+// The GPU's busy share via NVML, loaded on demand with QLibrary so the
+// plugin carries no link-time dependency on the NVIDIA driver. Without the
+// driver (or on another vendor's GPU) this stays -1 and the CPU channel
+// alone governs the ladder.
+static int nvmlBusy()
+{
+    static bool tried = false;
+    static int (*initFn)() = nullptr;
+    static int (*handleFn)(unsigned, void **) = nullptr;
+    static int (*utilFn)(void *, void *) = nullptr;
+    if (!tried) {
+        tried = true;
+        static QLibrary lib(QStringLiteral("libnvidia-ml.so.1"));
+        if (lib.load()) {
+            initFn = (int (*)())lib.resolve("nvmlInit_v2");
+            handleFn = (int (*)(unsigned, void **))lib.resolve("nvmlDeviceGetHandleByIndex_v2");
+            utilFn = (int (*)(void *, void *))lib.resolve("nvmlDeviceGetUtilizationRates");
+        }
+    }
+    if (!initFn || !handleFn || !utilFn) {
+        return -1;
+    }
+    if (initFn() != 0) {
+        return -1;
+    }
+    void *dev = nullptr;
+    if (handleFn(0, &dev) != 0 || !dev) {
+        return -1;
+    }
+    // nvmlUtilization_t is two unsigned ints: gpu, then memory.
+    unsigned int rates[2] = {0, 0};
+    if (utilFn(dev, rates) != 0) {
+        return -1;
+    }
+    return int(rates[0]);
+}
+
 QString CanvasPassthrough::load() const
 {
     // The machine's load for the fidelity ladder. cpu is the busy share
     // between this call and the previous one, from the first /proc/stat
     // line (all cores together, so a four-core game pegs it at ~100 the
     // same as an eight-core one). load is the one-minute average and mem
-    // the available memory, both for the trace. Three small reads, a few
-    // microseconds; the effect polls it every couple of seconds only.
+    // the available memory, both for the trace. gpu is the GPU's busy
+    // share via NVML, or -1 where the driver is absent. A few small
+    // reads, a few microseconds; the effect polls it every couple of
+    // seconds only.
     qulonglong total = 0;
     qulonglong idle = 0;
     QFile stat(QStringLiteral("/proc/stat"));
@@ -286,7 +326,8 @@ QString CanvasPassthrough::load() const
             }
         }
     }
-    return QStringLiteral("cpu=%1 load=%2 mem=%3").arg(cpu).arg(load1, 0, 'f', 2).arg(mem);
+    const int gpu = nvmlBusy();
+    return QStringLiteral("cpu=%1 load=%2 mem=%3 gpu=%4").arg(cpu).arg(load1, 0, 'f', 2).arg(mem).arg(gpu);
 }
 
 // ---- the plane ---------------------------------------------------------------

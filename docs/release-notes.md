@@ -1,14 +1,16 @@
 Unreleased:
 
 - The canvas sheds its finery as the system loads up. It watches the
-  machine's real CPU load and steps down a ladder - reduced (the backdrop
-  blur, the unlit constellation and the lens's edge blur go), minimal
-  (the whole cluster web, the standing shadows, the z-depth and the float
-  bob go), then bare (the live window pictures become named rectangles) -
-  and climbs back up when the machine breathes, two calm samples at a
-  time so it never flutters. Panning, zooming, clicking and the
+  machine's real CPU and GPU load and steps down a ladder - reduced (the
+  backdrop blur, the unlit constellation and the lens's edge blur go),
+  minimal (the whole cluster web, the standing shadows, the z-depth and the
+  float bob go), then bare (the live window pictures become named
+  rectangles) - and climbs back up when the machine breathes, two calm
+  samples at a time so it never flutters. Whichever channel sees the worse
+  pressure sets the step: a game saturating the GPU degrades the canvas
+  even while the CPU idles. Panning, zooming, clicking and the
   pass-through never degrade; only the eye candy does. The QualityMode
-  knob holds a step, and the three thresholds are hidden knobs.
+  knob holds a step, and the six thresholds are hidden knobs.
 
 - The overlay is gone: the world is the map. Zooming out during the hold
   turns the windows themselves into the map's sheets, the cluster chips
