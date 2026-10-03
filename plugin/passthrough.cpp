@@ -16,6 +16,7 @@
 #include <KConfigGroup>
 #include <KSharedConfig>
 #include <QDBusConnection>
+#include <QFile>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLoggingCategory>
@@ -236,6 +237,56 @@ QString CanvasPassthrough::state() const
         .arg(m_nav)
         .arg(m_hold)
         .arg(atSeam(waylandServer()->seat()->pointerPos()) ? QStringLiteral("1") : QStringLiteral("0"));
+}
+
+QString CanvasPassthrough::load() const
+{
+    // The machine's load for the fidelity ladder. cpu is the busy share
+    // between this call and the previous one, from the first /proc/stat
+    // line (all cores together, so a four-core game pegs it at ~100 the
+    // same as an eight-core one). load is the one-minute average and mem
+    // the available memory, both for the trace. Three small reads, a few
+    // microseconds; the effect polls it every couple of seconds only.
+    qulonglong total = 0;
+    qulonglong idle = 0;
+    QFile stat(QStringLiteral("/proc/stat"));
+    if (stat.open(QIODevice::ReadOnly)) {
+        const QByteArray line = stat.readLine();
+        const QList<QByteArray> parts = line.simplified().split(' ');
+        // parts: cpu, user, nice, system, idle, iowait, irq, softirq, steal...
+        if (parts.size() >= 5 && parts[0] == "cpu") {
+            for (int i = 1; i < parts.size() && i < 9; ++i) {
+                total += parts[i].toULongLong();
+            }
+            idle = parts[4].toULongLong();
+        }
+    }
+    int cpu = 0;
+    if (m_prevTotal && total > m_prevTotal) {
+        const qulonglong dt = total - m_prevTotal;
+        const qulonglong di = idle >= m_prevIdle ? idle - m_prevIdle : 0;
+        cpu = int(100 - 100 * double(di) / double(dt));
+    }
+    m_prevTotal = total;
+    m_prevIdle = idle;
+
+    double load1 = 0;
+    QFile loadavg(QStringLiteral("/proc/loadavg"));
+    if (loadavg.open(QIODevice::ReadOnly)) {
+        load1 = QString::fromLatin1(loadavg.readLine()).section(QLatin1Char(' '), 0, 0).toDouble();
+    }
+    qulonglong mem = 0;
+    QFile meminfo(QStringLiteral("/proc/meminfo"));
+    if (meminfo.open(QIODevice::ReadOnly)) {
+        while (!meminfo.atEnd()) {
+            const QByteArray line = meminfo.readLine();
+            if (line.startsWith("MemAvailable:")) {
+                mem = line.mid(13).simplified().split(' ')[0].toULongLong();
+                break;
+            }
+        }
+    }
+    return QStringLiteral("cpu=%1 load=%2 mem=%3").arg(cpu).arg(load1, 0, 'f', 2).arg(mem);
 }
 
 // ---- the plane ---------------------------------------------------------------

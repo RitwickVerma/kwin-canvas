@@ -103,6 +103,14 @@ public Q_SLOTS:
     Q_SCRIPTABLE void setVerbose(bool verbose);
     /** One line of state for the nest harness: active, camera, grab, hover. */
     Q_SCRIPTABLE QString state() const;
+    /**
+     * The machine's load, for the fidelity ladder: "cpu=N load=NN.NN
+     * mem=MMMM". cpu is the busy percentage since the previous call (0 on
+     * the first), load is the one-minute average, mem is the available
+     * memory in kB. Cheap: three /proc reads, polled every couple of
+     * seconds while the overworld is open.
+     */
+    Q_SCRIPTABLE QString load() const;
 
 public:
     bool pointerMotion(KWin::PointerMotionEvent *event) override;
@@ -178,4 +186,7 @@ private:
     QPointer<KWin::Window> m_clickWindow;
     /** Where the candidate press landed: motion beyond a few pixels makes it a drag. */
     QPointF m_clickPos;
+    /** The /proc/stat jiffies at the previous load() call, for the busy delta. */
+    mutable qulonglong m_prevTotal = 0;
+    mutable qulonglong m_prevIdle = 0;
 };

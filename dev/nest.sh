@@ -125,6 +125,13 @@ BorderActivate=${NEST_BORDERS:-7}
 PanInertia=false
 SmoothZoom=false
 WindowPhysics=false
+# The fidelity ladder reads the machine's real load, and the machine that
+# runs the suite IS busy with the suite: the thresholds are pinned at 100 so
+# a scenario's golden never depends on how hard the host is breathing.
+# 116-quality overrides them and deletes them itself.
+CpuReduced=100
+CpuMinimal=100
+CpuBare=100
 DebugSeq=0
 ToggleShortcut=Ctrl+Alt+Space
 HomeShortcut=Ctrl+Alt+Home

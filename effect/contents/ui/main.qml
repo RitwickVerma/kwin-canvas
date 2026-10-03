@@ -90,6 +90,47 @@ KWin.SceneEffect {
     // answer to "will this click move the canvas or the window?"
     property bool handOnWindow: false
     onHandOnWindowChanged: effect.dbg("hand", "handOnWindow=" + effect.handOnWindow)
+    // ---- fidelity under load --------------------------------------------------
+    // The machine's busy share drives a ladder: 0 wears everything, 1 sheds
+    // the blur and the faint constellation, 2 the whole web, the shadows and
+    // the z-depth, 3 the thumbnails themselves - plain rectangles with names,
+    // so a pegged system keeps a working canvas and not a pretty one. The
+    // plugin's load() supplies the reading every couple of seconds while the
+    // overworld is open; the ladder steps down the moment the machine gets
+    // busy and back up only after two calm readings, so it never flutters.
+    property int ql: 0
+    property real cpuBusy: 0
+    property int quietSamples: 0
+    function qualityCap() {
+        switch (String(configuration.QualityMode)) {
+            case "Full": return 0;
+            case "Reduced": return 1;
+            case "Minimal": return 2;
+            case "Bare": return 3;
+            default: return 3; // Auto
+        }
+    }
+    function qualityApply(cpu) {
+        cpuBusy = cpu;
+        if (String(configuration.QualityMode) !== "Auto") {
+            ql = qualityCap();
+            quietSamples = 0;
+            return;
+        }
+        const reduced = Number(configuration.CpuReduced);
+        const minimal = Number(configuration.CpuMinimal);
+        const bare = Number(configuration.CpuBare);
+        const target = Logic.qualityFor(cpu, Number.isFinite(reduced) ? reduced : 60, Number.isFinite(minimal) ? minimal : 80, Number.isFinite(bare) ? bare : 95);
+        if (target > ql) {
+            ql = target;
+            quietSamples = 0;
+        } else if (target < ql) {
+            quietSamples++;
+            if (quietSamples >= 2) { ql = target; quietSamples = 0; }
+        } else {
+            quietSamples = 0;
+        }
+    }
     // Plane input: under the preload shim (dev/spike/preload) KWin's pointer
     // chain works in plane coordinates, plane = (screen - o) / s, where a
     // plane point is a frame position on the current activity: s = zoom and
@@ -1964,6 +2005,10 @@ KWin.SceneEffect {
         let moved = false;
         if (!quiet) moved = openView(spec);
         if (!quiet && passthrough) probeCall.call();
+        // The fidelity ladder samples the load the moment the overworld
+        // opens - no brief spell of full decoration on an already-busy
+        // machine while the pulse's first tick is still two seconds away.
+        if (!quiet) loadPulse.restart();
         // The step out fades the overworld's chrome in, and - when the opening
         // view moves the camera - the windows in after it: a cut to fit, and a
         // chrome pop at 1:1, would each read as a glitch. A quiet slide has
@@ -2969,6 +3014,34 @@ KWin.SceneEffect {
         running: effect.visible && !effect.quiet && effect.passthroughLive
         onTriggered: { if (effect.passthroughLive) pluginStateCall.call(); }
     }
+    // The machine's load, for the fidelity ladder. The plugin reads /proc
+    // itself (three small reads) and answers "cpu=N load=NN.NN mem=MMMM";
+    // cpu is the busy percentage since the previous call. Polled every two
+    // seconds while the overworld is open - a fixed mode needs no probe,
+    // the ladder applies the cap directly.
+    KWin.DBusCall {
+        id: loadCall
+        service: "org.kde.KWin"
+        path: "/KWinCanvas"
+        dbusInterface: "org.kde.kwin.canvas.Passthrough"
+        method: "load"
+        onFinished: (result) => {
+            const s = String(result || "");
+            const ci = s.indexOf("cpu=");
+            const cpu = ci >= 0 ? Number(s.slice(ci + 4).split(" ")[0]) : 0;
+            effect.qualityApply(Number.isFinite(cpu) ? cpu : 0);
+        }
+    }
+    Timer {
+        id: loadPulse
+        interval: 2000
+        repeat: true
+        running: effect.visible && !effect.quiet
+        onTriggered: {
+            if (String(effect.configuration.QualityMode) !== "Auto") effect.qualityApply(0);
+            else loadCall.call();
+        }
+    }
     // The plugin answered: if the canvas is still open, switch it on and give it the camera.
     function passthroughProbed() {
         if (!canvasOpen || passthroughLive) return;
@@ -3861,6 +3934,8 @@ KWin.SceneEffect {
             + " map=" + (mapMinimap ? "minimap" : "-")
             + " verb=" + (verb ? "1" : "0")
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
+            + " ql=" + ql
+            + " cpu=" + Math.round(cpuBusy)
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
         const ids = activityIds, screens = KWin.Workspace.screens;
         for (let i = 0; i < screens.length; ++i) {
@@ -4217,7 +4292,10 @@ KWin.SceneEffect {
                 // The quiet slide (a focus fly, a pan chord at 1:1) is the
                 // desktop gliding: the wallpaper stays, sharp, so a
                 // transient move never flashes grey or the overworld's blur.
-                radius: effect.quiet ? 0 : effect.backdropBlur()
+                // Under load the blur is the first pass to go: it is a
+                // half-screen FBO sampled every frame, and a busy machine
+                // keeps the wallpaper sharp rather than pay for the haze.
+                radius: (effect.quiet || effect.ql >= 1) ? 0 : effect.backdropBlur()
                 transparentBorder: false
             }
             // The dim over the blur only: the desks ride above it and stay
@@ -4521,7 +4599,7 @@ KWin.SceneEffect {
                 readonly property int heldIndex: { effect.revision; return effect.entries.indexOf(held); }
                 // The float's bob: each window hovers at its own phase.
                 readonly property real phase: index * 137.508
-                readonly property real bob: { effect.floatRev; return Math.sin(effect.floatRev * 0.035 + phase) * 2.4 * effect.floatAmt; }
+                readonly property real bob: { effect.floatRev; effect.ql; return effect.ql >= 2 ? 0 : Math.sin(effect.floatRev * 0.035 + phase) * 2.4 * effect.floatAmt; }
                 x: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].x - effect.viewX) * effect.zoom - view.sg.x; return f ? f.x : base; }
                 y: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; return (f ? f.y : base) + thumb.bob; }
                 width: { effect.revision; return effect.entries[index].width * effect.zoom; }
@@ -4553,7 +4631,7 @@ KWin.SceneEffect {
                 // size below follow the rank, so the stacking is legible at a
                 // glance instead of being a property only the pointer sees.
                 readonly property real depth: { effect.revision; effect.focusEntry; effect.selectionRev; return ((thumb.entry === effect.focusEntry ? effect.entries.length + 1 : index + 1) / (effect.entries.length + (effect.focusEntry ? 1 : 0))); }
-                readonly property real depthScale: effect.quiet ? 1 : (1 + (0.025 * thumb.depth - 0.01) * effect.skinReveal)
+                readonly property real depthScale: (effect.quiet || effect.ql >= 2) ? 1 : (1 + (0.025 * thumb.depth - 0.01) * effect.skinReveal)
                 scale: depthScale * (lifted ? 1.03 : (thumb.hovered && heavy ? 1.008 : 1))
                 Behavior on scale { enabled: !effect.quiet; SpringAnimation { spring: 3.6; damping: 0.5; epsilon: 0.001 } }
                 transform: [
@@ -4580,9 +4658,23 @@ KWin.SceneEffect {
                     }
                 ]
 
+                // Bare fidelity: the live picture is the canvas's dearest
+                // cost, so a pegged machine gets the window as a named
+                // rectangle - a light wash over the plane, the caption
+                // always up - and keeps the real thumbnails for calmer
+                // times. Everything else (drag, focus, passthrough) works
+                // exactly as before.
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 6
+                    color: Qt.rgba(1, 1, 1, 0.07)
+                    visible: effect.ql >= 3
+                }
+
                 KWin.WindowThumbnail {
                     anchors.fill: parent
                     client: thumb.entry.window
+                    visible: effect.ql < 3
                 }
 
                 // The soft shadow under the window: the lifted and the
@@ -4597,7 +4689,7 @@ KWin.SceneEffect {
                     z: -2
                     radius: 8
                     color: "#000000"
-                    visible: effect.skinReveal > 0.02
+                    visible: effect.ql < 2 && effect.skinReveal > 0.02
                     opacity: effect.skinReveal * (liftedNow ? 0.30 : (thumb.hovered ? 0.16 : 0.05 + 0.13 * thumb.depth))
                     readonly property bool liftedNow: body.active && body.moving && thumb.heavy
                     Behavior on opacity { NumberAnimation { duration: 150 } }
@@ -4638,7 +4730,7 @@ KWin.SceneEffect {
                     text: thumb.entry.window.caption
                     color: "#ffffff"
                     font.pixelSize: 12
-                    visible: effect.zoom < 0.6 || thumb.hovered
+                    visible: effect.ql >= 3 || effect.zoom < 0.6 || thumb.hovered
                     style: Text.Outline
                     styleColor: "#000000"
                 }
@@ -4865,7 +4957,11 @@ KWin.SceneEffect {
             model: {
                 effect.revision; effect.clusterRev; effect.floatRev; effect.hoverRev;
                 effect.focusEntry; effect.selectionRev; effect.travelCluster;
-                effect.quiet;
+                effect.quiet; effect.ql;
+                // Minimal fidelity and below: the web stays off entirely - its
+                // weave is the canvas's most expensive decoration and the
+                // first thing a busy machine should not be paying for.
+                if (effect.ql >= 2) return [];
                 return effect.clusterThreads();
             }
             delegate: Item {
@@ -4886,7 +4982,7 @@ KWin.SceneEffect {
                     // fly slides across - is the desktop alone. Full strength by
                     // zoom 0.75, gone at 1:1; the unlit constellation dissolves
                     // between 0.45 and 0.5 instead of cutting out at half zoom.
-                    readonly property real want: (modelData.lit ? 0.55 : 0.22 * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20))) * modelData.co * effect.skinReveal
+                    readonly property real want: (modelData.lit ? 0.55 : (effect.ql >= 1 ? 0 : 0.22 * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20)))) * modelData.co * effect.skinReveal
                     property real show: 0
                     opacity: show
                     Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
@@ -5030,8 +5126,9 @@ KWin.SceneEffect {
                 radius: 16
                 color: Qt.rgba(0.07, 0.07, 0.09, 0.42)
                 // The minimap's dark region bleeds into the plane instead of
-                // ending at a line: the edge is a soft falloff.
-                layer.enabled: true
+                // ending at a line: the edge is a soft falloff. Under load
+                // the edge hardens - the blur is an FBO the ladder sheds.
+                layer.enabled: effect.ql < 1
                 layer.effect: GaussianBlur {
                     radius: 5
                     samples: 17

@@ -277,3 +277,15 @@ function threadSpans(x1, y1, x2, y2, zA, zB, rects) {
     }
     return out;
 }
+
+// The fidelity ladder: how much eye candy the canvas may run at a given
+// system load. 0 is everything; 3 is the bare minimum (plain rectangles,
+// no web, no shadows). A non-finite or missing reading counts as idle, so a
+// broken probe can never strip a quiet desktop of its looks.
+function qualityFor(busy, reduced, minimal, bare) {
+    const b = Number.isFinite(Number(busy)) ? Number(busy) : 0;
+    if (b >= bare) return 3;
+    if (b >= minimal) return 2;
+    if (b >= reduced) return 1;
+    return 0;
+}

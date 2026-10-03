@@ -115,6 +115,24 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-04 — the canvas sheds its finery as the system loads up
+
+The system feature demand: the canvas must never steal resources from
+more important processes for eye candy. It now watches the machine's
+real CPU load (a `load()` D-Bus call into the pass-through plugin,
+reading /proc/stat deltas) and steps down a four-step ladder: reduced
+(the backdrop blur, the unlit constellation and the lens's edge blur
+go), minimal (the whole cluster web, the standing shadows, the z-depth
+and the float bob go), then bare (the live window pictures become named
+rectangles). The climb back up waits two calm samples, so it never
+flutters. The functional paths - panning, zooming, clicking, the
+pass-through, the hover raise, the chips, the lens's content - never
+degrade. The QualityMode knob holds a step, and the Cpu thresholds are
+hidden knobs. The suite pins the thresholds to 100 in the nest seed so
+no golden depends on the host's load; scenario 116 drives the ladder's
+edges itself (11/0). The pure threshold logic is in logic.js
+(`qualityFor`), unit-tested to 77/0.
+
 ### 2026-10-03 — the overlay is gone: the world is the map
 
 The overlay card never earned its screen: it was a second picture of

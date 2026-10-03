@@ -64,6 +64,8 @@ sget() {
         seam)     sed -n 's/.* seam=\([0-9]*\).*/\1/p' <<<"$line" ;;
         map)      sed -n 's/.* map=\([a-z-]*\).*/\1/p' <<<"$line" ;;
         verb)     sed -n 's/.* verb=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        ql)       sed -n 's/.* ql=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        cpu)      sed -n 's/.* cpu=\([0-9]*\).*/\1/p' <<<"$line" ;;
         nactivities) grep -c '^  {' <<<"$LAST_STATE" ;;
     esac
 }

@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, floatStep, fitRange, smartPan, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans };")();
+const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, floatStep, fitRange, smartPan, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -245,6 +245,22 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
     ok("a parallel miss is null", L.segRectT(0, 0, 100, 0, 0, 10, 100, 10) === null);
     ok("a side miss is null", L.segRectT(0, 0, 100, 0, 200, 0, 50, 10) === null);
     ok("a reversed segment clips the same stretch", (function () { const t = L.segRectT(100, 0, 0, 0, 40, -5, 20, 10); return t !== null && near(t[0], 0.4) && near(t[1], 0.6); })());
+}
+
+{
+    // The fidelity ladder: full below the reduced threshold, then one rung
+    // per threshold, bare at the top, and a bad reading reads idle.
+    ok("an idle reading wears everything", L.qualityFor(0, 60, 80, 95) === 0);
+    ok("a middling reading sheds the web's extras", L.qualityFor(60, 60, 80, 95) === 1);
+    ok("a busy reading goes minimal", L.qualityFor(80, 60, 80, 95) === 2);
+    ok("a pegged machine gets rectangles", L.qualityFor(95, 60, 80, 95) === 3);
+    ok("the thresholds are exact at the edge", L.qualityFor(79.9, 60, 80, 95) === 1);
+    ok("a missing reading counts as idle", L.qualityFor(undefined, 60, 80, 95) === 0);
+    ok("a non-finite reading counts as idle", L.qualityFor(NaN, 60, 80, 95) === 0);
+    ok("a zero threshold degrades at once", L.qualityFor(0, 0, 0, 0) === 3);
+    ok("and every rung is reachable by thresholds alone", (function () {
+        return L.qualityFor(0, 0, 100, 100) === 1 && L.qualityFor(0, 100, 0, 100) === 2 && L.qualityFor(0, 100, 100, 0) === 3;
+    })());
 }
 
 console.log("== unit pass " + pass + "  fail " + fail);

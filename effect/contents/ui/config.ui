@@ -189,6 +189,17 @@
      <item row="3" column="0"><widget class="QLabel" name="label_ZoomStep"><property name="text"><string>Zoom factor per wheel notch</string></property><property name="buddy"><cstring>kcfg_ZoomStep</cstring></property></widget></item>
      <item row="3" column="1"><widget class="QDoubleSpinBox" name="kcfg_ZoomStep"><property name="minimum"><double>1.01</double></property><property name="maximum"><double>2.0</double></property><property name="singleStep"><double>0.05</double></property></widget></item>
     </layout></widget></item>
+   <item><widget class="QGroupBox" name="groupQuality"><property name="title"><string>Fidelity under load</string></property>
+    <layout class="QFormLayout" name="formQuality">
+     <item row="0" column="0"><widget class="QLabel" name="label_QualityMode"><property name="text"><string>How much eye candy the canvas may run: Auto sheds it in steps as the system gets busy (reduced, minimal, bare rectangles) and puts it back when the machine breathes; the other settings hold that step always</string></property><property name="buddy"><cstring>kcfg_QualityMode</cstring></property></widget></item>
+     <item row="0" column="1"><widget class="QComboBox" name="kcfg_QualityMode">
+      <item><property name="text"><string>Auto</string></property></item>
+      <item><property name="text"><string>Full</string></property></item>
+      <item><property name="text"><string>Reduced</string></property></item>
+      <item><property name="text"><string>Minimal</string></property></item>
+      <item><property name="text"><string>Bare</string></property></item>
+     </widget></item>
+    </layout></widget></item>
    <item><spacer name="spacer"><property name="orientation"><enum>Qt::Vertical</enum></property></spacer></item>
   </layout>
  </widget>
