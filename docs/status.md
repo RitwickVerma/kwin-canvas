@@ -115,6 +115,49 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-03 — the overlay is gone: the world is the map
+
+The overlay card never earned its screen: it was a second picture of
+what was already on the plane, wearing a blur the GPU paid for. It is
+deleted - the veil, the card, the sheets, the chips-in-the-map, the
+resolver and the hint strip in it, along with the grasp's own
+pick/hover machinery. The zoomed-out world is the map now: the windows
+shrink live into the map's sheets, a click on a window during the hold
+flies it to 1:1 (the window delegate's tap gained the grasp branch)
+and the release lands there; the cluster chips float on the plane at
+their clusters (a camera-transform wrapper like the threads', tapping
+one fits the cluster at 0.75); the hint strip sits on the world; the
+switcher opens fitted to the whole plane and is TabBox-style: the
+chord's repeat steps the selection, releasing the chord (or Enter)
+steps into the chosen window, Esc steps out, and a second chord
+(SwitcherAltShortcut, Alt+Tab by default) rides alongside Meta+Tab;
+the minimap's corner chip steps clear of the toolbar; the corner lens
+in the overworld stays. Rewriting the scenarios
+taught two traps anew: the quiet grasp shows only its own activity's
+windows (a click on a far activity's window is invisible - the
+scenario clicks a current-activity window), and the QML disk cache
+(~/.cache/kwin/qmlcache) had the nest running the pre-removal build
+until it was cleared.
+
+The same pass hardened the camera: the commit and the slide refuse a
+non-finite camera and reset it, and a NaN zoom request keeps the
+current zoom, so a diverged spring or a poisoned pan can never write
+NaN/Inf window geometries into KWin. The plugin's window pointers were
+audited clean (all QPointer, re-checked before use). A new stress
+scenario (115-stress) hammers the camera with spring flights, pan
+bursts and a mid-flight grasp to prove it stays finite and answering.
+
+The same pass almost shipped a key-eating bug, caught by 102-keys
+failing 6/11 while the old tree passed 17/0: the chips' structural fix
+had left one brace mis-placed, so planeMap (and with it the Keys
+handlers, the HUD and the hint strip) was nested inside the view
+instead of beside it, and every key died before the scene. The
+bisect-by-diff (worktree at 7df8f34 + the world-map hunks applied in
+halves, 102 run after each) pinned it to the last hunks, and the
+brace tracer showed planeMap swallowing the keyboard. The structure is
+restored (planeMap closes right after its minimap tap; the Keys, the
+HUD, the help and the hint strip are the view's children again).
+
 ### 2026-10-02 — the seams swap instantly, and the threads travel the stack
 
 - **The fly's flash, chased to the ground.** Three fade-shaped fixes

@@ -1,18 +1,33 @@
 Unreleased:
 
+- The overlay is gone: the world is the map. Zooming out during the hold
+  turns the windows themselves into the map's sheets, the cluster chips
+  float on the plane where their clusters live, and a click on a window
+  flies it to 1:1 - the release lands there. The grasp still teaches
+  itself, with the hint strip sitting on the world. The switcher opens
+  fitted to the whole plane, and the corner lens in the overworld stays.
+
+- The switcher is TabBox-style: hold Meta+Tab or Alt+Tab (bind them over
+  KWin's own task switcher) and the canvas opens fitted to the whole
+  plane; tapping the chord again steps the selection through the windows
+  with the camera following, releasing the chord or pressing Enter steps
+  into the chosen window, and Esc steps back out. The minimap's corner
+  chip also steps clear of the toolbar now instead of covering it.
+
+- The camera is NaN-proof: a diverged spring, a poisoned pan or a bad
+  zoom request can no longer write a non-finite position into KWin's
+  window geometries. The commit and the slide refuse a non-finite camera
+  (and reset it), and a NaN zoom request keeps the current zoom instead
+  of poisoning every calculation downstream. A stress scenario hammers
+  the camera with spring flights, pan bursts and a mid-flight grasp to
+  prove it stays finite and answering.
+
 - Camera motion no longer re-weaves the threads: the cluster threads
   are now clipped in the plane's own coordinates once per layout change,
   and the camera is a single cheap transform per frame, so a fly or a
   zoom no longer re-runs the weave for every window pair on every frame.
-  The overlay's and the camera rectangle's blur passes switch themselves
-  off the moment they have nothing to blur.
-
-- The hold's map now materializes with the keyhole instead of arriving
-  late: the gate opens at 0.9 and the card, the desks, the sheets and
-  the chips fade in continuously between 0.9 and 0.7 while the windows
-  shrink, so the map is already coming into view when the eye looks for
-  it. And it shows for one cluster or many - the one-cluster gate is
-  gone, so the map appears on every desktop, not only on scattered ones.
+  The camera rectangle's blur pass switches itself off the moment it
+  has nothing to blur.
 
 - A step in retires the skin across the whole flight: the threads, the
   frames and the rest fade out evenly with the flight's own progress
@@ -30,27 +45,12 @@ Unreleased:
   the hold. (A transient slide still wears nothing, so the fly stays the
   seamless desktop it is.)
 
-- The overlay is a glass card now: a rounded sheet on the dimmed desktop,
-  74% of the screen centred, instead of the full-bleed veil. The map, the
-  desks, the cluster chips and the hint live on the card, and the world
-  behind it stays visible through the dim.
-
 - The toolbar shows whose hand is on the pointer: a dot beside the
   activity swatches that fills when the pass-through has handed the
   pointer to a window, and stays hollow while the canvas holds it.
 
 - The bookmarks are surfaced: the help panel lists every saved spot with
   its name, so the digits are discoverable instead of secret.
-
-- One map everywhere: the overlay wears what the minimap wears - the
-  desks and a chip per cluster - and a tap is judged once, against the
-  chips first and then the sheets, so a chip that sits inside a window's
-  sheet flies to its cluster instead of both firing and the sheet's fly
-  overriding it. A cluster chip flies the camera to fit the cluster (at
-  most 0.75, so the overlay stays up), and the release lands the location
-  with the cluster centred. The overlay teaches itself while it is up:
-  a one-line hint names what the hand can do - click to fly, drag to pan,
-  wheel to zoom, release to land.
 
 - The cluster threads are now real depth: each thread travels the z
   between its two windows - over the lower, under the higher - and ducks

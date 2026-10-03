@@ -162,6 +162,7 @@ KWin.SceneEffect {
             if (!visible) graspStart();
             else if (!grasp) {
                 grasp = true;
+                chipCount = clusters.length;
                 graspOverworld = true;
                 graspJumped = false;
                 dbg("hold", "grasp from the open overworld");
@@ -184,15 +185,19 @@ KWin.SceneEffect {
             + " quiet=" + quiet + " grasp=" + grasp
             + " clusters=" + clusters.length);
     }
-    // The map's two homes, mirrored out of the map item: the effect's own
-    // functions read these, so logState can say where the map lives without
+    // The map's home, mirrored out of the map item: the effect's own
+    // functions read it, so logState can say whether the lens is up without
     // reaching into the scene tree.
-    property bool mapOverlay: false
     property bool mapMinimap: false
+    // The world's chips are driven from the effect's own state rather than
+    // a binding on the scene tree: during the quiet grasp the Repeater's
+    // bindings freeze, so the grasp sets this and the model reads it.
+    property int chipCount: 0
     function graspStart() {
         if (visible) return;
         dbg("graspStart", "hold from the location at 1:1");
         grasp = true;
+        chipCount = clusters.length;
         graspStartActive = KWin.Workspace.activeWindow;
         open(true);
         // The camera never slides during a grasp, so endSlide()'s measured
@@ -206,12 +211,13 @@ KWin.SceneEffect {
         if (fullscreenOpen()) fullscreenZoomTo();
     }
     function graspEnd() {
-        if (!quiet || !grasp) { grasp = false; graspOverworld = false; return; }
+        if (!quiet || !grasp) { grasp = false; graspOverworld = false; chipCount = 0; return; }
         if (sceneGestures > 0) {
             deferredClose = graspEnd;
             return;
         }
         grasp = false;
+        chipCount = 0;
         dbg("graspEnd", "release, quiet at zoom " + zoom.toFixed(3));
         // The swap moved the focus: the location opens where the swapped-to
         // window is, focused on it, as a pick would place it - the frames,
@@ -325,6 +331,7 @@ KWin.SceneEffect {
         for (let i = 0; i < entries.length; ++i) if (isSelected(entries[i])) { idx = i; break; }
         const n = idx < 0 ? (dir > 0 ? 0 : entries.length - 1) : (idx + dir + entries.length) % entries.length;
         selectOnly(entries[n]);
+        dbg("sel", "cycle " + dir + " -> " + entries[n].window.caption);
         bringIntoView(entries[n]);
     }
 
@@ -372,25 +379,9 @@ KWin.SceneEffect {
     // each at its own phase, ramping in with the zoom-out.
     readonly property real floatAmt: windowPhysics && !quiet && visible ? Math.min(1, Math.max(0, (1 - zoom) * 3)) : 0
 
-    // The grasp's map: which window the pointer rests on, and the jump.
-    property int graspHover: 0
-    property int graspHoverIndex: -1
-    function graspPick(x, y) {
-        const wb = worldBounds();
-        const g = actionScreen().geometry;
-        const w = g.width - 48, h = g.height - 48;
-        const sc = Math.min((w - 12) / wb.width, (h - 12) / wb.height);
-        const ox = 24 + (w - wb.width * sc) / 2;
-        const oy = 24 + (h - wb.height * sc) / 2;
-        const cx = wb.x + (x - ox) / sc, cy = wb.y + (y - oy) / sc;
-        for (let i = entries.length - 1; i >= 0; --i) {
-            const e = entries[i];
-            if (cx >= e.x && cx < e.x + e.width && cy >= e.y && cy < e.y + e.height) return i;
-        }
-        return -1;
-    }
-    // A sheet clicked on the grasp's map is the release's destination: the
-    // hold that jumped commits the clicked location, whatever the zoom.
+    // The grasp's jump: the world is the map, so a window clicked while
+    // the hold is zoomed out is the release's destination - the hold that
+    // jumped commits the clicked location, whatever the zoom.
     property bool graspJumped: false
     // The grasp's jump flies to the window's location at 1:1, whatever the
     // hold's zoom: the destination is the location itself, and the release
@@ -407,15 +398,16 @@ KWin.SceneEffect {
     }
     function graspJumpTo(i) {
         if (i < 0 || i >= entries.length) return;
-        dbg("map", "sheet " + i + " (" + entries[i].window.caption + ") jumped to");
+        dbg("map", "window " + i + " (" + entries[i].window.caption + ") jumped to");
         noteGesture();
         graspJumped = true;
         graspFly(entries[i]);
     }
-    // The map's cluster chips fly the camera to fit the cluster: the hold
-    // keeps its map (the fit never passes zoom 0.75, below the overlay's
-    // 0.85 gate), and the release lands the overworld there.
+    // The world's cluster chips fly the camera to fit the cluster: the hold
+    // keeps its view (the fit never passes zoom 0.75), and the release
+    // lands the overworld there.
     function graspClusterTo(ci) {
+        dbg("chip", "graspClusterTo ci=" + ci + " grasp=" + grasp + " n=" + clusters.length);
         if (!grasp || ci < 0 || ci >= clusters.length) return;
         const c = clusters[ci];
         if (!c.ids || !c.ids.length) return;
@@ -436,16 +428,6 @@ KWin.SceneEffect {
         dbg("map", "cluster " + (ci + 1) + " chip: flying to zoom " + z.toFixed(2) + " at (" + Math.round(cx) + "," + Math.round(cy) + ")");
         noteGesture();
         camGo(z, cx - sg.width / (2 * z), cy - sg.height / (2 * z), undefined, undefined, 2.0);
-    }
-    Timer {
-        interval: 100
-        repeat: true
-        running: effect.grasp
-        onTriggered: {
-            const p = effect.cursorScreen();
-            effect.graspHoverIndex = effect.graspPick(p.x, p.y);
-            effect.graspHover++;
-        }
     }
 
     // ---- floating windows ----------------------------------------------------
@@ -632,6 +614,12 @@ KWin.SceneEffect {
         clusterOf = r.clusterOf;
         threadRank = r.ranks;
         clusterRev++;
+        // The chips' model freezes during the quiet grasp (the scene's
+        // Repeater models do not re-evaluate then), so the count is kept
+        // current HERE, while the model still answers: the delegates must
+        // already exist when the hold begins. Their visibility gate runs
+        // on the grasp's own state.
+        chipCount = clusters.length;
     }
 
     // The cluster the eye is on: the hovered window's, else the selected
@@ -869,6 +857,10 @@ KWin.SceneEffect {
     // of Qt key names without the Key_ prefix ("Return,Enter").
     property var bindings: ({})
 
+    function chordTail(spec) {
+        const parts = String(spec || "").split("+");
+        return parts[parts.length - 1].trim();
+    }
     function keysFor(spec) {
         const out = [];
         const names = String(spec || "").split(",");
@@ -942,11 +934,14 @@ KWin.SceneEffect {
             prev: keysFor(configuration.KeyPrev),
             clusterNext: keysFor(configuration.ClusterNextKey),
             clusterPrev: keysFor(configuration.ClusterPrevKey),
+            switcher: keysFor(chordTail(configuration.SwitcherShortcut)),
             panHold: buttonsFor(configuration.PanHold),
             hold: buttonsFor(configuration.CanvasHold),
-            swap: buttonsFor(configuration.SwapButton)
+            swap: buttonsFor(configuration.SwapButton),
         };
     }
+
+    // "Meta+Tab" -> "Tab": the key whose release ends a chord hold.
 
     function bound(action, key) {
         const list = bindings[action];
@@ -1529,6 +1524,9 @@ KWin.SceneEffect {
         return Math.min(1, Math.max(zoomPart, away / (Math.max(g.width, g.height) * 1.2)));
     }
     property var pendingFly: null
+    // Set when the switcher opened from the chord (Meta+Tab / Alt+Tab), not
+    // the debug verb, so the chord's release is the enter only for real holds.
+    property bool switcherFromChord: false
     // The switcher: the hold's map as a toggle. The chord opens the canvas
     // quietly with the map up; Tab and Shift+Tab step the selection - the
     // camera and the map's highlight follow - Enter enters the chosen
@@ -1536,13 +1534,22 @@ KWin.SceneEffect {
     property bool switcherActive: false
     function switcherToggle() {
         if (switcherActive) {
-            switcherActive = false;
-            doCancel();
+            // A repeat of the chord while the switcher is up steps the
+            // selection, the way Alt+Tab cycles while the key is held.
+            cycleSelection(1);
             return;
         }
         if (visible && !quiet) { switcherActive = false; return; }
-        if (!visible) open(true);
+        // The world is the map: the switcher opens the canvas fitted to
+        // the whole plane, with the selection cycle still riding Tab and
+        // Enter to step in.
+        if (!visible) open();
         switcherActive = true;
+        zoomExtents(true);
+        // The overworld's chrome can take the scene's keyboard focus (the
+        // menus' focus scopes) - the switcher needs the keys, so the view
+        // takes the focus back once the fit is on screen.
+        view.focus = true;
         clickPanEntry = null;
         clickPanTimer.stop();
     }
@@ -1569,7 +1576,10 @@ KWin.SceneEffect {
     // ---- camera ops --------------------------------------------------------
     function globalToCanvas(gx, gy) { const c = Logic.canvasOf(gx, gy, viewX, viewY, zoom); return Qt.point(c.x, c.y); }
 
-    function clampZoom(z) { return Math.max(zoomMin, Math.min(1.0, Number(z))); }
+    function clampZoom(z) {
+        if (!Number.isFinite(Number(z))) return zoom;
+        return Math.max(zoomMin, Math.min(1.0, Number(z)));
+    }
 
     // Zoom while holding the canvas point under `anchor` (global px) fixed on screen.
     function setZoom(z, anchor) {
@@ -1582,6 +1592,7 @@ KWin.SceneEffect {
     }
 
     function panBy(dx, dy) {
+        effect.dbg("pan", "panBy dx=" + dx + " dy=" + dy);
         viewX -= dx / zoom;
         viewY -= dy / zoom;
     }
@@ -2032,6 +2043,15 @@ KWin.SceneEffect {
             return;
         }
         camStop();
+        // The camera must be a real place before any geometry is written:
+        // a diverged spring or a poisoned pan leaves NaN/Inf in the view, and
+        // a frame write with those would hand KWin unusable geometries.
+        if (!Number.isFinite(viewX) || !Number.isFinite(viewY) || !Number.isFinite(zoom) || zoom <= 0) {
+            console.warn("kwin-canvas: refusing to commit from a non-finite camera, resetting it (view was " + viewX + "," + viewY + " zoom " + zoom + ")");
+            viewX = 0;
+            viewY = 0;
+            zoom = 1.0;
+        }
         // Entering syncs the floated windows to their pictures: the float's
         // clamped spot - the place the eye saw the window - becomes the
         // window's coordinates, so a floated window never lands off-screen
@@ -3327,6 +3347,16 @@ KWin.SceneEffect {
         dropPassthrough();
         zoom = 1.0;
         const dx = Math.round(slideToX - entryViewX), dy = Math.round(slideToY - entryViewY);
+        // The same net as commit: a slide that landed on a non-finite camera
+        // must not write non-finite frames.
+        if (!Number.isFinite(dx) || !Number.isFinite(dy) || !Number.isFinite(viewX) || !Number.isFinite(viewY)) {
+            console.warn("kwin-canvas: refusing a slide landing from a non-finite camera, resetting it (delta was " + dx + "," + dy + ")");
+            viewX = entryViewX;
+            viewY = entryViewY;
+            visible = false;
+            quiet = false;
+            return;
+        }
         targets = copyTargets(entryTargets);
         const cur = targetOf(currentActivity);
         cur.x += dx;
@@ -3569,9 +3599,15 @@ KWin.SceneEffect {
     }
     KWin.ShortcutHandler {
         name: "Canvas Switcher"
-        text: "Canvas: the switcher - the whole plane as a map, Tab to step, Enter to enter"
+        text: "Canvas: the switcher - the whole plane as a map; hold the chord and step with Tab, release or press Enter to enter"
         sequence: effect.configuration.SwitcherShortcut
-        onActivated: effect.switcherToggle()
+        onActivated: { effect.switcherFromChord = true; effect.switcherToggle() }
+    }
+    KWin.ShortcutHandler {
+        name: "Canvas Switcher Alternate"
+        text: "Canvas: the switcher on a second chord (bind over KWin's own Alt+Tab)"
+        sequence: effect.configuration.SwitcherAltShortcut
+        onActivated: { effect.switcherFromChord = true; effect.switcherToggle() }
     }
     KWin.ShortcutHandler {
         name: "Canvas Home"
@@ -3795,7 +3831,7 @@ KWin.SceneEffect {
             console.log(s);
             break;
         }
-        case "switch": switcherToggle(); break;
+        case "switch": switcherFromChord = false; switcherToggle(); break;
         default: console.warn("kwin-canvas: unknown debug command", cmd);
         }
         logState();
@@ -3822,7 +3858,7 @@ KWin.SceneEffect {
             + " draglag=" + Math.round(Math.sqrt(dragLagX * dragLagX + dragLagY * dragLagY)) + " lean=" + dragLean.toFixed(2)
             + " idle=" + (passthroughIdle ? "1" : "0")
             + " seam=" + (seamPark ? "1" : "0")
-            + " map=" + (mapOverlay ? "overlay" : (mapMinimap ? "minimap" : "-"))
+            + " map=" + (mapMinimap ? "minimap" : "-")
             + " verb=" + (verb ? "1" : "0")
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
@@ -4646,7 +4682,17 @@ KWin.SceneEffect {
                     onDragStarted: { thumb.held = thumb.entry; effect.beginDrag(thumb.index); }
                     onDragged: (dx, dy) => { effect.dragEntry(thumb.heldIndex, dx, dy); effect.noteDrag(dx, dy); }
                     onDragEnded: effect.endDrag()
-                    onTapped: (count, modifiers, button) => effect.windowGesture(thumb.entry, count, modifiers, button)
+                    onTapped: (count, modifiers, button) => {
+                        // The world is the map: during the grasp a tap on a
+                        // window is the release's destination - the hold
+                        // jumps it to 1:1 and the release commits there.
+                        effect.dbg("tap", "body tap index=" + index + " grasp=" + effect.grasp + " spaceHeld=" + view.spaceHeld + " button=" + button);
+                        if (effect.grasp) {
+                            effect.graspJumpTo(index);
+                            return;
+                        }
+                        effect.windowGesture(thumb.entry, count, modifiers, button);
+                    }
                 }
 
                 // The window's client area, where planeTakes() lets the
@@ -4873,44 +4919,79 @@ KWin.SceneEffect {
             }
         }
 
-        // The plane map - one living picture, two homes. While the modifier
-        // is held it is the whole screen: the frames as border-only
-        // outlines, the windows as shaded sheets, a click flying the camera
-        // to a sheet. In the overworld it shrinks into the corner and turns
-        // to glass - the view behind it blurred and magnified - and the
-        // same click flies the camera. The two homes are one item, so the
-        // map morphs between them, springing from the full screen into the
-        // corner sheet and back.
+        // The cluster chips, on the plane itself: the world is the map, so
+        // the map's business lives where the clusters live. While the grasp
+        // holds and the skin is out, a chip per cluster floats over its
+        // centre - the same number the world's badge wears - and a tap
+        // flies the camera to fit the cluster. The camera transform matches
+        // the threads' wrapper: canvas coordinates, one uniform transform
+        // per frame.
+        Repeater {
+            model: effect.chipCount
+            delegate: Item {
+                required property int index
+                readonly property var c: effect.clusters[index]
+                x: { effect.revision; effect.clusterRev; effect.viewX; effect.viewY; effect.zoom; return -(effect.viewX * effect.zoom) - view.sg.x + (c.cx - 12) * effect.zoom; }
+                y: { effect.revision; effect.clusterRev; effect.viewX; effect.viewY; effect.zoom; return -(effect.viewY * effect.zoom) - view.sg.y + (c.cy - 12) * effect.zoom; }
+                width: 24 * effect.zoom
+                height: 24 * effect.zoom
+                z: 40000
+                // The wrapper stays visible: Qt skips bindings on invisible
+                // items, so a visible gate here would freeze the chip out of
+                // the grasp that should show it. The chip's pixels and its
+                // tap gate on the grasp below.
+                visible: true
+                opacity: { effect.clusterRev; effect.skinReveal; effect.grasp; return (effect.grasp && effect.skinReveal > 0.02 && index < effect.clusters.length && effect.clusters[index].n > 1) ? effect.skinReveal : 0; }
+                Rectangle {
+                    anchors.fill: parent
+                    radius: width / 2
+                    color: "#cc1e2126"
+                    border.width: 1
+                    border.color: "#66ffffff"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "#" + (index + 1)
+                        color: "#ffffff"
+                        font.pixelSize: 11 * effect.zoom
+                    }
+                }
+                TapHandler {
+                    acceptedButtons: Qt.LeftButton
+                    enabled: { effect.clusterRev; effect.skinReveal; effect.grasp; return effect.grasp && effect.skinReveal > 0.02 && index < effect.clusters.length && effect.clusters[index].n > 1; }
+                    onTapped: effect.graspClusterTo(index)
+                }
+                HoverHandler {
+                    enabled: { effect.clusterRev; effect.skinReveal; effect.grasp; return effect.grasp && effect.skinReveal > 0.02 && index < effect.clusters.length && effect.clusters[index].n > 1; }
+                    onHoveredChanged: view.hoverCount += hovered ? 1 : -1
+                }
+            }
+        }
+
+        // The corner lens: the world shrunk into a chip for a glance at
+        // the plane while working. The overlay is gone - the world is the
+        // map - so the lens is the only map surface left.
         Item {
             id: planeMap
             z: 80000
             readonly property int mw: Math.round(view.sg.width * 0.16)
             readonly property int mh: Math.round(view.sg.height * 0.2)
-            // The grasp's hold starts as the quiet keyhole at 1:1; the map
-            // The hold's map materializes as the keyhole widens: the gate
-            // opens at 0.9 and the content ramps in between 0.9 and 0.7, so
-            // the map is already coming into view while the windows shrink -
-            // it never pops in late. It shows for one cluster or many: the
-            // map is the plane's legend, not a prize for having scattered
-            // windows. The switcher opens the map outright.
-            readonly property bool asOverlay: {
-                effect.clusterRev;
-                return ((effect.grasp && effect.zoom < 0.9) || effect.switcherActive) && view.screen === effect.primaryScreen;
-            }
+            // The corner lens: the world shrunk into a chip for a glance at
+            // the plane while working. The overlay is gone - the world is
+            // the map - so the lens is the only map surface left.
             readonly property bool asMinimap: effect.canvasOpen && !effect.quiet && effect.zoom < 0.9 && !effect.grasp && view.screen === effect.primaryScreen
             // Mirrored into the effect's own flags: logState and the other
             // effect functions cannot see this item's id, so the map
-            // publishes its homes for them.
-            onAsOverlayChanged: effect.mapOverlay = asOverlay
+            // publishes its home for them.
             onAsMinimapChanged: effect.mapMinimap = asMinimap
-            readonly property rect home: asOverlay
-                ? card
-                : Qt.rect(view.sg.width - mw - Kirigami.Units.largeSpacing * 2, view.sg.height - mh - Kirigami.Units.largeSpacing * 2, mw, mh)
-            // The overlay is a glass card on the dimmed desktop, not a
-            // full-bleed sheet: 74% of the screen, centred, with the desks
-            // and the sheets inside it and the plane dimmed around it.
-            readonly property rect card: Qt.rect((view.sg.width * 0.26) / 2, (view.sg.height * 0.26) / 2, view.sg.width * 0.74, view.sg.height * 0.74)
-            visible: asOverlay || asMinimap
+            // The lens hugs the bottom-right corner, but never the toolbar:
+            // when the HUD holds the bottom or the right edge, the chip
+            // steps clear of it (the map's z would otherwise draw over the
+            // toolbar, and a glance-map must never cover the controls).
+            readonly property rect home: Qt.rect(
+                hud.visible && hud.atRight ? hud.x - mw - Kirigami.Units.largeSpacing : view.sg.width - mw - Kirigami.Units.largeSpacing * 2,
+                hud.visible && hud.atBottom ? hud.y - mh - Kirigami.Units.largeSpacing : view.sg.height - mh - Kirigami.Units.largeSpacing * 2,
+                mw, mh)
+            visible: asMinimap
             property bool morphReady: false
             Component.onCompleted: {
                 x = home.x; y = home.y; width = home.width; height = home.height;
@@ -4935,73 +5016,22 @@ KWin.SceneEffect {
             readonly property real oy: { effect.revision; return (height - wb.height * sc) / 2; }
             function mx(cx) { return ox + (cx - wb.x) * sc; }
             function my(cy) { return oy + (cy - wb.y) * sc; }
-            // One map, one resolver: a tap is judged once, against the
-            // chips first and then the sheets, so a chip sitting inside a
-            // window's sheet wins its tap instead of both firing and the
-            // sheet's fly overriding the chip's. Iterated backwards so the
-            // topmost item at the point is the one that answers.
-            function sheetIndexAt(p) {
-                if (!asOverlay) return -1;
-                for (let i = effect.entries.length - 1; i >= 0; --i) {
-                    const e = effect.entries[i];
-                    const r = Qt.rect(mx(e.x), my(e.y) + Math.sin(effect.floatRev * 0.035 + i * 137.508) * 1.2 * effect.floatAmt * sc,
-                                      Math.max(6, e.width * sc), Math.max(6, e.height * sc));
-                    if (p.x >= r.x && p.x <= r.x + r.width && p.y >= r.y && p.y <= r.y + r.height) return i;
-                }
-                return -1;
-            }
-            function chipIndexAt(p) {
-                if (!asOverlay || !effect.grasp || effect.switcherActive) return -1;
-                const cs = effect.clusters;
-                for (let i = cs.length - 1; i >= 0; --i) {
-                    const c = cs[i];
-                    if (!c || c.n <= 1) continue;
-                    const cx0 = mx(c.cx) - 12, cy0 = my(c.cy) - 12;
-                    if (p.x >= cx0 && p.x <= cx0 + 24 && p.y >= cy0 && p.y <= cy0 + 24) return i;
-                }
-                return -1;
-            }
             scale: 1.0
-            // The map's content, wrapped so the hold's entrance can be the
-            // slow blur transition: the sheets, the outlines and the dim
-            // sharpen out of a haze as the overlay fades in, and dissolve
-            // back into it on the release.
+            // The map's content: the sheets, the outlines and the dim,
+            // behind the lens's glass.
             Item {
-                id: graspContent
                 anchors.fill: parent
-                // The switcher's entrance is the slow blur transition; the
-                // grasp's entrance is the zoom itself - the map fades in
-                // between zoom 0.9 and 0.7 while the windows shrink, so it
-                // is there when the eye looks for it instead of arriving
-                // 430 ms after the threshold.
-                property real graspFade: planeMap.asOverlay && !effect.grasp ? 1 : 0
-                readonly property real mapIn: planeMap.asOverlay
-                    ? (effect.grasp ? Math.min(1, Math.max(0, (0.9 - effect.zoom) / 0.2)) : graspFade)
-                    : 0
-                // The step in fades the map's content with the chrome while
-                // the camera's rectangle expands to take the map.
-                opacity: (planeMap.asOverlay ? mapIn : 1) * effect.chromeFade
-                Behavior on graspFade { NumberAnimation { duration: 430; easing.type: Easing.OutCubic } }
-                // The blur exists only for the entrance: a materialized map
-                // renders sharp, so the offscreen pass switches off the
-                // moment the fade completes instead of costing an FBO over
-                // the card's area every frame the overlay is up.
-                layer.enabled: graspContent.mapIn < 0.999
-                layer.effect: GaussianBlur {
-                    radius: planeMap.asOverlay ? Math.max(0, 14 * (1 - graspContent.mapIn)) : 0
-                    samples: 17
-                    transparentBorder: false
-                }
-            // The dim behind the overlay, and the tint over the lens. The
-            // overlay's veil is what makes the white sheets read as cards
-            // instead of a negative reflection over the desktop.
+                opacity: effect.chromeFade
+            // The dim behind the lens, and the tint over it: the tint is
+            // what makes the white sheets read as cards instead of a
+            // negative reflection over the desktop.
             Rectangle {
                 anchors.fill: parent
-                radius: planeMap.asMinimap ? 16 : 0
-                color: planeMap.asMinimap ? Qt.rgba(0.07, 0.07, 0.09, 0.42) : Qt.rgba(0.05, 0.05, 0.08, 0.35)
+                radius: 16
+                color: Qt.rgba(0.07, 0.07, 0.09, 0.42)
                 // The minimap's dark region bleeds into the plane instead of
                 // ending at a line: the edge is a soft falloff.
-                layer.enabled: planeMap.asMinimap
+                layer.enabled: true
                 layer.effect: GaussianBlur {
                     radius: 5
                     samples: 17
@@ -5010,25 +5040,10 @@ KWin.SceneEffect {
             }
             Rectangle {
                 anchors.fill: parent
-                radius: planeMap.asMinimap ? 16 : 0
+                radius: 16
                 color: "transparent"
                 border.width: 1
-                border.color: planeMap.asMinimap ? "#3affffff" : "transparent"
-            }
-            // The card itself: the overlay's glass, over the dimmed veil.
-            // The sheets, the desks and the chips draw inside it, and the
-            // hint strip hangs off its bottom edge.
-            Rectangle {
-                id: mapCard
-                visible: planeMap.asOverlay
-                x: planeMap.card.x
-                y: planeMap.card.y
-                width: planeMap.card.width
-                height: planeMap.card.height
-                radius: 24
-                color: Qt.rgba(0.05, 0.05, 0.08, 0.5)
-                border.width: 1
-                border.color: "#33ffffff"
+                border.color: "#3affffff"
             }
 
             Repeater {
@@ -5036,7 +5051,7 @@ KWin.SceneEffect {
                 delegate: Rectangle {
                     required property int index
                     readonly property var f: effect.frames()[index]
-                    visible: planeMap.asMinimap || planeMap.asOverlay
+                    visible: planeMap.asMinimap
                     x: { effect.revision; effect.screensRev; planeMap.width; planeMap.height; return planeMap.mx(f.x); }
                     y: { effect.revision; effect.screensRev; planeMap.width; planeMap.height; return planeMap.my(f.y); }
                     width: { effect.revision; planeMap.width; planeMap.height; return f.width * planeMap.sc; }
@@ -5055,60 +5070,14 @@ KWin.SceneEffect {
                     readonly property var e: effect.entries[index]
                     x: { effect.revision; return planeMap.mx(e.x); }
                     y: { effect.revision; effect.floatRev; return planeMap.my(e.y) + Math.sin(effect.floatRev * 0.035 + index * 137.508) * 1.2 * effect.floatAmt * planeMap.sc; }
-                    width: { effect.revision; return Math.max(planeMap.asOverlay ? 6 : 1.6, e.width * planeMap.sc); }
-                    height: { effect.revision; return Math.max(planeMap.asOverlay ? 6 : 1.6, e.height * planeMap.sc); }
-                    radius: planeMap.asOverlay ? 5 : 1
-                    color: planeMap.asOverlay
-                        ? (effect.graspHoverIndex === index || effect.isSelected(e) ? Qt.rgba(1, 1, 1, 0.20) : Qt.rgba(1, 1, 1, 0.13))
-                        : Qt.rgba(1, 1, 1, 0.5)
-                    border.width: planeMap.asOverlay ? 0.8 : 0.6
-                    border.color: effect.graspHoverIndex === index || effect.isSelected(e) ? "#b8ffffff" : "#4affffff"
-                    Text {
-                        anchors.centerIn: parent
-                        text: effect.graspHoverIndex === index && planeMap.asOverlay ? e.window.caption : ""
-                        color: "#ffffff"
-                        font.pixelSize: 10
-                        style: Text.Outline
-                        styleColor: "#80000000"
-                        visible: text !== "" && parent.width > 60
-                    }
-                    // The tap is judged by the map's one resolver, not by
-                    // the sheet: a chip inside a sheet must win its tap,
-                    // and two handlers on the same press would both fire.
-                }
-            }
-            // The cluster chips: the map's own business, one per cluster.
-            // A chip flies the camera to fit its cluster; the number is
-            // the cluster's number in reading order, the same number the
-            // world's badge wears.
-            Repeater {
-                model: { effect.clusterRev; return effect.clusters.length; }
-                delegate: Rectangle {
-                    required property int index
-                    readonly property var c: effect.clusters[index]
-                    // The map morphs between its homes, and the morph moves
-                    // sc/ox/oy - reads that live inside mx()/my() and so do
-                    // not register as binding dependencies. The map's size
-                    // is read here, explicitly, so the chips ride the morph
-                    // instead of freezing at the size the map wore when the
-                    // clusters were first laid out.
-                    x: { effect.clusterRev; effect.revision; planeMap.width; planeMap.height; return planeMap.mx(c.cx) - width / 2; }
-                    y: { effect.clusterRev; effect.revision; planeMap.width; planeMap.height; return planeMap.my(c.cy) - height / 2; }
-                    width: 24
-                    height: 24
-                    radius: 12
-                    visible: { effect.clusterRev; return planeMap.asOverlay && effect.grasp && !effect.switcherActive && index < effect.clusters.length && effect.clusters[index].n > 1; }
-                    color: "#cc1e2126"
-                    border.width: 1
-                    border.color: "#66ffffff"
-                    Text {
-                        anchors.centerIn: parent
-                        text: "#" + (index + 1)
-                        color: "#ffffff"
-                        font.pixelSize: 11
-                    }
-                    // The tap is the map's one resolver's, which asks the
-                    // chips before the sheets.
+                    width: { effect.revision; return Math.max(1.6, e.width * planeMap.sc); }
+                    height: { effect.revision; return Math.max(1.6, e.height * planeMap.sc); }
+                    radius: 1
+                    color: Qt.rgba(1, 1, 1, 0.5)
+                    border.width: 0.6
+                    border.color: effect.isSelected(e) ? "#b8ffffff" : "#4affffff"
+                    // The lens is a glance, not a surface: its taps belong
+                    // to the world beneath it, never to the sheets.
                 }
             }
             // The map is the navigation surface: a left drag anywhere on it
@@ -5122,7 +5091,7 @@ KWin.SceneEffect {
                 DragHandler {
                     target: null
                     acceptedButtons: Qt.LeftButton
-                    enabled: planeMap.asOverlay && (!effect.grasp || effect.zoom < 0.75) || planeMap.asMinimap
+                    enabled: planeMap.asMinimap
                     property point last: Qt.point(0, 0)
                     onActiveChanged: {
                         effect.sceneGestures += active ? 1 : -1;
@@ -5158,25 +5127,17 @@ KWin.SceneEffect {
                 scale: expansion
                 transformOrigin: Item.Center
                 Behavior on scale { SpringAnimation { spring: 2.8; damping: 0.55; epsilon: 0.01 } }
-                // The halo, under the chip: the float. Its soft edge matters
-                // on the big overlay, not on the corner chip, so the
-                // offscreen pass only runs there.
+                // The halo, under the chip: the float.
                 Rectangle {
                     anchors.fill: parent
                     anchors.margins: -7
                     radius: 8
                     color: Qt.rgba(1, 1, 1, 0.08)
-                    layer.enabled: planeMap.asOverlay
-                    layer.effect: GaussianBlur {
-                        radius: 6
-                        samples: 17
-                        transparentBorder: false
-                    }
                 }
                 Rectangle {
                     anchors.fill: parent
-                    radius: planeMap.asMinimap ? 3 : 3
-                    color: Qt.rgba(1, 1, 1, planeMap.asOverlay ? 0.05 : 0.12)
+                    radius: 3
+                    color: Qt.rgba(1, 1, 1, 0.12)
                     border.width: 1
                     border.color: "#e8ffffff"
                     opacity: cameraRect.fade
@@ -5201,56 +5162,8 @@ KWin.SceneEffect {
                     }
                 }
             }
-            // The map's one resolver: a left tap is judged once, against
-            // the chips first and then the sheets, so a chip that sits
-            // inside a window's sheet wins its tap instead of both firing
-            // and the sheet's fly overriding the chip's. Empty-ground taps
-            // do nothing - the map never steals the pointer from the
-            // windows beneath it.
-            TapHandler {
-                enabled: planeMap.asOverlay
-                acceptedButtons: Qt.LeftButton
-                onTapped: (eventPoint) => {
-                    const p = eventPoint.position;
-                    const chi = planeMap.chipIndexAt(p);
-                    if (chi >= 0) {
-                        effect.graspClusterTo(chi);
-                        return;
-                    }
-                    const si = planeMap.sheetIndexAt(p);
-                    if (si >= 0) effect.graspJumpTo(si);
-                }
-            }
-            // The grasp teaches itself: one line, while the overlay is up,
-            // naming what the hand can do.
-            Rectangle {
-                anchors.horizontalCenter: mapCard.horizontalCenter
-                anchors.bottom: mapCard.bottom
-                anchors.bottomMargin: 12
-                visible: planeMap.asOverlay && effect.grasp && !effect.switcherActive
-                width: hintRow.implicitWidth + 20
-                height: 26
-                radius: 13
-                color: "#cc1e2126"
-                border.width: 1
-                border.color: "#33ffffff"
-                Row {
-                    id: hintRow
-                    anchors.centerIn: parent
-                    spacing: 9
-                    Text { text: "click to fly"; color: "#ffffff"; font.pixelSize: 11 }
-                    Text { text: "·"; color: "#77ffffff"; font.pixelSize: 11 }
-                    Text { text: "drag to pan"; color: "#ffffff"; font.pixelSize: 11 }
-                    Text { text: "·"; color: "#77ffffff"; font.pixelSize: 11 }
-                    Text { text: "wheel to zoom"; color: "#ffffff"; font.pixelSize: 11 }
-                    Text { text: "·"; color: "#77ffffff"; font.pixelSize: 11 }
-                    Text { text: "release to land"; color: "#ffffff"; font.pixelSize: 11 }
-                }
-            }
-            }
             // The minimap's own click flies the camera to the point; the
-            // overlay's sheets carry their taps, so the rest of the map
-            // never steals the pointer from the windows beneath it.
+            // lens never steals the pointer from the windows beneath it.
             TapHandler {
                 enabled: planeMap.asMinimap
                 onTapped: (eventPoint) => {
@@ -5260,6 +5173,39 @@ KWin.SceneEffect {
                     const g = effect.actionScreen().geometry;
                     effect.camGo(effect.zoom, cx - (g.x + g.width / 2) / effect.zoom, cy - (g.y + g.height / 2) / effect.zoom);
                 }
+            }
+        }
+        }
+
+        // The grasp teaches itself: one line, while the hold is zoomed out
+        // enough for the world to be the map, naming what the hand can do.
+        Item {
+            z: 80000
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 12
+            width: hintRow.implicitWidth + 20
+            height: 26
+            visible: effect.grasp && effect.skinReveal > 0.5 && !effect.switcherActive
+            opacity: effect.skinReveal
+            Rectangle {
+                anchors.fill: parent
+                radius: 13
+                color: "#cc1e2126"
+                border.width: 1
+                border.color: "#33ffffff"
+            }
+            Row {
+                id: hintRow
+                anchors.centerIn: parent
+                spacing: 9
+                Text { text: "click to fly"; color: "#ffffff"; font.pixelSize: 11 }
+                Text { text: "·"; color: "#77ffffff"; font.pixelSize: 11 }
+                Text { text: "drag to pan"; color: "#ffffff"; font.pixelSize: 11 }
+                Text { text: "·"; color: "#77ffffff"; font.pixelSize: 11 }
+                Text { text: "wheel to zoom"; color: "#ffffff"; font.pixelSize: 11 }
+                Text { text: "·"; color: "#77ffffff"; font.pixelSize: 11 }
+                Text { text: "release to land"; color: "#ffffff"; font.pixelSize: 11 }
             }
         }
 
@@ -5290,6 +5236,7 @@ KWin.SceneEffect {
             if (effect.bound("pan", k)) {
                 if (!event.isAutoRepeat) view.spaceHeld = true;
             } else if (effect.bound("next", k) && !(event.modifiers & Qt.ShiftModifier)) {
+                effect.dbg("key", "next pressed k=" + k);
                 if (!event.isAutoRepeat) effect.cycleSelection(1);
             } else if (effect.bound("prev", k) || (effect.bound("next", k) && (event.modifiers & Qt.ShiftModifier))) {
                 // Shift+Tab arrives as Tab with the shift modifier, whatever
@@ -5338,6 +5285,15 @@ KWin.SceneEffect {
         Keys.onReleased: (event) => {
             if (effect.bound("pan", event.key) && !event.isAutoRepeat) {
                 view.spaceHeld = false;
+                event.accepted = true;
+            }
+            // Releasing the switcher's chord enters the selected window, the
+            // way releasing Alt+Tab lands on the tabbox's pick. Only for a
+            // chord-held switcher (the debug verb and the Tab/Enter keys keep
+            // their own cycle-and-enter paths).
+            if (effect.switcherActive && effect.switcherFromChord && !event.isAutoRepeat
+                    && effect.bound("switcher", event.key)) {
+                effect.applyKey();
                 event.accepted = true;
             }
         }
@@ -5647,5 +5603,5 @@ KWin.SceneEffect {
                 K { text: effect.keyLabel(effect.configuration.KeyFit) }        V { text: "zoom to fit" }
             }
         }
-    }
+}
 }

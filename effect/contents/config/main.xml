@@ -232,6 +232,10 @@
             <label>Gesture on a window outside every frame that creates an activity centred on it.</label>
             <default>Shift+DoubleClick</default>
         </entry>
+        <entry name="SwitcherAltShortcut" type="String">
+            <label>A second chord for the switcher, so it can live on both Meta+Tab and Alt+Tab. Hold the chord and tap it again to step, release it or press Enter to enter the chosen window, Esc to step back out. Bind this over KWin's own task switcher in System Settings.</label>
+            <default>Alt+Tab</default>
+        </entry>
         <entry name="SwitcherShortcut" type="String">
             <label>The switcher's chord: the hold's map as a toggle - the whole plane appears, Tab and Shift+Tab step the highlighted window, Enter enters it, Esc or the chord again steps back out. The window switcher the plane deserves; bind it over KWin's own Tabbox if you want it on Meta+Tab.</label>
             <default>Meta+Tab</default>

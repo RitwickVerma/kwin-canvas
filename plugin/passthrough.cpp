@@ -640,6 +640,7 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
 
 bool CanvasPassthrough::keyboardKey(KeyboardKeyEvent *event)
 {
+    if (m_verbose) qCDebug(KWIN_CANVAS) << "keyboardKey" << event->key;
     // The idle's keys are the canvas's - the Esc the user reaches for is
     // the canvas's cancel, not the window's - and typing does not wake the
     // passthrough; the pointer's touch does.
