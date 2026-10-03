@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
-scenario_desc="the overlay's business: it steps in only when there is more than one cluster to navigate, a drag on it pans the camera and never grabs a window, its sheets fly on a left click, and a hold in the open overworld brings it back with the pointer staying in the canvas"
+scenario_desc="the overlay materializes with the keyhole: it shows for one cluster as well as many, a drag on it pans the camera and never grabs a window, its sheets fly on a left click, and a hold in the open overworld brings it back with the pointer staying in the canvas"
 pt_state() { nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.state; }
 run_scenario() {
     if ! have_input; then skip "fakeinput not built (make tools)"; return; fi
-    # (a) One cluster: the overlay stays away - with nowhere to navigate it
-    # is not worth the screen.
+    # (a) One cluster: the map is the plane's legend, not a prize for
+    # having scattered windows - it materializes with the keyhole too.
     arrange >/dev/null
     open_1to1
     c commit
@@ -15,7 +15,7 @@ run_scenario() {
     sleep 1.2
     c "zoom 0.6 960 540"
     sleep 1.0; c state
-    assert_eq "one cluster keeps the overlay away" "$(sget map)" "-"
+    assert_eq "one cluster still brings the map" "$(sget map)" overlay
     sleep 6.5
     c cancel
     arrange >/dev/null

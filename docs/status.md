@@ -196,6 +196,23 @@ intended). Batches: 107 6/0, 112 20/0, 114 10/0, 71 12/0, 10 11/0, 30
 105 10/0, 102 17/0, 109 9/0, 110 5/0, 108 2/0, two-outputs 17/0 (94
 flaked once in the batch, passes alone - the documented class).
 
+### 2026-10-02 — the hold's map materializes with the keyhole
+
+The user's report ("the overlay is broken. never shows up on time") was
+measured to a real gate bug: the overlay required more than one cluster,
+and the default arrange is one - so the overlay literally could not
+appear on a one-cluster desk - plus the entrance was a hard 0.85 cut
+followed by a 430 ms blur fade, which read as late. Now the gate opens
+at 0.9 and the whole card (desks, sheets, chips, the veil) fades in
+continuously between 0.9 and 0.7, so the map materializes as the keyhole
+widens; the one-cluster gate is gone (the map is the plane's legend,
+not a prize for scattered windows); the grasp's map takes clicks only
+below 0.75, above which a tap falls through to the plane's own window
+pick; the switcher keeps its 430 ms blur entrance. Measured in the play
+nest: one cluster, map=overlay at 0.7 and 0.85, map=- at 0.95.
+Batches: 112 20/0, 107 6/0, 114 10/0, 85 21/0, 87/88 2/0, 103 24/0,
+111 6/0, 106 8/0; lint green; unit 68/0.
+
 ### 2026-10-02 — the skin retires across the flight
 
 The step-in's skin fade was compressed into the spring's slow tail (the

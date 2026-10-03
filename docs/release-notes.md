@@ -1,5 +1,12 @@
 Unreleased:
 
+- The hold's map now materializes with the keyhole instead of arriving
+  late: the gate opens at 0.9 and the card, the desks, the sheets and
+  the chips fade in continuously between 0.9 and 0.7 while the windows
+  shrink, so the map is already coming into view when the eye looks for
+  it. And it shows for one cluster or many - the one-cluster gate is
+  gone, so the map appears on every desktop, not only on scattered ones.
+
 - A step in retires the skin across the whole flight: the threads, the
   frames and the rest fade out evenly with the flight's own progress
   instead of blinking out in the spring's last frames, and the unlit

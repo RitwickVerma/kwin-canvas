@@ -4872,15 +4872,15 @@ KWin.SceneEffect {
             readonly property int mw: Math.round(view.sg.width * 0.16)
             readonly property int mh: Math.round(view.sg.height * 0.2)
             // The grasp's hold starts as the quiet keyhole at 1:1; the map
-            // steps in only once the hold zooms out past the threshold,
-            // fading in as the windows shrink beneath it. The switcher
-            // opens the map outright. The overlay is a navigation tool,
-            // worth the screen only when there is somewhere to navigate:
-            // with one cluster the plane is one hop, so it stays out of
-            // the way - the switcher keeps its map regardless.
+            // The hold's map materializes as the keyhole widens: the gate
+            // opens at 0.9 and the content ramps in between 0.9 and 0.7, so
+            // the map is already coming into view while the windows shrink -
+            // it never pops in late. It shows for one cluster or many: the
+            // map is the plane's legend, not a prize for having scattered
+            // windows. The switcher opens the map outright.
             readonly property bool asOverlay: {
                 effect.clusterRev;
-                return ((effect.grasp && effect.zoom < 0.85 && effect.clusters.length > 1) || effect.switcherActive) && view.screen === effect.primaryScreen;
+                return ((effect.grasp && effect.zoom < 0.9) || effect.switcherActive) && view.screen === effect.primaryScreen;
             }
             readonly property bool asMinimap: effect.canvasOpen && !effect.quiet && effect.zoom < 0.9 && !effect.grasp && view.screen === effect.primaryScreen
             // Mirrored into the effect's own flags: logState and the other
@@ -4954,14 +4954,22 @@ KWin.SceneEffect {
             Item {
                 id: graspContent
                 anchors.fill: parent
-                property real graspFade: planeMap.asOverlay ? 1 : 0
+                // The switcher's entrance is the slow blur transition; the
+                // grasp's entrance is the zoom itself - the map fades in
+                // between zoom 0.9 and 0.7 while the windows shrink, so it
+                // is there when the eye looks for it instead of arriving
+                // 430 ms after the threshold.
+                property real graspFade: planeMap.asOverlay && !effect.grasp ? 1 : 0
+                readonly property real mapIn: planeMap.asOverlay
+                    ? (effect.grasp ? Math.min(1, Math.max(0, (0.9 - effect.zoom) / 0.2)) : graspFade)
+                    : 0
                 // The step in fades the map's content with the chrome while
                 // the camera's rectangle expands to take the map.
-                opacity: (planeMap.asOverlay ? graspFade : 1) * effect.chromeFade
+                opacity: (planeMap.asOverlay ? mapIn : 1) * effect.chromeFade
                 Behavior on graspFade { NumberAnimation { duration: 430; easing.type: Easing.OutCubic } }
                 layer.enabled: true
                 layer.effect: GaussianBlur {
-                    radius: Math.max(0, 14 * (1 - graspContent.graspFade)) * (planeMap.asOverlay ? 1 : 0)
+                    radius: planeMap.asOverlay ? Math.max(0, 14 * (1 - graspContent.mapIn)) : 0
                     samples: 17
                     transparentBorder: false
                 }
@@ -5095,7 +5103,7 @@ KWin.SceneEffect {
                 DragHandler {
                     target: null
                     acceptedButtons: Qt.LeftButton
-                    enabled: planeMap.asOverlay || planeMap.asMinimap
+                    enabled: planeMap.asOverlay && (!effect.grasp || effect.zoom < 0.75) || planeMap.asMinimap
                     property point last: Qt.point(0, 0)
                     onActiveChanged: {
                         effect.sceneGestures += active ? 1 : -1;
