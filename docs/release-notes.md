@@ -1,5 +1,12 @@
 Unreleased:
 
+- A step in retires the skin across the whole flight: the threads, the
+  frames and the rest fade out evenly with the flight's own progress
+  instead of blinking out in the spring's last frames, and the unlit
+  constellation dissolves between 0.45 and 0.5 instead of cutting out at
+  half zoom. Stepping out still brings the skin in fast, full by 0.75, so
+  the reveal stays quick while the goodbye is gentle.
+
 - The whole interface wears one skin: the chrome - the frames, the tags,
   the standing shadows, the glow, the cluster badges and the web - reveals
   with the zoom on every path, instead of the chord's overworld wearing

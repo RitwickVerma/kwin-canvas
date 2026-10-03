@@ -1501,8 +1501,22 @@ KWin.SceneEffect {
     readonly property real skinReveal: {
         effect.zoom; effect.viewX; effect.viewY; effect.revision;
         effect.quiet; effect.grasp; effect.currentActivity;
-        effect.entryViewX; effect.entryViewY;
-        const zoomPart = Math.min(1, Math.max(0, (1 - effect.zoom) * 4));
+        effect.entryViewX; effect.entryViewY; effect.zoomRising; effect.camRate;
+        effect.skinFromZoom;
+        // The skin reveals fast (full by zoom 0.75, so a step out finds its
+        // chrome almost at once) and retires across the whole way back: a
+        // flight that started at skinFromZoom fades the skin evenly with its
+        // own progress (full at the start, gone at the 1:1 arrival, no step
+        // at either end), a casual wheel-in wears the straight 2 * (1 -
+        // zoom) so consecutive wheel steps never saw-tooth the skin, and a
+        // step in sees the threads leave across the whole flight instead of
+        // blinking out in the spring's last few frames.
+        const riseCurve = effect.camRate > 1
+            ? (effect.skinFromZoom < 0.999
+                ? (1 - effect.zoom) / (1 - effect.skinFromZoom)
+                : (1 - effect.zoom) * 4)
+            : (1 - effect.zoom) * 2;
+        const zoomPart = Math.min(1, Math.max(0, effect.zoomRising ? riseCurve : (1 - effect.zoom) * 4));
         // A transient slide wears nothing: its windows must stay the
         // desktop's pixel for pixel while they glide.
         if (effect.quiet && !effect.grasp) return zoomPart;
@@ -1619,6 +1633,8 @@ KWin.SceneEffect {
         camVX = 0; camVY = 0; camVZoom = 0;
         camOnArrive = null;
         camRate = 1.0;
+        lastZoom = zoom;
+        zoomRising = false;
     }
 
     // A pan the hand let go of: keep the plane moving the way it was, under
@@ -1649,6 +1665,13 @@ KWin.SceneEffect {
     // flights (the step in, the double-click's placement, the cancel) run
     // at twice the casual rate, so an enter snaps while a pan glides.
     property real camRate: 1.0
+    // Which way the camera's zoom is travelling, for the skin's asymmetric
+    // curve, and the zoom a rising flight left from, for its even fade.
+    // Set when a flight begins, tracked every camStep tick, reset when the
+    // spring stops.
+    property bool zoomRising: false
+    property real lastZoom: 1
+    property real skinFromZoom: 1
     function camGo(z, goalX, goalY, gx, gy, rate) {
         dbg("camGo", "z=" + z + " goal=(" + Math.round(goalX) + "," + Math.round(goalY) + ")");
         z = clampZoom(z);
@@ -1658,10 +1681,17 @@ KWin.SceneEffect {
         if (!smoothZoom) {
             if (pinned) setZoom(z, Qt.point(gx, gy));
             else { zoom = z; viewX = goalX; viewY = goalY; }
+            lastZoom = zoom;
+            zoomRising = false;
             return;
         }
         const w = camSpring * camRate;
         camGoalZoom = z;
+        // The skin's retire measures against this flight's own start, so a
+        // step in from any zoom fades the chrome evenly with the flight.
+        zoomRising = z > zoom;
+        if (zoomRising) skinFromZoom = zoom;
+        lastZoom = zoom;
         if (pinned) {
             const c = globalToCanvas(gx, gy);
             camAnchorX = c.x; camAnchorY = c.y; camAnchorGX = gx; camAnchorGY = gy;
@@ -1716,6 +1746,11 @@ KWin.SceneEffect {
         }
         const z = clampZoom(zoom + camVZoom * dt);
         if (z !== zoom) zoom = z;
+        // The skin's curve is asymmetric: a zooming-out camera reveals fast,
+        // a zooming-in one retires slowly, so the chrome never blinks out in
+        // a flight's tail. Tracked here, the only place the zoom moves.
+        zoomRising = zoom > lastZoom;
+        lastZoom = zoom;
         if (camAnchored) {
             viewX = camAnchorX - camAnchorGX / zoom;
             viewY = camAnchorY - camAnchorGY / zoom;
@@ -4792,8 +4827,9 @@ KWin.SceneEffect {
                 // The web is overworld chrome: it fades out with the zoom,
                 // like the frames' tint, so a 1:1 view - the normal mode the
                 // fly slides across - is the desktop alone. Full strength by
-                // zoom 0.75, gone at 1:1.
-                readonly property real want: (modelData.lit || effect.zoom < 0.5) ? (modelData.lit ? 0.55 : 0.22) * modelData.co * effect.skinReveal : 0
+                // zoom 0.75, gone at 1:1; the unlit constellation dissolves
+                // between 0.45 and 0.5 instead of cutting out at half zoom.
+                readonly property real want: (modelData.lit ? 0.55 : 0.22 * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20))) * modelData.co * effect.skinReveal
                 property real show: 0
                 opacity: show
                 Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }

@@ -196,6 +196,26 @@ intended). Batches: 107 6/0, 112 20/0, 114 10/0, 71 12/0, 10 11/0, 30
 105 10/0, 102 17/0, 109 9/0, 110 5/0, 108 2/0, two-outputs 17/0 (94
 flaked once in the batch, passes alone - the documented class).
 
+### 2026-10-02 — the skin retires across the flight
+
+The step-in's skin fade was compressed into the spring's slow tail (the
+(1-zoom)×4 curve spends its whole budget between 0.75 and 1:1, ~180 ms at
+the live rate) - the threads blinked out at the end of the fly. The
+retire is now measured against the flight's own progress: a rate-2
+flight fades the skin evenly from its start zoom to the 1:1 arrival
+(`skinFromZoom`, set in camGo, reset when the spring stops), a casual
+wheel-in wears a straight 2×(1-zoom), and the reveal stays ×4 so a step
+out still brings the skin in by 0.75. The unlit constellation now
+dissolves between 0.45 and 0.5 instead of cutting at half zoom. The
+first cut (a flat ×1 retire) would have stepped the skin down on the
+flight's first frame - the progress-normalized curve was the fix that
+did not move the flicker. The pixel pass found the nest's Konsole
+interior near-white, which polluted the thread probes; the state
+timeline and the curve math are the measurement. Batches: 11[0-9] 45/0,
+10[0-9] 124/0, 9[3-4] 41/0, 98 5/0, 87 2/0 alone (the batch's hover
+assert flaked - the documented class), 7[01] 18/0, 30 14/0, 20 8/0,
+10-open 11/0.
+
 ### 2026-10-01 — the seam, the fly's fade, and the hover's real raise
 
 Three live-session bugs, each fixed with a measure first:
