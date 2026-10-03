@@ -1,5 +1,12 @@
 Unreleased:
 
+- Camera motion no longer re-weaves the threads: the cluster threads
+  are now clipped in the plane's own coordinates once per layout change,
+  and the camera is a single cheap transform per frame, so a fly or a
+  zoom no longer re-runs the weave for every window pair on every frame.
+  The overlay's and the camera rectangle's blur passes switch themselves
+  off the moment they have nothing to blur.
+
 - The hold's map now materializes with the keyhole instead of arriving
   late: the gate opens at 0.9 and the card, the desks, the sheets and
   the chips fade in continuously between 0.9 and 0.7 while the windows

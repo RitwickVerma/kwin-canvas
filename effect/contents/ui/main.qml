@@ -701,12 +701,14 @@ KWin.SceneEffect {
     // thread is cut at every window crossing and each stretch carries the z
     // the thread has at that point - the linear mix of its two windows' z -
     // so the web weaves over the lower, under the higher, and ducks under
-    // any window that covers a middle stretch. Re-evaluated with the
-    // camera, the float and the hover, so the web rides the windows' motion
-    // and re-weaves as the eye moves.
-    function clusterThreads(sgx, sgy) {
+    // any window that covers a middle stretch. The geometry lives in the
+    // plane's own coordinates: the camera is a uniform transform and the
+    // segment-rect cuts are invariant under it, so the O(N^2) clipping runs
+    // only when the layout changes (the stack, the clusters, the float, the
+    // hover) and the delegates apply the camera per frame.
+    function clusterThreads() {
         if (quiet) return [];
-        // The windows as occlusion rects in this screen's coordinates (the
+        // The windows as occlusion rects in the plane's coordinates (the
         // float's picture included, since that is what the eye sees), each
         // at its stack z: the threads cross them like a wire through the
         // stack, above the lower and beneath the higher.
@@ -716,10 +718,10 @@ KWin.SceneEffect {
             const f = floatOf[e.window.internalId];
             const bob = Math.sin(floatRev * 0.035 + k * 137.508) * 2.4 * floatAmt;
             rects.push({
-                x: f ? f.x : (e.x - viewX) * zoom - sgx,
-                y: (f ? f.y : (e.y - viewY) * zoom - sgy) + bob,
-                w: e.width * zoom,
-                h: e.height * zoom
+                x: f ? f.x : e.x,
+                y: (f ? f.y : e.y) + bob,
+                w: e.width,
+                h: e.height
             });
         }
         const out = [];
@@ -734,8 +736,8 @@ KWin.SceneEffect {
                 const idx = entries.indexOf(e);
                 const bob = Math.sin(floatRev * 0.035 + idx * 137.508) * 2.4 * floatAmt;
                 pts.push({
-                    x: (e.x + e.width / 2 - viewX) * zoom - sgx,
-                    y: (e.y + e.height / 2 - viewY) * zoom - sgy + bob,
+                    x: e.x + e.width / 2,
+                    y: e.y + e.height / 2 + bob,
                     z: windowZ(e)
                 });
             }
@@ -4817,42 +4819,55 @@ KWin.SceneEffect {
             model: {
                 effect.revision; effect.clusterRev; effect.floatRev; effect.hoverRev;
                 effect.focusEntry; effect.selectionRev; effect.travelCluster;
-                effect.viewX; effect.viewY; effect.zoom; effect.quiet;
-                return effect.clusterThreads(view.sg.x, view.sg.y);
+                effect.quiet;
+                return effect.clusterThreads();
             }
-            delegate: Shape {
+            delegate: Item {
                 required property var modelData
-                anchors.fill: parent
+                // The span's geometry is the plane's own coordinates; the
+                // camera is a uniform translate-plus-scale, applied here once
+                // per thread per frame. The O(N^2) clipping in clusterThreads
+                // runs only when the layout changes, so camera motion is a
+                // cheap transform instead of a full re-weave.
+                x: -(effect.viewX * effect.zoom) - view.sg.x
+                y: -(effect.viewY * effect.zoom) - view.sg.y
+                scale: effect.zoom
+                transformOrigin: Item.TopLeft
                 z: modelData.z
-                // The web is overworld chrome: it fades out with the zoom,
-                // like the frames' tint, so a 1:1 view - the normal mode the
-                // fly slides across - is the desktop alone. Full strength by
-                // zoom 0.75, gone at 1:1; the unlit constellation dissolves
-                // between 0.45 and 0.5 instead of cutting out at half zoom.
-                readonly property real want: (modelData.lit ? 0.55 : 0.22 * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20))) * modelData.co * effect.skinReveal
-                property real show: 0
-                opacity: show
-                Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
-                onWantChanged: show = want
-                Component.onCompleted: show = want
-                ShapePath {
-                    strokeWidth: 5
-                    strokeColor: Qt.rgba(1, 1, 1, 0.10)
-                    fillColor: "transparent"
-                    capStyle: ShapePath.RoundCap
-                    joinStyle: ShapePath.RoundJoin
-                    PathSvg {
-                        path: "M " + modelData.x1.toFixed(1) + " " + modelData.y1.toFixed(1) + " L " + modelData.x2.toFixed(1) + " " + modelData.y2.toFixed(1)
+                Shape {
+                    // The web is overworld chrome: it fades out with the zoom,
+                    // like the frames' tint, so a 1:1 view - the normal mode the
+                    // fly slides across - is the desktop alone. Full strength by
+                    // zoom 0.75, gone at 1:1; the unlit constellation dissolves
+                    // between 0.45 and 0.5 instead of cutting out at half zoom.
+                    readonly property real want: (modelData.lit ? 0.55 : 0.22 * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20))) * modelData.co * effect.skinReveal
+                    property real show: 0
+                    opacity: show
+                    Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
+                    onWantChanged: show = want
+                    Component.onCompleted: show = want
+                    ShapePath {
+                        // The strokes divide by the zoom so the wrapper's scale
+                        // keeps them at a constant screen width, exactly as
+                        // they were when the geometry was camera-space.
+                        strokeWidth: 5 / effect.zoom
+                        strokeColor: Qt.rgba(1, 1, 1, 0.10)
+                        fillColor: "transparent"
+                        capStyle: ShapePath.RoundCap
+                        joinStyle: ShapePath.RoundJoin
+                        PathSvg {
+                            path: "M " + modelData.x1.toFixed(1) + " " + modelData.y1.toFixed(1) + " L " + modelData.x2.toFixed(1) + " " + modelData.y2.toFixed(1)
+                        }
                     }
-                }
-                ShapePath {
-                    strokeWidth: 1.6
-                    strokeColor: Qt.rgba(1, 1, 1, 0.8)
-                    fillColor: "transparent"
-                    capStyle: ShapePath.RoundCap
-                    joinStyle: ShapePath.RoundJoin
-                    PathSvg {
-                        path: "M " + modelData.x1.toFixed(1) + " " + modelData.y1.toFixed(1) + " L " + modelData.x2.toFixed(1) + " " + modelData.y2.toFixed(1)
+                    ShapePath {
+                        strokeWidth: 1.6 / effect.zoom
+                        strokeColor: Qt.rgba(1, 1, 1, 0.8)
+                        fillColor: "transparent"
+                        capStyle: ShapePath.RoundCap
+                        joinStyle: ShapePath.RoundJoin
+                        PathSvg {
+                            path: "M " + modelData.x1.toFixed(1) + " " + modelData.y1.toFixed(1) + " L " + modelData.x2.toFixed(1) + " " + modelData.y2.toFixed(1)
+                        }
                     }
                 }
             }
@@ -4967,7 +4982,11 @@ KWin.SceneEffect {
                 // the camera's rectangle expands to take the map.
                 opacity: (planeMap.asOverlay ? mapIn : 1) * effect.chromeFade
                 Behavior on graspFade { NumberAnimation { duration: 430; easing.type: Easing.OutCubic } }
-                layer.enabled: true
+                // The blur exists only for the entrance: a materialized map
+                // renders sharp, so the offscreen pass switches off the
+                // moment the fade completes instead of costing an FBO over
+                // the card's area every frame the overlay is up.
+                layer.enabled: graspContent.mapIn < 0.999
                 layer.effect: GaussianBlur {
                     radius: planeMap.asOverlay ? Math.max(0, 14 * (1 - graspContent.mapIn)) : 0
                     samples: 17
@@ -5139,13 +5158,15 @@ KWin.SceneEffect {
                 scale: expansion
                 transformOrigin: Item.Center
                 Behavior on scale { SpringAnimation { spring: 2.8; damping: 0.55; epsilon: 0.01 } }
-                // The halo, under the chip: the float.
+                // The halo, under the chip: the float. Its soft edge matters
+                // on the big overlay, not on the corner chip, so the
+                // offscreen pass only runs there.
                 Rectangle {
                     anchors.fill: parent
                     anchors.margins: -7
                     radius: 8
                     color: Qt.rgba(1, 1, 1, 0.08)
-                    layer.enabled: true
+                    layer.enabled: planeMap.asOverlay
                     layer.effect: GaussianBlur {
                         radius: 6
                         samples: 17

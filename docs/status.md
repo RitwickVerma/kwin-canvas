@@ -159,6 +159,22 @@ The full suite still is not green on this machine: the GPU-pressure
 flake stands (docs/testing.md), and the named batches remain the
 evidence until a reboot.
 
+### 2026-10-02 — camera motion no longer re-weaves the threads
+
+The lag report ("canvas animation only") pointed at the weave: the
+threads' model deps read the camera, so every frame of every fly, zoom
+and pan re-ran the full Liang-Barsky span clipping over every window
+pair. The clipping now runs in the plane's own coordinates - the cut
+parameters are invariant under a uniform translate and scale - so the
+model re-evaluates only when the layout changes, and the delegate is a
+camera-transform wrapper (x/y/scale per frame) with the strokes divided
+by the zoom to keep their exact screen widths. Two always-on blur passes
+were also wasting an FBO per frame: the overlay card's blur now switches
+off once the map has materialized, and the camera rectangle's only on
+the overlay. Measured in the play nest during continuous zoom flights:
+~16-17% with the spring animating against ~5% at rest, and the weave no
+longer runs per tick at all.
+
 ### 2026-10-02 — one skin, one hand, one map: the interface as a whole
 
 The cohesion round, all four roadmap items at once:
