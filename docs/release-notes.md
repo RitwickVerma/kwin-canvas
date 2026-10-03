@@ -1,5 +1,26 @@
 Unreleased:
 
+- The whole interface wears one skin: the chrome - the frames, the tags,
+  the standing shadows, the glow, the cluster badges and the web - reveals
+  with the zoom on every path, instead of the chord's overworld wearing
+  everything at 1:1 while the grasp's keyhole wore nothing. Stepping out
+  now lands on the same calm desktop the location was, and the skin comes
+  out as the camera leaves, whether the canvas opened through the chord or
+  the hold. (A transient slide still wears nothing, so the fly stays the
+  seamless desktop it is.)
+
+- The overlay is a glass card now: a rounded sheet on the dimmed desktop,
+  74% of the screen centred, instead of the full-bleed veil. The map, the
+  desks, the cluster chips and the hint live on the card, and the world
+  behind it stays visible through the dim.
+
+- The toolbar shows whose hand is on the pointer: a dot beside the
+  activity swatches that fills when the pass-through has handed the
+  pointer to a window, and stays hollow while the canvas holds it.
+
+- The bookmarks are surfaced: the help panel lists every saved spot with
+  its name, so the digits are discoverable instead of secret.
+
 - One map everywhere: the overlay wears what the minimap wears - the
   desks and a chip per cluster - and a tap is judged once, against the
   chips first and then the sheets, so a chip that sits inside a window's

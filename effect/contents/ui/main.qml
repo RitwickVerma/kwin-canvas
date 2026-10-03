@@ -84,6 +84,12 @@ KWin.SceneEffect {
     // probe for this opening; the camera is published to it on every change.
     readonly property bool passthrough: configuration.Passthrough !== false && !planeInput
     property bool passthroughLive: false
+    // Whose hand is on the pointer right now: the plugin's state() reports a
+    // hover or a grab, and the toolbar's dot fills in when either is the
+    // window's. Polled while the overworld is open; the dot is the honest
+    // answer to "will this click move the canvas or the window?"
+    property bool handOnWindow: false
+    onHandOnWindowChanged: effect.dbg("hand", "handOnWindow=" + effect.handOnWindow)
     // Plane input: under the preload shim (dev/spike/preload) KWin's pointer
     // chain works in plane coordinates, plane = (screen - o) / s, where a
     // plane point is a frame position on the current activity: s = zoom and
@@ -1484,18 +1490,27 @@ KWin.SceneEffect {
     // The pass-through has let go after the idle: the canvas owns the
     // input again, until the pointer's next touch.
     property bool passthroughIdle: false
-    // How far the camera has left the location while the keyhole is open
-    // (the quiet grasp): 0 at home, growing with the zoom-out and the pan.
-    // The skin - the frames, the tags, the threads, the glow - fades in
-    // with it, so the keyhole and the overworld are one space wearing one
-    // skin, and a transient slide stays the seamless desktop it must be.
-    readonly property real quietReveal: {
-        effect.zoom; effect.viewX; effect.viewY;
-        if (!effect.quiet || !effect.grasp) return 0;
-        const t = effect.targetOf(effect.currentActivity);
+    // How far the camera has left the location it opened from: 0 at the
+    // seam, growing with the zoom-out and the pan. The skin - the frames,
+    // the tags, the threads, the glow - fades in with it, so the keyhole
+    // and the overworld are one space wearing one skin, and a transient
+    // slide stays the seamless desktop it must be. The chord's overworld
+    // measures from where it opened (entryView); the grasp's keyhole from
+    // where the hold began (the activity's target). Both wear the same
+    // curve, so one skin reveals on every path.
+    readonly property real skinReveal: {
+        effect.zoom; effect.viewX; effect.viewY; effect.revision;
+        effect.quiet; effect.grasp; effect.currentActivity;
+        effect.entryViewX; effect.entryViewY;
+        const zoomPart = Math.min(1, Math.max(0, (1 - effect.zoom) * 4));
+        // A transient slide wears nothing: its windows must stay the
+        // desktop's pixel for pixel while they glide.
+        if (effect.quiet && !effect.grasp) return zoomPart;
+        const ref = effect.quiet ? effect.targetOf(effect.currentActivity)
+                                 : { x: effect.entryViewX, y: effect.entryViewY };
         const g = effect.actionScreen().geometry;
-        const away = Math.hypot(effect.viewX - t.x, effect.viewY - t.y);
-        return Math.min(1, Math.max(1 - effect.zoom, away / (Math.max(g.width, g.height) * 1.2)));
+        const away = Math.hypot(effect.viewX - ref.x, effect.viewY - ref.y);
+        return Math.min(1, Math.max(zoomPart, away / (Math.max(g.width, g.height) * 1.2)));
     }
     property var pendingFly: null
     // The switcher: the hold's map as a toggle. The chord opens the canvas
@@ -2871,6 +2886,32 @@ KWin.SceneEffect {
         dbusInterface: "org.kde.kwin.canvas.Passthrough"
         method: "setVerbose"
     }
+    // The plugin's own state, polled for the toolbar's hand dot. The reply
+    // string is "active=.. view=(x,y) zoom=.. grab=.. ground=.. hover=..
+    // nav=.. hold=.. seam=.." - a hover or a grab is the window's hand.
+    KWin.DBusCall {
+        id: pluginStateCall
+        service: "org.kde.KWin"
+        path: "/KWinCanvas"
+        dbusInterface: "org.kde.kwin.canvas.Passthrough"
+        method: "state"
+        onFinished: (result) => {
+            effect.dbg("hand", "plugin state reply: " + String(result));
+            const s = String(result || "");
+            const hi = s.indexOf(" hover=");
+            const gi = s.indexOf(" grab=");
+            const h = hi >= 0 ? s.slice(hi + 7).split(" ")[0] : "-";
+            const gr = gi >= 0 ? s.slice(gi + 6).split(" ")[0] : "-";
+            effect.handOnWindow = h !== "-" || gr !== "-";
+        }
+    }
+    // The pulse that keeps the dot honest while the overworld is open.
+    Timer {
+        interval: 400
+        repeat: true
+        running: effect.visible && !effect.quiet && effect.passthroughLive
+        onTriggered: { if (effect.passthroughLive) pluginStateCall.call(); }
+    }
     // The plugin answered: if the canvas is still open, switch it on and give it the camera.
     function passthroughProbed() {
         if (!canvasOpen || passthroughLive) return;
@@ -3942,7 +3983,7 @@ KWin.SceneEffect {
         cursor: Qt.SizeAllCursor
         width: tagRow.implicitWidth + 12
         height: tagRow.implicitHeight + 6
-        opacity: effect.chromeFade * (effect.quiet ? effect.quietReveal : 1)
+        opacity: effect.chromeFade * effect.skinReveal
         onDragStarted: effect.targetRaw = null
         onDragged: (dx, dy) => effect.dragTarget(activity, dx, dy)
 
@@ -4114,7 +4155,7 @@ KWin.SceneEffect {
             Rectangle {
                 anchors.fill: parent
                 color: effect.configuration.Background
-                opacity: effect.backdropDim() * effect.chromeFade * (effect.quiet ? effect.quietReveal : 1)
+                opacity: effect.backdropDim() * effect.chromeFade * effect.skinReveal
             }
         }
 
@@ -4321,9 +4362,9 @@ KWin.SceneEffect {
                     required property var modelData
                     readonly property rect og: modelData.geometry
                     // Quiet, the frame is just its wallpaper, no tint or
-                    // outline, so the desktop looks like itself while it moves.
+                    // outline, until the skin comes out with the zoom and
+                    // the pan - so the desktop looks like itself at the seam.
                     visible: !effect.isHidden(activityFrames.activity, modelData)
-                    readonly property bool bare: effect.quiet
                     x: { effect.revision; return (effect.peekTarget(activityFrames.activity).x + og.x - effect.viewX) * effect.zoom - view.sg.x; }
                     y: { effect.revision; return (effect.peekTarget(activityFrames.activity).y + og.y - effect.viewY) * effect.zoom - view.sg.y; }
                     width: og.width * effect.zoom
@@ -4346,18 +4387,18 @@ KWin.SceneEffect {
                     // the chrome fade on the way in.
                     Rectangle {
                         anchors.fill: parent
-                        visible: !frame.bare || effect.quietReveal > 0.02
+                        visible: effect.skinReveal > 0.02
                         color: activityFrames.accent
-                        opacity: (activityFrames.current ? 0.10 : 0.06) * Math.min(1, Math.max(0, (1 - effect.zoom) * 4)) * effect.chromeFade * (frame.bare ? effect.quietReveal : 1)
+                        opacity: (activityFrames.current ? 0.10 : 0.06) * effect.skinReveal * effect.chromeFade
                     }
 
                     Rectangle {
                         anchors.fill: parent
-                        visible: !frame.bare || effect.quietReveal > 0.02
+                        visible: effect.skinReveal > 0.02
                         color: "transparent"
                         border.width: activityFrames.current ? 2 : 1
                         border.color: activityFrames.accent
-                        opacity: (activityFrames.current ? 0.95 : 0.6) * effect.chromeFade * (frame.bare ? effect.quietReveal : 1)
+                        opacity: (activityFrames.current ? 0.95 : 0.6) * effect.chromeFade * effect.skinReveal
                     }
 
                     // A gesture on the frame's own area (windows sit above and
@@ -4439,7 +4480,7 @@ KWin.SceneEffect {
                 // size below follow the rank, so the stacking is legible at a
                 // glance instead of being a property only the pointer sees.
                 readonly property real depth: { effect.revision; effect.focusEntry; effect.selectionRev; return ((thumb.entry === effect.focusEntry ? effect.entries.length + 1 : index + 1) / (effect.entries.length + (effect.focusEntry ? 1 : 0))); }
-                readonly property real depthScale: effect.quiet ? 1 : (0.99 + 0.025 * thumb.depth)
+                readonly property real depthScale: effect.quiet ? 1 : (1 + (0.025 * thumb.depth - 0.01) * effect.skinReveal)
                 scale: depthScale * (lifted ? 1.03 : (thumb.hovered && heavy ? 1.008 : 1))
                 Behavior on scale { enabled: !effect.quiet; SpringAnimation { spring: 3.6; damping: 0.5; epsilon: 0.001 } }
                 transform: [
@@ -4483,8 +4524,8 @@ KWin.SceneEffect {
                     z: -2
                     radius: 8
                     color: "#000000"
-                    visible: !effect.quiet || effect.quietReveal > 0.02
-                    opacity: effect.quiet ? effect.quietReveal * (liftedNow ? 0.30 : (thumb.hovered ? 0.16 : 0)) : (liftedNow ? 0.30 : (thumb.hovered ? 0.16 : 0.05 + 0.13 * thumb.depth))
+                    visible: effect.skinReveal > 0.02
+                    opacity: effect.skinReveal * (liftedNow ? 0.30 : (thumb.hovered ? 0.16 : 0.05 + 0.13 * thumb.depth))
                     readonly property bool liftedNow: body.active && body.moving && thumb.heavy
                     Behavior on opacity { NumberAnimation { duration: 150 } }
                 }
@@ -4498,8 +4539,8 @@ KWin.SceneEffect {
                     z: -1
                     radius: 6
                     readonly property color accent: effect.activityColor(thumb.entry.activity)
-                    visible: { effect.selectionRev; effect.quietReveal; return (!effect.quiet || effect.quietReveal > 0.02) && !effect.isSelected(thumb.entry); }
-                    opacity: thumb.hovered ? (effect.quiet ? effect.quietReveal : 1) : 0
+                    visible: { effect.selectionRev; effect.skinReveal; return effect.skinReveal > 0.02 && !effect.isSelected(thumb.entry); }
+                    opacity: thumb.hovered ? effect.skinReveal : 0
                     Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
                     color: Qt.rgba(accent.r, accent.g, accent.b, 0.16)
                     border.width: 1
@@ -4509,8 +4550,8 @@ KWin.SceneEffect {
                 Rectangle {
                     anchors.fill: parent
                     color: "transparent"
-                    visible: !effect.quiet || effect.quietReveal > 0.02
-                    opacity: effect.quiet ? effect.quietReveal : 1
+                    visible: effect.skinReveal > 0.02
+                    opacity: effect.skinReveal
                     readonly property bool sel: { effect.selectionRev; return effect.isSelected(thumb.entry); }
                     border.width: sel ? 3 : (thumb.hovered || body.active ? 2 : 1)
                     border.color: sel ? Kirigami.Theme.highlightColor
@@ -4532,7 +4573,7 @@ KWin.SceneEffect {
                 // The pin: a pinned window wears its marker and never leaves
                 // the screen.
                 Kirigami.Icon {
-                    visible: effect.isPinnedEntry(thumb.entry) && (!effect.quiet || effect.quietReveal > 0.02)
+                    visible: effect.isPinnedEntry(thumb.entry) && effect.skinReveal > 0.02
                     source: "window-pin"
                     width: 14
                     height: 14
@@ -4692,7 +4733,8 @@ KWin.SceneEffect {
                     // Overworld chrome like the web: hidden at 1:1, where a
                     // cluster chip would float over the desktop and its grip
                     // would catch drags the hand means for the windows.
-                    visible: parent.active && cluster.n > 1 && effect.zoom < 0.95 && (!effect.quiet || effect.quietReveal > 0.02)
+                    visible: parent.active && cluster.n > 1 && effect.skinReveal > 0.02
+                    opacity: effect.skinReveal
                     width: row.implicitWidth + 16
                     height: 24
                     radius: 12
@@ -4751,7 +4793,7 @@ KWin.SceneEffect {
                 // like the frames' tint, so a 1:1 view - the normal mode the
                 // fly slides across - is the desktop alone. Full strength by
                 // zoom 0.75, gone at 1:1.
-                readonly property real want: (modelData.lit || effect.zoom < 0.5) ? (modelData.lit ? 0.55 : 0.22) * modelData.co * Math.min(1, Math.max(0, (1 - effect.zoom) * 4)) : 0
+                readonly property real want: (modelData.lit || effect.zoom < 0.5) ? (modelData.lit ? 0.55 : 0.22) * modelData.co * effect.skinReveal : 0
                 property real show: 0
                 opacity: show
                 Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
@@ -4811,8 +4853,12 @@ KWin.SceneEffect {
             onAsOverlayChanged: effect.mapOverlay = asOverlay
             onAsMinimapChanged: effect.mapMinimap = asMinimap
             readonly property rect home: asOverlay
-                ? Qt.rect(24, 24, view.sg.width - 48, view.sg.height - 48)
+                ? card
                 : Qt.rect(view.sg.width - mw - Kirigami.Units.largeSpacing * 2, view.sg.height - mh - Kirigami.Units.largeSpacing * 2, mw, mh)
+            // The overlay is a glass card on the dimmed desktop, not a
+            // full-bleed sheet: 74% of the screen, centred, with the desks
+            // and the sheets inside it and the plane dimmed around it.
+            readonly property rect card: Qt.rect((view.sg.width * 0.26) / 2, (view.sg.height * 0.26) / 2, view.sg.width * 0.74, view.sg.height * 0.74)
             visible: asOverlay || asMinimap
             property bool morphReady: false
             Component.onCompleted: {
@@ -4889,7 +4935,7 @@ KWin.SceneEffect {
             Rectangle {
                 anchors.fill: parent
                 radius: planeMap.asMinimap ? 16 : 0
-                color: planeMap.asMinimap ? Qt.rgba(0.07, 0.07, 0.09, 0.42) : Qt.rgba(0.05, 0.05, 0.08, 0.5)
+                color: planeMap.asMinimap ? Qt.rgba(0.07, 0.07, 0.09, 0.42) : Qt.rgba(0.05, 0.05, 0.08, 0.35)
                 // The minimap's dark region bleeds into the plane instead of
                 // ending at a line: the edge is a soft falloff.
                 layer.enabled: planeMap.asMinimap
@@ -4905,6 +4951,21 @@ KWin.SceneEffect {
                 color: "transparent"
                 border.width: 1
                 border.color: planeMap.asMinimap ? "#3affffff" : "transparent"
+            }
+            // The card itself: the overlay's glass, over the dimmed veil.
+            // The sheets, the desks and the chips draw inside it, and the
+            // hint strip hangs off its bottom edge.
+            Rectangle {
+                id: mapCard
+                visible: planeMap.asOverlay
+                x: planeMap.card.x
+                y: planeMap.card.y
+                width: planeMap.card.width
+                height: planeMap.card.height
+                radius: 24
+                color: Qt.rgba(0.05, 0.05, 0.08, 0.5)
+                border.width: 1
+                border.color: "#33ffffff"
             }
 
             Repeater {
@@ -5098,8 +5159,8 @@ KWin.SceneEffect {
             // The grasp teaches itself: one line, while the overlay is up,
             // naming what the hand can do.
             Rectangle {
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottom: parent.bottom
+                anchors.horizontalCenter: mapCard.horizontalCenter
+                anchors.bottom: mapCard.bottom
                 anchors.bottomMargin: 12
                 visible: planeMap.asOverlay && effect.grasp && !effect.switcherActive
                 width: hintRow.implicitWidth + 20
@@ -5147,7 +5208,7 @@ KWin.SceneEffect {
                 model: { effect.screensRev; return KWin.Workspace.screens; }
                 delegate: FrameTag {
                     required property var modelData
-                    visible: !effect.quiet || effect.quietReveal > 0.02
+                    visible: effect.skinReveal > 0.02
                     viewItem: view
                     activity: activityTags.modelData
                     activityIndex: activityTags.index
@@ -5309,8 +5370,8 @@ KWin.SceneEffect {
         Rectangle {
             id: hud
             z: 100000
-            visible: view.screen === effect.primaryScreen && (!effect.quiet || effect.quietReveal > 0.5)
-            opacity: effect.chromeFade * (effect.quiet ? Math.max(0, Math.min(1, (effect.quietReveal - 0.5) * 2)) : 1)
+            visible: view.screen === effect.primaryScreen && (!effect.quiet || effect.skinReveal > 0.5)
+            opacity: effect.chromeFade * (effect.quiet ? Math.max(0, Math.min(1, (effect.skinReveal - 0.5) * 2)) : 1)
             readonly property string pos: String(effect.configuration.HudPosition || "Top").toLowerCase()
             readonly property bool atBottom: pos.indexOf("bottom") === 0
             readonly property bool atLeft: pos === "left" || pos === "topleft" || pos === "bottomleft"
@@ -5401,6 +5462,22 @@ KWin.SceneEffect {
                     }
                 }
                 Sep {}
+                // The hand dot: whose is the pointer? Filled = the window's,
+                // hollow = the canvas's. Polled from the plugin's own state.
+                Rectangle {
+                    visible: effect.passthroughLive
+                    width: 10
+                    height: 10
+                    radius: 5
+                    color: effect.handOnWindow ? Kirigami.Theme.highlightColor : "transparent"
+                    border.width: 1
+                    border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.5)
+                    Layout.alignment: Qt.AlignCenter
+                    PC3.ToolTip.text: effect.handOnWindow ? "The pointer is the window's" : "The pointer is the canvas's"
+                    PC3.ToolTip.visible: handDotHover.hovered
+                    HoverHandler { id: handDotHover; cursorShape: Qt.PointingHandCursor }
+                }
+                Sep {}
                 PC3.ToolButton { icon.name: "zoom-fit-best";   text: "Fit";    display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Zoom to fit (" + effect.keyLabel(effect.configuration.KeyFit) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.zoomExtents(true) }
                 PC3.ToolButton { icon.name: "go-home";         text: "Home";   display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Look through this activity's frames (" + effect.keyLabel(effect.configuration.KeyHome) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.home() }
                 PC3.ToolButton { icon.name: "zoom-in";         text: "In";     display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Zoom in (" + effect.keyLabel(effect.configuration.KeyZoomIn) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.camZoomTo(effect.zoom * effect.zoomStep, view.sg.x + view.sg.width / 2, view.sg.y + view.sg.height / 2) }
@@ -5487,6 +5564,17 @@ KWin.SceneEffect {
                 K { text: effect.keyLabel(effect.configuration.KeyNext) + " / " + effect.keyLabel(effect.configuration.KeyPrev) } V { text: "step the selection through the windows; the camera follows" }
                 K { text: effect.keyLabel(effect.configuration.KeyPanLeft) + " / " + effect.keyLabel(effect.configuration.KeyPanRight) + " / " + effect.keyLabel(effect.configuration.KeyPanUp) + " / " + effect.keyLabel(effect.configuration.KeyPanDown) } V { text: "pan the camera one step" }
                 K { text: "1..9 / ctrl+1..9" }                               V { text: "jump to a saved view / save the current view" }
+                Repeater {
+                    model: effect.bookmarks.length
+                    delegate: Row {
+                        required property int index
+                        visible: effect.bookmarks[index] !== null
+                        spacing: Kirigami.Units.largeSpacing
+                        K { text: "spot " + (index + 1) }
+                        V { text: effect.bookmarks[index] ? (effect.bookmarks[index].n + " — press " + (index + 1) + " to fly, ctrl+" + (index + 1) + " to re-save") : "" }
+                    }
+                }
+                K { text: "the dot in the toolbar" }                          V { text: "whose hand is on the pointer: filled - the window's, hollow - the canvas's" }
                 K { text: effect.keyLabel(effect.configuration.KeyApply) }      V { text: "enter the location under the screen centre; with a window selected, enter it focused" }
                 K { text: effect.keyLabel(effect.configuration.KeyCancel) }     V { text: "back to where you were, nothing moved" }
                 K { text: effect.keyLabel(effect.configuration.KeyHome) }       V { text: "look through this activity's frames" }

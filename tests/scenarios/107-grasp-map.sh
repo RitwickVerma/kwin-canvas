@@ -11,7 +11,7 @@ run_scenario() {
     sleep 0.3
     # Hold MB4, zoom out so the map steps in, click the far window's sheet
     # on it, release: the location opens centred on the window.
-    printf 'move 1700 900\nsleep 60\ndown back\nsleep 3000\nmove 1780 520\nsleep 100\nclick\nsleep 500\nup back\n' | input &
+    printf 'move 1700 900\nsleep 60\ndown back\nsleep 3000\nmove 1590 530\nsleep 100\nclick\nsleep 500\nup back\n' | input &
     sleep 1.2
     c "zoom 0.6 960 540"
     sleep 3.0; c state

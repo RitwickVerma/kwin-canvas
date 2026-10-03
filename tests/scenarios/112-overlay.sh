@@ -25,7 +25,7 @@ run_scenario() {
     c "placeby Gwenview 4000 300 460 420"
     c commit
     sleep 0.3
-    printf 'move 1780 520\nsleep 60\ndown back\nsleep 3000\nmove 1780 520\nsleep 100\ndrag 1780 520 1580 420\nsleep 2500\nup back\n' | input &
+    printf 'move 1592 531\nsleep 60\ndown back\nsleep 3000\nmove 1592 531\nsleep 100\ndrag 1592 531 1392 431\nsleep 2500\nup back\n' | input &
     sleep 1.2
     c "zoom 0.6 960 540"
     sleep 1.0; c state
@@ -44,7 +44,7 @@ run_scenario() {
     c "placeby Gwenview 4000 300 460 420"
     c commit
     sleep 0.3
-    printf 'move 1780 520\nsleep 60\ndown back\nsleep 4000\nmove 1780 520\nsleep 100\nclick\nsleep 1500\nup back\n' | input &
+    printf 'move 1590 530\nsleep 60\ndown back\nsleep 4000\nmove 1590 530\nsleep 100\nclick\nsleep 1500\nup back\n' | input &
     sleep 1.2
     c "zoom 0.6 960 540"
     sleep 1.3; c state
@@ -94,7 +94,7 @@ run_scenario() {
     sleep 0.3
     c "zoom 0.4 960 540"
     sleep 0.6
-    printf 'move 1780 520\nsleep 60\ndown back\nsleep 4000\nmove 1780 520\nsleep 150\nclick\nsleep 500\nup back\n' | input &
+    printf 'move 1590 530\nsleep 60\ndown back\nsleep 4000\nmove 1590 530\nsleep 150\nclick\nsleep 500\nup back\n' | input &
     sleep 1.0; c state
     assert_eq "the overworld hold shows the map again" "$(sget map)" overlay
     local i

@@ -159,6 +159,43 @@ The full suite still is not green on this machine: the GPU-pressure
 flake stands (docs/testing.md), and the named batches remain the
 evidence until a reboot.
 
+### 2026-10-02 — one skin, one hand, one map: the interface as a whole
+
+The cohesion round, all four roadmap items at once:
+
+- **One skin.** The chrome's reveal curve was keyhole-only (`quietReveal`
+  gated on quiet && grasp). It is now `skinReveal`, one curve on every
+  path: the zoom term (1-zoom)×4 plus a pan-away term measured from
+  where the camera opened - the chord's overworld from its entry view,
+  the grasp from the activity's target. Stepping out lands on the same
+  calm desktop the location was, and the frames, tags, standing shadows,
+  glow, badges and web come out as the camera leaves, whichever path
+  opened the canvas. A transient slide still wears nothing. The depth
+  pile is flat at 1:1 and grows with the skin. All fifteen chrome
+  wiring points read the one curve.
+- **The hand dot.** The toolbar wears a dot beside the activity swatches:
+  filled when the pass-through has handed the pointer to a window, hollow
+  while the canvas holds it. The effect polls the plugin's `state()` over
+  the existing D-Bus channel (400 ms) and parses the hover/grab tokens -
+  proven live in the nest (hover over Konsole → filled, off to the ground
+  → hollow).
+- **Bookmarks surfaced.** The help panel lists every saved spot with its
+  name, so the digits are discoverable.
+- **The glass card.** The overlay is a rounded card - 74% of the screen
+  centred - on a lighter veil, instead of the full-bleed sheet. The map,
+  the desks, the chips and the hint all live on the card, and the
+  scenarios' click coordinates moved with it (107/112/114).
+
+Goldens moved deliberately: `open-1to1` (the overworld at 1:1 is now the
+calm desktop the identity scenario wanted), `input-dragged`, `resized`,
+`three-activities`, `hidden-frame` and `two-output-corner` (accumulated
+drift from the thread depth, the dot and the skin, verified small and
+intended). Batches: 107 6/0, 112 20/0, 114 10/0, 71 12/0, 10 11/0, 30
+14/0, 70 6/0, 103 24/0, 100 19/0, 85 21/0, 87 2/0, 88 2/0, 111 6/0, 106
+8/0, 20 8/0, 90 28/0, 93 14/0, 98 5/0, 50 4/0, 60 12/0, 61 7/0, 80 9/0,
+105 10/0, 102 17/0, 109 9/0, 110 5/0, 108 2/0, two-outputs 17/0 (94
+flaked once in the batch, passes alone - the documented class).
+
 ### 2026-10-01 — the seam, the fly's fade, and the hover's real raise
 
 Three live-session bugs, each fixed with a measure first:

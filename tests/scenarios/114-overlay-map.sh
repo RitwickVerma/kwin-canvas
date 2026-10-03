@@ -27,16 +27,17 @@ run_scenario() {
     assert_eq "the plane holds two clusters" "$(sget clusters)" 2
 
     # The map geometry: the world is the two frames (1920x1080 at (0,0) and
-    # (2160,0)) plus the windows out to x=5100. sc = 1860/5100, ox = 6,
-    # oy = (1032 - 1080*sc)/2, over the overlay's 24px margin. The far
-    # cluster's centroid is (4490,520) - the mean of the members' centres.
+    # (2160,0)) plus the windows out to x=5100. The overlay is the glass
+    # card at (249.6,140.4,1420.8,799.2): sc = 1408.8/5100, ox = 6,
+    # oy = (799.2 - 1080*sc)/2. The far cluster's centroid is (4490,520) -
+    # the mean of the members' centres.
     local sx sy cx cy wx wy
-    sx=$(awk 'BEGIN{printf "%d\n", 24 + 6 + 4490 * (1860 / 5100)}')
-    sy=$(awk 'BEGIN{printf "%d\n", 24 + (1032 - 1080 * (1860 / 5100)) / 2 + 520 * (1860 / 5100)}')
+    sx=$(awk 'BEGIN{printf "%d\n", 249.6 + (1420.8 - 5100 * (1408.8 / 5100)) / 2 + 4490 * (1408.8 / 5100)}')
+    sy=$(awk 'BEGIN{printf "%d\n", 140.4 + (799.2 - 1080 * (1408.8 / 5100)) / 2 + 520 * (1408.8 / 5100)}')
     cx=$(awk -v s="$sx" 'BEGIN{print int(s + 8)}')   # the chip's east edge, inside the circle
     cy=$(awk -v s="$sy" 'BEGIN{print int(s)}')
-    wx=$(awk 'BEGIN{print int(24 + 6 + 2160 * (1860 / 5100) + 80)}')   # inside Activity 2's frame
-    wy=$(awk 'BEGIN{print int(24 + (1032 - 1080 * (1860 / 5100)) / 2 + 40)}')
+    wx=$(awk 'BEGIN{print int(249.6 + (1420.8 - 5100 * (1408.8 / 5100)) / 2 + 2240 * (1408.8 / 5100))}')   # inside Activity 2's frame
+    wy=$(awk 'BEGIN{print int(140.4 + (799.2 - 1080 * (1408.8 / 5100)) / 2 + 40)}')
 
     # The real desktop, then the hold's overlay: the desks and the chip are
     # what the map brings to the screen.
