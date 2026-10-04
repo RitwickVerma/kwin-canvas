@@ -315,16 +315,22 @@ QString CanvasPassthrough::load() const
     if (loadavg.open(QIODevice::ReadOnly)) {
         load1 = QString::fromLatin1(loadavg.readLine()).section(QLatin1Char(' '), 0, 0).toDouble();
     }
-    qulonglong mem = 0;
+    int mem = 0;
     QFile meminfo(QStringLiteral("/proc/meminfo"));
     if (meminfo.open(QIODevice::ReadOnly)) {
+        qulonglong memTotal = 0, memAvail = 0;
         while (!meminfo.atEnd()) {
             const QByteArray line = meminfo.readLine();
-            if (line.startsWith("MemAvailable:")) {
-                mem = line.mid(13).simplified().split(' ')[0].toULongLong();
+            if (line.startsWith("MemTotal:")) {
+                memTotal = line.mid(9).simplified().split(' ')[0].toULongLong();
+            } else if (line.startsWith("MemAvailable:")) {
+                memAvail = line.mid(13).simplified().split(' ')[0].toULongLong();
                 break;
             }
         }
+        // The used share, not the available kB: the third channel the ladder
+        // reads, alongside the CPU and the GPU.
+        mem = memTotal ? int(100 - 100.0 * double(memAvail) / double(memTotal)) : 0;
     }
     const int gpu = nvmlBusy();
     return QStringLiteral("cpu=%1 load=%2 mem=%3 gpu=%4").arg(cpu).arg(load1, 0, 'f', 2).arg(mem).arg(gpu);

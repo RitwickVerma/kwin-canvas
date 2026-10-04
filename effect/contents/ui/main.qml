@@ -101,6 +101,7 @@ KWin.SceneEffect {
     property int ql: 0
     property real cpuBusy: 0
     property real gpuBusy: 0
+    property real memBusy: 0
     property int quietSamples: 0
     function qualityCap() {
         switch (String(configuration.QualityMode)) {
@@ -111,9 +112,10 @@ KWin.SceneEffect {
             default: return 3; // Auto
         }
     }
-    function qualityApply(cpu, gpu) {
+    function qualityApply(cpu, gpu, mem) {
         cpuBusy = cpu;
         gpuBusy = gpu === undefined ? 0 : gpu;
+        memBusy = mem === undefined ? 0 : mem;
         if (String(configuration.QualityMode) !== "Auto") {
             ql = qualityCap();
             quietSamples = 0;
@@ -127,10 +129,14 @@ KWin.SceneEffect {
         const gpuMinimal = Number(configuration.GpuMinimal);
         const gpuBare = Number(configuration.GpuBare);
         const gpuQl = Logic.qualityFor(gpu, Number.isFinite(gpuReduced) ? gpuReduced : 60, Number.isFinite(gpuMinimal) ? gpuMinimal : 80, Number.isFinite(gpuBare) ? gpuBare : 95);
-        // The two channels race each other: whichever sees the worse pressure
-        // sets the step, and a calm machine must clear BOTH before the ladder
-        // climbs back up.
-        const target = Math.max(cpuQl, gpuQl);
+        const memReduced = Number(configuration.MemReduced);
+        const memMinimal = Number(configuration.MemMinimal);
+        const memBare = Number(configuration.MemBare);
+        const memQl = Logic.qualityFor(mem, Number.isFinite(memReduced) ? memReduced : 80, Number.isFinite(memMinimal) ? memMinimal : 90, Number.isFinite(memBare) ? memBare : 97);
+        // The three channels race each other: whichever sees the worse
+        // pressure sets the step, and a calm machine must clear ALL of them
+        // before the ladder climbs back up.
+        const target = Math.max(cpuQl, gpuQl, memQl);
         if (target > ql) {
             ql = target;
             quietSamples = 0;
@@ -2783,6 +2789,31 @@ KWin.SceneEffect {
     // sendTo(activity): move the selection so each window keeps its place
     // within a frame, now in that activity's frame. sendTo(null): park the
     // set near the origin at the nearest spot outside every frame.
+    // Lay the current activity's windows out in rows: sorted top-to-bottom,
+    // left-to-right, packed from the frame's top-left with the tidy gap.
+    // Nothing is written until the next commit - the same pattern as arrange.
+    function tidy() {
+        const vs = KWin.Workspace.virtualScreenGeometry;
+        const t = targetOf(currentActivity);
+        const gap = Math.max(12, Number(configuration.TidyGap) || 32);
+        const list = [];
+        for (let i = 0; i < entries.length; ++i) {
+            const e = entries[i];
+            if (e.activity !== currentActivity) continue;
+            list.push({ x: e.x, y: e.y, width: e.width, height: e.height, e: e });
+        }
+        if (list.length === 0) return;
+        // tidyRows sorts a copy and returns the spots in that sorted order,
+        // so the caller must sort its own list the same way before applying.
+        list.sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
+        const spots = Logic.tidyRows(list, { gap: gap, origin: { x: t.x + gap, y: t.y + gap }, maxWidth: vs.width - gap * 2 });
+        for (let i = 0; i < list.length; ++i) {
+            list[i].e.x = spots[i].x;
+            list[i].e.y = spots[i].y;
+        }
+        revision++;
+    }
+
     function sendTo(id) {
         const list = arrangeTargets();
         if (list.length === 0) return;
@@ -3063,7 +3094,9 @@ KWin.SceneEffect {
             const cpu = ci >= 0 ? Number(s.slice(ci + 4).split(" ")[0]) : 0;
             const gi = s.indexOf("gpu=");
             const gpu = gi >= 0 ? Number(s.slice(gi + 4).split(" ")[0]) : 0;
-            effect.qualityApply(Number.isFinite(cpu) ? cpu : 0, Number.isFinite(gpu) ? gpu : 0);
+            const mi = s.indexOf("mem=");
+            const mem = mi >= 0 ? Number(s.slice(mi + 4).split(" ")[0]) : 0;
+            effect.qualityApply(Number.isFinite(cpu) ? cpu : 0, Number.isFinite(gpu) ? gpu : 0, Number.isFinite(mem) ? mem : 0);
         }
     }
     Timer {
@@ -3072,7 +3105,7 @@ KWin.SceneEffect {
         repeat: true
         running: effect.visible && !effect.quiet
         onTriggered: {
-            if (String(effect.configuration.QualityMode) !== "Auto") effect.qualityApply(0, 0);
+            if (String(effect.configuration.QualityMode) !== "Auto") effect.qualityApply(0, 0, 0);
             else loadCall.call();
         }
     }
@@ -3917,6 +3950,7 @@ KWin.SceneEffect {
         case "unpin": unpinEntries([entries[Number(a[1])]]); break;
         case "unpinall": pinned = {}; savePinned(); break;
         case "arrange": arrange(a[1], Number(a[2]), Number(a[3])); break;
+        case "tidy": tidy(); break;
         case "snap": {
             const on = a[2] === "on";
             if (a[1] === "edges") snapEdges = on; else if (a[1] === "corners") snapCorners = on; else if (a[1] === "grid") snapGrid = on;
@@ -3974,6 +4008,7 @@ KWin.SceneEffect {
             + " ql=" + ql
             + " cpu=" + Math.round(cpuBusy)
             + " gpu=" + Math.round(gpuBusy)
+            + " mem=" + Math.round(memBusy)
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
         const ids = activityIds, screens = KWin.Workspace.screens;
         for (let i = 0; i < screens.length; ++i) {
@@ -5479,6 +5514,7 @@ KWin.SceneEffect {
                 }
             }
             PC3.MenuItem { text: "Cascade";              icon.name: "window-duplicate";      onTriggered: effect.arrange("cascade") }
+            PC3.MenuItem { text: "Tidy this activity";    icon.name: "view-sort-ascending";   onTriggered: effect.tidy() }
             PC3.MenuSeparator {}
             PC3.Menu {
                 title: "Send to"

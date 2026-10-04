@@ -228,6 +228,10 @@
             <label>Gap in canvas pixels between arranged windows.</label>
             <default>16</default>
         </entry>
+        <entry name="TidyGap" type="Int">
+            <label>Gap in canvas pixels between tidied windows, both between neighbours and between rows.</label>
+            <default>32</default>
+        </entry>
         <entry name="MouseNewActivityAt" type="String">
             <label>Gesture on a window outside every frame that creates an activity centred on it.</label>
             <default>Shift+DoubleClick</default>
@@ -304,6 +308,18 @@
         <entry name="GpuBare" type="Int">
             <label>The GPU's busy percentage at which Auto steps down to the bare minimum. A hidden knob.</label>
             <default>95</default>
+        </entry>
+        <entry name="MemReduced" type="Int">
+            <label>The memory's used percentage at which Auto steps down to reduced fidelity. A hidden knob, alongside its CPU and GPU twins: whichever channel sees the worse pressure sets the step.</label>
+            <default>80</default>
+        </entry>
+        <entry name="MemMinimal" type="Int">
+            <label>The memory's used percentage at which Auto steps down to minimal fidelity. A hidden knob.</label>
+            <default>90</default>
+        </entry>
+        <entry name="MemBare" type="Int">
+            <label>The memory's used percentage at which Auto steps down to the bare minimum. A hidden knob.</label>
+            <default>97</default>
         </entry>
         <entry name="PanInertia" type="Bool">
             <label>A pan the hand lets go of keeps the plane moving, slowing by PanFriction, so a flick carries. A drag that pauses before the release, or a slow one, stops where it is put.</label>

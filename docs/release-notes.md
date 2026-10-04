@@ -1,5 +1,16 @@
 Unreleased:
 
+- The fidelity ladder reads the memory too. The machine's used share
+  joins the CPU and the GPU as a third channel, and whichever channel
+  sees the worse pressure sets the step - a browser hoarding gigabytes
+  degrades the canvas even while the chips idle. The three Mem
+  thresholds are hidden knobs beside their CPU and GPU twins.
+
+- Tidy this activity: the Arrange menu's action packs the activity's
+  windows into rows - sorted, laid left to right from the frame's
+  top-left with the tidy gap, wrapping like text. TidyGap sets the
+  gap. Nothing is written until the commit, like every arrange.
+
 - The dock, the panels and the applets' dropdowns own their pixels. A
   click, a hover or a rest on the system's own chrome no longer focuses
   the window drawn under it, no longer flies the canvas to it - not in

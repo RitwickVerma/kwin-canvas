@@ -115,6 +115,19 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-08 — the desktops leave the plane, the ladder reads the memory, tidy stays
+
+Three takes on virtual desktops - shadow tiles, live zones, a slide
+transition - all felt bolted-on, and the user called it: "nah this does
+not feel correct. maybe we need to go back to single virtual desktop.
+this is not it man." The five desktop commits are reverted. The model
+is what it always was: virtual desktops stay ordinary KWin desktops,
+and the plane replaces them - one desktop, activities as the frames,
+clusters as the groups, flying as the switch. The ladder's memory
+channel (the used share as a third input, MemReduced/Minimal/Bare) and
+the tidy action (TidyGap, the Arrange menu) were independent of the
+desktops and stayed.
+
 ### 2026-10-04 — the dock and the applets own their pixels
 
 The user clicked a dock icon and the window under it got focused and the
