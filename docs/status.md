@@ -115,6 +115,37 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-05 — the overworld shows every desktop
+
+The user could not see their virtual desktops in the overworld, and the
+switcher felt broken. Two findings, both fixed.
+
+The switcher was fighting KWin's own TabBox: `kglobalshortcutsrc`
+still bound "Walk Through Windows" to Alt+Tab and its alternative to
+Meta+Tab, so the chords opened the native switcher, not ours. The
+earlier live unbinding had not persisted. `make switcher-free` rewrites
+both keys to none - KF6's KGlobalAccel has no reloadConfig method on
+the bus, the daemon watches the file, so the freed chords apply on the
+next login.
+
+The islands were invisible because the plane draws only the current
+desktop's windows and the pills revealed only zoomed out. Built the
+island shadows: `buildIslands()` collects every window off the current
+desktop into {x, y, width, height, caption, desktop} tiles (called from
+desktopChanged, resync's callLater tail and onCompleted - the imperative
+chips-style pattern, since Workspace-list bindings freeze in the
+grasp); the island Repeater draws them at z 500 as dimmed named tiles
+(only while the skin is out and never in the quiet grasp, so the seam
+shows its own desktop alone); a click switches desktops. And the
+switcher's fit: `zoomExtents()` iterated entries and frames directly -
+it never read `worldBounds()` - so the islands were excluded; the fit
+now grows for every island offset, desktop 1's (0,0) excluded.
+
+Verified: 118-desktops 21/0 (the pill click flies, the promote
+creates desktop 3 with its pair, the islands=2 shadows show, the
+switcher fits under 0.35), the touch batch green with no golden churn
+(the single-desktop baseline), lint, unit 77/0.
+
 ### 2026-10-05 — desktops become islands, and clusters can become desktops
 
 The user asked to integrate deeper with KDE: desktops as places, clusters

@@ -1,5 +1,12 @@
 Unreleased:
 
+- The overworld shows every desktop, not just the one you are on. Each
+  virtual desktop appears as its island on the plane: the current one
+  live, the rest as dimmed named tiles with their windows' outlines -
+  and a click on a tile switches to that desktop. The switcher's fit
+  now frames every island too, so stepping out of a three-desktop
+  session sees the whole place at once.
+
 - Desktops are islands on the plane. Every virtual desktop is a place: its
   windows live at the desktop's own offset, a row of islands laid out below
   one another, and switching desktops flies the camera to the new island -

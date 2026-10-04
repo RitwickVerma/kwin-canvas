@@ -251,6 +251,8 @@ KWin.SceneEffect {
     property var desktopOffsets: ({})
     property int desktopRev: 0
     property int desktopCount: 0
+    property int islandCount: 0
+    property var islandShadows: []
     function currentDesktopNumber() {
         const d = KWin.Workspace.currentDesktop;
         return d ? d.x11DesktopNumber : 1;
@@ -309,6 +311,30 @@ KWin.SceneEffect {
         desktopCount = ds.length;
         desktopRev++;
     }
+    // The other desktops' windows, as dimmed named tiles at their island's
+    // offset: the overworld shows every desktop at once - the current one
+    // live, the rest as washes below - so a desktop can be seen, and
+    // switched to, without leaving the plane. Built imperatively like the
+    // chips: a binding over the Workspace lists freezes in the grasp.
+    function buildIslands() {
+        const list = [];
+        const cn = currentDesktopNumber();
+        const stack = KWin.Workspace.stackingOrder;
+        for (let i = 0; i < stack.length; ++i) {
+            const w = stack[i];
+            if (!w || w.deleted || !w.managed || w.desktopWindow || w.dock || w.popupWindow || w.specialWindow) continue;
+            if (w.minimized || w.hidden) continue;
+            const dn = desktopOf(w);
+            if (dn === cn) continue;
+            const t = targetOf(activityOf(w));
+            const o = desktopOffsetOf(dn);
+            const g = w.frameGeometry;
+            list.push({ x: g.x + t.x + o.x, y: g.y + t.y + o.y, width: g.width, height: g.height,
+                        caption: w.caption, desktop: dn });
+        }
+        islandShadows = list;
+        islandCount = list.length;
+    }
     function desktopChanged() {
         desktopRev++;
         ensureDesktopTargets();
@@ -322,6 +348,7 @@ KWin.SceneEffect {
             e.y += on.y - oo.y;
         }
         revision++;
+        buildIslands();
         if (visible) {
             resync();
             const v = viewTarget();
@@ -1475,6 +1502,18 @@ KWin.SceneEffect {
             r = Math.max(r, e.x + e.width); b = Math.max(b, e.y + e.height);
         }
         if (l === Infinity) { const g = actionScreen().geometry; return { x: 0, y: 0, width: g.width, height: g.height }; }
+        if (desktopCount > 1) {
+            // The islands below extend the world: the switcher's fit and
+            // the extents take every desktop's place into the frame, pills
+            // and shadows included, so a fitted view sees them all.
+            const vh = KWin.Workspace.virtualScreenGeometry.height;
+            for (const k in desktopOffsets) {
+                if (desktopOffsets[k].y > 0) {
+                    t = Math.min(t, desktopOffsets[k].y - 30);
+                    b = Math.max(b, desktopOffsets[k].y + vh);
+                }
+            }
+        }
         return { x: l, y: t, width: Math.max(1, r - l), height: Math.max(1, b - t) };
     }
 
@@ -1661,6 +1700,7 @@ KWin.SceneEffect {
             revision++;
         }
         refreshAppPopups();
+        Qt.callLater(buildIslands);
     }
 
     // The app popups drawn in the overworld, bottom to top. Only while the
@@ -2153,6 +2193,17 @@ KWin.SceneEffect {
             const f = fs[i];
             l = Math.min(l, f.x); t = Math.min(t, f.y);
             r = Math.max(r, f.x + f.width); b = Math.max(b, f.y + f.height);
+        }
+        // The other desktops' islands are places too: the fit frames them,
+        // pills and all, so the switcher shows every desktop at once.
+        const vs = KWin.Workspace.virtualScreenGeometry;
+        const aT = targetOf(currentActivity);
+        for (const n in desktopOffsets) {
+            const o = desktopOffsets[n];
+            if (o.y > 0) {
+                l = Math.min(l, aT.x + o.x); t = Math.min(t, aT.y + o.y - 30);
+                r = Math.max(r, aT.x + o.x + vs.width); b = Math.max(b, aT.y + o.y + vs.height);
+            }
         }
         if (l === Infinity) { l = 0; t = 0; r = 1; b = 1; }
         const sg = actionScreen().geometry;
@@ -4211,6 +4262,7 @@ KWin.SceneEffect {
             + " gpu=" + Math.round(gpuBusy)
             + " desktops=" + KWin.Workspace.desktops.length
             + " desktop=" + currentDesktopNumber()
+            + " islands=" + islandCount
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
         const ids = activityIds, screens = KWin.Workspace.screens;
         for (let i = 0; i < screens.length; ++i) {
@@ -4261,6 +4313,7 @@ KWin.SceneEffect {
         loadBookmarks();
         loadDesktopTargets();
         ensureDesktopTargets();
+        buildIslands();
         refreshActivities();
         lastDebugSeq = configuration.DebugSeq;
         publishHold();
@@ -5296,6 +5349,57 @@ KWin.SceneEffect {
                             path: "M " + modelData.x1.toFixed(1) + " " + modelData.y1.toFixed(1) + " L " + modelData.x2.toFixed(1) + " " + modelData.y2.toFixed(1)
                         }
                     }
+                }
+            }
+        }
+
+        // The islands' shadows: every other desktop's windows, drawn as
+        // dimmed named tiles at their island's offset, so the overworld
+        // shows all the desktops at once. The current desktop's windows
+        // are the live entries above; a tap on a shadow switches to that
+        // desktop. Hidden in the quiet grasp - the seam shows only its own
+        // desktop.
+        Repeater {
+            model: effect.islandCount
+            delegate: Item {
+                required property int index
+                readonly property var s: { effect.islandCount; return effect.islandShadows[index] || null; }
+                x: { effect.revision; effect.desktopRev; effect.viewX; effect.viewY; effect.zoom; return s ? -(effect.viewX * effect.zoom) - view.sg.x + s.x * effect.zoom : 0; }
+                y: { effect.revision; effect.desktopRev; effect.viewX; effect.viewY; effect.zoom; return s ? -(effect.viewY * effect.zoom) - view.sg.y + s.y * effect.zoom : 0; }
+                width: s ? s.width * effect.zoom : 0
+                height: s ? s.height * effect.zoom : 0
+                z: 500
+                visible: true
+                opacity: { effect.desktopRev; effect.skinReveal; effect.quiet; return (!effect.quiet && effect.skinReveal > 0.02) ? 0.45 : 0; }
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 4 * effect.zoom
+                    color: "#1affffff"
+                    border.width: 1
+                    border.color: "#2effffff"
+                    Text {
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.margins: 3 * effect.zoom
+                        width: parent.width - 6 * effect.zoom
+                        text: s ? s.caption : ""
+                        color: "#99ffffff"
+                        font.pixelSize: Math.max(6, 9 * effect.zoom)
+                        elide: Text.ElideRight
+                    }
+                }
+                TapHandler {
+                    acceptedButtons: Qt.LeftButton
+                    enabled: { effect.desktopRev; effect.skinReveal; effect.quiet; effect.chromeHover; return s !== null && !effect.chromeHover && !effect.quiet && effect.skinReveal > 0.02; }
+                    onTapped: {
+                        effect.dbg("island", "tap desktop=" + s.desktop);
+                        const ds = KWin.Workspace.desktops;
+                        for (let i = 0; i < ds.length; ++i) if (ds[i].x11DesktopNumber === s.desktop) { effect.setDesktop(i); break; }
+                    }
+                }
+                HoverHandler {
+                    enabled: { effect.desktopRev; effect.skinReveal; effect.quiet; effect.chromeHover; return s !== null && !effect.chromeHover && !effect.quiet && effect.skinReveal > 0.02; }
+                    onHoveredChanged: view.hoverCount += hovered ? 1 : -1
                 }
             }
         }

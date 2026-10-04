@@ -169,7 +169,7 @@ plugin-install-system: plugin ## Install the plugin into DESTDIR/usr/lib/qt6/plu
 switcher-free: ## Unbind KWin's own TabBox chords (Alt+Tab, Meta+Tab) so the canvas switcher owns them (takes effect next login)
 	kwriteconfig6 --file ~/.config/kglobalshortcutsrc --group kwin --key "Walk Through Windows" "none,none,Walk Through Windows"
 	kwriteconfig6 --file ~/.config/kglobalshortcutsrc --group kwin --key "Walk Through Windows Alternative" "none,none,Walk Through Windows Alternative"
-	qdbus org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel.reloadConfig
+	qdbus6 org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel.reloadConfig || true
 	@echo "TabBox chords freed; the canvas switcher (Meta+Tab / Alt+Tab) owns them after the next login"
 
 # One printf, one write: four separate echoes each risk SIGPIPE from a

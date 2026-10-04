@@ -90,7 +90,36 @@ run_scenario() {
     assert_eq "the first desktop kept the rest" "$(sget desktop)" 1
     assert_eq "three of them" "$(sget entries)" 3
 
+    # The overworld sees the other desktops: the promoted pair sits on
+    # desktop 3's island, drawn as two dimmed shadow tiles.
+    c "zoom 0.5 960 540"
+    sleep 0.3
+    c state
+    assert_eq "the island shadows show the other desktop's windows" "$(sget islands)" 2
+
+    # The switcher's fit takes the islands into the frame, so the fitted
+    # world shows every desktop at once. The canvas must be closed for the
+    # switch verb to open it fitted.
+    c cancel
+    sleep 0.3
+    c switch
+    sleep 0.3
+    c state
+    assert_eq "the switcher opened over the world" "$(sget visible)" true
+    fitzoom=$(sget zoom)
+    if awk -v z="$fitzoom" 'BEGIN { exit !(z + 0 < 0.35) }'; then
+        ok "and its fit covers the islands"
+    else
+        fail "and its fit covers the islands"
+    fi
+    c cancel
+    sleep 0.3
+
     # Leave the nest as found: the pair comes home, the extra desktops go.
+    # The canvas must be open for the moves to resync the plane before the
+    # final count.
+    open_1to1
+    sleep 0.3
     c "movetodesktop 2 0"
     sleep 0.3
     c "rmdesktop 2"
