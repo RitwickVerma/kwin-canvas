@@ -293,3 +293,33 @@ function qualityFor(busy, reduced, minimal, bare) {
     if (b >= reduced) return 1;
     return 0;
 }
+
+// The tidy pack: windows (sorted top to bottom, then left to right) laid
+// into left-to-right rows from the origin, wrapping when the next item
+// would run past the row's width. The gap applies between items and
+// between rows. Returns an array of { x, y } aligned with the sorted
+// order; the caller owns the mapping back to its entries.
+function tidyRows(list, opts) {
+    const gap = Number.isFinite(Number(opts.gap)) ? Number(opts.gap) : 0;
+    const ox = Number.isFinite(Number(opts.origin.x)) ? Number(opts.origin.x) : 0;
+    const oy = Number.isFinite(Number(opts.origin.y)) ? Number(opts.origin.y) : 0;
+    const maxW = Number.isFinite(Number(opts.maxWidth)) ? Number(opts.maxWidth) : Infinity;
+    const items = list.slice().sort(function (a, b) {
+        return (a.y - b.y) || (a.x - b.x);
+    });
+    const out = [];
+    let x = ox, y = oy, rowBottom = 0, first = true;
+    for (let i = 0; i < items.length; ++i) {
+        const it = items[i];
+        if (!first && x + it.width > ox + maxW) {
+            x = ox;
+            y = rowBottom + gap;
+            rowBottom = 0;
+        }
+        out.push({ x: x, y: y });
+        x += it.width + gap;
+        rowBottom = Math.max(rowBottom, y + it.height);
+        first = false;
+    }
+    return out;
+}

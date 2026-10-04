@@ -1,5 +1,20 @@
 Unreleased:
 
+- The fidelity ladder reads the memory too. The plugin already samples
+  the machine every pulse; now the memory's used share joins the CPU and
+  the GPU as a third channel - whichever channel sees the worse pressure
+  sets the step, and the three hidden thresholds (MemReduced 80,
+  MemMinimal 90, MemBare 97) tune it.
+
+- Islands catch drops. Dragging a window across the plane onto another
+  desktop's island moves it to that desktop for real - the pager and the
+  taskbar follow - and the window stays exactly where it was dropped.
+  Pinned windows keep floating everywhere.
+
+- Tidy this island. The Arrange menu's new action packs the current
+  island's windows into clean rows from its top-left corner, at a gap set
+  by the TidyGap knob.
+
 - Every desktop's windows live on the one plane now. The overworld holds
   them all - live pictures, threads, clusters, the lot - each desktop a
   named zone on its island, and a click on any window or any zone

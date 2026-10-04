@@ -101,6 +101,7 @@ KWin.SceneEffect {
     property int ql: 0
     property real cpuBusy: 0
     property real gpuBusy: 0
+    property real memBusy: 0
     property int quietSamples: 0
     function qualityCap() {
         switch (String(configuration.QualityMode)) {
@@ -111,9 +112,10 @@ KWin.SceneEffect {
             default: return 3; // Auto
         }
     }
-    function qualityApply(cpu, gpu) {
+    function qualityApply(cpu, gpu, mem) {
         cpuBusy = cpu;
         gpuBusy = gpu === undefined ? 0 : gpu;
+        memBusy = mem === undefined ? 0 : mem;
         if (String(configuration.QualityMode) !== "Auto") {
             ql = qualityCap();
             quietSamples = 0;
@@ -127,10 +129,14 @@ KWin.SceneEffect {
         const gpuMinimal = Number(configuration.GpuMinimal);
         const gpuBare = Number(configuration.GpuBare);
         const gpuQl = Logic.qualityFor(gpu, Number.isFinite(gpuReduced) ? gpuReduced : 60, Number.isFinite(gpuMinimal) ? gpuMinimal : 80, Number.isFinite(gpuBare) ? gpuBare : 95);
-        // The two channels race each other: whichever sees the worse pressure
-        // sets the step, and a calm machine must clear BOTH before the ladder
-        // climbs back up.
-        const target = Math.max(cpuQl, gpuQl);
+        const memReduced = Number(configuration.MemReduced);
+        const memMinimal = Number(configuration.MemMinimal);
+        const memBare = Number(configuration.MemBare);
+        const memQl = Logic.qualityFor(mem, Number.isFinite(memReduced) ? memReduced : 80, Number.isFinite(memMinimal) ? memMinimal : 90, Number.isFinite(memBare) ? memBare : 97);
+        // The three channels race each other: whichever sees the worse
+        // pressure sets the step, and a calm machine must clear ALL of
+        // them before the ladder climbs back up.
+        const target = Math.max(cpuQl, gpuQl, memQl);
         if (target > ql) {
             ql = target;
             quietSamples = 0;
@@ -261,6 +267,29 @@ KWin.SceneEffect {
     }
     function desktopOffsetOf(n) {
         return desktopOffsets[n] || { x: 0, y: 0 };
+    }
+    function desktopByNumber(n) {
+        for (let i = 0; i < KWin.Workspace.desktops.length; ++i) {
+            const d = KWin.Workspace.desktops[i];
+            if (d && d.x11DesktopNumber === n) return d;
+        }
+        return null;
+    }
+    function desktopNameOf(n) {
+        const d = desktopByNumber(n);
+        return d ? (d.name || ("#" + n)) : ("#" + n);
+    }
+    // The desktop whose island contains a canvas point, or 0 (the seam
+    // island's number) when the point lies outside every laid island.
+    function islandAt(cx, cy) {
+        const vs = KWin.Workspace.virtualScreenGeometry;
+        const aT = targetOf(currentActivity);
+        for (const n in desktopOffsets) {
+            const o = desktopOffsets[n];
+            const x0 = aT.x + o.x, y0 = aT.y + o.y;
+            if (cx >= x0 && cx < x0 + vs.width && cy >= y0 && cy < y0 + vs.height) return Number(n);
+        }
+        return currentDesktopNumber();
     }
     function viewTarget() {
         const t = targetOf(currentActivity);
@@ -2922,6 +2951,24 @@ KWin.SceneEffect {
                 bounce = { caption: e.window.caption, sx: sx0, sy: sy0, vx: 0, vy: 0, tx: cl.sx, ty: cl.sy };
             }
         }
+        // A dragged window dropped on another desktop's island joins that
+        // desktop: its canvas spot does not move (the drop point IS the
+        // island), so the next commit writes the matching real frame on the
+        // other desktop - the window lands where the hand put it, in the
+        // pager and on the plane alike. Pinned floats stay everywhere.
+        let movedAny = false;
+        for (let i = 0; i < entries.length; ++i) {
+            const e = entries[i];
+            if (!dragRaw[e.window.internalId] || isPinnedEntry(e)) continue;
+            if (e.activity !== currentActivity) continue;
+            const dn = islandAt(e.x + e.width / 2, e.y + e.height / 2);
+            if (dn === e.desktop) continue;
+            e.desktop = dn;
+            try { e.window.desktops = [desktopByNumber(dn)]; } catch (err) { }
+            toast(e.window.caption + " joined " + (desktopNameOf(dn)));
+            movedAny = true;
+        }
+        if (movedAny) revision++;
         dragIndex = -1;
         endWindowDrag();
     }
@@ -2999,8 +3046,32 @@ KWin.SceneEffect {
     // sendTo(activity): move the selection so each window keeps its place
     // within a frame, now in that activity's frame. sendTo(null): park the
     // set near the origin at the nearest spot outside every frame.
-    function sendTo(id) {
-        const list = arrangeTargets();
+    // Tidy lays the current island's windows into clean rows: sorted top
+    // to bottom, then left to right, packed from the island's top-left,
+    // wrapping at the island's width. Like the arrange modes it only moves
+    // the entries - the next commit writes the frames.
+    function tidy() {
+        const o = desktopOffsetOf(currentDesktopNumber());
+        const vs = KWin.Workspace.virtualScreenGeometry;
+        const aT = targetOf(currentActivity);
+        const ox = aT.x + o.x, oy = aT.y + o.y;
+        const list = [];
+        for (let i = 0; i < entries.length; ++i) {
+            const e = entries[i];
+            if (e.activity !== currentActivity || e.desktop !== currentDesktopNumber()) continue;
+            list.push({ x: e.x, y: e.y, width: e.width, height: e.height, e: e });
+        }
+        if (list.length === 0) return;
+        const gap = Math.max(12, Number(configuration.TidyGap) || 32);
+        list.sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
+        const spots = Logic.tidyRows(list, { gap: gap, origin: { x: ox + gap, y: oy + gap }, maxWidth: vs.width - gap * 2 });
+        for (let i = 0; i < list.length; ++i) {
+            list[i].e.x = spots[i].x;
+            list[i].e.y = spots[i].y;
+        }
+        revision++;
+    }
+    function sendTo(id) {        const list = arrangeTargets();
         if (list.length === 0) return;
         if (id !== null && id !== undefined) {
             for (let i = 0; i < list.length; ++i) {
@@ -3273,11 +3344,11 @@ KWin.SceneEffect {
         onTriggered: { if (effect.passthroughLive) pluginStateCall.call(); }
     }
     // The machine's load, for the fidelity ladder. The plugin reads /proc
-    // itself (three small reads) and answers "cpu=N load=NN.NN mem=MMMM
-    // gpu=N"; cpu and gpu are the busy percentages since the previous call,
-    // gpu via NVML when the NVIDIA driver is present. Polled every two
-    // seconds while the overworld is open - a fixed mode needs no probe,
-    // the ladder applies the cap directly.
+    // itself (three small reads) and answers "cpu=N load=NN.NN mem=N
+    // gpu=N"; cpu, mem and gpu are the busy percentages since the
+    // previous call, gpu via NVML when the NVIDIA driver is present.
+    // Polled every two seconds while the overworld is open - a fixed
+    // mode needs no probe, the ladder applies the cap directly.
     KWin.DBusCall {
         id: loadCall
         service: "org.kde.KWin"
@@ -3290,7 +3361,9 @@ KWin.SceneEffect {
             const cpu = ci >= 0 ? Number(s.slice(ci + 4).split(" ")[0]) : 0;
             const gi = s.indexOf("gpu=");
             const gpu = gi >= 0 ? Number(s.slice(gi + 4).split(" ")[0]) : 0;
-            effect.qualityApply(Number.isFinite(cpu) ? cpu : 0, Number.isFinite(gpu) ? gpu : 0);
+            const mi = s.indexOf("mem=");
+            const mem = mi >= 0 ? Number(s.slice(mi + 4).split(" ")[0]) : 0;
+            effect.qualityApply(Number.isFinite(cpu) ? cpu : 0, Number.isFinite(gpu) ? gpu : 0, Number.isFinite(mem) ? mem : 0);
         }
     }
     Timer {
@@ -3299,7 +3372,7 @@ KWin.SceneEffect {
         repeat: true
         running: effect.visible && !effect.quiet
         onTriggered: {
-            if (String(effect.configuration.QualityMode) !== "Auto") effect.qualityApply(0, 0);
+            if (String(effect.configuration.QualityMode) !== "Auto") effect.qualityApply(0, 0, 0);
             else loadCall.call();
         }
     }
@@ -4199,6 +4272,7 @@ KWin.SceneEffect {
         case "unpin": unpinEntries([entries[Number(a[1])]]); break;
         case "unpinall": pinned = {}; savePinned(); break;
         case "arrange": arrange(a[1], Number(a[2]), Number(a[3])); break;
+        case "tidy": tidy(); break;
         case "snap": {
             const on = a[2] === "on";
             if (a[1] === "edges") snapEdges = on; else if (a[1] === "corners") snapCorners = on; else if (a[1] === "grid") snapGrid = on;
@@ -4256,6 +4330,7 @@ KWin.SceneEffect {
             + " ql=" + ql
             + " cpu=" + Math.round(cpuBusy)
             + " gpu=" + Math.round(gpuBusy)
+            + " mem=" + Math.round(memBusy)
             + " desktops=" + KWin.Workspace.desktops.length
             + " desktop=" + currentDesktopNumber()
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
@@ -5783,6 +5858,7 @@ KWin.SceneEffect {
             // their own cycle-and-enter paths).
             if (effect.switcherActive && effect.switcherFromChord && !event.isAutoRepeat
                     && effect.bound("switcher", event.key)) {
+                effect.dbg("switcher", "released k=" + event.key);
                 effect.applyKey();
                 event.accepted = true;
             }
@@ -5829,6 +5905,7 @@ KWin.SceneEffect {
                 }
             }
             PC3.MenuItem { text: "Cascade";              icon.name: "window-duplicate";      onTriggered: effect.arrange("cascade") }
+            PC3.MenuItem { text: "Tidy this island";     icon.name: "view-sort-ascending";    onTriggered: effect.tidy() }
             PC3.MenuSeparator {}
             PC3.Menu {
                 title: "Send to"

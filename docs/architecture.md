@@ -711,6 +711,12 @@ the fresh island. The real KWin desktop is then ordinary workspace state
 - the pager shows it, the taskbar shows it, and it survives restarts -
 while the plane keeps its place on it.
 
+A drop can too: `endDrag()` checks each dragged window's landing point
+against the laid island rects (`islandAt()`), and a window dropped on
+another desktop's island has its real `desktops` moved there - no
+canvas shift, the commit writes the matching frame, and the pager
+follows. Pinned windows skip the check and keep floating everywhere.
+
 ## Motion
 
 The camera is not a timeline. `viewX`, `viewY` and `zoom` are the state, a set

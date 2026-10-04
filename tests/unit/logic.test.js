@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, floatStep, fitRange, smartPan, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor };")();
+const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, floatStep, fitRange, smartPan, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -277,6 +277,30 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
     ok("a zero threshold degrades at once", L.qualityFor(0, 0, 0, 0) === 3);
     ok("and every rung is reachable by thresholds alone", (function () {
         return L.qualityFor(0, 0, 100, 100) === 1 && L.qualityFor(0, 100, 0, 100) === 2 && L.qualityFor(0, 100, 100, 0) === 3;
+    })());
+
+    // The tidy pack: reading order (top to bottom, then left to right),
+    // left-to-right rows, the gap between items and between rows, and the
+    // wrap at the row's width.
+    ok("tidy fits one row", (function () {
+        const out = L.tidyRows([{ x: 300, y: 200, width: 100, height: 50 }, { x: 100, y: 300, width: 80, height: 40 }], { gap: 16, origin: { x: 0, y: 0 }, maxWidth: 1000 });
+        return near(out[0].x, 0) && near(out[0].y, 0) && near(out[1].x, 116) && near(out[1].y, 0);
+    })());
+    ok("tidy sorts by y then x", (function () {
+        const out = L.tidyRows([{ x: 900, y: 10, width: 50, height: 50 }, { x: 0, y: 500, width: 50, height: 50 }, { x: 500, y: 10, width: 50, height: 50 }], { gap: 0, origin: { x: 0, y: 0 }, maxWidth: 1000 });
+        return near(out[0].x, 0) && near(out[1].x, 50) && near(out[2].x, 100) && near(out[0].y, 0) && near(out[2].y, 0);
+    })());
+    ok("tidy wraps at the row width", (function () {
+        const out = L.tidyRows([{ x: 0, y: 0, width: 100, height: 20 }, { x: 0, y: 0, width: 60, height: 30 }], { gap: 10, origin: { x: 0, y: 0 }, maxWidth: 120 });
+        return near(out[0].x, 0) && near(out[0].y, 0) && near(out[1].x, 0) && near(out[1].y, 30);
+    })());
+    ok("tidy never wraps the first item of a row", (function () {
+        const out = L.tidyRows([{ x: 0, y: 0, width: 200, height: 20 }, { x: 0, y: 0, width: 50, height: 20 }], { gap: 10, origin: { x: 5, y: 5 }, maxWidth: 150 });
+        return near(out[0].x, 5) && near(out[0].y, 5) && near(out[1].x, 5) && near(out[1].y, 35);
+    })());
+    ok("tidy respects the origin and the row gap", (function () {
+        const out = L.tidyRows([{ x: 0, y: 0, width: 40, height: 10 }, { x: 0, y: 0, width: 40, height: 10 }, { x: 0, y: 0, width: 40, height: 10 }], { gap: 8, origin: { x: 2, y: 3 }, maxWidth: 90 });
+        return near(out[0].x, 2) && near(out[0].y, 3) && near(out[1].x, 50) && near(out[1].y, 3) && near(out[2].x, 2) && near(out[2].y, 21);
     })());
 }
 

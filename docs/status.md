@@ -115,6 +115,33 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-06 — the memory joins the ladder, islands catch drops, and tidy lays the desk out
+
+The "do all" batch after the islands rework: four candidates approved.
+The memory channel is in: the plugin's load() now returns the used
+share (MemTotal and MemAvailable, not the available kilobytes), the
+effect's qualityApply takes (cpu, gpu, mem) and the worst of the three
+channels sets the step, with MemReduced/MemMinimal/MemBare (80/90/97)
+as the hidden thresholds. Islands catch drops: endDrag checks each
+dragged window's landing point against the laid island rects
+(islandAt) and, on another island, moves the real window's desktops
+there - no canvas shift, the commit writes the matching frame, the
+pager follows. Tidy: logic.js's tidyRows packs a (y,x)-sorted copy
+into rows (the caller must sort its own list the same way - the
+first-run bug), the Arrange menu grew "Tidy this island", TidyGap 32.
+
+The switcher's release-enter cannot be proven in the nest: plain keys
+route to the focused fixture window, so the scene's Keys.onReleased
+never sees the tab keyup. Measured in the play nest: meta+tab opens
+the canvas switcher; the chord repeat cycles, Enter enters, Esc
+cancels. The release-enter block stays as best-effort for the live
+session (documented in testing.md).
+
+Verified: 118 22/0, 116 13/0, 85 21/0, 119-drag-desktop 8/0,
+120-tidy 9/0, plus the touch batch (87/88/109/110/10-open/30/71/70/
+103/106/111/113/112/114/107 all green), make lint green (REUSE
+144/144), make unit 85/0, no golden churn.
+
 ### 2026-10-05 — every desktop's windows live on the plane
 
 The shadow tiles shipped first and the user rejected them: "islands is
