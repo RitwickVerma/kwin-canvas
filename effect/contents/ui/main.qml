@@ -374,11 +374,65 @@ KWin.SceneEffect {
             viewY = v.y;
             publishGround();
         }
+        if (configuration.DesktopOsd) osdShow();
     }
     function setDesktop(i) {
         const ds = KWin.Workspace.desktops;
         if (i < 0 || i >= ds.length) return;
         KWin.Workspace.currentDesktop = ds[i];
+    }
+    // The desktop OSD: the canvas's own switcher notice. The scene only
+    // paints while visible, so in the closed location the card rides a
+    // quiet open at the seam - pixel-identical to the real desktop, no
+    // chrome, no pass-through - and closes again without committing. In
+    // the overworld the card just appears over the fly. KDE's own plain
+    // popup is left to the user to switch off in System Settings.
+    property bool osdVisible: false
+    property real osdFade: 0
+    property bool quietOsd: false
+    property int osdRev: 0
+    function osdName() {
+        const d = desktopByNumber(currentDesktopNumber());
+        return d && d.name ? d.name : ("#" + currentDesktopNumber());
+    }
+    function osdShow() {
+        if (!configuration.DesktopOsd) return;
+        if (canvasHold) return;
+        if (!visible) {
+            quietOsd = true;
+            open(true);
+        }
+        osdVisible = true;
+        osdFadeAnim.to = 1;
+        osdFadeAnim.restart();
+        osdTimer.restart();
+        osdRev++;
+    }
+    NumberAnimation {
+        id: osdFadeAnim
+        target: effect
+        property: "osdFade"
+        duration: 220
+        easing.type: Easing.OutCubic
+        onFinished: {
+            if (effect.osdFade === 0) {
+                effect.osdVisible = false;
+                if (effect.quietOsd) {
+                    effect.quietOsd = false;
+                    effect.visible = false;
+                    effect.quiet = false;
+                }
+            }
+        }
+    }
+    Timer {
+        id: osdTimer
+        interval: Math.max(200, Number(configuration.DesktopOsdMs) || 1200)
+        repeat: false
+        onTriggered: {
+            osdFadeAnim.to = 0;
+            osdFadeAnim.restart();
+        }
     }
     function clusterToDesktop(ci) {
         if (ci < 0 || ci >= clusters.length) return;
@@ -5952,6 +6006,108 @@ KWin.SceneEffect {
                 id: toastLabel
                 anchors.centerIn: parent
                 text: effect.toastText
+            }
+        }
+
+        // The desktop OSD: a glass card naming the desktop you switched to,
+        // its islands paged as chips, and a live miniature of the island
+        // you landed on. In the closed location it rides the quiet open at
+        // the seam, so the card floats over the real desktop while the
+        // panel and the dock still draw above it natively.
+        Rectangle {
+            z: 100002
+            visible: { effect.osdRev; return view.screen === effect.primaryScreen && effect.osdVisible; }
+            opacity: effect.osdFade
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: parent.height * 0.16
+            width: osdRow.implicitWidth + 28
+            height: osdRow.implicitHeight + 28
+            radius: 16
+            color: Qt.rgba(0.05, 0.05, 0.08, 0.72)
+            border.width: 1
+            border.color: "#33ffffff"
+            Row {
+                id: osdRow
+                anchors.centerIn: parent
+                spacing: 20
+                // The island's miniature: the current desktop's windows as
+                // tiny sheets, framed like the lens. The fidelity ladder's
+                // bare rung skips it - a name and the chips are enough.
+                Item {
+                    visible: effect.ql < 2
+                    width: 200
+                    height: 112
+                    clip: true
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 8
+                        color: "#14ffffff"
+                        border.width: 1
+                        border.color: "#26ffffff"
+                    }
+                    Repeater {
+                        model: { effect.revision; effect.osdRev; return effect.entries.length; }
+                        delegate: Rectangle {
+                            required property int index
+                            readonly property var e: { effect.revision; effect.desktopRev; effect.osdRev; return effect.entries[index] || null; }
+                            readonly property real sc: {
+                                effect.revision; effect.desktopRev; effect.osdRev;
+                                const aT = effect.peekTarget(effect.currentActivity);
+                                const o = effect.desktopOffsetOf(effect.currentDesktopNumber());
+                                return e ? Math.min(200 / KWin.Workspace.virtualScreenGeometry.width, 112 / KWin.Workspace.virtualScreenGeometry.height) : 0;
+                            }
+                            visible: {
+                                effect.revision; effect.desktopRev; effect.osdRev;
+                                return e !== null && e.desktop === effect.currentDesktopNumber();
+                            }
+                            readonly property real rx: e ? (e.x - effect.peekTarget(effect.currentActivity).x - effect.desktopOffsetOf(e.desktop).x) * sc : 0
+                            readonly property real ry: e ? (e.y - effect.peekTarget(effect.currentActivity).y - effect.desktopOffsetOf(e.desktop).y) * sc : 0
+                            x: rx; y: ry
+                            width: e ? Math.max(3, e.width * sc) : 0
+                            height: e ? Math.max(3, e.height * sc) : 0
+                            radius: 2
+                            color: Qt.rgba(1, 1, 1, 0.5)
+                            border.width: 0.5
+                            border.color: "#4affffff"
+                        }
+                    }
+                }
+                Column {
+                    spacing: 12
+                    PC3.Label {
+                        text: effect.osdName()
+                        font.pointSize: 22
+                        font.weight: Font.DemiBold
+                        color: "#ffffff"
+                    }
+                    Column {
+                        spacing: 6
+                        Repeater {
+                            model: { effect.desktopRev; effect.osdRev; return KWin.Workspace.desktops.length; }
+                            delegate: Row {
+                                required property int index
+                                readonly property var d: { effect.desktopRev; return KWin.Workspace.desktops[index] || null; }
+                                readonly property bool cur: { effect.desktopRev; effect.osdRev; return d !== null && d === KWin.Workspace.currentDesktop; }
+                                spacing: 8
+                                Rectangle {
+                                    width: 10
+                                    height: 10
+                                    radius: 5
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    color: cur ? "#2a6ddf" : "transparent"
+                                    border.width: 1
+                                    border.color: cur ? "#99ffffff" : "#55ffffff"
+                                }
+                                PC3.Label {
+                                    text: d ? (d.name || "#" + d.x11DesktopNumber) : ("#" + index)
+                                    font.pointSize: cur ? 12 : 10
+                                    color: cur ? "#ffffff" : "#99ffffff"
+                                    opacity: { effect.osdRev; return cur ? 1 : 0.75; }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 

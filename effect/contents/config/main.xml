@@ -365,6 +365,14 @@
             <label>The island offsets of the virtual desktops on the plane, as JSON. Laid-out islands survive the session, so a desktop made from a cluster keeps its place.</label>
             <default></default>
         </entry>
+        <entry name="DesktopOsd" type="Bool">
+            <label>Show the canvas's own on-screen display when the desktop switches: a glass card naming the desktop, its islands paged as chips, and a live miniature of the island you landed on. Turn off KDE's own display in System Settings - Virtual Desktops, "Show on-screen display when switching", so the two never double up.</label>
+            <default>true</default>
+        </entry>
+        <entry name="DesktopOsdMs" type="Int">
+            <label>How long the desktop's on-screen display stays, in milliseconds.</label>
+            <default>1200</default>
+        </entry>
         <entry name="FollowActivation" type="Bool">
             <label>Pan the canvas so an activated off-screen window comes on screen.</label>
             <default>true</default>

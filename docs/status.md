@@ -115,6 +115,29 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-07 — the desktop switch gets the canvas's own OSD
+
+"need to come up with amazing legendary desktop switching OSD
+replacement on theme" - the user wanted a showpiece desktop-switch
+OSD. Built: on a desktop switch the canvas shows a glass card in its
+own look - the desktop's name in large type, a vertical rail of the
+islands with the current one lit (the islands stack vertically, and
+the rail reads the plane's layout), and a live miniature of the island
+just landed on, window by window. In the closed location the card
+rides a pixel-identical quiet open at the seam (the 6f710e6 instant-
+seam trick: open(true) at 1:1 paints exactly the desktop it covers, no
+chrome, no probe), so the card floats over the real desktop with the
+panel still on top, and fades away to a quiet close that writes no
+geometry. The OSD only shows on real desktop switches (the
+desktopChanged hook), never during a hold. Knobs: DesktopOsd (off
+returns the popup to KDE's own) and DesktopOsdMs (1200). Two traps
+banked: a CSS-style "rgba(1,1,1,0.5)" color string fails the QML load
+(the runner's load-wait then loops forever - check kwin.log for
+`Failed to load` first), and QML ids are component-scope names - the
+timer's `effect.osdFadeAnim` was undefined (the TypeError killed the
+fade-out and the quiet close; the plain id works). Scenario 121-osd
+proves the whole chain.
+
 ### 2026-10-06 — the memory joins the ladder, islands catch drops, and tidy lays the desk out
 
 The "do all" batch after the islands rework: four candidates approved.

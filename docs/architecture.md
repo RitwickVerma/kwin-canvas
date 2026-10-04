@@ -717,6 +717,19 @@ another desktop's island has its real `desktops` moved there - no
 canvas shift, the commit writes the matching frame, and the pager
 follows. Pinned windows skip the check and keep floating everywhere.
 
+The switch is announced: `desktopChanged()` ends with the OSD when the
+`DesktopOsd` knob is on. In the overworld the card simply shows over
+the flight; in the closed location it rides a quiet open at the seam -
+`open(true)` paints the canvas pixel-identically over the desktop it
+covers (no chrome, no probe), so the card floats over the real desktop
+with the panel still on top, and `osdTimer` (DesktopOsdMs, default
+1200) fades it away to a quiet close that writes no geometry. The card
+is the canvas's glass: the desktop's name in large type, a vertical
+rail of the islands with the current one lit - the rail reads the
+plane's layout - and a live miniature of the island just landed on,
+window by window (the minimap's sheet math at a small scale, skipped
+at fidelity rung 2 and above). A hold never triggers it.
+
 ## Motion
 
 The camera is not a timeline. `viewX`, `viewY` and `zoom` are the state, a set

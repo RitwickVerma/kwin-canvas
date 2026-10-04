@@ -1,5 +1,14 @@
 Unreleased:
 
+- The canvas has its own desktop OSD. Switching desktops brings up a glass
+  card in the canvas's own look - the desktop's name in large type, a
+  vertical rail of the islands with the current one lit, and a live
+  miniature of the island you just landed on, window by window. In the
+  closed location the card rides a pixel-identical quiet open at the seam,
+  so it floats over the real desktop and fades away without moving a
+  window. The DesktopOsd knob turns it off (then turn KDE's own popup back
+  on, or leave both off), and DesktopOsdMs sets how long it stays.
+
 - The fidelity ladder reads the memory too. The plugin already samples
   the machine every pulse; now the memory's used share joins the CPU and
   the GPU as a third channel - whichever channel sees the worse pressure
