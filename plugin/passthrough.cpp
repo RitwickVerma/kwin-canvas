@@ -378,17 +378,61 @@ Window *CanvasPassthrough::windowUnder(const QPointF &screen) const
         if (!w->isClient() || w->isDeleted() || w->isUnmanaged()) {
             continue;
         }
-        if (w->isDesktop() || w->isDock() || w->isSpecialWindow()) {
+        if (w->isDesktop()) {
             continue;
         }
         if (w->isMinimized() || w->isHidden() || !w->isOnCurrentDesktop()) {
             continue;
         }
         if (QRectF(w->frameGeometry()).contains(screen)) {
+            // The system's own chrome owns the click: a dock, a panel or an
+            // applet's dropdown is never a window the canvas may fly to, and
+            // the window drawn under it must not become the click candidate.
+            if (w->isDock() || w->isPopupWindow() || w->isSpecialWindow()) {
+                return nullptr;
+            }
             return w;
         }
     }
     return nullptr;
+}
+
+Window *CanvasPassthrough::chromeAt(const QPointF &screen) const
+{
+    const QList<Window *> &stack = workspace()->stackingOrder();
+    for (auto it = stack.crbegin(); it != stack.crend(); ++it) {
+        Window *w = *it;
+        if (!w->isClient() || w->isDeleted()) {
+            continue;
+        }
+        if (w->isDesktop()) {
+            continue;
+        }
+        if (w->isMinimized() || w->isHidden() || !w->isOnCurrentDesktop()) {
+            continue;
+        }
+        if (!QRectF(w->frameGeometry()).contains(screen)) {
+            continue;
+        }
+        if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: chromeAt " << screen.x() << "," << screen.y() << " top=" << w->caption() << " dock=" << w->isDock() << " popup=" << w->isPopupWindow() << " special=" << w->isSpecialWindow() << " unmanaged=" << w->isUnmanaged() << " type=" << int(w->windowType());
+        if (w->isDock() || w->isPopupWindow() || w->isSpecialWindow() || w->isUnmanaged()) {
+            return w;
+        }
+        return nullptr;
+    }
+    return nullptr;
+}
+
+void CanvasPassthrough::publishChrome(const QPointF &screen)
+{
+    const bool chrome = chromeAt(screen) != nullptr;
+    if (chrome == m_chromeHover) {
+        return;
+    }
+    m_chromeHover = chrome;
+    if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+        canvas->setProperty("chromeHover", chrome);
+    }
 }
 
 Window *CanvasPassthrough::windowAt(const QPointF &canvas) const
@@ -517,6 +561,10 @@ void CanvasPassthrough::clearGrab()
 
 bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
 {
+    // The chrome flag is published on every event, active or not: the quiet
+    // grasp's scene needs it too, and the scene's handlers read it fresh for
+    // each press.
+    publishChrome(event->position);
     // A candidate click turned drag: the effect must not fly to it.
     if (m_clickWindow && (event->position - m_clickPos).manhattanLength() > 6) {
         m_clickWindow = nullptr;
@@ -565,6 +613,16 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
         }
         return true;
     }
+    // The system's own chrome - a dock, a panel, an applet's dropdown -
+    // owns its pixels outright. Nothing under it may hover or be entered;
+    // the chrome gets the pointer natively, exactly as when the canvas is
+    // closed.
+    if (m_chromeHover) {
+        m_hoverCandidate = nullptr;
+        m_hoverTimer.stop();
+        leave();
+        return false;
+    }
     // The seam: a pointer parked on the desk's outer border is not a rest,
     // it is a pointer nobody is holding (a shared mouse handed to another
     // machine). No window under it may take the input; the canvas keeps it.
@@ -598,6 +656,7 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
 
 bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
 {
+    publishChrome(event->position);
     m_idle = false;
     m_idleTimer.start();
     // Every button change is published to the effect: a focus fly must wait
@@ -657,6 +716,7 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     if (event->state == PointerButtonState::Pressed && event->button == Qt::LeftButton
         && !m_active && !(uint(event->button) & m_nav)) {
         m_clickWindow = windowUnder(event->position);
+        if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: click candidate at" << event->position.x() << "," << event->position.y() << "->" << (m_clickWindow ? m_clickWindow->caption() : QStringLiteral("-"));
         m_clickPos = event->position;
     } else if (event->state == PointerButtonState::Released && m_clickWindow && event->button == Qt::LeftButton) {
         if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
@@ -665,6 +725,16 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
         m_clickWindow = nullptr;
     }
     if (!m_active) {
+        return false;
+    }
+    // The system's own chrome - a dock, a panel, an applet's dropdown -
+    // owns its pixels. A press over it never enters or activates the
+    // window drawn underneath; the scene's handlers stand back too (the
+    // chromeHover gate), so the chrome gets the click natively.
+    if (m_chromeHover) {
+        leave();
+        m_grab = nullptr;
+        m_grabGround = false;
         return false;
     }
     // The grasp's overlay owns the pointer outright (see pointerMotion):
@@ -768,6 +838,11 @@ bool CanvasPassthrough::pointerAxis(PointerAxisEvent *event)
     m_idle = false;
     m_idleTimer.start();
     if (!m_active || !m_settled || m_grabGround) {
+        return false;
+    }
+    // The system's own chrome takes its wheel natively: a scroll over the
+    // dock or a dropdown must never reach the canvas or the window under it.
+    if (m_chromeHover) {
         return false;
     }
     // With a canvas button down the wheel is the canvas's too: a notch zooms

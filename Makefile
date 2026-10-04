@@ -224,6 +224,10 @@ unit: ## Run the pure-logic unit tests (node tests/unit) - the fast iteration lo
 test: install fixtures tools plugin-try ## Run the scenarios against a dedicated test nest (NEST_NAME=test)
 	tests/run.sh $(ARGS)
 
+test-panel: install fixtures tools plugin-try ## Run the dock/panel scenarios against a nest that seeds the default Plasma panel (NEST_PANEL=1)
+	NEST_PANEL=1 tests/run.sh $(if $(ARGS),$(ARGS),86)
+	NEST_PANEL=1 tests/run.sh $(if $(ARGS),$(ARGS),117)
+
 test-two-outputs: install fixtures tools plugin-try ## Run the two-output scenarios against a two-output nest (NEST_OUTPUTS=2). ARGS= re-records 91's golden
 	NEST_OUTPUTS=2 tests/run.sh $(if $(ARGS),$(ARGS),91)
 

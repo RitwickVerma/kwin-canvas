@@ -197,7 +197,7 @@ CFG
 shell() {
     [ "${NEST_SHELL:-1}" = 1 ] || return 0
     mkdir -p "$STATE/desktop"
-    run plasmashell --no-respawn >/dev/null
+    RUN_LOG="$STATE/plasmashell.log" run plasmashell --no-respawn
     local ok=0
     for _ in $(seq 1 60); do
         nq org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "1" >/dev/null 2>&1 && { ok=1; break; }
@@ -235,6 +235,12 @@ shell() {
                 d.writeConfig('OffsetY', 0);
                 d.reloadConfig();
             }" >/dev/null
+    fi
+    if [ "${NEST_PANEL:-0}" = 1 ]; then
+        # The default Plasma layout carries a panel with the clock: the dock
+        # scenarios need one (86, 117). Everything else keeps the panel-free
+        # nest, so a panel never sits under a golden's pixels.
+        nq org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.loadLookAndFeelDefaultLayout "org.kde.plasma.desktop" >/dev/null
     fi
     echo "plasmashell up"
 }
@@ -400,7 +406,7 @@ clean() {
 run() {
     alive || { echo "not up"; exit 1; }
     local b; b=$(nestbus) || exit 1
-    ( export WAYLAND_DISPLAY=$SOCKET DBUS_SESSION_BUS_ADDRESS=$b $(nest_env client); unset DISPLAY; "${LOW[@]}" "$@" >/dev/null 2>&1 & echo $! >> "$STATE/clients" )
+    ( export WAYLAND_DISPLAY=$SOCKET DBUS_SESSION_BUS_ADDRESS=$b $(nest_env client); unset DISPLAY; "${LOW[@]}" "$@" >"${RUN_LOG:-/dev/null}" 2>&1 & echo $! >> "$STATE/clients" )
     echo "launched: $*"
 }
 

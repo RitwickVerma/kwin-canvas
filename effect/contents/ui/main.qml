@@ -860,6 +860,20 @@ KWin.SceneEffect {
             return;
         }
         seamPark = false;
+        // The system's own chrome (a dock, a panel, a popup) owns its
+        // pixels: a rest on it is not a hover on the window under it, so
+        // nothing is focused, panned or raised there. The chrome flag is
+        // published by the pass-through on every pointer event, grasp
+        // included.
+        if (chromeHover) {
+            if (hoverEntry !== null || focusEntry !== null) {
+                hoverEntry = null;
+                focusEntry = null;
+                hoverSince = 0;
+                hoverBrought = false;
+            }
+            return;
+        }
         // A pointer parked on the seam is not a hover: the desk put it there
         // (deskflow handing the mouse to another machine), not the hand.
         if (navHeld || quiet) return;
@@ -1538,6 +1552,13 @@ KWin.SceneEffect {
     // The pass-through has let go after the idle: the canvas owns the
     // input again, until the pointer's next touch.
     property bool passthroughIdle: false
+    // The pointer sits over the system's own chrome - a dock, a panel, a
+    // popup, an applet's dropdown. Published by the pass-through on every
+    // pointer event (active or not, so the quiet grasp sees it too). While
+    // it is set, the scene's input handlers and the hover tick stand back:
+    // the chrome gets the click natively, never the canvas and never the
+    // window drawn under it.
+    property bool chromeHover: false
     // How far the camera has left the location it opened from: 0 at the
     // seam, growing with the zoom-out and the pan. The skin - the frames,
     // the tags, the threads, the glow - fades in with it, so the keyhole
@@ -3160,6 +3181,9 @@ KWin.SceneEffect {
     // revealing what lies beyond it, as dragging the desk away does.
     function edgePanStep(sg, dt) {
         if (!sg || edgePanSpeed <= 0 || dt <= 0) return;
+        // The chrome owns its pixels: resting the pointer on the dock or a
+        // panel must not keep the canvas scrolling underneath it.
+        if (chromeHover) return;
         const p = cursorScreen();
         if (p.x < sg.x || p.x >= sg.x + sg.width || p.y < sg.y || p.y >= sg.y + sg.height) return;
         const cx = sg.x + sg.width / 2, cy = sg.y + sg.height / 2;
@@ -4051,7 +4075,7 @@ KWin.SceneEffect {
 
         HoverHandler {
             id: gripHover
-            enabled: !grip.viewItem.spaceHeld && !(grip.holdOff && effect.grasp) && !effect.seamPark
+            enabled: !grip.viewItem.spaceHeld && !(grip.holdOff && effect.grasp) && !effect.seamPark && !effect.chromeHover
             cursorShape: gripDrag.active && grip.cursor === Qt.ArrowCursor ? Qt.ClosedHandCursor : grip.cursor
             onHoveredChanged: grip.viewItem.hoverCount += hovered ? 1 : -1
             Component.onDestruction: if (hovered) grip.viewItem.hoverCount -= 1
@@ -4059,7 +4083,7 @@ KWin.SceneEffect {
         DragHandler {
             id: gripDrag
             target: null
-            enabled: !grip.viewItem.spaceHeld && !(grip.holdOff && effect.grasp)
+            enabled: !grip.viewItem.spaceHeld && !(grip.holdOff && effect.grasp) && !effect.chromeHover
             acceptedButtons: effect.gripButtons
             // The portal buttons drag a control exactly as the left button
             // does; where they land on the ground instead they pan (panDrag).
@@ -4086,7 +4110,7 @@ KWin.SceneEffect {
             }
         }
         TapHandler {
-                        enabled: grip.tappable && !grip.viewItem.spaceHeld
+            enabled: grip.tappable && !grip.viewItem.spaceHeld && !effect.chromeHover
             acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
             onTapped: (eventPoint, button) => grip.tapped(tapCount, point.modifiers, button)
         }
@@ -4121,12 +4145,14 @@ KWin.SceneEffect {
         }
         HoverHandler {
             id: buttonHover
+            enabled: !effect.chromeHover
             cursorShape: Qt.PointingHandCursor
             onHoveredChanged: button.viewItem.hoverCount += hovered ? 1 : -1
             Component.onDestruction: if (hovered) button.viewItem.hoverCount -= 1
         }
         TapHandler {
             acceptedButtons: Qt.LeftButton
+            enabled: !effect.chromeHover
             gesturePolicy: TapHandler.ReleaseWithinBounds
             onTapped: button.clicked()
         }
@@ -4345,7 +4371,7 @@ KWin.SceneEffect {
         // hold a PanHold button and drag anywhere. Ground click: drop the
         // selection.
         TapHandler {
-            enabled: !view.spaceHeld && !view.overControl
+            enabled: !view.spaceHeld && !view.overControl && !effect.chromeHover
             acceptedButtons: Qt.LeftButton
             onTapped: (eventPoint, button) => { if ((point.modifiers & effect.marqueeModifiers()) === 0) effect.clearSelection(); }
         }
@@ -4383,6 +4409,7 @@ KWin.SceneEffect {
         TapHandler {
             id: navHold
             acceptedButtons: effect.panHoldButtons | Qt.MiddleButton
+            enabled: !effect.chromeHover
         }
 
         // SwapButton while the canvas modifier is held: fly between the two
@@ -4391,7 +4418,8 @@ KWin.SceneEffect {
         // hands it to the window under the pointer, at 1:1 the window's own
         // back/forward gesture).
         TapHandler {
-                        acceptedButtons: effect.swapButtons
+            acceptedButtons: effect.swapButtons
+            enabled: !effect.chromeHover
             onTapped: effect.swapWindow()
         }
 
@@ -4407,7 +4435,7 @@ KWin.SceneEffect {
             // a held portal button moves the window it was pressed on rather
             // than panning under it.
             acceptedButtons: Qt.MiddleButton
-                             | ((active || view.spaceHeld || !view.overControl) ? effect.gripButtons : 0)
+                             | ((active || (!effect.chromeHover && (view.spaceHeld || !view.overControl))) ? effect.gripButtons : 0)
             cursorShape: (active || view.navHeld) ? Qt.ClosedHandCursor : (view.spaceHeld ? Qt.OpenHandCursor : Qt.ArrowCursor)
             property bool marquee: false
             property point last: Qt.point(0, 0)
@@ -4480,7 +4508,7 @@ KWin.SceneEffect {
         Timer {
                         interval: 16
             repeat: true
-            running: view.navHeld && effect.edgePan && (effect.canvasOpen || effect.grasp)
+            running: view.navHeld && effect.edgePan && (effect.canvasOpen || effect.grasp) && !effect.chromeHover
             onTriggered: effect.edgePanStep(view.sg, interval / 1000)
         }
 
@@ -5067,11 +5095,11 @@ KWin.SceneEffect {
                 }
                 TapHandler {
                     acceptedButtons: Qt.LeftButton
-                    enabled: { effect.clusterRev; effect.skinReveal; effect.grasp; return effect.grasp && effect.skinReveal > 0.02 && index < effect.clusters.length && effect.clusters[index].n > 1; }
+                    enabled: { effect.clusterRev; effect.skinReveal; effect.grasp; effect.chromeHover; return !effect.chromeHover && effect.grasp && effect.skinReveal > 0.02 && index < effect.clusters.length && effect.clusters[index].n > 1; }
                     onTapped: effect.graspClusterTo(index)
                 }
                 HoverHandler {
-                    enabled: { effect.clusterRev; effect.skinReveal; effect.grasp; return effect.grasp && effect.skinReveal > 0.02 && index < effect.clusters.length && effect.clusters[index].n > 1; }
+                    enabled: { effect.clusterRev; effect.skinReveal; effect.grasp; effect.chromeHover; return !effect.chromeHover && effect.grasp && effect.skinReveal > 0.02 && index < effect.clusters.length && effect.clusters[index].n > 1; }
                     onHoveredChanged: view.hoverCount += hovered ? 1 : -1
                 }
             }
@@ -5202,7 +5230,7 @@ KWin.SceneEffect {
                 DragHandler {
                     target: null
                     acceptedButtons: Qt.LeftButton
-                    enabled: planeMap.asMinimap
+                    enabled: planeMap.asMinimap && !effect.chromeHover
                     property point last: Qt.point(0, 0)
                     onActiveChanged: {
                         effect.sceneGestures += active ? 1 : -1;
@@ -5257,6 +5285,7 @@ KWin.SceneEffect {
                     // drag counts as a scene gesture so a release asked
                     // for mid-drag waits for the hand to come up.
                     DragHandler {
+                        enabled: !effect.chromeHover
                         property point last: Qt.point(0, 0)
                         onActiveChanged: {
                             effect.sceneGestures += active ? 1 : -1;
@@ -5276,7 +5305,7 @@ KWin.SceneEffect {
             // The minimap's own click flies the camera to the point; the
             // lens never steals the pointer from the windows beneath it.
             TapHandler {
-                enabled: planeMap.asMinimap
+                enabled: planeMap.asMinimap && !effect.chromeHover
                 onTapped: (eventPoint) => {
                     const wb = effect.worldBounds();
                     const cx = wb.x + (eventPoint.position.x - planeMap.ox) / planeMap.sc;
@@ -5537,6 +5566,7 @@ KWin.SceneEffect {
             Kirigami.Theme.colorSet: Kirigami.Theme.Window
 
             HoverHandler {
+                enabled: !effect.chromeHover
                 onHoveredChanged: view.hoverCount += hovered ? 1 : -1
                 Component.onDestruction: if (hovered) view.hoverCount -= 1
             }

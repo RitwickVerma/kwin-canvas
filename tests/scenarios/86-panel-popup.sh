@@ -2,17 +2,42 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # shellcheck source=../tests/lib.sh
 scenario_desc="a panel applet's dropdown opens and never flies the desktop"
-# The clock is the only thing in the panel: its bright digits locate it in
-# whichever strip the panel lives in. Prints "WxH+X+Y", or nothing.
+# The clock is the only thing in the panel: its bright pixels locate it in
+# whichever strip the panel lives in. Prints "top WxH+X+Y" or
+# "bottom WxH+X+Y", or nothing. An empty bounding box prints as
+# "0x0+1920+40" (the image's far corner), not "0x0+0+0", so the width and
+# the height decide emptiness, not the offsets. The bottom crop's box is
+# local to the crop, so the strip is carried as a word, not derived.
 clock_box() {
-    local top bottom
+    local top tw th bottom
     top=$(magick "$1" -crop 1920x40+0+0 +repage -colorspace gray -threshold 80% -format "%@" info: 2>/dev/null)
+    tw=$(cut -dx -f1 <<<"$top"); th=$(cut -dx -f2 <<<"$top" | cut -d+ -f1)
+    if [ -n "$tw" ] && [ "$tw" != 0 ] && [ "$th" != 0 ]; then
+        printf 'top %s\n' "$top"
+        return
+    fi
     bottom=$(magick "$1" -crop 1920x32+0+1048 +repage -colorspace gray -threshold 80% -format "%@" info: 2>/dev/null)
-    if [ -n "$top" ] && [ "$top" != "0x0+0+0" ]; then printf '%s\n' "$top"; else printf '%s\n' "$bottom"; fi
+    printf 'bottom %s\n' "$bottom"
 }
 run_scenario() {
     if ! have_input; then skip "fakeinput not built (make tools)"; return; fi
-    if ! nq org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "panels().length" >/dev/null 2>&1; then
+    # The script's print() output comes back through the nq reply; the poll
+    # reads it. If the nest has no panel yet, seed Plasma's default layout
+    # (which carries one) and keep polling.
+    local i got=0 seeded=0
+    for i in $(seq 1 40); do
+        local c
+        c=$(nq org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "print('PANELCOUNT:' + panels().length)" 2>/dev/null || true)
+        case "$c" in
+            *PANELCOUNT:[1-9]*) got=1; break ;;
+        esac
+        if [ "$seeded" = 0 ] && [ "$i" -ge 6 ]; then
+            nq org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.loadLookAndFeelDefaultLayout "org.kde.plasma.desktop" >/dev/null 2>&1
+            seeded=1
+        fi
+        sleep 0.5
+    done
+    if [ "$got" != 1 ]; then
         skip "no plasmashell panel (make test-panel)"; return
     fi
     c state
@@ -22,10 +47,10 @@ run_scenario() {
     local bx
     bx=$(clock_box "$OUT/panel.png")
     if [ -z "$bx" ] || [ "$bx" = "0x0+0+0" ]; then skip "no panel clock (make test-panel)"; return; fi
-    local cw ch cx cy px py strip
-    cw=$(cut -dx -f1 <<<"$bx"); ch=$(cut -dx -f2 <<<"$bx" | cut -d+ -f1)
-    cx=$(cut -d+ -f2 <<<"$bx"); cy=$(cut -d+ -f3 <<<"$bx")
-    if [ "$cy" -lt 44 ]; then strip=top; else strip=bottom; fi
+    local cw ch cx cy px py strip bbox
+    strip=$(cut -d' ' -f1 <<<"$bx"); bbox=$(cut -d' ' -f2- <<<"$bx")
+    cw=$(cut -dx -f1 <<<"$bbox"); ch=$(cut -dx -f2 <<<"$bbox" | cut -d+ -f1)
+    cx=$(cut -d+ -f2 <<<"$bbox"); cy=$(cut -d+ -f3 <<<"$bbox")
     px=$((cx + cw / 2))
     if [ "$strip" = top ]; then py=$((cy + ch / 2)); else py=$((1048 + cy + ch / 2)); fi
     # The panel's dropdown: a right-click opens the context menu - a plasma

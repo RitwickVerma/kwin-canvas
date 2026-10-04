@@ -115,6 +115,39 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-04 — the dock and the applets own their pixels
+
+The user clicked a dock icon and the window under it got focused and the
+canvas flew. Three steal paths, all fixed: the closed-canvas
+click-candidate (the plugin's `windowUnder` scanned past the dock),
+the open-overworld plugin path (`windowAt` found the window under the
+dock and entered it), and the scene's handlers plus the hover-tick
+under the dock. One flag now governs them: `publishChrome()` in the
+plugin runs `chromeAt()` on every pointer event - top-down over the
+stacking order, the first client at the point decides; a dock, popup,
+special or unmanaged window is the chrome, a plain client is not - and
+sets the effect's `chromeHover`, which gates the plugin's enter/grab
+paths, the scene's every pointer handler and the hover-tick's pan. The
+last bug found was the edge pan itself: with a pan button (or the hold)
+down, resting the pointer on the dock kept scrolling the canvas under
+it - the edge-pan timer now stands back over the chrome too.
+
+The panel harness that made this testable: `make test-panel` seeds the
+default Plasma layout in the nest (a bottom panel with a clock),
+scenarios 86 and 117 poll `panels().length` through `evaluateScript`
+(whose `print()` output comes back through the reply), and the shared
+`clock_box` locates the panel strip in a screenshot. Two traps worth
+keeping: in bash case patterns a QUOTED bracket segment is literal
+(`*"PANELCOUNT:[1-9]"*` never matches), and a fresh fakeinput device's
+first event lands at (0,0) - every stream must open with a `move`.
+
+The measurement that found the last bug: the grasp click moved the view
++60.9 canvas per run; instrumenting the camera's silent writers showed
+`edgePanStep -> panBy` every 16 ms at the dock (EdgePanSpeed defaults to
+900, EdgePanMargin to 24). Verified: 117-dock 15/0, 86-panel-popup
+3/0/1, 85 21/0, 87/88 2/0, 109 9/0, 110 5/0, 112 20/0, 103 24/0, 106
+8/0, lint green, unit 77/0.
+
 ### 2026-10-04 — the canvas sheds its finery as the system loads up
 
 The system feature demand: the canvas must never steal resources from

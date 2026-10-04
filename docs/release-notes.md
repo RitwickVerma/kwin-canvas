@@ -1,5 +1,13 @@
 Unreleased:
 
+- The dock, the panels and the applets' dropdowns own their pixels. A
+  click, a hover or a rest on the system's own chrome no longer focuses
+  the window drawn under it, no longer flies the canvas to it - not in
+  the closed location, not in the open overworld, not during the hold -
+  and resting the pointer on the dock during a hold no longer keeps the
+  canvas edge-panning underneath it. The chrome gets every pointer event
+  natively, exactly as it does when the canvas is closed.
+
 - The canvas sheds its finery as the system loads up. It watches the
   machine's real CPU and GPU load and steps down a ladder - reduced (the
   backdrop blur, the unlit constellation and the lens's edge blur go),

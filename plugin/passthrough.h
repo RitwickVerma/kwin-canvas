@@ -125,6 +125,15 @@ private:
     KWin::Window *windowAt(const QPointF &canvas) const;
     /** The topmost client window under a real screen point: the click candidate at 1:1. */
     KWin::Window *windowUnder(const QPointF &screen) const;
+    /**
+     * The system's own chrome - a dock, a panel, a popup, an applet's
+     * dropdown - under a real screen point, or nullptr when the point is
+     * the canvas's domain (a plain client or nothing). The chrome owns its
+     * pixels outright; the first client containing the point decides.
+     */
+    KWin::Window *chromeAt(const QPointF &screen) const;
+    /** Publish the chrome flag to the effect on every change. */
+    void publishChrome(const QPointF &screen);
     /** The seam: within the margin of the desk's outer border, where a shared mouse parks its pointer. */
     bool atSeam(const QPointF &screen) const;
     /** Enter (or stay on) the input surface of @p window under @p canvas. False if no surface takes input there. */
@@ -186,6 +195,10 @@ private:
     QPointer<KWin::Window> m_clickWindow;
     /** Where the candidate press landed: motion beyond a few pixels makes it a drag. */
     QPointF m_clickPos;
+    /** The pointer sits over the system's own chrome (a dock, a panel, a
+     * popup): published to the effect so its scene stands back and the
+     * chrome gets the click natively. */
+    bool m_chromeHover = false;
     /** The /proc/stat jiffies at the previous load() call, for the busy delta. */
     mutable qulonglong m_prevTotal = 0;
     mutable qulonglong m_prevIdle = 0;
