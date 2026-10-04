@@ -1,17 +1,18 @@
 Unreleased:
 
-- The overworld shows every desktop, not just the one you are on. Each
-  virtual desktop appears as its island on the plane: the current one
-  live, the rest as dimmed named tiles with their windows' outlines -
-  and a click on a tile switches to that desktop. The switcher's fit
-  now frames every island too, so stepping out of a three-desktop
-  session sees the whole place at once.
+- Every desktop's windows live on the one plane now. The overworld holds
+  them all - live pictures, threads, clusters, the lot - each desktop a
+  named zone on its island, and a click on any window or any zone
+  switches desktops, the camera flying to the island it chooses. The
+  plane never clusters across desktops: a window belongs to its island,
+  however close the islands sit. And the quiet seam still shows its own
+  desktop alone, so a location stays exactly what it was.
 
 - Desktops are islands on the plane. Every virtual desktop is a place: its
   windows live at the desktop's own offset, a row of islands laid out below
   one another, and switching desktops flies the camera to the new island -
-  or quietly slides there at 1:1. Pills in the overworld name each island
-  and a click on one jumps straight to it, and the 1:1 seam holds on every
+  or quietly slides there at 1:1. A named zone marks each island, and the
+  1:1 seam holds on every
   desktop, because the windows and the camera sit at the same offset. The
   Arrange menu's "Desktop from this cluster" promotes a cluster into a real
   KWin desktop: the derived grouping becomes declared workspace state,

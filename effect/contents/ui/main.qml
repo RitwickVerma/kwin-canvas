@@ -251,8 +251,6 @@ KWin.SceneEffect {
     property var desktopOffsets: ({})
     property int desktopRev: 0
     property int desktopCount: 0
-    property int islandCount: 0
-    property var islandShadows: []
     function currentDesktopNumber() {
         const d = KWin.Workspace.currentDesktop;
         return d ? d.x11DesktopNumber : 1;
@@ -294,6 +292,15 @@ KWin.SceneEffect {
         const ds = KWin.Workspace.desktops;
         const step = KWin.Workspace.virtualScreenGeometry.height + configuration.ActivityGap;
         let bottom = 0;
+        // A removed desktop leaves its island behind in the offsets; prune
+        // it so the switcher's fit and the next promote's bottom stay
+        // honest.
+        let pruned = false;
+        for (const n in desktopOffsets) {
+            let live = false;
+            for (let i = 0; i < ds.length; ++i) if (ds[i].x11DesktopNumber === Number(n)) { live = true; break; }
+            if (!live) { delete desktopOffsets[n]; pruned = true; }
+        }
         for (let i = 0; i < ds.length; ++i) {
             const o = desktopOffsets[ds[i].x11DesktopNumber];
             if (o) bottom = Math.max(bottom, o.y);
@@ -305,36 +312,16 @@ KWin.SceneEffect {
                 // below the last one, activities still spread horizontally.
                 desktopOffsets[n] = { x: 0, y: n === 1 ? 0 : bottom + step };
                 bottom = Math.max(bottom, desktopOffsets[n].y);
-                saveDesktopTargets();
+                pruned = true;
             }
         }
+        if (pruned) saveDesktopTargets();
         desktopCount = ds.length;
         desktopRev++;
     }
-    // The other desktops' windows, as dimmed named tiles at their island's
-    // offset: the overworld shows every desktop at once - the current one
-    // live, the rest as washes below - so a desktop can be seen, and
-    // switched to, without leaving the plane. Built imperatively like the
-    // chips: a binding over the Workspace lists freezes in the grasp.
-    function buildIslands() {
-        const list = [];
-        const cn = currentDesktopNumber();
-        const stack = KWin.Workspace.stackingOrder;
-        for (let i = 0; i < stack.length; ++i) {
-            const w = stack[i];
-            if (!w || w.deleted || !w.managed || w.desktopWindow || w.dock || w.popupWindow || w.specialWindow) continue;
-            if (w.minimized || w.hidden) continue;
-            const dn = desktopOf(w);
-            if (dn === cn) continue;
-            const t = targetOf(activityOf(w));
-            const o = desktopOffsetOf(dn);
-            const g = w.frameGeometry;
-            list.push({ x: g.x + t.x + o.x, y: g.y + t.y + o.y, width: g.width, height: g.height,
-                        caption: w.caption, desktop: dn });
-        }
-        islandShadows = list;
-        islandCount = list.length;
-    }
+    // Every desktop is an island on the plane, and its windows are live
+    // entries at the island's offset. Nothing extra is built - the
+    // entries themselves are the picture.
     function desktopChanged() {
         desktopRev++;
         ensureDesktopTargets();
@@ -348,7 +335,6 @@ KWin.SceneEffect {
             e.y += on.y - oo.y;
         }
         revision++;
-        buildIslands();
         if (visible) {
             resync();
             const v = viewTarget();
@@ -634,6 +620,15 @@ KWin.SceneEffect {
     }
     function graspJumpTo(i) {
         if (i < 0 || i >= entries.length) return;
+        // A window on another island: switch to its desktop first, so the
+        // release lands on the desktop the window lives on (the handler
+        // flies the camera; the entry's canvas does not move).
+        if (entries[i].desktop !== currentDesktopNumber()) {
+            const ds = KWin.Workspace.desktops;
+            for (let k = 0; k < ds.length; ++k) {
+                if (ds[k].x11DesktopNumber === entries[i].desktop) { setDesktop(k); break; }
+            }
+        }
         dbg("map", "window " + i + " (" + entries[i].window.caption + ") jumped to");
         noteGesture();
         graspJumped = true;
@@ -843,7 +838,7 @@ KWin.SceneEffect {
         const rects = [];
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
-            rects.push({ x: e.x, y: e.y, width: e.width, height: e.height, id: e.window.internalId });
+            rects.push({ x: e.x, y: e.y, width: e.width, height: e.height, id: e.window.internalId, desktop: e.desktop });
         }
         const r = Logic.recluster(rects, clusterOf, threadRank, configuration.ClusterGap);
         clusters = r.clusters;
@@ -1301,12 +1296,14 @@ KWin.SceneEffect {
     }
 
     // ---- window filter -----------------------------------------------------
-    // Windows of the current virtual desktop. anyActivity takes every
-    // activity's windows (the canvas); otherwise the current activity's (1:1).
+    // Every desktop's windows are entries: the overworld is one continuous
+    // plane across all desktops, each island holding its own windows live.
+    // anyActivity takes every activity's windows (the canvas); otherwise
+    // the current activity's (1:1).
     function isCanvasWindow(w, anyActivity) {
         if (!w || w.deleted || !w.managed) return false;
         if (w.desktopWindow || w.dock || w.popupWindow || w.specialWindow) return false;
-        if (w.minimized || w.hidden || !onDesktop(w)) return false;
+        if (w.minimized || w.hidden) return false;
         if (!anyActivity && !onActivity(w, currentActivity)) return false;
         return true;
     }
@@ -1700,7 +1697,6 @@ KWin.SceneEffect {
             revision++;
         }
         refreshAppPopups();
-        Qt.callLater(buildIslands);
     }
 
     // The app popups drawn in the overworld, bottom to top. Only while the
@@ -4262,7 +4258,6 @@ KWin.SceneEffect {
             + " gpu=" + Math.round(gpuBusy)
             + " desktops=" + KWin.Workspace.desktops.length
             + " desktop=" + currentDesktopNumber()
-            + " islands=" + islandCount
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
         const ids = activityIds, screens = KWin.Workspace.screens;
         for (let i = 0; i < screens.length; ++i) {
@@ -4313,7 +4308,6 @@ KWin.SceneEffect {
         loadBookmarks();
         loadDesktopTargets();
         ensureDesktopTargets();
-        buildIslands();
         refreshActivities();
         lastDebugSeq = configuration.DebugSeq;
         publishHold();
@@ -4942,7 +4936,7 @@ KWin.SceneEffect {
                 y: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; return (f ? f.y : base) + thumb.bob; }
                 width: { effect.revision; return effect.entries[index].width * effect.zoom; }
                 height: { effect.revision; return effect.entries[index].height * effect.zoom; }
-                visible: !effect.quiet || entry.activity === effect.currentActivity
+                visible: { effect.desktopRev; return !effect.quiet || (entry.activity === effect.currentActivity && entry.desktop === effect.currentDesktopNumber()); }
                 opacity: effect.thumbOpacity
                 // The entries are the real stacking order, so the index IS the
                 // z; the hovered window lifts above the web, and nothing else
@@ -5353,63 +5347,13 @@ KWin.SceneEffect {
             }
         }
 
-        // The islands' shadows: every other desktop's windows, drawn as
-        // dimmed named tiles at their island's offset, so the overworld
-        // shows all the desktops at once. The current desktop's windows
-        // are the live entries above; a tap on a shadow switches to that
-        // desktop. Hidden in the quiet grasp - the seam shows only its own
-        // desktop.
-        Repeater {
-            model: effect.islandCount
-            delegate: Item {
-                required property int index
-                readonly property var s: { effect.islandCount; return effect.islandShadows[index] || null; }
-                x: { effect.revision; effect.desktopRev; effect.viewX; effect.viewY; effect.zoom; return s ? -(effect.viewX * effect.zoom) - view.sg.x + s.x * effect.zoom : 0; }
-                y: { effect.revision; effect.desktopRev; effect.viewX; effect.viewY; effect.zoom; return s ? -(effect.viewY * effect.zoom) - view.sg.y + s.y * effect.zoom : 0; }
-                width: s ? s.width * effect.zoom : 0
-                height: s ? s.height * effect.zoom : 0
-                z: 500
-                visible: true
-                opacity: { effect.desktopRev; effect.skinReveal; effect.quiet; return (!effect.quiet && effect.skinReveal > 0.02) ? 0.45 : 0; }
-                Rectangle {
-                    anchors.fill: parent
-                    radius: 4 * effect.zoom
-                    color: "#1affffff"
-                    border.width: 1
-                    border.color: "#2effffff"
-                    Text {
-                        anchors.left: parent.left
-                        anchors.top: parent.top
-                        anchors.margins: 3 * effect.zoom
-                        width: parent.width - 6 * effect.zoom
-                        text: s ? s.caption : ""
-                        color: "#99ffffff"
-                        font.pixelSize: Math.max(6, 9 * effect.zoom)
-                        elide: Text.ElideRight
-                    }
-                }
-                TapHandler {
-                    acceptedButtons: Qt.LeftButton
-                    enabled: { effect.desktopRev; effect.skinReveal; effect.quiet; effect.chromeHover; return s !== null && !effect.chromeHover && !effect.quiet && effect.skinReveal > 0.02; }
-                    onTapped: {
-                        effect.dbg("island", "tap desktop=" + s.desktop);
-                        const ds = KWin.Workspace.desktops;
-                        for (let i = 0; i < ds.length; ++i) if (ds[i].x11DesktopNumber === s.desktop) { effect.setDesktop(i); break; }
-                    }
-                }
-                HoverHandler {
-                    enabled: { effect.desktopRev; effect.skinReveal; effect.quiet; effect.chromeHover; return s !== null && !effect.chromeHover && !effect.quiet && effect.skinReveal > 0.02; }
-                    onHoveredChanged: view.hoverCount += hovered ? 1 : -1
-                }
-            }
-        }
-
-        // The desktop pills, on the plane like the chips: each virtual
-        // desktop is an island, and its pill floats just above the island's
-        // top edge with the desktop's name. A tap switches desktops - the
-        // onCurrentDesktopChanged handler does the camera flight, so the
-        // switch and the fly are one act. Shown whenever the skin is out
-        // and there is more than one island to visit.
+        // The desktop zones: each virtual desktop is a named island on the
+        // plane, and its windows are the live entries that sit on it. The
+        // zone card is the island itself - a soft wash with the desktop's
+        // name in the corner. A tap on another island's card switches to
+        // that desktop (the handler flies the camera); the current island's
+        // card stays background-only so the ground keeps its own taps.
+        // Shown whenever the skin is out and there is more than one island.
         Repeater {
             model: effect.desktopCount
             delegate: Item {
@@ -5417,38 +5361,48 @@ KWin.SceneEffect {
                 readonly property var d: { effect.desktopRev; return KWin.Workspace.desktops[index] || null; }
                 readonly property var off: { effect.desktopRev; return d ? effect.desktopOffsetOf(d.x11DesktopNumber) : ({ x: 0, y: 0 }); }
                 readonly property bool cur: { effect.desktopRev; return d !== null && d === KWin.Workspace.currentDesktop; }
-                x: { effect.revision; effect.desktopRev; effect.currentActivity; effect.viewX; effect.viewY; effect.zoom; return -(effect.viewX * effect.zoom) - view.sg.x + (effect.peekTarget(effect.currentActivity).x + off.x + 16) * effect.zoom; }
-                y: { effect.revision; effect.desktopRev; effect.currentActivity; effect.viewX; effect.viewY; effect.zoom; return -(effect.viewY * effect.zoom) - view.sg.y + (effect.peekTarget(effect.currentActivity).y + off.y - 26) * effect.zoom; }
-                z: 40000
+                x: { effect.revision; effect.desktopRev; effect.currentActivity; effect.viewX; effect.viewY; effect.zoom; return -(effect.viewX * effect.zoom) - view.sg.x + (effect.peekTarget(effect.currentActivity).x + off.x) * effect.zoom; }
+                y: { effect.revision; effect.desktopRev; effect.currentActivity; effect.viewX; effect.viewY; effect.zoom; return -(effect.viewY * effect.zoom) - view.sg.y + (effect.peekTarget(effect.currentActivity).y + off.y) * effect.zoom; }
+                z: 500
                 visible: true
-                // The wrapper must carry the pill's real size: the pointer
+                // The wrapper must carry the zone's real size: the pointer
                 // handlers bound their region to the delegate's own rect,
                 // and a child Rectangle does not resize its parent.
-                width: txt.implicitWidth + 16 * effect.zoom
-                height: 22 * effect.zoom
+                width: KWin.Workspace.virtualScreenGeometry.width * effect.zoom
+                height: KWin.Workspace.virtualScreenGeometry.height * effect.zoom
                 opacity: { effect.desktopRev; effect.skinReveal; return (effect.desktopCount > 1 && effect.skinReveal > 0.02) ? effect.skinReveal : 0; }
                 Rectangle {
                     anchors.fill: parent
-                    radius: 6 * effect.zoom
-                    color: cur ? "#cc2a6ddf" : "#cc1e2126"
+                    radius: 8 * effect.zoom
+                    color: "#08ffffff"
                     border.width: 1
-                    border.color: cur ? "#66ffffff" : "#4affffff"
-                    Text {
-                        id: txt
-                        anchors.centerIn: parent
-                        text: d ? (d.name || "#" + d.x11DesktopNumber) : "#" + index
-                        color: "#ffffff"
-                        font.pixelSize: 11 * effect.zoom
+                    border.color: "#1affffff"
+                    Rectangle {
+                        x: 16 * effect.zoom
+                        y: 16 * effect.zoom
+                        radius: 6 * effect.zoom
+                        color: cur ? "#cc2a6ddf" : "#cc1e2126"
+                        border.width: 1
+                        border.color: cur ? "#66ffffff" : "#4affffff"
+                        width: txt.implicitWidth + 16 * effect.zoom
+                        height: 22 * effect.zoom
+                        Text {
+                            id: txt
+                            anchors.centerIn: parent
+                            text: d ? (d.name || "#" + d.x11DesktopNumber) : "#" + index
+                            color: "#ffffff"
+                            font.pixelSize: 11 * effect.zoom
+                        }
                     }
                 }
                 TapHandler {
                     acceptedButtons: Qt.LeftButton
-                    enabled: { effect.desktopRev; effect.skinReveal; effect.chromeHover; return !effect.chromeHover && effect.desktopCount > 1 && effect.skinReveal > 0.02; }
-                    onTapped: { effect.dbg("pill", "tap index=" + index); effect.setDesktop(index); }
+                    enabled: { effect.desktopRev; effect.skinReveal; effect.chromeHover; return !cur && !effect.chromeHover && effect.desktopCount > 1 && effect.skinReveal > 0.02; }
+                    onTapped: { effect.dbg("zone", "tap index=" + index); effect.setDesktop(index); }
                 }
                 HoverHandler {
-                    enabled: { effect.desktopRev; effect.skinReveal; effect.chromeHover; return !effect.chromeHover && effect.desktopCount > 1 && effect.skinReveal > 0.02; }
-                    onHoveredChanged: { effect.dbg("pill", "hover index=" + index + " hovered=" + hovered); view.hoverCount += hovered ? 1 : -1; }
+                    enabled: { effect.desktopRev; effect.skinReveal; effect.chromeHover; return !cur && !effect.chromeHover && effect.desktopCount > 1 && effect.skinReveal > 0.02; }
+                    onHoveredChanged: view.hoverCount += hovered ? 1 : -1
                 }
             }
         }

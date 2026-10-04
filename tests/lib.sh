@@ -69,7 +69,6 @@ sget() {
         gpu)      sed -n 's/.* gpu=\(-\?[0-9]*\).*/\1/p' <<<"$line" ;;
         desktop)  sed -n 's/.* desktop=\([0-9]*\).*/\1/p' <<<"$line" ;;
         desktops) sed -n 's/.* desktops=\([0-9]*\).*/\1/p' <<<"$line" ;;
-        islands)  sed -n 's/.* islands=\([0-9]*\).*/\1/p' <<<"$line" ;;
         active)   sed -n 's/.* active=\(.*\)$/\1/p' <<<"$line" ;;
         nactivities) grep -c '^  {' <<<"$LAST_STATE" ;;
     esac

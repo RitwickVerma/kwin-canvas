@@ -115,6 +115,32 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-05 — every desktop's windows live on the plane
+
+The shadow tiles shipped first and the user rejected them: "islands is
+not integrated at all and feel unnatural to use". The rework: the other
+desktops' windows are now FIRST-CLASS live entries. `isCanvasWindow`
+dropped its `onDesktop` requirement (all desktops' windows are entries,
+with their desktop offset in the canvas position), the recluster pair
+loop refuses to join a pair whose desktops differ (islands never
+cluster across desktops — logic.js + unit tests), the quiet seam's
+visibility gate adds `entry.desktop === currentDesktopNumber()` (a
+location still shows its own desktop alone), and a grasp tap on an
+off-desktop window switches desktops first, so the release lands where
+the eye pointed. The tiles and the pills are gone; each island is a
+soft named zone card (z 500, under the windows), and a tap on a zone -
+or any window - switches desktops. The plugin needed nothing: drawn(),
+windowUnder() and chromeAt() already skip off-desktop windows.
+
+Verified: 118-desktops 22/0 (the zone tap flies, every window stays an
+entry with its desktop named, the promote keeps its pair, the switcher
+fits the islands, the cleanup restores), the touch batch green (10-open
+11/0, 30 14/0, 70/71/107 18/0, 85/87/88 25/0, 103 24/0, 110-114 45/0,
+106 8/0, 109 9/0, 116 12/0), no golden churn, make lint green, make
+unit 80/0. The scenario-count trap banked: the state's head line
+carries ` desktop=N` too, so a grep for the per-entry desktop must
+anchor on the entry-line prefix (`^  \[[0-9]*\]`).
+
 ### 2026-10-05 — the overworld shows every desktop
 
 The user could not see their virtual desktops in the overworld, and the

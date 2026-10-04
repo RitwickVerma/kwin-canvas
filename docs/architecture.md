@@ -690,10 +690,15 @@ the same offset, and canvas minus view is always the frame position.
 Switching desktops (`desktopChanged()`, hooked on
 `currentDesktopChanged` and on `desktopsChanged` for creates and
 removals) shifts the surviving entries by the offset delta, resyncs the
-plane, and flies the camera to the new island. Pills - the desktop
-names, drawn at each island's top edge - make the islands legible and
-clickable; the switcher and the edges land on the current desktop's
-place through the same `viewTarget()`. The offsets persist in the hidden
+plane, and flies the camera to the new island. Every desktop's windows
+are live entries on the one plane - the overworld holds them all - and a
+soft named zone card marks each island; a click on any window or any
+zone switches desktops. Clusters never cross desktops (the recluster
+pair loop skips a pair whose desktops differ), and the quiet seam's
+visibility gate shows only the current desktop's windows, so a location
+stays exactly what it was. The switcher and the edges land on the
+current desktop's place through the same `viewTarget()`. The offsets
+persist in the hidden
 `DesktopTargets` knob (JSON, like the bookmarks), so a promoted desktop
 keeps its island across sessions.
 
