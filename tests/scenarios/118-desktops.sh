@@ -74,7 +74,14 @@ run_scenario() {
     assert_true "the near pair forms its own cluster" -n "$ci"
 
     c "desktopof $ci"
-    sleep 0.5
+    # The promote now slides the camera (DesktopSlide is on by default):
+    # poll for the landing instead of racing the glide.
+    for i in $(seq 1 30); do
+        c state
+        [ "$(sget desktop)" = 3 ] && [ "$(sget visible)" = false ] && break
+        sleep 0.3
+    done
+    sleep 0.3
     c state
     assert_eq "the cluster made a desktop" "$(sget desktops)" 3
     assert_eq "and stepped onto it" "$(sget desktop)" 3

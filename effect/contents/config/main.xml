@@ -369,6 +369,10 @@
             <label>Show the canvas's own on-screen display when the desktop switches: a glass card naming the desktop, its islands paged as chips, and a live miniature of the island you landed on. Turn off KDE's own display in System Settings - Virtual Desktops, "Show on-screen display when switching", so the two never double up.</label>
             <default>true</default>
         </entry>
+        <entry name="DesktopSlide" type="Bool">
+            <label>When the canvas is closed, switching desktops glides the camera across the plane from the old island to the new one instead of jumping - one continuous plane, the old desktop scrolling away as the new one slides in. Turn off KWin's own slide in System Settings - Desktop Effects so the two never double up. Off, the switch is instant.</label>
+            <default>true</default>
+        </entry>
         <entry name="DesktopOsdMs" type="Int">
             <label>How long the desktop's on-screen display stays, in milliseconds.</label>
             <default>1200</default>

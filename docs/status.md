@@ -115,6 +115,37 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-07 — the desktop switch glides, and every desktop keeps its place
+
+"The slide animation to switch virtual desktops should be customized" -
+the user wanted the canvas to own the desktop-switch transition. Built:
+a desktop switch with the canvas closed now opens the canvas quietly at
+the OLD island (pixel-identical to the desktop the eye just left) and
+glides the camera down the plane to the new island (a QML animation on
+the view, not a camGo spring, so it runs even with SmoothZoom off),
+landing into the OSD card or a quiet close. The DesktopSlide knob turns
+the glide off.
+
+Two real bugs were found and fixed on the way. The camera drift (the
+user's "we end up at a different position on the same virtual desktop"):
+the slide branch restored the activity target with `t += new − prev`
+offsets, but `open()` early-returns when already visible, so a rapid
+second switch (or the promote's double desktopChanged) corrupted the
+target by the island delta - the fix restores by assignment and creates
+missing targets offset-free in `viewTarget()` itself. The mid-slide
+stomp: a switch that landed mid-glide took the visible branch but never
+stopped the running slide animation, whose finish then stomped the
+camera back to the first slide's destination - the branches now stop
+the animation. `desktopChanged(prevNum)` receives the previous desktop
+through KWin's signal (`currentDesktop` has already flipped when the
+handler runs).
+
+Verified: 122-desktop-slide 15/0 (the glide, the card, and the
+rapid-round-trip drift proof), 118 22/0, 121 11/0, 116 13/0 (on an idle
+GPU - the earlier all-black shots were the documented GPU-pressure
+flake), the touch batch green (113 + 119 flaked in the sequential
+sweep, 4/0 and 8/0 alone), lint green, unit 85/0.
+
 ### 2026-10-07 — the desktop switch gets the canvas's own OSD
 
 "need to come up with amazing legendary desktop switching OSD

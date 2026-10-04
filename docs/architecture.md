@@ -711,6 +711,18 @@ the fresh island. The real KWin desktop is then ordinary workspace state
 - the pager shows it, the taskbar shows it, and it survives restarts -
 while the plane keeps its place on it.
 
+The switch is a glide. With the canvas closed, `desktopChanged()` opens
+it quietly at the OLD view - pixel-identical to the desktop the eye just
+left - and a QML animation (not a camGo spring, so it runs whatever the
+motion knobs say) pans the camera down the plane to the new island over
+`PanDuration`, landing into the OSD card or a quiet close. Two
+invariants keep the place sacred: the activity target is created
+offset-free and restored by assignment (never by offset arithmetic -
+`open()` early-returns when already visible, and the arithmetic
+corrupted the target on rapid switches), and every switch stops a
+running glide first, so a slide's finish can never stomp the camera
+back to a stale destination.
+
 A drop can too: `endDrag()` checks each dragged window's landing point
 against the laid island rects (`islandAt()`), and a window dropped on
 another desktop's island has its real `desktops` moved there - no

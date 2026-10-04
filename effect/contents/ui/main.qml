@@ -292,8 +292,11 @@ KWin.SceneEffect {
         return currentDesktopNumber();
     }
     function viewTarget() {
-        const t = targetOf(currentActivity);
         const o = desktopOffsetOf(currentDesktopNumber());
+        // A missing target must be created offset-free: the view holds
+        // the offset, the target never does.
+        if (!(currentActivity in targets)) targets[currentActivity] = { x: viewX - o.x, y: viewY - o.y };
+        const t = targets[currentActivity];
         return { x: t.x + o.x, y: t.y + o.y };
     }
     function loadDesktopTargets() {
@@ -351,7 +354,10 @@ KWin.SceneEffect {
     // Every desktop is an island on the plane, and its windows are live
     // entries at the island's offset. Nothing extra is built - the
     // entries themselves are the picture.
-    function desktopChanged() {
+    function desktopChanged(prevNum) {
+        const prev = { x: viewX, y: viewY };
+        if (prevNum === undefined) prevNum = currentDesktopNumber();
+        const prevOff = desktopOffsetOf(prevNum);
         desktopRev++;
         ensureDesktopTargets();
         for (let i = 0; i < entries.length; ++i) {
@@ -366,15 +372,97 @@ KWin.SceneEffect {
         revision++;
         if (visible) {
             resync();
+            // A switch that lands mid-slide must cancel the glide: its
+            // animation still owns the camera, and its finish would stomp
+            // the view back to the first slide's destination.
+            desktopSliding = false;
+            desktopSlideAnim.stop();
             const v = viewTarget();
             camGo(zoom, v.x, v.y);
+            if (configuration.DesktopOsd) osdShow();
+            return;
+        }
+        // Closed: the real desktop has already flipped to the new
+        // desktop's windows. The old island is pixel-identical to what
+        // the eye saw before the switch, so the slide rides a quiet open
+        // at the OLD view and glides the camera across the plane to the
+        // new island - one continuous plane instead of a jump. While the
+        // glide runs, the view shows every desktop's windows (the whole
+        // plane), so the old island is exactly what the eye just saw.
+        const v = viewTarget();
+        dbg("slide", "DesktopSlide=" + configuration.DesktopSlide + " hold=" + canvasHold + " prev=(" + Math.round(prev.x) + "," + Math.round(prev.y) + ") v=(" + Math.round(v.x) + "," + Math.round(v.y) + ")");
+        if (configuration.DesktopSlide && !canvasHold) {
+            // The activity target is sacred: guarantee it exists
+            // offset-free BEFORE the quiet open, because open() stores
+            // targets[currentActivity] = view - the NEW offset, and only
+            // when it actually runs (a mid-slide second switch finds the
+            // canvas already open and stores nothing). Restoring by
+            // assignment is immune to both.
+            if (!(currentActivity in targets)) targets[currentActivity] = { x: prev.x - prevOff.x, y: prev.y - prevOff.y };
+            const t = targets[currentActivity];
+            desktopSliding = true;
+            viewX = prev.x;
+            viewY = prev.y;
+            if (!visible) {
+                quietOsd = true;
+                open(true);
+            }
+            targets[currentActivity] = t;
+            osdRev++;
+            desktopSlideAnim.stop();
+            desktopSlideFromX = prev.x;
+            desktopSlideFromY = prev.y;
+            desktopSlideToX = v.x;
+            desktopSlideToY = v.y;
+            desktopSlideAnim.restart();
         } else {
-            const v = viewTarget();
+            desktopSliding = false;
+            desktopSlideAnim.stop();
             viewX = v.x;
             viewY = v.y;
             publishGround();
+            if (configuration.DesktopOsd) osdShow();
         }
-        if (configuration.DesktopOsd) osdShow();
+    }
+    // The desktop slide: a pan-only glide at the seam from the old
+    // island's view to the new one's. A QML animation, not camGo, so it
+    // runs even where SmoothZoom is off.
+    property bool desktopSliding: false
+    property real desktopSlideFromX: 0
+    property real desktopSlideFromY: 0
+    property real desktopSlideToX: 0
+    property real desktopSlideToY: 0
+    ParallelAnimation {
+        id: desktopSlideAnim
+        NumberAnimation {
+            target: effect
+            property: "viewX"
+            from: effect.desktopSlideFromX
+            to: effect.desktopSlideToX
+            duration: effect.panDuration
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: effect
+            property: "viewY"
+            from: effect.desktopSlideFromY
+            to: effect.desktopSlideToY
+            duration: effect.panDuration
+            easing.type: Easing.OutCubic
+        }
+        onFinished: {
+            effect.desktopSliding = false;
+            effect.viewX = effect.desktopSlideToX;
+            effect.viewY = effect.desktopSlideToY;
+            effect.publishGround();
+            if (effect.configuration.DesktopOsd) {
+                effect.osdShow();
+            } else {
+                effect.quietOsd = false;
+                effect.visible = false;
+                effect.quiet = false;
+            }
+        }
     }
     function setDesktop(i) {
         const ds = KWin.Workspace.desktops;
@@ -4055,8 +4143,10 @@ KWin.SceneEffect {
         }
         // Another desktop's windows are a different set on the same plane,
         // on their own island: the camera flies to the new desktop's place.
-        function onCurrentDesktopChanged() { effect.desktopChanged(); }
-        function onDesktopsChanged() { Qt.callLater(effect.desktopChanged); }
+        function onCurrentDesktopChanged(previous, current, output) {
+            effect.desktopChanged(previous ? previous.x11DesktopNumber : effect.currentDesktopNumber());
+        }
+        function onDesktopsChanged() { Qt.callLater(function () { effect.desktopChanged(effect.currentDesktopNumber()); }); }
         // A hotplug, a resolution change, a rearrange or a virtual output
         // coming or going: the layout the frames and the backdrop tiles are
         // read from has changed.
@@ -5065,7 +5155,7 @@ KWin.SceneEffect {
                 y: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; return (f ? f.y : base) + thumb.bob; }
                 width: { effect.revision; return effect.entries[index].width * effect.zoom; }
                 height: { effect.revision; return effect.entries[index].height * effect.zoom; }
-                visible: { effect.desktopRev; return !effect.quiet || (entry.activity === effect.currentActivity && entry.desktop === effect.currentDesktopNumber()); }
+                visible: { effect.desktopRev; effect.desktopSliding; return !effect.quiet || effect.desktopSliding || (entry.activity === effect.currentActivity && entry.desktop === effect.currentDesktopNumber()); }
                 opacity: effect.thumbOpacity
                 // The entries are the real stacking order, so the index IS the
                 // z; the hovered window lifts above the web, and nothing else

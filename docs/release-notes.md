@@ -1,5 +1,12 @@
 Unreleased:
 
+- Switching desktops with the canvas closed now glides the camera across
+  the plane. The old island scrolls away as the new one slides in below
+  it - the switch reads as one continuous plane, not a cut - and every
+  desktop keeps its place, however quickly you switch back and forth.
+  The DesktopSlide knob turns the glide off (an instant switch then; turn
+  KWin's own slide off in System Settings -> Desktop Effects either way).
+
 - The canvas has its own desktop OSD. Switching desktops brings up a glass
   card in the canvas's own look - the desktop's name in large type, a
   vertical rail of the islands with the current one lit, and a live
