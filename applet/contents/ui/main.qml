@@ -24,22 +24,8 @@ PlasmoidItem {
         id: executable
         engine: "executable"
         connectedSources: []
-        property string effectState: ""
-        onNewData: (sourceName, data) => {
-            disconnectSource(sourceName);
-            const out = String(data.stdout || "");
-            const i = out.indexOf(" effect=");
-            if (i >= 0) effectState = out.slice(i + 8).trim();
-        }
+        onNewData: (sourceName, data) => disconnectSource(sourceName)
         function run(cmd) { connectSource(cmd) }
-    }
-
-    Timer {
-        id: statePulse
-        interval: 5000
-        repeat: true
-        running: true
-        onTriggered: executable.run("qdbus6 org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.state")
     }
 
     function toggle() {
@@ -50,9 +36,7 @@ PlasmoidItem {
         icon.name: "view-grid"
         display: PlasmaComponents3.AbstractButton.IconOnly
         text: i18n("Canvas")
-        PlasmaComponents3.ToolTip.text: executable.effectState !== ""
-            ? i18n("Canvas: step out or back in") + "\n" + executable.effectState
-            : i18n("Canvas: step out or back in")
+        PlasmaComponents3.ToolTip.text: i18n("Canvas: step out or back in")
         PlasmaComponents3.ToolTip.visible: hovered
         PlasmaComponents3.ToolTip.delay: Qt.styleHints.mousePressAndHoldInterval
         onClicked: root.toggle()

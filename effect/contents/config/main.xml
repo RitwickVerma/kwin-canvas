@@ -228,10 +228,6 @@
             <label>Gap in canvas pixels between arranged windows.</label>
             <default>16</default>
         </entry>
-        <entry name="TidyGap" type="Int">
-            <label>Gap in canvas pixels the tidy action leaves between the rows it packs.</label>
-            <default>32</default>
-        </entry>
         <entry name="MouseNewActivityAt" type="String">
             <label>Gesture on a window outside every frame that creates an activity centred on it.</label>
             <default>Shift+DoubleClick</default>
@@ -309,18 +305,6 @@
             <label>The GPU's busy percentage at which Auto steps down to the bare minimum. A hidden knob.</label>
             <default>95</default>
         </entry>
-        <entry name="MemReduced" type="Int">
-            <label>The memory's used percentage at which Auto steps down to reduced fidelity. A hidden knob, alongside its CPU and GPU twins: whichever channel sees the worse pressure sets the step.</label>
-            <default>80</default>
-        </entry>
-        <entry name="MemMinimal" type="Int">
-            <label>The memory's used percentage at which Auto steps down to minimal fidelity. A hidden knob.</label>
-            <default>90</default>
-        </entry>
-        <entry name="MemBare" type="Int">
-            <label>The memory's used percentage at which Auto steps down to the bare minimum. A hidden knob.</label>
-            <default>97</default>
-        </entry>
         <entry name="PanInertia" type="Bool">
             <label>A pan the hand lets go of keeps the plane moving, slowing by PanFriction, so a flick carries. A drag that pauses before the release, or a slow one, stops where it is put.</label>
             <default>true</default>
@@ -360,22 +344,6 @@
         <entry name="Bookmarks" type="String">
             <label>Saved views on the plane, as JSON: each a name, a camera position and a zoom. The digit keys jump to them and Ctrl+digit saves the current view as one - the plane's desks, the feature virtual desktops had that the plane needs.</label>
             <default></default>
-        </entry>
-        <entry name="DesktopTargets" type="String">
-            <label>The island offsets of the virtual desktops on the plane, as JSON. Laid-out islands survive the session, so a desktop made from a cluster keeps its place.</label>
-            <default></default>
-        </entry>
-        <entry name="DesktopOsd" type="Bool">
-            <label>Show the canvas's own on-screen display when the desktop switches: a glass card naming the desktop, its islands paged as chips, and a live miniature of the island you landed on. Turn off KDE's own display in System Settings - Virtual Desktops, "Show on-screen display when switching", so the two never double up.</label>
-            <default>true</default>
-        </entry>
-        <entry name="DesktopSlide" type="Bool">
-            <label>When the canvas is closed, switching desktops glides the camera across the plane from the old island to the new one instead of jumping - one continuous plane, the old desktop scrolling away as the new one slides in. Turn off KWin's own slide in System Settings - Desktop Effects so the two never double up. Off, the switch is instant.</label>
-            <default>true</default>
-        </entry>
-        <entry name="DesktopOsdMs" type="Int">
-            <label>How long the desktop's on-screen display stays, in milliseconds.</label>
-            <default>1200</default>
         </entry>
         <entry name="FollowActivation" type="Bool">
             <label>Pan the canvas so an activated off-screen window comes on screen.</label>

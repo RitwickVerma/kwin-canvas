@@ -135,9 +135,6 @@ CpuBare=100
 GpuReduced=100
 GpuMinimal=100
 GpuBare=100
-MemReduced=100
-MemMinimal=100
-MemBare=100
 DebugSeq=0
 ToggleShortcut=Ctrl+Alt+Space
 HomeShortcut=Ctrl+Alt+Home
@@ -155,7 +152,7 @@ library=org.kde.breeze
 theme=Breeze
 
 [Desktops]
-Number=1
+Number=2
 Rows=1
 CFG
     # kded's GTK module writes $HOME/.gtkrc-2.0 whatever XDG_CONFIG_HOME

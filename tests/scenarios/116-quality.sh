@@ -46,7 +46,6 @@ run_scenario() {
     c state
     assert_eq "an idle machine wears everything" "$(sget ql)" 0
     assert_true "the gpu channel reports" -n "$(sget gpu)"
-    assert_true "the mem channel reports" -n "$(sget mem)"
     c "zoom 0.5 960 540"
     sleep 0.2
     c state
@@ -125,12 +124,6 @@ run_scenario() {
     kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key CpuBare --delete >/dev/null
     kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key CpuMinimal --delete >/dev/null
     kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key CpuReduced --delete >/dev/null
-    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key GpuBare --delete >/dev/null
-    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key GpuMinimal --delete >/dev/null
-    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key GpuReduced --delete >/dev/null
-    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key MemBare --delete >/dev/null
-    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key MemMinimal --delete >/dev/null
-    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key MemReduced --delete >/dev/null
     c cancel
     arrange >/dev/null
 }

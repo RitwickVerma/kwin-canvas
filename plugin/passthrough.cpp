@@ -210,11 +210,6 @@ void CanvasPassthrough::setVerbose(bool verbose)
     qCDebug(KWIN_CANVAS) << "canvas-passthrough: verbose" << (verbose ? "on" : "off");
 }
 
-void CanvasPassthrough::setEffectState(const QString &state)
-{
-    m_effectState = state;
-}
-
 // The press of a hold button that turned out to be a click, not a hold:
 // deliver it to the window under the pointer, press and release, at the
 // pointer's own place. The seat's pointer state is whatever the normal
@@ -232,7 +227,7 @@ void CanvasPassthrough::replayClick()
 
 QString CanvasPassthrough::state() const
 {
-    return QStringLiteral("active=%1 view=(%2,%3) zoom=%4 grab=%5 ground=%6 hover=%7 nav=%8 hold=%9 seam=%10 effect=%11")
+    return QStringLiteral("active=%1 view=(%2,%3) zoom=%4 grab=%5 ground=%6 hover=%7 nav=%8 hold=%9 seam=%10")
         .arg(m_active ? QStringLiteral("true") : QStringLiteral("false"))
         .arg(m_viewX)
         .arg(m_viewY)
@@ -242,8 +237,7 @@ QString CanvasPassthrough::state() const
         .arg(m_hover ? m_hover->caption() : QStringLiteral("-"))
         .arg(m_nav)
         .arg(m_hold)
-        .arg(atSeam(waylandServer()->seat()->pointerPos()) ? QStringLiteral("1") : QStringLiteral("0"))
-        .arg(m_effectState.isEmpty() ? QStringLiteral("-") : m_effectState);
+        .arg(atSeam(waylandServer()->seat()->pointerPos()) ? QStringLiteral("1") : QStringLiteral("0"));
 }
 
 // The GPU's busy share via NVML, loaded on demand with QLibrary so the
@@ -288,11 +282,11 @@ QString CanvasPassthrough::load() const
     // The machine's load for the fidelity ladder. cpu is the busy share
     // between this call and the previous one, from the first /proc/stat
     // line (all cores together, so a four-core game pegs it at ~100 the
-    // same as an eight-core one). load is the one-minute average for the
-    // trace, and mem is the memory's USED share (a percentage), the third
-    // ladder channel. gpu is the GPU's busy share via NVML, or -1 where
-    // the driver is absent. A few small reads, a few microseconds; the
-    // effect polls it every couple of seconds only.
+    // same as an eight-core one). load is the one-minute average and mem
+    // the available memory, both for the trace. gpu is the GPU's busy
+    // share via NVML, or -1 where the driver is absent. A few small
+    // reads, a few microseconds; the effect polls it every couple of
+    // seconds only.
     qulonglong total = 0;
     qulonglong idle = 0;
     QFile stat(QStringLiteral("/proc/stat"));
@@ -321,23 +315,17 @@ QString CanvasPassthrough::load() const
     if (loadavg.open(QIODevice::ReadOnly)) {
         load1 = QString::fromLatin1(loadavg.readLine()).section(QLatin1Char(' '), 0, 0).toDouble();
     }
-    qulonglong memAvail = 0;
-    qulonglong memTotal = 0;
+    qulonglong mem = 0;
     QFile meminfo(QStringLiteral("/proc/meminfo"));
     if (meminfo.open(QIODevice::ReadOnly)) {
         while (!meminfo.atEnd()) {
             const QByteArray line = meminfo.readLine();
-            if (line.startsWith("MemTotal:")) {
-                memTotal = line.mid(9).simplified().split(' ')[0].toULongLong();
-            } else if (line.startsWith("MemAvailable:")) {
-                memAvail = line.mid(13).simplified().split(' ')[0].toULongLong();
+            if (line.startsWith("MemAvailable:")) {
+                mem = line.mid(13).simplified().split(' ')[0].toULongLong();
                 break;
             }
         }
     }
-    // The used share, not the available kB: the ladder compares channels
-    // on one scale, and a percentage is that scale.
-    const int mem = memTotal ? int(100 - 100.0 * double(memAvail) / double(memTotal)) : 0;
     const int gpu = nvmlBusy();
     return QStringLiteral("cpu=%1 load=%2 mem=%3 gpu=%4").arg(cpu).arg(load1, 0, 'f', 2).arg(mem).arg(gpu);
 }

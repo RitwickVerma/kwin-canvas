@@ -298,15 +298,6 @@ recording, point OBS at the nest window while `DEMO_FRAMES=0 make demo` runs.
 
 ## Things that cost time
 
-- **The switcher's release-enter cannot be proven in the nest.** Plain keys
-  route to the focused fixture window, so the scene's Keys handlers never
-  receive a keyup of a globally-consumed chord: the release-enter block in
-  `Keys.onReleased` (the chord's tail key lands the selection) is best-effort
-  on the live session, and the nest only proves the designed paths - the
-  chord's repeat cycles the selection, Enter enters, Esc cancels (scenario
-  107 part 3 drives them through the debug verbs). The play nest also opens
-  the canvas switcher on Meta+Tab (the trace shows it) while KWin's own
-  TabBox may grab the same chord there.
 - **The full suite flakes under GPU pressure, and the failing set differs
   per run.** A scenario that passes alone, in its batch and in a clean full
   run can fail when the machine's VRAM is exhausted by leftover nests (a

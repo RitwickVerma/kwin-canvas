@@ -101,7 +101,6 @@ KWin.SceneEffect {
     property int ql: 0
     property real cpuBusy: 0
     property real gpuBusy: 0
-    property real memBusy: 0
     property int quietSamples: 0
     function qualityCap() {
         switch (String(configuration.QualityMode)) {
@@ -112,10 +111,9 @@ KWin.SceneEffect {
             default: return 3; // Auto
         }
     }
-    function qualityApply(cpu, gpu, mem) {
+    function qualityApply(cpu, gpu) {
         cpuBusy = cpu;
         gpuBusy = gpu === undefined ? 0 : gpu;
-        memBusy = mem === undefined ? 0 : mem;
         if (String(configuration.QualityMode) !== "Auto") {
             ql = qualityCap();
             quietSamples = 0;
@@ -129,14 +127,10 @@ KWin.SceneEffect {
         const gpuMinimal = Number(configuration.GpuMinimal);
         const gpuBare = Number(configuration.GpuBare);
         const gpuQl = Logic.qualityFor(gpu, Number.isFinite(gpuReduced) ? gpuReduced : 60, Number.isFinite(gpuMinimal) ? gpuMinimal : 80, Number.isFinite(gpuBare) ? gpuBare : 95);
-        const memReduced = Number(configuration.MemReduced);
-        const memMinimal = Number(configuration.MemMinimal);
-        const memBare = Number(configuration.MemBare);
-        const memQl = Logic.qualityFor(mem, Number.isFinite(memReduced) ? memReduced : 80, Number.isFinite(memMinimal) ? memMinimal : 90, Number.isFinite(memBare) ? memBare : 97);
-        // The three channels race each other: whichever sees the worse
-        // pressure sets the step, and a calm machine must clear ALL of
-        // them before the ladder climbs back up.
-        const target = Math.max(cpuQl, gpuQl, memQl);
+        // The two channels race each other: whichever sees the worse pressure
+        // sets the step, and a calm machine must clear BOTH before the ladder
+        // climbs back up.
+        const target = Math.max(cpuQl, gpuQl);
         if (target > ql) {
             ql = target;
             quietSamples = 0;
@@ -250,341 +244,6 @@ KWin.SceneEffect {
     // a binding on the scene tree: during the quiet grasp the Repeater's
     // bindings freeze, so the grasp sets this and the model reads it.
     property int chipCount: 0
-    // Virtual desktops are islands on the plane: each desktop's windows live
-    // at their activity's target plus the desktop's own offset, stacked
-    // vertically below the current one. The closed camera always sits at the
-    // current island's view, so the 1:1 seam holds for every desktop.
-    property var desktopOffsets: ({})
-    property int desktopRev: 0
-    property int desktopCount: 0
-    function currentDesktopNumber() {
-        const d = KWin.Workspace.currentDesktop;
-        return d ? d.x11DesktopNumber : 1;
-    }
-    function desktopOf(w) {
-        if (!w || w.onAllDesktops || !w.desktops || w.desktops.length === 0) return currentDesktopNumber();
-        return w.desktops[0].x11DesktopNumber;
-    }
-    function desktopOffsetOf(n) {
-        return desktopOffsets[n] || { x: 0, y: 0 };
-    }
-    function desktopByNumber(n) {
-        for (let i = 0; i < KWin.Workspace.desktops.length; ++i) {
-            const d = KWin.Workspace.desktops[i];
-            if (d && d.x11DesktopNumber === n) return d;
-        }
-        return null;
-    }
-    function desktopNameOf(n) {
-        const d = desktopByNumber(n);
-        return d ? (d.name || ("#" + n)) : ("#" + n);
-    }
-    // The desktop whose island contains a canvas point, or 0 (the seam
-    // island's number) when the point lies outside every laid island.
-    function islandAt(cx, cy) {
-        const vs = KWin.Workspace.virtualScreenGeometry;
-        const aT = targetOf(currentActivity);
-        for (const n in desktopOffsets) {
-            const o = desktopOffsets[n];
-            const x0 = aT.x + o.x, y0 = aT.y + o.y;
-            if (cx >= x0 && cx < x0 + vs.width && cy >= y0 && cy < y0 + vs.height) return Number(n);
-        }
-        return currentDesktopNumber();
-    }
-    function viewTarget() {
-        const o = desktopOffsetOf(currentDesktopNumber());
-        // A missing target must be created offset-free: the view holds
-        // the offset, the target never does.
-        if (!(currentActivity in targets)) targets[currentActivity] = { x: viewX - o.x, y: viewY - o.y };
-        const t = targets[currentActivity];
-        return { x: t.x + o.x, y: t.y + o.y };
-    }
-    function loadDesktopTargets() {
-        try {
-            const list = JSON.parse(configuration.DesktopTargets || "[]");
-            desktopOffsets = {};
-            for (let i = 0; i < list.length; ++i) {
-                const n = Number(list[i].n);
-                if (!Number.isFinite(n)) continue;
-                desktopOffsets[n] = { x: Number(list[i].x) || 0, y: Number(list[i].y) || 0 };
-            }
-        } catch (err) {
-            desktopOffsets = {};
-        }
-    }
-    function saveDesktopTargets() {
-        const list = [];
-        for (const n in desktopOffsets) {
-            if (!Object.prototype.hasOwnProperty.call(desktopOffsets, n)) continue;
-            list.push({ n: Number(n), x: desktopOffsets[n].x, y: desktopOffsets[n].y });
-        }
-        configuration.DesktopTargets = JSON.stringify(list);
-    }
-    function ensureDesktopTargets() {
-        const ds = KWin.Workspace.desktops;
-        const step = KWin.Workspace.virtualScreenGeometry.height + configuration.ActivityGap;
-        let bottom = 0;
-        // A removed desktop leaves its island behind in the offsets; prune
-        // it so the switcher's fit and the next promote's bottom stay
-        // honest.
-        let pruned = false;
-        for (const n in desktopOffsets) {
-            let live = false;
-            for (let i = 0; i < ds.length; ++i) if (ds[i].x11DesktopNumber === Number(n)) { live = true; break; }
-            if (!live) { delete desktopOffsets[n]; pruned = true; }
-        }
-        for (let i = 0; i < ds.length; ++i) {
-            const o = desktopOffsets[ds[i].x11DesktopNumber];
-            if (o) bottom = Math.max(bottom, o.y);
-        }
-        for (let i = 0; i < ds.length; ++i) {
-            const n = ds[i].x11DesktopNumber;
-            if (!desktopOffsets[n]) {
-                // Desktop 1 owns the sacred seam row; every later island lays
-                // below the last one, activities still spread horizontally.
-                desktopOffsets[n] = { x: 0, y: n === 1 ? 0 : bottom + step };
-                bottom = Math.max(bottom, desktopOffsets[n].y);
-                pruned = true;
-            }
-        }
-        if (pruned) saveDesktopTargets();
-        desktopCount = ds.length;
-        desktopRev++;
-    }
-    // Every desktop is an island on the plane, and its windows are live
-    // entries at the island's offset. Nothing extra is built - the
-    // entries themselves are the picture.
-    function desktopChanged(prevNum) {
-        const prev = { x: viewX, y: viewY };
-        if (prevNum === undefined) prevNum = currentDesktopNumber();
-        const prevOff = desktopOffsetOf(prevNum);
-        desktopRev++;
-        ensureDesktopTargets();
-        for (let i = 0; i < entries.length; ++i) {
-            const e = entries[i];
-            const nd = desktopOf(e.window);
-            const oo = desktopOffsetOf(e.desktop);
-            const on = desktopOffsetOf(nd);
-            e.desktop = nd;
-            e.x += on.x - oo.x;
-            e.y += on.y - oo.y;
-        }
-        revision++;
-        if (visible) {
-            resync();
-            // A switch that lands mid-slide must cancel the glide: its
-            // animation still owns the camera, and its finish would stomp
-            // the view back to the first slide's destination.
-            desktopSliding = false;
-            desktopSlideAnim.stop();
-            const v = viewTarget();
-            camGo(zoom, v.x, v.y);
-            if (configuration.DesktopOsd) osdShow();
-            return;
-        }
-        // Closed: the real desktop has already flipped to the new
-        // desktop's windows. The old island is pixel-identical to what
-        // the eye saw before the switch, so the slide rides a quiet open
-        // at the OLD view and glides the camera across the plane to the
-        // new island - one continuous plane instead of a jump. While the
-        // glide runs, the view shows every desktop's windows (the whole
-        // plane), so the old island is exactly what the eye just saw.
-        const v = viewTarget();
-        dbg("slide", "DesktopSlide=" + configuration.DesktopSlide + " hold=" + canvasHold + " prev=(" + Math.round(prev.x) + "," + Math.round(prev.y) + ") v=(" + Math.round(v.x) + "," + Math.round(v.y) + ")");
-        if (configuration.DesktopSlide && !canvasHold) {
-            // The activity target is sacred: guarantee it exists
-            // offset-free BEFORE the quiet open, because open() stores
-            // targets[currentActivity] = view - the NEW offset, and only
-            // when it actually runs (a mid-slide second switch finds the
-            // canvas already open and stores nothing). Restoring by
-            // assignment is immune to both.
-            if (!(currentActivity in targets)) targets[currentActivity] = { x: prev.x - prevOff.x, y: prev.y - prevOff.y };
-            const t = targets[currentActivity];
-            desktopSliding = true;
-            viewX = prev.x;
-            viewY = prev.y;
-            if (!visible) {
-                quietOsd = true;
-                open(true);
-            }
-            targets[currentActivity] = t;
-            osdRev++;
-            desktopSlideAnim.stop();
-            desktopSlideFromX = prev.x;
-            desktopSlideFromY = prev.y;
-            desktopSlideToX = v.x;
-            desktopSlideToY = v.y;
-            desktopSlideAnim.restart();
-        } else {
-            desktopSliding = false;
-            desktopSlideAnim.stop();
-            viewX = v.x;
-            viewY = v.y;
-            publishGround();
-            if (configuration.DesktopOsd) osdShow();
-        }
-    }
-    // The desktop slide: a pan-only glide at the seam from the old
-    // island's view to the new one's. A QML animation, not camGo, so it
-    // runs even where SmoothZoom is off.
-    property bool desktopSliding: false
-    property real desktopSlideFromX: 0
-    property real desktopSlideFromY: 0
-    property real desktopSlideToX: 0
-    property real desktopSlideToY: 0
-    ParallelAnimation {
-        id: desktopSlideAnim
-        NumberAnimation {
-            target: effect
-            property: "viewX"
-            from: effect.desktopSlideFromX
-            to: effect.desktopSlideToX
-            duration: effect.panDuration
-            easing.type: Easing.OutCubic
-        }
-        NumberAnimation {
-            target: effect
-            property: "viewY"
-            from: effect.desktopSlideFromY
-            to: effect.desktopSlideToY
-            duration: effect.panDuration
-            easing.type: Easing.OutCubic
-        }
-        onFinished: {
-            effect.desktopSliding = false;
-            effect.viewX = effect.desktopSlideToX;
-            effect.viewY = effect.desktopSlideToY;
-            effect.publishGround();
-            if (effect.configuration.DesktopOsd) {
-                effect.osdShow();
-            } else {
-                effect.quietOsd = false;
-                effect.visible = false;
-                effect.quiet = false;
-            }
-        }
-    }
-    function setDesktop(i) {
-        const ds = KWin.Workspace.desktops;
-        if (i < 0 || i >= ds.length) return;
-        KWin.Workspace.currentDesktop = ds[i];
-    }
-    // The desktop OSD: the canvas's own switcher notice. The scene only
-    // paints while visible, so in the closed location the card rides a
-    // quiet open at the seam - pixel-identical to the real desktop, no
-    // chrome, no pass-through - and closes again without committing. In
-    // the overworld the card just appears over the fly. KDE's own plain
-    // popup is left to the user to switch off in System Settings.
-    property bool osdVisible: false
-    property real osdFade: 0
-    property bool quietOsd: false
-    property int osdRev: 0
-    function osdName() {
-        const d = desktopByNumber(currentDesktopNumber());
-        return d && d.name ? d.name : ("#" + currentDesktopNumber());
-    }
-    function osdShow() {
-        if (!configuration.DesktopOsd) return;
-        if (canvasHold) return;
-        if (!visible) {
-            quietOsd = true;
-            open(true);
-        }
-        osdVisible = true;
-        osdFadeAnim.to = 1;
-        osdFadeAnim.restart();
-        osdTimer.restart();
-        osdRev++;
-    }
-    NumberAnimation {
-        id: osdFadeAnim
-        target: effect
-        property: "osdFade"
-        duration: 220
-        easing.type: Easing.OutCubic
-        onFinished: {
-            if (effect.osdFade === 0) {
-                effect.osdVisible = false;
-                if (effect.quietOsd) {
-                    effect.quietOsd = false;
-                    effect.visible = false;
-                    effect.quiet = false;
-                }
-            }
-        }
-    }
-    Timer {
-        id: osdTimer
-        interval: Math.max(200, Number(configuration.DesktopOsdMs) || 1200)
-        repeat: false
-        onTriggered: {
-            osdFadeAnim.to = 0;
-            osdFadeAnim.restart();
-        }
-    }
-    function clusterToDesktop(ci) {
-        if (ci < 0 || ci >= clusters.length) return;
-        const c = clusters[ci];
-        if (!c.ids || c.ids.length === 0) return;
-        const ds = KWin.Workspace.desktops;
-        const name = "Cluster " + (ci + 1);
-        // createDesktop performs the creation, but the desktop list KWin
-        // hands to QML refreshes asynchronously after it - the new island
-        // is not addressable in the same turn - so the finishing step runs
-        // on the next one, finding the desktop by the name it was created
-        // under.
-        KWin.Workspace.createDesktop(ds.length, name);
-        Qt.callLater(function () { finishClusterToDesktop(c.ids, name); });
-    }
-    function finishClusterToDesktop(ids, name) {
-        const ds = KWin.Workspace.desktops;
-        let dn = null;
-        for (let i = 0; i < ds.length; ++i) {
-            if (ds[i] && ds[i].name === name) { dn = ds[i]; break; }
-        }
-        dbg("cd", "finish: " + (dn ? dn.x11DesktopNumber : "NULL") + " of " + ds.length);
-        if (!dn) return;
-        const members = [];
-        for (let i = 0; i < ids.length; ++i) {
-            const e = entries.find(en => en.window.internalId === ids[i]);
-            if (e) members.push(e);
-        }
-        if (members.length === 0) { dbg("cd", "no members found"); return; }
-        const step = KWin.Workspace.virtualScreenGeometry.height + configuration.ActivityGap;
-        // The desktopsChanged signal may have laid this island already
-        // (ensureDesktopTargets); the finish lays it authoritatively one
-        // step below the LAST existing island, so its own offset must not
-        // count toward the bottom.
-        delete desktopOffsets[dn.x11DesktopNumber];
-        let bottom = 0;
-        for (const n in desktopOffsets) {
-            if (!Object.prototype.hasOwnProperty.call(desktopOffsets, n)) continue;
-            bottom = Math.max(bottom, desktopOffsets[n].y);
-        }
-        const on = { x: 0, y: bottom + step };
-        desktopOffsets[dn.x11DesktopNumber] = on;
-        saveDesktopTargets();
-        for (let i = 0; i < members.length; ++i) {
-            const e = members[i];
-            const oo = desktopOffsetOf(e.desktop);
-            e.x += on.x - oo.x;
-            e.y += on.y - oo.y;
-            e.desktop = dn.x11DesktopNumber;
-            try {
-                e.window.desktops = [dn];
-            } catch (err) {
-                dbg("cd", "desktops write threw: " + err);
-            }
-        }
-        revision++;
-        toast(name + " became its own desktop");
-        try {
-            KWin.Workspace.currentDesktop = dn;
-            dbg("cd", "switched to " + KWin.Workspace.currentDesktop.x11DesktopNumber);
-        } catch (err) {
-            dbg("cd", "currentDesktop write threw: " + err);
-        }
-    }
     function graspStart() {
         if (visible) return;
         dbg("graspStart", "hold from the location at 1:1");
@@ -631,13 +290,12 @@ KWin.SceneEffect {
             // instead of committing the anchor's drift.
             const g = actionScreen().geometry;
             const t = targetOf(currentActivity);
-            const o = desktopOffsetOf(currentDesktopNumber());
             if (zoom < 0.999) {
-                t.x = viewX + (g.x + g.width / 2) / zoom - (g.x + g.width / 2) - o.x;
-                t.y = viewY + (g.y + g.height / 2) / zoom - (g.y + g.height / 2) - o.y;
+                t.x = viewX + (g.x + g.width / 2) / zoom - (g.x + g.width / 2);
+                t.y = viewY + (g.y + g.height / 2) / zoom - (g.y + g.height / 2);
             } else {
-                t.x = viewX - o.x;
-                t.y = viewY - o.y;
+                t.x = viewX;
+                t.y = viewY;
             }
         }
         // The zoom decides where the release leaves you. Zoomed out, the
@@ -791,15 +449,6 @@ KWin.SceneEffect {
     }
     function graspJumpTo(i) {
         if (i < 0 || i >= entries.length) return;
-        // A window on another island: switch to its desktop first, so the
-        // release lands on the desktop the window lives on (the handler
-        // flies the camera; the entry's canvas does not move).
-        if (entries[i].desktop !== currentDesktopNumber()) {
-            const ds = KWin.Workspace.desktops;
-            for (let k = 0; k < ds.length; ++k) {
-                if (ds[k].x11DesktopNumber === entries[i].desktop) { setDesktop(k); break; }
-            }
-        }
         dbg("map", "window " + i + " (" + entries[i].window.caption + ") jumped to");
         noteGesture();
         graspJumped = true;
@@ -1009,7 +658,7 @@ KWin.SceneEffect {
         const rects = [];
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
-            rects.push({ x: e.x, y: e.y, width: e.width, height: e.height, id: e.window.internalId, desktop: e.desktop });
+            rects.push({ x: e.x, y: e.y, width: e.width, height: e.height, id: e.window.internalId });
         }
         const r = Logic.recluster(rects, clusterOf, threadRank, configuration.ClusterGap);
         clusters = r.clusters;
@@ -1467,14 +1116,12 @@ KWin.SceneEffect {
     }
 
     // ---- window filter -----------------------------------------------------
-    // Every desktop's windows are entries: the overworld is one continuous
-    // plane across all desktops, each island holding its own windows live.
-    // anyActivity takes every activity's windows (the canvas); otherwise
-    // the current activity's (1:1).
+    // Windows of the current virtual desktop. anyActivity takes every
+    // activity's windows (the canvas); otherwise the current activity's (1:1).
     function isCanvasWindow(w, anyActivity) {
         if (!w || w.deleted || !w.managed) return false;
         if (w.desktopWindow || w.dock || w.popupWindow || w.specialWindow) return false;
-        if (w.minimized || w.hidden) return false;
+        if (w.minimized || w.hidden || !onDesktop(w)) return false;
         if (!anyActivity && !onActivity(w, currentActivity)) return false;
         return true;
     }
@@ -1639,17 +1286,15 @@ KWin.SceneEffect {
         hiddenRev++;
     }
     // Every frame drawn: { id, screen, x, y, width, height } in canvas units.
-    // The desktop's island offset moves the whole frame row with its windows.
     function frames() {
         const out = [];
         const ids = activityIds, screens = KWin.Workspace.screens;
-        const o = desktopOffsetOf(currentDesktopNumber());
         for (let i = 0; i < ids.length; ++i) {
             const t = peekTarget(ids[i]);
             for (let j = 0; j < screens.length; ++j) {
                 if (isHidden(ids[i], screens[j])) continue;
                 const g = screens[j].geometry;
-                out.push({ id: ids[i], screen: screens[j], x: t.x + g.x + o.x, y: t.y + g.y + o.y, width: g.width, height: g.height });
+                out.push({ id: ids[i], screen: screens[j], x: t.x + g.x, y: t.y + g.y, width: g.width, height: g.height });
             }
         }
         return out;
@@ -1670,18 +1315,6 @@ KWin.SceneEffect {
             r = Math.max(r, e.x + e.width); b = Math.max(b, e.y + e.height);
         }
         if (l === Infinity) { const g = actionScreen().geometry; return { x: 0, y: 0, width: g.width, height: g.height }; }
-        if (desktopCount > 1) {
-            // The islands below extend the world: the switcher's fit and
-            // the extents take every desktop's place into the frame, pills
-            // and shadows included, so a fitted view sees them all.
-            const vh = KWin.Workspace.virtualScreenGeometry.height;
-            for (const k in desktopOffsets) {
-                if (desktopOffsets[k].y > 0) {
-                    t = Math.min(t, desktopOffsets[k].y - 30);
-                    b = Math.max(b, desktopOffsets[k].y + vh);
-                }
-            }
-        }
         return { x: l, y: t, width: Math.max(1, r - l), height: Math.max(1, b - t) };
     }
 
@@ -1824,10 +1457,8 @@ KWin.SceneEffect {
     function makeEntry(w) {
         const a = activityOf(w);
         const t = targetOf(a);
-        const dn = desktopOf(w);
-        const o = desktopOffsetOf(dn);
         const g = w.frameGeometry;
-        return { window: w, activity: a, desktop: dn, x: g.x + t.x + o.x, y: g.y + t.y + o.y, width: g.width, height: g.height,
+        return { window: w, activity: a, x: g.x + t.x, y: g.y + t.y, width: g.width, height: g.height,
                  frameX: g.x, frameY: g.y, anchorRight: false, anchorBottom: false, askW: 0, askH: 0 };
     }
 
@@ -1940,7 +1571,7 @@ KWin.SceneEffect {
         effect.zoom; effect.viewX; effect.viewY; effect.revision;
         effect.quiet; effect.grasp; effect.currentActivity;
         effect.entryViewX; effect.entryViewY; effect.zoomRising; effect.camRate;
-        effect.skinFromZoom; effect.desktopRev; effect.desktopCount;
+        effect.skinFromZoom;
         // The skin reveals fast (full by zoom 0.75, so a step out finds its
         // chrome almost at once) and retires across the whole way back: a
         // flight that started at skinFromZoom fades the skin evenly with its
@@ -1958,7 +1589,7 @@ KWin.SceneEffect {
         // A transient slide wears nothing: its windows must stay the
         // desktop's pixel for pixel while they glide.
         if (effect.quiet && !effect.grasp) return zoomPart;
-        const ref = effect.quiet ? effect.viewTarget()
+        const ref = effect.quiet ? effect.targetOf(effect.currentActivity)
                                  : { x: effect.entryViewX, y: effect.entryViewY };
         const g = effect.actionScreen().geometry;
         const away = Math.hypot(effect.viewX - ref.x, effect.viewY - ref.y);
@@ -2336,9 +1967,9 @@ KWin.SceneEffect {
     // springs like any other destination; with SmoothZoom off it lands at
     // once, which is what the scenarios measure.
     function home() {
-        const v = viewTarget();
-        dbg("home", "target (" + Math.round(v.x) + "," + Math.round(v.y) + ")");
-        camGo(1, v.x, v.y);
+        const t = targetOf(currentActivity);
+        dbg("home", "target (" + Math.round(t.x) + "," + Math.round(t.y) + ")");
+        camGo(1, t.x, t.y);
     }
 
     function origin() {
@@ -2360,17 +1991,6 @@ KWin.SceneEffect {
             const f = fs[i];
             l = Math.min(l, f.x); t = Math.min(t, f.y);
             r = Math.max(r, f.x + f.width); b = Math.max(b, f.y + f.height);
-        }
-        // The other desktops' islands are places too: the fit frames them,
-        // pills and all, so the switcher shows every desktop at once.
-        const vs = KWin.Workspace.virtualScreenGeometry;
-        const aT = targetOf(currentActivity);
-        for (const n in desktopOffsets) {
-            const o = desktopOffsets[n];
-            if (o.y > 0) {
-                l = Math.min(l, aT.x + o.x); t = Math.min(t, aT.y + o.y - 30);
-                r = Math.max(r, aT.x + o.x + vs.width); b = Math.max(b, aT.y + o.y + vs.height);
-            }
         }
         if (l === Infinity) { l = 0; t = 0; r = 1; b = 1; }
         const sg = actionScreen().geometry;
@@ -2404,9 +2024,7 @@ KWin.SceneEffect {
         loadHiddenFrames();
         refreshActivities();
         refreshNames();
-        const oo = desktopOffsetOf(currentDesktopNumber());
-        targets[currentActivity] = { x: viewX - oo.x, y: viewY - oo.y };
-        ensureDesktopTargets();
+        targets[currentActivity] = { x: viewX, y: viewY };
         ensureTargets();
         entryTargets = copyTargets(targets);
         snapshot();
@@ -2540,12 +2158,11 @@ KWin.SceneEffect {
             if (a !== e.activity && a && e.window.activities.length > 0) e.window.activities = [a];
             e.activity = a;
             const t = targetOf(a);
-            const o = desktopOffsetOf(e.desktop);
             // Take the new frame position first: the write below is this
             // function's own projection of the entry, so the entry must
             // absorb it as no move (see settle()), not as the user having
             // dragged the window to the new screen position.
-            const fx = Math.round(e.x - t.x - o.x), fy = Math.round(e.y - t.y - o.y);
+            const fx = Math.round(e.x - t.x), fy = Math.round(e.y - t.y);
             e.frameX = fx;
             e.frameY = fy;
             e.window.frameGeometry = Qt.rect(fx, fy, e.width, e.height);
@@ -2569,9 +2186,9 @@ KWin.SceneEffect {
         // (the chord, a stale click, an activity switch) must measure the
         // hidden windows against them and not shift them twice.
         entryTargets = copyTargets(targets);
-        const vt = viewTarget();
-        viewX = vt.x;
-        viewY = vt.y;
+        const cur = targetOf(currentActivity);
+        viewX = cur.x;
+        viewY = cur.y;
         zoom = 1.0;
         // The location survives the session: where the eye left the plane
         // is where it comes back to after a restart.
@@ -2688,11 +2305,10 @@ KWin.SceneEffect {
         }
         const a = id !== null ? id : currentActivity;
         const t = targetOf(a);
-        const o = desktopOffsetOf(currentDesktopNumber());
-        t.x = Math.round(c.x - cx - o.x);
-        t.y = Math.round(c.y - cy - o.y);
+        t.x = Math.round(c.x - cx);
+        t.y = Math.round(c.y - cy);
         dbg("enterHere", "c=(" + Math.round(c.x) + "," + Math.round(c.y) + ") -> (" + t.x + "," + t.y + ")");
-        flyEnter(a, t.x + o.x, t.y + o.y, function () { finishEnter(a); });
+        flyEnter(a, t.x, t.y, function () { finishEnter(a); });
     }
 
     // ---- placing the desk around a window -------------------------------------
@@ -2788,19 +2404,18 @@ KWin.SceneEffect {
     // nothing on the plane moves, and nothing is written until the commit.
     function placeTarget(entry, a, gx, gy) {
         const t = targetOf(a);
-        const o = desktopOffsetOf(entry.desktop);
         const mode = focusMode();
         if (mode === "window") {
             if (gx === undefined || gx === null) {
                 const g = actionScreen().geometry;
-                t.x = Math.round(entry.x - o.x + entry.width / 2 - (g.x + g.width / 2));
-                t.y = Math.round(entry.y - o.y + entry.height / 2 - (g.y + g.height / 2));
+                t.x = Math.round(entry.x + entry.width / 2 - (g.x + g.width / 2));
+                t.y = Math.round(entry.y + entry.height / 2 - (g.y + g.height / 2));
             } else {
                 // The first click of a double-click may have started a pan;
                 // anchor on the camera's destination, not a mid-flight view.
                 const vx = camHasGoal ? camGoalX : viewX, vy = camHasGoal ? camGoalY : viewY;
-                t.x = Math.round(vx - o.x + gx / zoom - gx);
-                t.y = Math.round(vy - o.y + gy / zoom - gy);
+                t.x = Math.round(vx + gx / zoom - gx);
+                t.y = Math.round(vy + gy / zoom - gy);
                 // The point clicked is kept under the pointer unless that would
                 // leave the window hanging over an edge of the screen: then the
                 // least shift that brings it wholly back in, because a window a
@@ -2808,20 +2423,20 @@ KWin.SceneEffect {
                 const g = actionScreen().geometry;
                 const range = Logic.fitRange(entry.width, entry.height, g, 8);
                 if (range.fits) {
-                    t.x = Math.round(entry.x - o.x - g.x - Math.max(range.x0, Math.min(range.x1, entry.x - o.x - t.x - g.x)));
-                    t.y = Math.round(entry.y - o.y - g.y - Math.max(range.y0, Math.min(range.y1, entry.y - o.y - t.y - g.y)));
+                    t.x = Math.round(entry.x - g.x - Math.max(range.x0, Math.min(range.x1, entry.x - t.x - g.x)));
+                    t.y = Math.round(entry.y - g.y - Math.max(range.y0, Math.min(range.y1, entry.y - t.y - g.y)));
                 }
             }
         } else if (mode === "smart") {
             const g = actionScreen().geometry;
             const off = smartOffset(entry, a, g);
-            t.x = Math.round(entry.x - o.x - g.x - off.dx);
-            t.y = Math.round(entry.y - o.y - g.y - off.dy);
+            t.x = Math.round(entry.x - g.x - off.dx);
+            t.y = Math.round(entry.y - g.y - off.dy);
         } else if (mode === "centre" || activityAt(entry) === null) {
             // "centre", and "desktop" for a window outside every frame.
             const g = actionScreen().geometry;
-            t.x = Math.round(entry.x - o.x + entry.width / 2 - (g.x + g.width / 2));
-            t.y = Math.round(entry.y - o.y + entry.height / 2 - (g.y + g.height / 2));
+            t.x = Math.round(entry.x + entry.width / 2 - (g.x + g.width / 2));
+            t.y = Math.round(entry.y + entry.height / 2 - (g.y + g.height / 2));
         }
         return t;
     }
@@ -2833,16 +2448,15 @@ KWin.SceneEffect {
         const inFrame = activityAt(entry);
         const a = inFrame !== null ? inFrame : (entry.activity || currentActivity);
         const t = placeTarget(entry, a, gx, gy);
-        const o = desktopOffsetOf(entry.desktop);
         if (a && a !== currentActivity) {
-            flyEnter(a, t.x + o.x, t.y + o.y, function () {
+            flyEnter(a, t.x, t.y, function () {
                 pendingFocus = entry.window;
                 KWin.Workspace.currentActivity = a;
                 commit(null);
             });
             return;
         }
-        flyEnter(a, t.x + o.x, t.y + o.y, function () { commit(entry.window); });
+        flyEnter(a, t.x, t.y, function () { commit(entry.window); });
     }
 
     // zoomToActivity: camera fitted to that activity's frames - the ones that
@@ -2898,8 +2512,7 @@ KWin.SceneEffect {
     function gotoActivity(id) {
         const a = id || currentActivity;
         const t = targetOf(a);
-        const o = desktopOffsetOf(currentDesktopNumber());
-        flyEnter(a, t.x + o.x, t.y + o.y, function () { finishEnter(a); });
+        flyEnter(a, t.x, t.y, function () { finishEnter(a); });
     }
 
     // newActivityAt: a new activity whose active-screen frame is centred on
@@ -3093,24 +2706,6 @@ KWin.SceneEffect {
                 bounce = { caption: e.window.caption, sx: sx0, sy: sy0, vx: 0, vy: 0, tx: cl.sx, ty: cl.sy };
             }
         }
-        // A dragged window dropped on another desktop's island joins that
-        // desktop: its canvas spot does not move (the drop point IS the
-        // island), so the next commit writes the matching real frame on the
-        // other desktop - the window lands where the hand put it, in the
-        // pager and on the plane alike. Pinned floats stay everywhere.
-        let movedAny = false;
-        for (let i = 0; i < entries.length; ++i) {
-            const e = entries[i];
-            if (!dragRaw[e.window.internalId] || isPinnedEntry(e)) continue;
-            if (e.activity !== currentActivity) continue;
-            const dn = islandAt(e.x + e.width / 2, e.y + e.height / 2);
-            if (dn === e.desktop) continue;
-            e.desktop = dn;
-            try { e.window.desktops = [desktopByNumber(dn)]; } catch (err) { }
-            toast(e.window.caption + " joined " + (desktopNameOf(dn)));
-            movedAny = true;
-        }
-        if (movedAny) revision++;
         dragIndex = -1;
         endWindowDrag();
     }
@@ -3188,32 +2783,8 @@ KWin.SceneEffect {
     // sendTo(activity): move the selection so each window keeps its place
     // within a frame, now in that activity's frame. sendTo(null): park the
     // set near the origin at the nearest spot outside every frame.
-    // Tidy lays the current island's windows into clean rows: sorted top
-    // to bottom, then left to right, packed from the island's top-left,
-    // wrapping at the island's width. Like the arrange modes it only moves
-    // the entries - the next commit writes the frames.
-    function tidy() {
-        const o = desktopOffsetOf(currentDesktopNumber());
-        const vs = KWin.Workspace.virtualScreenGeometry;
-        const aT = targetOf(currentActivity);
-        const ox = aT.x + o.x, oy = aT.y + o.y;
-        const list = [];
-        for (let i = 0; i < entries.length; ++i) {
-            const e = entries[i];
-            if (e.activity !== currentActivity || e.desktop !== currentDesktopNumber()) continue;
-            list.push({ x: e.x, y: e.y, width: e.width, height: e.height, e: e });
-        }
-        if (list.length === 0) return;
-        const gap = Math.max(12, Number(configuration.TidyGap) || 32);
-        list.sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
-        const spots = Logic.tidyRows(list, { gap: gap, origin: { x: ox + gap, y: oy + gap }, maxWidth: vs.width - gap * 2 });
-        for (let i = 0; i < list.length; ++i) {
-            list[i].e.x = spots[i].x;
-            list[i].e.y = spots[i].y;
-        }
-        revision++;
-    }
-    function sendTo(id) {        const list = arrangeTargets();
+    function sendTo(id) {
+        const list = arrangeTargets();
         if (list.length === 0) return;
         if (id !== null && id !== undefined) {
             for (let i = 0; i < list.length; ++i) {
@@ -3448,17 +3019,6 @@ KWin.SceneEffect {
         dbusInterface: "org.kde.kwin.canvas.Passthrough"
         method: "setVerbose"
     }
-    // The cluster/desktop summary the panel applet polls. The plugin stores
-    // it and echoes it from state(), so the applet's one poll a few seconds
-    // gets everything it shows. Pushed whenever the shape of the plane
-    // changes.
-    KWin.DBusCall {
-        id: effectStateCall
-        service: "org.kde.KWin"
-        path: "/KWinCanvas"
-        dbusInterface: "org.kde.kwin.canvas.Passthrough"
-        method: "setEffectState"
-    }
     // The plugin's own state, polled for the toolbar's hand dot. The reply
     // string is "active=.. view=(x,y) zoom=.. grab=.. ground=.. hover=..
     // nav=.. hold=.. seam=.." - a hover or a grab is the window's hand.
@@ -3486,11 +3046,11 @@ KWin.SceneEffect {
         onTriggered: { if (effect.passthroughLive) pluginStateCall.call(); }
     }
     // The machine's load, for the fidelity ladder. The plugin reads /proc
-    // itself (three small reads) and answers "cpu=N load=NN.NN mem=N
-    // gpu=N"; cpu, mem and gpu are the busy percentages since the
-    // previous call, gpu via NVML when the NVIDIA driver is present.
-    // Polled every two seconds while the overworld is open - a fixed
-    // mode needs no probe, the ladder applies the cap directly.
+    // itself (three small reads) and answers "cpu=N load=NN.NN mem=MMMM
+    // gpu=N"; cpu and gpu are the busy percentages since the previous call,
+    // gpu via NVML when the NVIDIA driver is present. Polled every two
+    // seconds while the overworld is open - a fixed mode needs no probe,
+    // the ladder applies the cap directly.
     KWin.DBusCall {
         id: loadCall
         service: "org.kde.KWin"
@@ -3503,9 +3063,7 @@ KWin.SceneEffect {
             const cpu = ci >= 0 ? Number(s.slice(ci + 4).split(" ")[0]) : 0;
             const gi = s.indexOf("gpu=");
             const gpu = gi >= 0 ? Number(s.slice(gi + 4).split(" ")[0]) : 0;
-            const mi = s.indexOf("mem=");
-            const mem = mi >= 0 ? Number(s.slice(mi + 4).split(" ")[0]) : 0;
-            effect.qualityApply(Number.isFinite(cpu) ? cpu : 0, Number.isFinite(gpu) ? gpu : 0, Number.isFinite(mem) ? mem : 0);
+            effect.qualityApply(Number.isFinite(cpu) ? cpu : 0, Number.isFinite(gpu) ? gpu : 0);
         }
     }
     Timer {
@@ -3514,7 +3072,7 @@ KWin.SceneEffect {
         repeat: true
         running: effect.visible && !effect.quiet
         onTriggered: {
-            if (String(effect.configuration.QualityMode) !== "Auto") effect.qualityApply(0, 0, 0);
+            if (String(effect.configuration.QualityMode) !== "Auto") effect.qualityApply(0, 0);
             else loadCall.call();
         }
     }
@@ -3526,17 +3084,9 @@ KWin.SceneEffect {
         publishNav();
         publishHold();
         publishVerbose();
-        publishEffectState();
         activeCall.arguments = [true];
         activeCall.call();
     }
-    function publishEffectState() {
-        if (!passthroughLive) return;
-        effectStateCall.arguments = ["clusters=" + clusters.length + " desktops=" + KWin.Workspace.desktops.length];
-        effectStateCall.call();
-    }
-    onClusterRevChanged: if (passthroughLive) Qt.callLater(publishEffectState)
-    onDesktopRevChanged: if (passthroughLive) Qt.callLater(publishEffectState)
     function publishCamera() {
         if (!passthroughLive) return;
         cameraCall.arguments = [viewX, viewY, zoom, currentActivity, JSON.stringify(targets)];
@@ -3693,8 +3243,8 @@ KWin.SceneEffect {
     function reaches(e, w) {
         if (!e || !e.window || e.window.deleted || w !== e.window) return false;
         if (e.activity !== currentActivity || !onActivity(e.window, currentActivity)) return false;
-        const t = peekTarget(currentActivity), f = e.window.frameGeometry, o = desktopOffsetOf(e.desktop);
-        return Math.abs(e.x - t.x - o.x - f.x) < 1 && Math.abs(e.y - t.y - o.y - f.y) < 1;
+        const t = peekTarget(currentActivity), f = e.window.frameGeometry;
+        return Math.abs(e.x - t.x - f.x) < 1 && Math.abs(e.y - t.y - f.y) < 1;
     }
 
     // KWin routes the pointer by real geometry, so while the transform is
@@ -3707,8 +3257,7 @@ KWin.SceneEffect {
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
             if (!e || !e.window || e.window.deleted || e.activity !== currentActivity || !onActivity(e.window, currentActivity)) continue;
-            const o = desktopOffsetOf(e.desktop);
-            const fx = Math.round(e.x - t.x - o.x), fy = Math.round(e.y - t.y - o.y);
+            const fx = Math.round(e.x - t.x), fy = Math.round(e.y - t.y);
             if (fx === e.frameX && fy === e.frameY) continue;
             e.frameX = fx;
             e.frameY = fy;
@@ -3932,8 +3481,7 @@ KWin.SceneEffect {
             // below is this function's own projection of the entry, so the
             // entry must absorb it as no move - a floating window's entry is
             // where the float put it, not where the old frame was.
-            const o = desktopOffsetOf(e.desktop);
-            const fx = Math.round(e.x - t.x - o.x), fy = Math.round(e.y - t.y - o.y);
+            const fx = Math.round(e.x - t.x), fy = Math.round(e.y - t.y);
             e.frameX = fx;
             e.frameY = fy;
             const g = e.window.frameGeometry;
@@ -3950,9 +3498,8 @@ KWin.SceneEffect {
                 w.frameGeometry = Qt.rect(g.x - dx, g.y - dy, g.width, g.height);
             }
         }
-        const co = desktopOffsetOf(currentDesktopNumber());
-        viewX = cur.x + co.x;
-        viewY = cur.y + co.y;
+        viewX = cur.x;
+        viewY = cur.y;
         publishGround();
         dbg("slide", "arrived at (" + Math.round(viewX) + "," + Math.round(viewY) + "), geometries written, closing");
         // The close is instant: the canvas's last frame sits exactly over
@@ -4133,20 +3680,16 @@ KWin.SceneEffect {
         function onCurrentActivityChanged(id) {
             if (effect.refreshActivities()) effect.ensureTargets();
             if (effect.visible) return;
-            const v = effect.viewTarget();
-            effect.viewX = v.x;
-            effect.viewY = v.y;
+            const t = effect.targetOf(KWin.Workspace.currentActivity || "");
+            effect.viewX = t.x;
+            effect.viewY = t.y;
             effect.publishGround();
             const w = effect.pendingFocus;
             effect.pendingFocus = null;
             if (w && !w.deleted) KWin.Workspace.activeWindow = w;
         }
-        // Another desktop's windows are a different set on the same plane,
-        // on their own island: the camera flies to the new desktop's place.
-        function onCurrentDesktopChanged(previous, current, output) {
-            effect.desktopChanged(previous ? previous.x11DesktopNumber : effect.currentDesktopNumber());
-        }
-        function onDesktopsChanged() { Qt.callLater(function () { effect.desktopChanged(effect.currentDesktopNumber()); }); }
+        // Another desktop's windows are a different set on the same plane.
+        function onCurrentDesktopChanged() { if (effect.visible) Qt.callLater(effect.resync); }
         // A hotplug, a resolution change, a rearrange or a virtual output
         // coming or going: the layout the frames and the backdrop tiles are
         // read from has changed.
@@ -4327,48 +3870,6 @@ KWin.SceneEffect {
             break;
         }
         case "activity": if (numok(1)) KWin.Workspace.currentActivity = activityIds[Number(a[1])]; break;
-        case "desktop": if (numok(1)) setDesktop(Number(a[1])); break;
-        case "newdesktop": {
-            KWin.Workspace.createDesktop(KWin.Workspace.desktops.length,
-                a.length > 1 ? a.slice(1).join(" ") : ("Desktop " + (KWin.Workspace.desktops.length + 1)));
-            break;
-        }
-        case "desktopof": if (numok(1)) clusterToDesktop(Number(a[1])); break;
-        case "movetodesktop": {
-            // a[1] = source desktop list index, a[2] = destination desktop list index
-            if (numok(1) && numok(2)) {
-                const ds = KWin.Workspace.desktops;
-                const from = ds[Number(a[1])];
-                const to = ds[Number(a[2])];
-                if (from && to) {
-                    for (const w of KWin.Workspace.stackingOrder) {
-                        if (w.desktops && w.desktops.length > 0 && w.desktops[0] === from) w.desktops = [to];
-                    }
-                    desktopChanged();
-                }
-            }
-            break;
-        }
-        case "rmdesktop": {
-            // a[1] = desktop list index (never the last one - KWin keeps at least one)
-            if (numok(1)) {
-                const ds = KWin.Workspace.desktops;
-                const i = Number(a[1]);
-                if (i >= 0 && i < ds.length) KWin.Workspace.removeDesktop(ds[i]);
-            }
-            break;
-        }
-        case "desktops": {
-            const ds = KWin.Workspace.desktops;
-            let s = "kwin-canvas desktops: current=" + currentDesktopNumber() + " count=" + ds.length;
-            for (let i = 0; i < ds.length; ++i) {
-                const o = desktopOffsetOf(ds[i].x11DesktopNumber);
-                s += "\n  [" + i + "] " + ds[i].x11DesktopNumber + " " + JSON.stringify(ds[i].name) + " offset=(" + o.x + "," + o.y + ")";
-            }
-            for (let i = 0; i < entries.length; ++i) s += "\n  entry " + i + " desktop=" + entries[i].desktop;
-            console.log(s);
-            break;
-        }
         case "addactivity": addActivity(); break;
         case "rmactivity": if (numok(1)) removeActivity(activityIds[Number(a[1])]); break;
         case "hide": case "show": {
@@ -4416,7 +3917,6 @@ KWin.SceneEffect {
         case "unpin": unpinEntries([entries[Number(a[1])]]); break;
         case "unpinall": pinned = {}; savePinned(); break;
         case "arrange": arrange(a[1], Number(a[2]), Number(a[3])); break;
-        case "tidy": tidy(); break;
         case "snap": {
             const on = a[2] === "on";
             if (a[1] === "edges") snapEdges = on; else if (a[1] === "corners") snapCorners = on; else if (a[1] === "grid") snapGrid = on;
@@ -4474,9 +3974,6 @@ KWin.SceneEffect {
             + " ql=" + ql
             + " cpu=" + Math.round(cpuBusy)
             + " gpu=" + Math.round(gpuBusy)
-            + " mem=" + Math.round(memBusy)
-            + " desktops=" + KWin.Workspace.desktops.length
-            + " desktop=" + currentDesktopNumber()
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
         const ids = activityIds, screens = KWin.Workspace.screens;
         for (let i = 0; i < screens.length; ++i) {
@@ -4494,7 +3991,7 @@ KWin.SceneEffect {
             const g = e.window.frameGeometry;
             const f = floatOf[e.window.internalId];
             const fx = f ? (f.x - (e.x - viewX) * zoom) : 0, fy = f ? (f.y - (e.y - viewY) * zoom) : 0;
-            s += "\n  [" + i + "] " + (isSelected(e) ? "*" : " ") + e.window.caption + " canvas=(" + e.x.toFixed(0) + "," + e.y.toFixed(0) + " " + e.width + "x" + e.height + ") frame=(" + g.x + "," + g.y + ")" + (Math.abs(fx) > 0.4 || Math.abs(fy) > 0.4 ? " float=(+" + fx.toFixed(0) + ",+" + fy.toFixed(0) + ")" : "") + " z=" + windowZ(e) + " activity=" + labelOf(e.activity) + " desktop=" + e.desktop;
+            s += "\n  [" + i + "] " + (isSelected(e) ? "*" : " ") + e.window.caption + " canvas=(" + e.x.toFixed(0) + "," + e.y.toFixed(0) + " " + e.width + "x" + e.height + ") frame=(" + g.x + "," + g.y + ")" + (Math.abs(fx) > 0.4 || Math.abs(fy) > 0.4 ? " float=(+" + fx.toFixed(0) + ",+" + fy.toFixed(0) + ")" : "") + " z=" + windowZ(e) + " activity=" + labelOf(e.activity);
         }
         for (let i = 0; i < clusters.length; ++i) {
             const mem = [];
@@ -4525,8 +4022,6 @@ KWin.SceneEffect {
         loadHiddenFrames();
         loadPinned();
         loadBookmarks();
-        loadDesktopTargets();
-        ensureDesktopTargets();
         refreshActivities();
         lastDebugSeq = configuration.DebugSeq;
         publishHold();
@@ -4534,11 +4029,7 @@ KWin.SceneEffect {
         viewX = Number(configuration.ViewX) || 0;
         viewY = Number(configuration.ViewY) || 0;
         const t0 = targets[currentActivity];
-        if (t0) {
-            const o0 = desktopOffsetOf(currentDesktopNumber());
-            t0.x = viewX - o0.x;
-            t0.y = viewY - o0.y;
-        }
+        if (t0) { t0.x = viewX; t0.y = viewY; }
         // The harness can write a command before the QML completes: KWin
         // reports the effect loaded first, and a reconfigure that lands
         // before onCompleted never fires onConfigurationChanged. Run the
@@ -5067,8 +4558,8 @@ KWin.SceneEffect {
                     // outline, until the skin comes out with the zoom and
                     // the pan - so the desktop looks like itself at the seam.
                     visible: !effect.isHidden(activityFrames.activity, modelData)
-                    x: { effect.revision; effect.desktopRev; const o = effect.desktopOffsetOf(effect.currentDesktopNumber()); return (effect.peekTarget(activityFrames.activity).x + og.x + o.x - effect.viewX) * effect.zoom - view.sg.x; }
-                    y: { effect.revision; effect.desktopRev; const o = effect.desktopOffsetOf(effect.currentDesktopNumber()); return (effect.peekTarget(activityFrames.activity).y + og.y + o.y - effect.viewY) * effect.zoom - view.sg.y; }
+                    x: { effect.revision; return (effect.peekTarget(activityFrames.activity).x + og.x - effect.viewX) * effect.zoom - view.sg.x; }
+                    y: { effect.revision; return (effect.peekTarget(activityFrames.activity).y + og.y - effect.viewY) * effect.zoom - view.sg.y; }
                     width: og.width * effect.zoom
                     height: og.height * effect.zoom
                     z: 1
@@ -5155,7 +4646,7 @@ KWin.SceneEffect {
                 y: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; return (f ? f.y : base) + thumb.bob; }
                 width: { effect.revision; return effect.entries[index].width * effect.zoom; }
                 height: { effect.revision; return effect.entries[index].height * effect.zoom; }
-                visible: { effect.desktopRev; effect.desktopSliding; return !effect.quiet || effect.desktopSliding || (entry.activity === effect.currentActivity && entry.desktop === effect.currentDesktopNumber()); }
+                visible: !effect.quiet || entry.activity === effect.currentActivity
                 opacity: effect.thumbOpacity
                 // The entries are the real stacking order, so the index IS the
                 // z; the hovered window lifts above the web, and nothing else
@@ -5566,66 +5057,6 @@ KWin.SceneEffect {
             }
         }
 
-        // The desktop zones: each virtual desktop is a named island on the
-        // plane, and its windows are the live entries that sit on it. The
-        // zone card is the island itself - a soft wash with the desktop's
-        // name in the corner. A tap on another island's card switches to
-        // that desktop (the handler flies the camera); the current island's
-        // card stays background-only so the ground keeps its own taps.
-        // Shown whenever the skin is out and there is more than one island.
-        Repeater {
-            model: effect.desktopCount
-            delegate: Item {
-                required property int index
-                readonly property var d: { effect.desktopRev; return KWin.Workspace.desktops[index] || null; }
-                readonly property var off: { effect.desktopRev; return d ? effect.desktopOffsetOf(d.x11DesktopNumber) : ({ x: 0, y: 0 }); }
-                readonly property bool cur: { effect.desktopRev; return d !== null && d === KWin.Workspace.currentDesktop; }
-                x: { effect.revision; effect.desktopRev; effect.currentActivity; effect.viewX; effect.viewY; effect.zoom; return -(effect.viewX * effect.zoom) - view.sg.x + (effect.peekTarget(effect.currentActivity).x + off.x) * effect.zoom; }
-                y: { effect.revision; effect.desktopRev; effect.currentActivity; effect.viewX; effect.viewY; effect.zoom; return -(effect.viewY * effect.zoom) - view.sg.y + (effect.peekTarget(effect.currentActivity).y + off.y) * effect.zoom; }
-                z: 500
-                visible: true
-                // The wrapper must carry the zone's real size: the pointer
-                // handlers bound their region to the delegate's own rect,
-                // and a child Rectangle does not resize its parent.
-                width: KWin.Workspace.virtualScreenGeometry.width * effect.zoom
-                height: KWin.Workspace.virtualScreenGeometry.height * effect.zoom
-                opacity: { effect.desktopRev; effect.skinReveal; return (effect.desktopCount > 1 && effect.skinReveal > 0.02) ? effect.skinReveal : 0; }
-                Rectangle {
-                    anchors.fill: parent
-                    radius: 8 * effect.zoom
-                    color: "#08ffffff"
-                    border.width: 1
-                    border.color: "#1affffff"
-                    Rectangle {
-                        x: 16 * effect.zoom
-                        y: 16 * effect.zoom
-                        radius: 6 * effect.zoom
-                        color: cur ? "#cc2a6ddf" : "#cc1e2126"
-                        border.width: 1
-                        border.color: cur ? "#66ffffff" : "#4affffff"
-                        width: txt.implicitWidth + 16 * effect.zoom
-                        height: 22 * effect.zoom
-                        Text {
-                            id: txt
-                            anchors.centerIn: parent
-                            text: d ? (d.name || "#" + d.x11DesktopNumber) : "#" + index
-                            color: "#ffffff"
-                            font.pixelSize: 11 * effect.zoom
-                        }
-                    }
-                }
-                TapHandler {
-                    acceptedButtons: Qt.LeftButton
-                    enabled: { effect.desktopRev; effect.skinReveal; effect.chromeHover; return !cur && !effect.chromeHover && effect.desktopCount > 1 && effect.skinReveal > 0.02; }
-                    onTapped: { effect.dbg("zone", "tap index=" + index); effect.setDesktop(index); }
-                }
-                HoverHandler {
-                    enabled: { effect.desktopRev; effect.skinReveal; effect.chromeHover; return !cur && !effect.chromeHover && effect.desktopCount > 1 && effect.skinReveal > 0.02; }
-                    onHoveredChanged: view.hoverCount += hovered ? 1 : -1
-                }
-            }
-        }
-
         // The cluster chips, on the plane itself: the world is the map, so
         // the map's business lives where the clusters live. While the grasp
         // holds and the skin is out, a chip per cluster floats over its
@@ -5637,9 +5068,9 @@ KWin.SceneEffect {
             model: effect.chipCount
             delegate: Item {
                 required property int index
-                readonly property var c: { effect.clusterRev; return effect.clusters[index] || null; }
-                x: { effect.revision; effect.clusterRev; effect.viewX; effect.viewY; effect.zoom; return c ? -(effect.viewX * effect.zoom) - view.sg.x + (c.cx - 12) * effect.zoom : 0; }
-                y: { effect.revision; effect.clusterRev; effect.viewX; effect.viewY; effect.zoom; return c ? -(effect.viewY * effect.zoom) - view.sg.y + (c.cy - 12) * effect.zoom : 0; }
+                readonly property var c: effect.clusters[index]
+                x: { effect.revision; effect.clusterRev; effect.viewX; effect.viewY; effect.zoom; return -(effect.viewX * effect.zoom) - view.sg.x + (c.cx - 12) * effect.zoom; }
+                y: { effect.revision; effect.clusterRev; effect.viewX; effect.viewY; effect.zoom; return -(effect.viewY * effect.zoom) - view.sg.y + (c.cy - 12) * effect.zoom; }
                 width: 24 * effect.zoom
                 height: 24 * effect.zoom
                 z: 40000
@@ -6002,7 +5433,6 @@ KWin.SceneEffect {
             // their own cycle-and-enter paths).
             if (effect.switcherActive && effect.switcherFromChord && !event.isAutoRepeat
                     && effect.bound("switcher", event.key)) {
-                effect.dbg("switcher", "released k=" + event.key);
                 effect.applyKey();
                 event.accepted = true;
             }
@@ -6049,7 +5479,6 @@ KWin.SceneEffect {
                 }
             }
             PC3.MenuItem { text: "Cascade";              icon.name: "window-duplicate";      onTriggered: effect.arrange("cascade") }
-            PC3.MenuItem { text: "Tidy this island";     icon.name: "view-sort-ascending";    onTriggered: effect.tidy() }
             PC3.MenuSeparator {}
             PC3.Menu {
                 title: "Send to"
@@ -6068,8 +5497,6 @@ KWin.SceneEffect {
                 PC3.MenuSeparator {}
                 PC3.MenuItem { text: "Plane, outside every activity"; icon.name: "edit-none"; onTriggered: effect.sendTo(null) }
             }
-            PC3.MenuSeparator {}
-            PC3.MenuItem { text: "Desktop from this cluster"; icon.name: "list-add"; enabled: effect.clusterIndex() >= 0; onTriggered: effect.clusterToDesktop(effect.clusterIndex()) }
             PC3.MenuSeparator {}
             PC3.MenuItem { text: "Clear selection";      icon.name: "edit-select-none";      onTriggered: effect.clearSelection() }
             PC3.MenuSeparator {}
@@ -6096,108 +5523,6 @@ KWin.SceneEffect {
                 id: toastLabel
                 anchors.centerIn: parent
                 text: effect.toastText
-            }
-        }
-
-        // The desktop OSD: a glass card naming the desktop you switched to,
-        // its islands paged as chips, and a live miniature of the island
-        // you landed on. In the closed location it rides the quiet open at
-        // the seam, so the card floats over the real desktop while the
-        // panel and the dock still draw above it natively.
-        Rectangle {
-            z: 100002
-            visible: { effect.osdRev; return view.screen === effect.primaryScreen && effect.osdVisible; }
-            opacity: effect.osdFade
-            anchors.horizontalCenter: parent.horizontalCenter
-            y: parent.height * 0.16
-            width: osdRow.implicitWidth + 28
-            height: osdRow.implicitHeight + 28
-            radius: 16
-            color: Qt.rgba(0.05, 0.05, 0.08, 0.72)
-            border.width: 1
-            border.color: "#33ffffff"
-            Row {
-                id: osdRow
-                anchors.centerIn: parent
-                spacing: 20
-                // The island's miniature: the current desktop's windows as
-                // tiny sheets, framed like the lens. The fidelity ladder's
-                // bare rung skips it - a name and the chips are enough.
-                Item {
-                    visible: effect.ql < 2
-                    width: 200
-                    height: 112
-                    clip: true
-                    Rectangle {
-                        anchors.fill: parent
-                        radius: 8
-                        color: "#14ffffff"
-                        border.width: 1
-                        border.color: "#26ffffff"
-                    }
-                    Repeater {
-                        model: { effect.revision; effect.osdRev; return effect.entries.length; }
-                        delegate: Rectangle {
-                            required property int index
-                            readonly property var e: { effect.revision; effect.desktopRev; effect.osdRev; return effect.entries[index] || null; }
-                            readonly property real sc: {
-                                effect.revision; effect.desktopRev; effect.osdRev;
-                                const aT = effect.peekTarget(effect.currentActivity);
-                                const o = effect.desktopOffsetOf(effect.currentDesktopNumber());
-                                return e ? Math.min(200 / KWin.Workspace.virtualScreenGeometry.width, 112 / KWin.Workspace.virtualScreenGeometry.height) : 0;
-                            }
-                            visible: {
-                                effect.revision; effect.desktopRev; effect.osdRev;
-                                return e !== null && e.desktop === effect.currentDesktopNumber();
-                            }
-                            readonly property real rx: e ? (e.x - effect.peekTarget(effect.currentActivity).x - effect.desktopOffsetOf(e.desktop).x) * sc : 0
-                            readonly property real ry: e ? (e.y - effect.peekTarget(effect.currentActivity).y - effect.desktopOffsetOf(e.desktop).y) * sc : 0
-                            x: rx; y: ry
-                            width: e ? Math.max(3, e.width * sc) : 0
-                            height: e ? Math.max(3, e.height * sc) : 0
-                            radius: 2
-                            color: Qt.rgba(1, 1, 1, 0.5)
-                            border.width: 0.5
-                            border.color: "#4affffff"
-                        }
-                    }
-                }
-                Column {
-                    spacing: 12
-                    PC3.Label {
-                        text: effect.osdName()
-                        font.pointSize: 22
-                        font.weight: Font.DemiBold
-                        color: "#ffffff"
-                    }
-                    Column {
-                        spacing: 6
-                        Repeater {
-                            model: { effect.desktopRev; effect.osdRev; return KWin.Workspace.desktops.length; }
-                            delegate: Row {
-                                required property int index
-                                readonly property var d: { effect.desktopRev; return KWin.Workspace.desktops[index] || null; }
-                                readonly property bool cur: { effect.desktopRev; effect.osdRev; return d !== null && d === KWin.Workspace.currentDesktop; }
-                                spacing: 8
-                                Rectangle {
-                                    width: 10
-                                    height: 10
-                                    radius: 5
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    color: cur ? "#2a6ddf" : "transparent"
-                                    border.width: 1
-                                    border.color: cur ? "#99ffffff" : "#55ffffff"
-                                }
-                                PC3.Label {
-                                    text: d ? (d.name || "#" + d.x11DesktopNumber) : ("#" + index)
-                                    font.pointSize: cur ? 12 : 10
-                                    color: cur ? "#ffffff" : "#99ffffff"
-                                    opacity: { effect.osdRev; return cur ? 1 : 0.75; }
-                                }
-                            }
-                        }
-                    }
-                }
             }
         }
 

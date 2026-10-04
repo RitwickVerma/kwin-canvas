@@ -36,10 +36,6 @@ function recluster(rects, prevOf, ranks, gapCfg) {
     const edges = [];
     for (let i = 0; i < list.length; ++i) {
         for (let j = i + 1; j < list.length; ++j) {
-            // Windows on different desktops never cluster: islands are
-            // their own neighbourhoods, however close their offsets lay
-            // them on the plane.
-            if (list[i].desktop !== undefined && list[j].desktop !== undefined && list[i].desktop !== list[j].desktop) continue;
             const d = clusterDist(list[i], list[j]);
             const gap = clusterGapFor(list[i], list[j], gapCfg);
             const samePrev = prevOf[list[i].id] !== undefined && prevOf[list[i].id] === prevOf[list[j].id];
@@ -292,34 +288,4 @@ function qualityFor(busy, reduced, minimal, bare) {
     if (b >= minimal) return 2;
     if (b >= reduced) return 1;
     return 0;
-}
-
-// The tidy pack: windows (sorted top to bottom, then left to right) laid
-// into left-to-right rows from the origin, wrapping when the next item
-// would run past the row's width. The gap applies between items and
-// between rows. Returns an array of { x, y } aligned with the sorted
-// order; the caller owns the mapping back to its entries.
-function tidyRows(list, opts) {
-    const gap = Number.isFinite(Number(opts.gap)) ? Number(opts.gap) : 0;
-    const ox = Number.isFinite(Number(opts.origin.x)) ? Number(opts.origin.x) : 0;
-    const oy = Number.isFinite(Number(opts.origin.y)) ? Number(opts.origin.y) : 0;
-    const maxW = Number.isFinite(Number(opts.maxWidth)) ? Number(opts.maxWidth) : Infinity;
-    const items = list.slice().sort(function (a, b) {
-        return (a.y - b.y) || (a.x - b.x);
-    });
-    const out = [];
-    let x = ox, y = oy, rowBottom = 0, first = true;
-    for (let i = 0; i < items.length; ++i) {
-        const it = items[i];
-        if (!first && x + it.width > ox + maxW) {
-            x = ox;
-            y = rowBottom + gap;
-            rowBottom = 0;
-        }
-        out.push({ x: x, y: y });
-        x += it.width + gap;
-        rowBottom = Math.max(rowBottom, y + it.height);
-        first = false;
-    }
-    return out;
 }
