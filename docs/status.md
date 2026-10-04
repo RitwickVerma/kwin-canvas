@@ -115,6 +115,43 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-05 — desktops become islands, and clusters can become desktops
+
+The user asked to integrate deeper with KDE: desktops as places, clusters
+that promote into desktops. Both shipped, with the extras.
+
+Each virtual desktop is an island: `desktopOffsets[n]` (keyed by
+x11DesktopNumber) holds the island's offset relative to the activity
+target, laid out as a row of islands below one another (step = screen
+height + ActivityGap, desktop 1 the sacred (0,0) seam row). A window's
+canvas position is frame + activity target + desktop offset; the closed
+camera is `viewTarget()` = target + offset, so the 1:1 seam holds on
+every desktop. Pills (the chips pattern: a plain-int `desktopCount`
+model, a camera-transform wrapper with explicit deps, and a SIZED
+delegate - a child Rectangle does not size its parent, so a 0x0 pill
+had a zero-area tap region) name each island; a click sets
+`KWin.Workspace.currentDesktop`, and `desktopChanged()` shifts the
+surviving entries, resyncs, and flies the camera to the new island.
+`DesktopTargets` (a hidden String knob) persists the offsets, so a
+desktop made from a cluster keeps its island across sessions.
+
+The promote: the Arrange menu's "Desktop from this cluster" runs
+`clusterToDesktop()` - `KWin.Workspace.createDesktop()` performs the
+creation but its return and the immediate list read are NULL through
+the QML boundary (the list refreshes asynchronously), so the finish
+runs on the next turn, finds the desktop by name, moves each member
+window's `desktops` to it, and shifts the members to the fresh island
+below. The effect-state channel (the plugin's `setEffectState` +
+`state()`'s `effect=` echo) feeds the panel button's tooltip the
+cluster and desktop count, and `make switcher-free` unbinds KWin's
+TabBox chords for the canvas switcher.
+
+Verified: 118-desktops 18/0 (the pill click flies to the island, the
+promote creates desktop 3 with the pair on it, the cleanup verbs
+restore), the regression batch green with no golden churn
+(dev/nest.sh seeds one desktop - the single-island baseline - so every
+existing scenario's offset is (0,0)).
+
 ### 2026-10-04 — the dock and the applets own their pixels
 
 The user clicked a dock icon and the window under it got focused and the

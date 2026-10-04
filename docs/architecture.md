@@ -673,6 +673,39 @@ picture is the window again at the same coordinates. `endSlide` takes the
 new frame position first, as `commit` does, so the write the slide makes
 absorbs as no move rather than as a drag the float must then correct.
 
+### Desktops
+
+Virtual desktops are islands on the plane. `desktopOffsets[n]`, keyed by
+`x11DesktopNumber`, holds each desktop's offset relative to the current
+activity's target: desktop 1 owns the origin row, and a desktop the effect
+has not seen lays itself out one step below the lowest island (step = the
+virtual screen's height + `ActivityGap`), so desktops stack vertically while
+activities spread horizontally. A window's canvas position is its frame
+geometry plus the activity target plus its desktop's offset
+(`desktopOf(w)`: a window on all desktops, or on none, lives on the current
+one), and the closed camera is `viewTarget()` - the target plus the offset -
+so the 1:1 seam holds on every desktop: the windows and the camera sit at
+the same offset, and canvas minus view is always the frame position.
+
+Switching desktops (`desktopChanged()`, hooked on
+`currentDesktopChanged` and on `desktopsChanged` for creates and
+removals) shifts the surviving entries by the offset delta, resyncs the
+plane, and flies the camera to the new island. Pills - the desktop
+names, drawn at each island's top edge - make the islands legible and
+clickable; the switcher and the edges land on the current desktop's
+place through the same `viewTarget()`. The offsets persist in the hidden
+`DesktopTargets` knob (JSON, like the bookmarks), so a promoted desktop
+keeps its island across sessions.
+
+A cluster can become a desktop: the Arrange menu's action calls
+`clusterToDesktop()`, which creates the desktop, waits out the
+asynchronous list refresh (the creation's return and the immediate list
+read are null through the QML boundary), finds the new desktop by name,
+moves each member window's `desktops` to it, and shifts the members to
+the fresh island. The real KWin desktop is then ordinary workspace state
+- the pager shows it, the taskbar shows it, and it survives restarts -
+while the plane keeps its place on it.
+
 ## Motion
 
 The camera is not a timeline. `viewX`, `viewY` and `zoom` are the state, a set

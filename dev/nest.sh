@@ -152,7 +152,7 @@ library=org.kde.breeze
 theme=Breeze
 
 [Desktops]
-Number=2
+Number=1
 Rows=1
 CFG
     # kded's GTK module writes $HOME/.gtkrc-2.0 whatever XDG_CONFIG_HOME

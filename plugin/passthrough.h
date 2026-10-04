@@ -101,6 +101,12 @@ public Q_SLOTS:
      * plugin's halves of a gesture can be read side by side in KWin's log.
      */
     Q_SCRIPTABLE void setVerbose(bool verbose);
+    /**
+     * A one-line summary the effect publishes for the panel applet:
+     * "clusters=N desktops=M". Stored and echoed by state(), so one poll
+     * gives the applet everything it shows.
+     */
+    Q_SCRIPTABLE void setEffectState(const QString &state);
     /** One line of state for the nest harness: active, camera, grab, hover. */
     Q_SCRIPTABLE QString state() const;
     /**
@@ -155,6 +161,7 @@ private:
     QHash<QString, QPointF> m_targets;
     /** The trace flag (setVerbose): log every decision this filter takes. */
     bool m_verbose = false;
+    QString m_effectState;
 
     QPointer<KWin::Window> m_grab;
     bool m_grabGround = false;

@@ -210,6 +210,11 @@ void CanvasPassthrough::setVerbose(bool verbose)
     qCDebug(KWIN_CANVAS) << "canvas-passthrough: verbose" << (verbose ? "on" : "off");
 }
 
+void CanvasPassthrough::setEffectState(const QString &state)
+{
+    m_effectState = state;
+}
+
 // The press of a hold button that turned out to be a click, not a hold:
 // deliver it to the window under the pointer, press and release, at the
 // pointer's own place. The seat's pointer state is whatever the normal
@@ -227,7 +232,7 @@ void CanvasPassthrough::replayClick()
 
 QString CanvasPassthrough::state() const
 {
-    return QStringLiteral("active=%1 view=(%2,%3) zoom=%4 grab=%5 ground=%6 hover=%7 nav=%8 hold=%9 seam=%10")
+    return QStringLiteral("active=%1 view=(%2,%3) zoom=%4 grab=%5 ground=%6 hover=%7 nav=%8 hold=%9 seam=%10 effect=%11")
         .arg(m_active ? QStringLiteral("true") : QStringLiteral("false"))
         .arg(m_viewX)
         .arg(m_viewY)
@@ -237,7 +242,8 @@ QString CanvasPassthrough::state() const
         .arg(m_hover ? m_hover->caption() : QStringLiteral("-"))
         .arg(m_nav)
         .arg(m_hold)
-        .arg(atSeam(waylandServer()->seat()->pointerPos()) ? QStringLiteral("1") : QStringLiteral("0"));
+        .arg(atSeam(waylandServer()->seat()->pointerPos()) ? QStringLiteral("1") : QStringLiteral("0"))
+        .arg(m_effectState.isEmpty() ? QStringLiteral("-") : m_effectState);
 }
 
 // The GPU's busy share via NVML, loaded on demand with QLibrary so the

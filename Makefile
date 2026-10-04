@@ -166,6 +166,12 @@ plugin-install-system: plugin ## Install the plugin into DESTDIR/usr/lib/qt6/plu
 	DESTDIR=$(DESTDIR) cmake --install $(PLUGIN_BUILD) >/dev/null
 	@echo "installed: $(DESTDIR)/usr/lib/qt6/plugins/kwin/plugins/$(PLUGIN_ID).so"
 
+switcher-free: ## Unbind KWin's own TabBox chords (Alt+Tab, Meta+Tab) so the canvas switcher owns them (takes effect next login)
+	kwriteconfig6 --file ~/.config/kglobalshortcutsrc --group kwin --key "Walk Through Windows" "none,none,Walk Through Windows"
+	kwriteconfig6 --file ~/.config/kglobalshortcutsrc --group kwin --key "Walk Through Windows Alternative" "none,none,Walk Through Windows Alternative"
+	qdbus org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel.reloadConfig
+	@echo "TabBox chords freed; the canvas switcher (Meta+Tab / Alt+Tab) owns them after the next login"
+
 # One printf, one write: four separate echoes each risk SIGPIPE from a
 # downstream `head`, and make reports that as "Broken pipe".
 plugin-status: ## Whether the pass-through plugin is built, installed, and answering in the running KWin

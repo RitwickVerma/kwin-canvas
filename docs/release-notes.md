@@ -1,5 +1,18 @@
 Unreleased:
 
+- Desktops are islands on the plane. Every virtual desktop is a place: its
+  windows live at the desktop's own offset, a row of islands laid out below
+  one another, and switching desktops flies the camera to the new island -
+  or quietly slides there at 1:1. Pills in the overworld name each island
+  and a click on one jumps straight to it, and the 1:1 seam holds on every
+  desktop, because the windows and the camera sit at the same offset. The
+  Arrange menu's "Desktop from this cluster" promotes a cluster into a real
+  KWin desktop: the derived grouping becomes declared workspace state,
+  visible in the pager and the taskbar, surviving restarts, and the new
+  desktop keeps its island. `make switcher-free` unbinds KWin's own TabBox
+  chords so Meta+Tab and Alt+Tab drive the canvas switcher, and the panel
+  button's tooltip now carries the cluster and desktop count.
+
 - The dock, the panels and the applets' dropdowns own their pixels. A
   click, a hover or a rest on the system's own chrome no longer focuses
   the window drawn under it, no longer flies the canvas to it - not in

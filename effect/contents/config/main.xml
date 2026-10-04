@@ -345,6 +345,10 @@
             <label>Saved views on the plane, as JSON: each a name, a camera position and a zoom. The digit keys jump to them and Ctrl+digit saves the current view as one - the plane's desks, the feature virtual desktops had that the plane needs.</label>
             <default></default>
         </entry>
+        <entry name="DesktopTargets" type="String">
+            <label>The island offsets of the virtual desktops on the plane, as JSON. Laid-out islands survive the session, so a desktop made from a cluster keeps its place.</label>
+            <default></default>
+        </entry>
         <entry name="FollowActivation" type="Bool">
             <label>Pan the canvas so an activated off-screen window comes on screen.</label>
             <default>true</default>
