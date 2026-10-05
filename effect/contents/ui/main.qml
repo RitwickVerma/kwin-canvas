@@ -113,9 +113,16 @@ KWin.SceneEffect {
         }
     }
     function qualityApply(cpu, gpu, mem) {
-        cpuBusy = cpu;
-        gpuBusy = gpu === undefined ? 0 : gpu;
-        memBusy = mem === undefined ? 0 : mem;
+        // A reading outside [0, 100] is not a percentage at all - a stale
+        // plugin still answering in kilobytes, or a dead channel - so it is
+        // treated as absent rather than letting a huge number force the
+        // canvas bare.
+        const cc = Number.isFinite(cpu) && cpu >= 0 && cpu <= 100 ? cpu : 0;
+        const gg = Number.isFinite(gpu) && gpu >= 0 && gpu <= 100 ? gpu : 0;
+        const mm = Number.isFinite(mem) && mem >= 0 && mem <= 100 ? mem : 0;
+        cpuBusy = cc;
+        gpuBusy = gg;
+        memBusy = mm;
         if (String(configuration.QualityMode) !== "Auto") {
             ql = qualityCap();
             quietSamples = 0;
@@ -124,15 +131,15 @@ KWin.SceneEffect {
         const cpuReduced = Number(configuration.CpuReduced);
         const cpuMinimal = Number(configuration.CpuMinimal);
         const cpuBare = Number(configuration.CpuBare);
-        const cpuQl = Logic.qualityFor(cpu, Number.isFinite(cpuReduced) ? cpuReduced : 60, Number.isFinite(cpuMinimal) ? cpuMinimal : 80, Number.isFinite(cpuBare) ? cpuBare : 95);
+        const cpuQl = Logic.qualityFor(cc, Number.isFinite(cpuReduced) ? cpuReduced : 60, Number.isFinite(cpuMinimal) ? cpuMinimal : 80, Number.isFinite(cpuBare) ? cpuBare : 95);
         const gpuReduced = Number(configuration.GpuReduced);
         const gpuMinimal = Number(configuration.GpuMinimal);
         const gpuBare = Number(configuration.GpuBare);
-        const gpuQl = Logic.qualityFor(gpu, Number.isFinite(gpuReduced) ? gpuReduced : 60, Number.isFinite(gpuMinimal) ? gpuMinimal : 80, Number.isFinite(gpuBare) ? gpuBare : 95);
+        const gpuQl = Logic.qualityFor(gg, Number.isFinite(gpuReduced) ? gpuReduced : 60, Number.isFinite(gpuMinimal) ? gpuMinimal : 80, Number.isFinite(gpuBare) ? gpuBare : 95);
         const memReduced = Number(configuration.MemReduced);
         const memMinimal = Number(configuration.MemMinimal);
         const memBare = Number(configuration.MemBare);
-        const memQl = Logic.qualityFor(mem, Number.isFinite(memReduced) ? memReduced : 80, Number.isFinite(memMinimal) ? memMinimal : 90, Number.isFinite(memBare) ? memBare : 97);
+        const memQl = Logic.qualityFor(mm, Number.isFinite(memReduced) ? memReduced : 80, Number.isFinite(memMinimal) ? memMinimal : 90, Number.isFinite(memBare) ? memBare : 97);
         // The three channels race each other: whichever sees the worse
         // pressure sets the step, and a calm machine must clear ALL of them
         // before the ladder climbs back up.
@@ -5595,9 +5602,9 @@ KWin.SceneEffect {
             width: hudRow.implicitWidth + Kirigami.Units.largeSpacing * 2
             height: hudRow.implicitHeight + Kirigami.Units.smallSpacing * 2
             radius: Kirigami.Units.cornerRadius
-            color: Qt.rgba(Kirigami.Theme.backgroundColor.r, Kirigami.Theme.backgroundColor.g, Kirigami.Theme.backgroundColor.b, 0.72)
+            color: Qt.rgba(0.05, 0.05, 0.08, 0.72)
             border.width: 1
-            border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.15)
+            border.color: "#33ffffff"
             Kirigami.Theme.inherit: false
             Kirigami.Theme.colorSet: Kirigami.Theme.Window
 
@@ -5651,7 +5658,7 @@ KWin.SceneEffect {
                         radius: 3
                         color: effect.palette[index % effect.palette.length]
                         border.width: current ? 2 : 0
-                        border.color: Kirigami.Theme.textColor
+                        border.color: "#ffffff"
                         Layout.alignment: Qt.AlignCenter
                         PC3.ToolTip.text: effect.labelOf(modelData)
                         PC3.ToolTip.visible: swatchHover.hovered
@@ -5667,9 +5674,9 @@ KWin.SceneEffect {
                     width: 10
                     height: 10
                     radius: 5
-                    color: effect.handOnWindow ? Kirigami.Theme.highlightColor : "transparent"
+                    color: effect.handOnWindow ? "#2a6ddf" : "transparent"
                     border.width: 1
-                    border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.5)
+                    border.color: "#80ffffff"
                     Layout.alignment: Qt.AlignCenter
                     PC3.ToolTip.text: effect.handOnWindow ? "The pointer is the window's" : "The pointer is the canvas's"
                     PC3.ToolTip.visible: handDotHover.hovered

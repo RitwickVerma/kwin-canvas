@@ -319,8 +319,11 @@ QString CanvasPassthrough::load() const
     QFile meminfo(QStringLiteral("/proc/meminfo"));
     if (meminfo.open(QIODevice::ReadOnly)) {
         qulonglong memTotal = 0, memAvail = 0;
-        while (!meminfo.atEnd()) {
+        // procfs seq_files report a zero size, so QFile::atEnd() is true
+        // before the first read - the loop runs on readLine() alone.
+        while (true) {
             const QByteArray line = meminfo.readLine();
+            if (line.isEmpty()) break;
             if (line.startsWith("MemTotal:")) {
                 memTotal = line.mid(9).simplified().split(' ')[0].toULongLong();
             } else if (line.startsWith("MemAvailable:")) {
