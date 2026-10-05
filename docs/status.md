@@ -115,6 +115,29 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-10 — the physics live at real time, and windows enter gently
+
+The user asked for "more fluidity (overall project think deep)". The
+camera spring, the float physics and the edge pan all stepped on fixed
+16 ms timers - a 62.5 Hz grid - with a hard-coded dt; on a fast display
+every flight rendered in 16 ms steps. The single frame timer now fires
+every 8 ms and integrates the real elapsed time, clamped to 16.7 ms for
+the Euler spring's stability (a busy frame slows the motion rather than
+lengthening its steps, the old property kept), and the float bob's phase
+advances with real time too. Windows that open into the overworld fade
+and scale in from a 0.94 origin over 200 ms instead of popping; the
+open's populate and the quiet seam carry no birth stamp, so the
+pixel-exact seams are untouched.
+
+The trap that ate the morning: the spawn-fade's `opacity` duplicate hit
+"Property value set multiple times" - the delegate already wore
+`effect.thumbOpacity` (the open's fade-in) - and the effect failed to
+load, so the runner's load-wait hung forever and the batch timed out at
+the first scenario. The fix merges both into one binding:
+`opacity: effect.thumbOpacity * thumb.enterFade`. Also reverted: a
+self-chaining Qt.callLater frame tick, which ran unthrottled on the
+virtual-output nest and pegged a core.
+
 ### 2026-10-09 — the switcher stops machine-gunning, and the ladder's memory channel reads
 
 The user reported "the switcher is broken at a very basic level": a

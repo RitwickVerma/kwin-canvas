@@ -1,5 +1,15 @@
 Unreleased:
 
+- The physics live at real time. The camera spring and the float physics
+  used to step on a fixed 16 ms timer, so on a fast display every flight
+  and bounce rendered on a 62.5 Hz grid regardless of the panel's own
+  rate; they now integrate the real time that passed, clamped for the
+  spring's stability, on a finer tick - flights and floats glide instead
+  of stepping, and a slow frame slows the motion rather than lengthening
+  its steps. And a window that enters the open overworld fades and grows
+  in gently instead of popping, while the quiet seam and the closed
+  desktop stay pixel-exact.
+
 - The switcher opens as a snap, not a wait: the fit to the whole plane
   rides a brisker flight, and the windows rise in z at the same moment
   - the pile's depth comes up on its own quick ramp instead of waiting

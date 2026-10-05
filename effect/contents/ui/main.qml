@@ -506,8 +506,9 @@ KWin.SceneEffect {
     // persists the choice.
     property var pinned: ({})          // caption -> true, the persisted flag
     property var floatOf: ({})         // window internalId -> { x, y, vx, vy, wasInX, wasInY }, screen px
-    property int floatRev: 0
+    property real floatRev: 0
     property real floatPrevViewX: 0
+    property real lastFloatAt: 0
     property real floatPrevViewY: 0
     function isPinnedEntry(e) { return e && e.window && !e.window.deleted && e.window.keepAbove; }
     function loadPinned() {
@@ -576,6 +577,11 @@ KWin.SceneEffect {
     // exploding under it. Runs while the canvas is visible, a slide at 1:1
     // included.
     function floatPinned(dt) {
+        // After a stall the last camera position is stale: a fresh start
+        // must not read a wild velocity out of it.
+        const now = Date.now();
+        if (now - lastFloatAt > 100) { floatPrevViewX = viewX; floatPrevViewY = viewY; }
+        lastFloatAt = now;
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
             const id = e.window.internalId;
@@ -592,13 +598,9 @@ KWin.SceneEffect {
         }
         floatPrevViewX = viewX;
         floatPrevViewY = viewY;
-        floatRev++;
-    }
-    Timer {
-        interval: 16
-        repeat: true
-        running: effect.visible
-        onTriggered: effect.floatPinned(interval / 1000)
+        // The bob's phase advances with real time, whatever the tick
+        // rate the frame chain lands on (the old timer's 62.5 Hz).
+        floatRev += dt * 62.5;
     }
     // ---- hover navigation ----------------------------------------------------
     // The pointer rests on a window and the camera pans the least that brings
@@ -1501,7 +1503,7 @@ KWin.SceneEffect {
             const w = stack[i];
             if (!isCanvasWindow(w, true)) continue;
             let e = byId[w.internalId];
-            if (!e) { e = makeEntry(w); changed = true; }
+            if (!e) { e = makeEntry(w); e.born = Date.now(); changed = true; }
             else if (syncEntry(e)) changed = true;
             list.push(e);
         }
@@ -1915,11 +1917,32 @@ KWin.SceneEffect {
         }
     }
 
+    property real lastTickAt: 0
+
+    // The physics tick's dt: the real time since the last tick, clamped
+    // to a frame at 60 Hz. The Euler spring is only stable for a fraction
+    // of its period, so a busy loop then slows the motion rather than
+    // lengthening its steps - the old fixed dt's property, kept - while
+    // a fast display still integrates at real time instead of the
+    // timer's own cadence.
+    function frameDt() {
+        const now = Date.now();
+        let dt = (now - lastTickAt) / 1000;
+        if (!(dt > 0)) dt = 0;
+        lastTickAt = now;
+        if (dt > 0.0167) dt = 0.0167;
+        return dt;
+    }
+
     Timer {
-        interval: 16
+        interval: 8
         repeat: true
-        running: effect.camLive()
-        onTriggered: effect.camStep(interval / 1000)
+        running: effect.visible
+        onTriggered: {
+            const dt = effect.frameDt();
+            if (effect.camLive()) effect.camStep(dt);
+            effect.floatPinned(dt);
+        }
     }
 
     // ---- opening and closing fades ------------------------------------------
@@ -4714,6 +4737,37 @@ KWin.SceneEffect {
                 // geometry bindings read the table directly and depend on
                 // revision to re-evaluate after dragEntry().
                 readonly property var entry: effect.entries[index]
+                // A window that spawns into the open overworld enters
+                // gently: it fades and grows in over a fifth of a second
+                // instead of popping. The open's own populate never fades
+                // (its entries carry no born), and neither does the quiet
+                // seam - the location is the real windows.
+                property var seen: null
+                property real enterFade: 1
+                onEntryChanged: {
+                    if (thumb.entry !== thumb.seen) {
+                        thumb.seen = thumb.entry;
+                        if (thumb.entry.born && !effect.quiet) {
+                            thumb.enterFade = 0;
+                            enterFadeAnim.restart();
+                        }
+                    }
+                }
+                Component.onCompleted: {
+                    thumb.seen = thumb.entry;
+                    if (thumb.entry.born && !effect.quiet) {
+                        thumb.enterFade = 0;
+                        enterFadeAnim.restart();
+                    }
+                }
+                NumberAnimation {
+                    id: enterFadeAnim
+                    target: thumb
+                    property: "enterFade"
+                    to: 1
+                    duration: 200
+                    easing.type: Easing.OutCubic
+                }
                 // The entry a drag started on. A raise restacks the entries
                 // under the delegates, so a drag follows its entry, not its index.
                 property var held: null
@@ -4726,7 +4780,6 @@ KWin.SceneEffect {
                 width: { effect.revision; return effect.entries[index].width * effect.zoom; }
                 height: { effect.revision; return effect.entries[index].height * effect.zoom; }
                 visible: !effect.quiet || entry.activity === effect.currentActivity
-                opacity: effect.thumbOpacity
                 // The entries are the real stacking order, so the index IS the
                 // z; the hovered window lifts above the web, and nothing else
                 // re-orders.
@@ -4753,7 +4806,8 @@ KWin.SceneEffect {
                 // glance instead of being a property only the pointer sees.
                 readonly property real depth: { effect.revision; effect.focusEntry; effect.selectionRev; effect.switcherActive; return ((thumb.entry === effect.focusEntry || (effect.switcherActive && effect.isSelected(thumb.entry)) ? effect.entries.length + 1 : index + 1) / (effect.entries.length + (effect.focusEntry ? 1 : 0))); }
                 readonly property real depthScale: (effect.quiet || effect.ql >= 2) ? 1 : (1 + (0.025 * thumb.depth - 0.01) * Math.max(effect.skinReveal, effect.switcherRise))
-                scale: depthScale * (lifted ? 1.03 : (thumb.hovered && heavy ? 1.008 : 1))
+                scale: depthScale * (lifted ? 1.03 : (thumb.hovered && heavy ? 1.008 : 1)) * (0.94 + 0.06 * thumb.enterFade)
+                opacity: effect.thumbOpacity * thumb.enterFade
                 Behavior on scale { enabled: !effect.quiet; SpringAnimation { spring: 3.6; damping: 0.5; epsilon: 0.001 } }
                 transform: [
                     Rotation {
