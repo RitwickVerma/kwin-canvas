@@ -418,6 +418,14 @@ KWin.SceneEffect {
         return pool.length > 1 ? pool : entries;
     }
 
+    // The switcher's pick: the selected window while the cycle runs, the
+    // focused one before the first step - the card shows who lands.
+    function switcherPick() {
+        if (!switcherActive) return null;
+        for (let i = 0; i < entries.length; ++i) if (isSelected(entries[i])) return entries[i];
+        return focusEntry ? focusEntry : (entries.length ? entries[0] : null);
+    }
+
     // Pan the camera the least that puts the window wholly on the screen the
     // pointer is on, and - among the pans that keep it so - the one that
     // leaves the most of the other windows in view. The natural stopping
@@ -1705,12 +1713,14 @@ KWin.SceneEffect {
             switcherCycle(1);
             return;
         }
-        if (visible && !quiet) { endSwitcher(); return; }
+        if (effect.canvasHold) return;
         // The world is the map: the switcher opens the canvas fitted to
-        // the whole plane, with the selection cycle still riding Tab and
-        // Enter to step in. The fit rides a brisk flight and the windows
-        // rise in z at the same time, so the switch-in is a snap, not a
-        // wait.
+        // the whole plane, from the closed location or the open overworld
+        // alike - the chord is the switcher wherever it fires, and only a
+        // hold in progress stands it down. The selection cycle still rides
+        // Tab and Enter to step in. The fit rides a brisk flight and the
+        // windows rise in z at the same time, so the switch-in is a snap,
+        // not a wait.
         if (!visible) open();
         switcherActive = true;
         switcherRiseAnim.restart();
@@ -5749,6 +5759,63 @@ KWin.SceneEffect {
                 id: toastLabel
                 anchors.centerIn: parent
                 text: effect.toastText
+            }
+        }
+
+        // The switcher's pick: a glass card naming the chosen window, with
+        // its live picture and the cluster it belongs to. It rides the
+        // switcher's z-rise, so the card and the pile settle together, and
+        // each step swaps the content in place.
+        Rectangle {
+            z: 100002
+            visible: { effect.switcherActive; return view.screen === effect.primaryScreen && effect.switcherActive; }
+            opacity: effect.switcherRise
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: hud.bottom
+            anchors.topMargin: Kirigami.Units.largeSpacing
+            width: switchRow.implicitWidth + Kirigami.Units.largeSpacing * 2
+            height: switchRow.implicitHeight + Kirigami.Units.largeSpacing * 2
+            radius: 16
+            color: Qt.rgba(0.05, 0.05, 0.08, 0.72)
+            border.width: 1
+            border.color: "#33ffffff"
+            Row {
+                id: switchRow
+                anchors.centerIn: parent
+                spacing: Kirigami.Units.largeSpacing
+                Item {
+                    width: 220
+                    height: 124
+                    visible: effect.ql < 2
+                    KWin.WindowThumbnail {
+                        anchors.fill: parent
+                        client: effect.switcherPick() ? effect.switcherPick().window : null
+                    }
+                }
+                Column {
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: Kirigami.Units.smallSpacing
+                    PC3.Label {
+                        text: {
+                            effect.selectionRev; effect.revision;
+                            const p = effect.switcherPick();
+                            return p ? p.window.caption : "";
+                        }
+                        font.pointSize: 15
+                        font.weight: Font.DemiBold
+                        color: "#ffffff"
+                    }
+                    PC3.Label {
+                        text: {
+                            effect.selectionRev; effect.revision; effect.clusterRev;
+                            const p = effect.switcherPick();
+                            const ci = p ? effect.clusterIndexOfEntry(p) : -1;
+                            return ci >= 0 ? ("cluster #" + (ci + 1) + " · " + effect.clusters[ci].n + " windows") : "";
+                        }
+                        font.pointSize: 10
+                        color: "#99ffffff"
+                    }
+                }
             }
         }
 

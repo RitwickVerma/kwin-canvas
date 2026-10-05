@@ -1,5 +1,16 @@
 Unreleased:
 
+- The switcher wears its pick. While the chord is held, a glass card
+  under the toolbar names the chosen window, shows it live, and says
+  which cluster it belongs to - riding the same rise the windows ride,
+  and gone with the switcher. The chord now opens the switcher from the
+  open overworld too, not only from the closed location: wherever the
+  chord fires, the plane fits and the card steps with the selection.
+
+- The demo tour matches the canvas again: the refreshed capture walks
+  the step-out, the double-click fly, the web, the switcher's snap with
+  its pick card, the hold's wheel descent and the landing.
+
 - Alt+Tab is the cluster switcher now. Meta+Tab keeps sweeping the whole
   plane; Alt+Tab steps only among the windows of the cluster the eye is
   on, and opens fitted to that cluster instead of the whole world - the

@@ -4,8 +4,8 @@
 # The cinematic demo: one nested session driven by real input, captured to
 # build/demo/demo.gif and demo.mp4. The sequence is the tour: the desktop,
 # the step out into the haze, the hover's glow, the double-click's flight,
-# the clusters' web, the map's morph, the hold's sheets, and the step back
-# in. For the README's hero and the release notes.
+# the clusters' web, the switcher's snap with its pick card, the hold's
+# keyhole, and the step back in. For the README's hero and the release notes.
 set -uo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 source "$HERE/dev/nest.sh"
@@ -35,12 +35,17 @@ c "placeby Gwenview 3000 300 460 420" >/dev/null
 c "placeby Dolphin 3600 350 700 360" >/dev/null
 c commit >/dev/null
 
-# The frame camera: a backgrounded loop that captures while the input runs.
+# The frame camera: a burst of shots after each step, so every moment is
+# captured whatever the capture tool's own latency - the old fixed-rate loop
+# racing the whole sequence missed the tail entirely.
 FRAMES=$OUT
-shot_frames() {
-    for i in $(seq -w 1 90); do
-        shot "$FRAMES/frame-$i.png" >/dev/null 2>&1
-        sleep 0.11
+FRAME=0
+burst() {
+    local n=$1 i
+    for i in $(seq 1 "$n"); do
+        FRAME=$((FRAME + 1))
+        shot "$FRAMES/frame-$(printf '%02d' "$FRAME").png" >/dev/null 2>&1
+        sleep 0.4
     done
 }
 
@@ -48,44 +53,62 @@ shot_frames() {
 run_sequence() {
     # 1. the desktop, then the step out into the haze
     sleep 1.2
+    burst 3
     c open >/dev/null
     c "zoom 0.5 960 540" >/dev/null
-    sleep 1.4
+    sleep 0.6
+    burst 5
     # 2. the hover's glow settles on KCalc
     input move 480 510
     sleep 1.2
+    burst 4
     # 3. the double-click flies into the location, snappy
-    input click
-    sleep 0.09
-    input click
-    sleep 1.0
+    { printf 'move 480 510\nsleep 300\nclick\nsleep 90\nclick\n'; } | input >/dev/null 2>&1 &
+    sleep 1.4
+    burst 5
     # 4. back out; the clusters' web and the floating windows
     c open >/dev/null
     c "zoom 0.35 960 540" >/dev/null
     sleep 1.6
+    burst 6
     # 5. the cluster tour
     input key bracketright
-    sleep 1.1
+    sleep 0.9
+    burst 3
     input key bracketright
-    sleep 1.1
+    sleep 0.9
+    burst 3
     input key bracketleft
     sleep 0.8
-    # 6. the hold: the map's sheets sharpen in
-    input move 1700 900
-    sleep 0.3
-    input down back
+    burst 3
+    # 6. the switcher's snap: the fit, the z-rise, and the pick card
+    c switch >/dev/null
+    sleep 0.8
+    burst 5
+    c switch >/dev/null
+    sleep 0.6
+    burst 3
+    c switch >/dev/null
+    sleep 0.6
+    burst 3
+    c cancel >/dev/null
+    sleep 0.8
+    burst 3
+    # 7. the hold: the wheel turns the world into the keyhole's map
+    { printf 'move 1700 900\nsleep 100\ndown back\nsleep 500\nwheel -4\nsleep 1500\nup back\n'; } | input >/dev/null 2>&1 &
+    sleep 1.0
+    burst 3
     sleep 1.6
-    # 7. the release and the step back in
-    input up back
+    burst 6
+    # 8. the release and the step back in
     sleep 0.9
+    burst 3
     c enter >/dev/null
     sleep 1.0
+    burst 3
 }
 
-shot_frames &
-SHOT_PID=$!
 run_sequence
-wait $SHOT_PID
 
 # The GIF and the mp4 from the frames.
 ffmpeg -y -loglevel error -framerate 12 -pattern_type glob -i "$OUT/frame-*.png" \

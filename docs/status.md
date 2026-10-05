@@ -115,6 +115,27 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-11 — the switcher wears its pick, and the demo walks the tour again
+
+The user asked how to make it even more mindblowing; the picks were
+the switcher's preview card and a fresh demo. The card sits under the
+toolbar while the switcher is up - the chosen window's name, its live
+picture, and its cluster line, riding the z-rise (scenario 125 pins it
+with region probes). The demo capture exposed a real bug along the
+way: `switcherToggle` had a leftover `visible && !quiet` reset branch,
+so the chord on the open overworld did nothing - the switcher only
+opened from the closed location. The branch is gone (a hold still
+stands the chord down); the chain test proves the fit now runs from
+the open canvas too (0.35 -> 0.4314).
+
+The demo's capture was rebuilt around the two harness traps that froze
+the earlier takes: a fixed-rate shot loop races spectacle's latency,
+so each step now gets its own shot burst, and every input step is a
+single fakeinput stream - separate invocations are separate devices,
+each pressing at its own default corner. The verified tour: the
+desktop, the step-out, the double-click fly, the web, the switcher's
+snap with its card, the hold's wheel descent, the landing.
+
 ### 2026-10-10 — Alt+Tab scopes to the cluster, and the physics live at real time
 
 The user's idea for the two switcher chords: one scope each. Meta+Tab
