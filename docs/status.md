@@ -115,6 +115,39 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-12 — the plane tilts into depth, and the input follows it through
+
+The user asked "can we make everything 3D?" - and the plane now pitches
+into perspective as it zooms out. The tilt pivots at the screen's centre
+(the first cut drifted the whole desk as it tilted - the matrix rotated
+around the origin, not the centre; the pivot-correct chain keeps the
+centre fixed and scales the projection so the centre renders at its flat
+size), the windows lift by their depth and fog with their distance, and
+the camera's layers (ground, frames, threads, chips, badge, tags) ride
+the same matrix.
+
+The hard part was the input. Qt's picking and drag through a
+perspective matrix is broken - a window with the matrix on it lost its
+whole drag (80-input measured zero movement) - so the windows stay flat
+items re-sited by projecting their centres through the matrix (a
+Scale/Translate affine, which the drag machinery handles exactly, times
+the tilt-aware compensation for the perspective's gradient). The
+pass-through plugin's toCanvas gains the closed-form inverse of the
+pitch, so the hover and the pointer handoff land on the window under the
+visual pointer, not the flat-math one. The 1:1 seam never tilts
+(pixel-identical A/B), the ladder flattens the plane at the minimal
+rung, and Depth3D is the hidden knob.
+
+Measured: the tilt A/B at zoom 0.5 moves 12.6% of the picture; the drag
+through the tilt lands within 2% of the flat prediction (the affine's
+constant-k approximation); 126-depth3d 7/0 pins the seam, the tilt, the
+drag and the ladder-flatten; 80-input 9/0 pins the drag and the
+pass-through math. Two follow-up fixes: the enter-fade re-fired on
+every re-sort (the activation's re-raise re-assigns the positional
+delegates - the born check now also demands the entry is younger than
+500 ms), and the fog gained the depth3d gate so the flat picture is
+bit-for-bit the old one when the tilt is off.
+
 ### 2026-10-11 — the switcher reads its release from the seat
 
 The user reported "switcher release doesnt always work". The release

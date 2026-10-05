@@ -285,6 +285,10 @@
             <label>Length of the scene fade that masks a close from a zoomed-out overworld, in milliseconds. The seams at 1:1 are instant - the canvas and the desktop are the same picture there. A hidden knob, for measuring the transition.</label>
             <default>90</default>
         </entry>
+        <entry name="Depth3D" type="Bool">
+            <label>The plane in perspective: zooming out tilts the camera back, so the world reads as a table receding into the distance, and the windows float above it by their z-depth. Flat at 1:1 - the location's pixel-exact seam never tilts - and flat whenever the fidelity ladder is at minimal or bare. A hidden knob: off makes every zoom a flat map.</label>
+            <default>true</default>
+        </entry>
         <entry name="QualityMode" type="String">
             <label>How much eye candy the canvas may run. Auto sheds it in steps as the system gets busy - reduced (the blur and the faint constellation go), minimal (no cluster web, no shadows, no z-depth) and bare (plain rectangles with names) - and puts it back when the machine breathes. The other settings hold that step always.</label>
             <default>Auto</default>

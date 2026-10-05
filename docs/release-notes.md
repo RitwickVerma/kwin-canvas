@@ -1,5 +1,17 @@
 Unreleased:
 
+- The plane tilts into depth. Zooming out pitches the plane away like a
+  table - the far edge recedes, the near edge comes toward you, and the
+  windows lift off it by their place in the stack, higher windows
+  higher, and fog with their distance from the camera. The centre stays
+  put, so the tilt reads as the camera lifting, not the desk sliding.
+  The whole input follows the tilted picture: the drag lands exactly
+  where the hand puts the window, the hover and the pass-through find
+  the window under the pointer through the same projection, and the 1:1
+  seam never tilts at all - the location is stock KWin, pixel for
+  pixel. Under load the ladder flattens the plane back down at the
+  minimal rung. Depth3D is the hidden knob; off is the flat map.
+
 - The switcher's release no longer waits on a key-up the scene may
   never see. The chord's end is read from the seat itself - the
   pass-through plugin reports the live modifier keys, and the moment
