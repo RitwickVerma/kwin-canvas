@@ -1,5 +1,12 @@
 Unreleased:
 
+- Alt+Tab is the cluster switcher now. Meta+Tab keeps sweeping the whole
+  plane; Alt+Tab steps only among the windows of the cluster the eye is
+  on, and opens fitted to that cluster instead of the whole world - the
+  quick switch among neighbours at 1:1, where a cluster of one falls
+  back to the plane-wide fit. Bind both over KWin's own switcher and
+  they are the two scopes of the same gesture.
+
 - The physics live at real time. The camera spring and the float physics
   used to step on a fixed 16 ms timer, so on a fast display every flight
   and bounce rendered on a 62.5 Hz grid regardless of the panel's own

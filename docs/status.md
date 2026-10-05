@@ -115,6 +115,20 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-10 — Alt+Tab scopes to the cluster, and the physics live at real time
+
+The user's idea for the two switcher chords: one scope each. Meta+Tab
+keeps sweeping the whole plane; Alt+Tab now opens the switcher fitted
+to the cluster the eye is on (capped at the canvas's 1:1, a short hop
+among neighbours) and steps only among that cluster's windows
+(switcherMembers() walks the cluster's live entries; a cluster of one
+falls back to the world fit). clusterRect() extracts the bounds the
+chip flight already computed, and graspClusterTo rides it too. The
+switcherCluster flag is set by the chord that opened the switcher and
+cleared in endSwitcher(); scenario 124 proves the scoped fit (1:1 vs
+the world's under-0.4), the scoped step, the enter, and the unchanged
+world switcher.
+
 ### 2026-10-10 — the physics live at real time, and windows enter gently
 
 The user asked for "more fluidity (overall project think deep)". The
