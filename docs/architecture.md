@@ -735,7 +735,7 @@ piece of paper.
 
 **The tilt** is the camera's pitch into perspective, on while `Depth3D` (the
 hidden knob) is on and the fidelity is above minimal. `tiltMatrix(sg, dz)`
-builds it: the plane pitches back by `t = (1 - zoom) * 0.21` radians around
+builds it: the plane pitches back by `t = (1 - zoom) * 0.30` radians around
 the horizontal axis through the screen's centre - the pivot is the centre, so
 the desk never slides as it tilts - and a perspective projection whose scale
 matches the camera distance (900) sits the camera so the centre renders at its
@@ -744,6 +744,14 @@ flat size while the far edge recedes and the near edge grows. Every plane layer
 rides the matrix; each window adds `dz`, its lift - the depth rank times
 `(1 - zoom) * 60` - so a higher window floats higher, and a distance fog dims
 it (`fog`, off below 1:1 or when the ladder flattens the plane).
+
+The backdrop does not ride the matrix: the perspective transform on the
+blur layer made the scene graph drop the whole layer (measured - the dim
+vanished), so the floor stays flat and the pitch is carried by what the
+eye actually reads: the haze (the blur radius and the dim scale down with
+the zoom, so the floor sharpens and lifts as the table comes out) and the
+grid (the ground's lines brighten with the skin, so the converging lines
+trace the perspective).
 
 The windows themselves never carry the matrix: Qt's picking and drag through
 a perspective transform is broken, so each window stays a flat item whose

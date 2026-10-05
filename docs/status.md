@@ -115,6 +115,23 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-13 — the tilt's floor reads: the haze lifts, the grid brightens
+
+The user's first look at the 3D: "bro the whole backgroundd is blur. no
+grid no nothing. how am I supposed to see 3d with just windows zoomed
+out???" The tilt existed but had no floor to express itself on - the
+backdrop haze (the designed blur 48 + dim 0.45) and the faint grid
+swallowed the pitch. Three changes: the pitch deepens (0.21 → 0.30, 17°
+max); the floor reads it (the blur radius and the dim scale down with
+the zoom - the floor sharpens and lifts as the table comes out - and
+the ground's grid brightens with the skin, so the converging lines
+carry the perspective); and the backdrop stays flat by necessity - a
+perspective transform on the blur layer made the scene graph drop the
+whole layer (measured: the dim A/B collapsed to rmse 1.5e-05; flat it
+is 16.8%), which is documented in the code and in the architecture.
+The seven depth goldens were re-recorded for the stronger picture, the
+whole batch stayed green (lint 147/147, unit 85/0).
+
 ### 2026-10-12 — the plane tilts into depth, and the input follows it through
 
 The user asked "can we make everything 3D?" - and the plane now pitches

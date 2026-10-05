@@ -5,6 +5,9 @@ Unreleased:
   windows lift off it by their place in the stack, higher windows
   higher, and fog with their distance from the camera. The centre stays
   put, so the tilt reads as the camera lifting, not the desk sliding.
+  The floor reads the pitch: the backdrop haze sharpens and lifts as
+  the zoom drops, and the ground's grid brightens so the converging
+  lines carry the perspective - the blur never swallowed the 3D again.
   The whole input follows the tilted picture: the drag lands exactly
   where the hand puts the window, the hover and the pass-through find
   the window under the pointer through the same projection, and the 1:1

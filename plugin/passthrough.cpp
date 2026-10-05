@@ -364,7 +364,7 @@ QPointF CanvasPassthrough::toCanvas(const QPointF &screen) const
     if (m_zoom >= 0.999 || m_zoom <= 0.0) {
         return QPointF(m_viewX + screen.x() / m_zoom, m_viewY + screen.y() / m_zoom);
     }
-    const double t = (1.0 - m_zoom) * 0.21;
+    const double t = (1.0 - m_zoom) * 0.30;
     const double D = 900.0;
     // The screen whose centre is the pivot: the one holding the pointer.
     const QList<LogicalOutput *> outputs = workspace()->outputs();

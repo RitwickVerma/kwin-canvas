@@ -112,7 +112,7 @@ KWin.SceneEffect {
     // folded back into the delegate's transform.
     function projectWindow(sg, sx, sy, dz) {
         if (ql >= 2 || !depth3d || zoom >= 0.999) return { x: sx, y: sy, k: 1 };
-        const t = (1 - zoom) * 0.21;
+        const t = (1 - zoom) * 0.30;
         const cx = sg.width / 2, cy = sg.height / 2;
         const d = 900;
         const x0 = sx - cx, y0 = sy - cy;
@@ -126,7 +126,7 @@ KWin.SceneEffect {
     // whenever the tilt is off, so the scene is bit-for-bit the flat one.
     function tiltMatrix(sg, dz) {
         if (ql >= 2 || !depth3d || zoom >= 0.999) return Qt.matrix4x4();
-        const t = (1 - zoom) * 0.21;
+        const t = (1 - zoom) * 0.30;
         const cx = sg.width / 2, cy = sg.height / 2;
         const d = 900;
         var m = Qt.matrix4x4();
@@ -4599,6 +4599,12 @@ KWin.SceneEffect {
             Behavior on blurAlpha { NumberAnimation { duration: 280; easing.type: Easing.InOutCubic } }
             visible: wallpaper && (wantShown || blurAlpha > 0.004)
             opacity: blurAlpha
+            // The backdrop must NOT carry the tilt: a perspective matrix on
+            // this layer makes the scene graph drop it entirely (measured -
+            // the whole floor vanishes). The plane's tilt is carried by the
+            // ground's grid and the desks; the wallpaper haze below stays
+            // flat, and as the pitch comes in it sharpens and lifts, so it
+            // reads as the room's floor rather than fighting the warp.
             // The source is rendered at half resolution and the blur is
             // upscaled: a quarter of the pixels for the same haze, which is
             // the difference between a full-screen blur that runs and one
@@ -4621,21 +4627,25 @@ KWin.SceneEffect {
                 // The quiet slide (a focus fly, a pan chord at 1:1) is the
                 // desktop gliding: the wallpaper stays, sharp, so a
                 // transient move never flashes grey or the overworld's blur.
-                // Under load the blur is the first pass to go: it is a
-                // half-screen FBO sampled every frame, and a busy machine
-                // keeps the wallpaper sharp rather than pay for the haze.
-                radius: (effect.quiet || effect.ql >= 1) ? 0 : effect.backdropBlur()
+                // The tilt's floor wants the same: as the plane pitches the
+                // haze lifts with the zoom, so the table reads instead of a
+                // formless blur. Under load the blur is the first pass to
+                // go: it is a half-screen FBO sampled every frame, and a
+                // busy machine keeps the wallpaper sharp rather than pay
+                // for the haze.
+                radius: (effect.quiet || effect.ql >= 1) ? 0 : Math.max(0, Math.round(effect.backdropBlur() * effect.zoom))
                 transparentBorder: false
             }
             // The dim over the blur only: the desks ride above it and stay
             // bright. Zero while the canvas slides at 1:1, where the plane
             // and the desktop have to be the same thing, and it fades in
             // with the chrome on open and out with it on the step in, so
-            // stepping out and back never flashes the dim.
+            // stepping out and back never flashes the dim. It lifts with
+            // the tilt too: the pitched floor stays bright enough to read.
             Rectangle {
                 anchors.fill: parent
                 color: effect.configuration.Background
-                opacity: effect.backdropDim() * effect.chromeFade * effect.skinReveal
+                opacity: effect.backdropDim() * effect.chromeFade * effect.skinReveal * (0.25 + 0.75 * effect.zoom)
             }
         }
 
@@ -4651,7 +4661,14 @@ KWin.SceneEffect {
             octaveFactor: effect.configuration.GridOctaveFactor
             octaves: effect.configuration.GridOctaves
             background: effect.configuration.Background
-            lineColor: effect.configuration.LineColor
+            // The tilted plane's texture: the grid brightens with the pitch
+            // so the table's converging lines read instead of a faint
+            // shimmer. Flat (or under load) it keeps its usual weight.
+            lineColor: {
+                const c = effect.configuration.LineColor;
+                const boost = (effect.depth3d && effect.ql < 2) ? 1 + 0.9 * effect.skinReveal : 1;
+                return Qt.rgba(c.r, c.g, c.b, Math.min(1, c.a * boost));
+            }
             tileImage: effect.configuration.TileImage
             // With the wallpaper behind it the base rect above is the ground's
             // background, and the grid draws over the wallpaper.
