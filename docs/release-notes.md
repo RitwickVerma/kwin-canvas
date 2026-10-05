@@ -1,5 +1,12 @@
 Unreleased:
 
+- The switcher opens as a snap, not a wait: the fit to the whole plane
+  rides a brisker flight, and the windows rise in z at the same moment
+  - the pile's depth comes up on its own quick ramp instead of waiting
+  for the zoom-out to reveal it. Each step also pops the pick to the
+  top of the pile, so the cycle reads in the shadows and the size, not
+  just the outline.
+
 - The switcher reads a held chord as a hold. The chord refired on every
   key repeat of a held Tab, so holding Alt+Tab machine-gunned the cycle;
   a single gate now passes one step per deliberate re-tap and swallows

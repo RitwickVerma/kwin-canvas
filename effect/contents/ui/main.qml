@@ -1612,6 +1612,24 @@ KWin.SceneEffect {
     // Set when the switcher opened from the chord (Meta+Tab / Alt+Tab), not
     // the debug verb, so the chord's release is the enter only for real holds.
     property bool switcherFromChord: false
+    // The switcher's z-rise: the windows come up in z the moment the
+    // switcher opens, on this ramp, instead of waiting for the zoom-out
+    // to reveal the depth - the switch-in reads as the pile rising to
+    // meet the eye while the camera flies out.
+    property real switcherRise: 0
+    NumberAnimation {
+        id: switcherRiseAnim
+        target: effect
+        property: "switcherRise"
+        to: 1
+        duration: 180
+        easing.type: Easing.OutCubic
+    }
+    function endSwitcher() {
+        switcherActive = false;
+        switcherRise = 0;
+        switcherRiseAnim.stop();
+    }
     // The last time the switcher cycled. The chord refires on every key
     // repeat of a held Tab, and a deliberate re-tap is the only cycle
     // worth taking: the gate passes real re-taps and swallows auto-repeat
@@ -1640,13 +1658,16 @@ KWin.SceneEffect {
             switcherCycle(1);
             return;
         }
-        if (visible && !quiet) { switcherActive = false; return; }
+        if (visible && !quiet) { endSwitcher(); return; }
         // The world is the map: the switcher opens the canvas fitted to
         // the whole plane, with the selection cycle still riding Tab and
-        // Enter to step in.
+        // Enter to step in. The fit rides a brisk flight and the windows
+        // rise in z at the same time, so the switch-in is a snap, not a
+        // wait.
         if (!visible) open();
         switcherActive = true;
-        zoomExtents(true);
+        switcherRiseAnim.restart();
+        zoomExtents(true, 3.0);
         // The overworld's chrome can take the scene's keyboard focus (the
         // menus' focus scopes) - the switcher needs the keys, so the view
         // takes the focus back once the fit is on screen.
@@ -2008,7 +2029,7 @@ KWin.SceneEffect {
     // Fit every window and every frame into the screen the pointer is on (the
     // active screen's, when there is no pointer), at once for a script and on
     // the spring for the toolbar and the key.
-    function zoomExtents(animate) {
+    function zoomExtents(animate, rate) {
         let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
@@ -2024,7 +2045,7 @@ KWin.SceneEffect {
         if (l === Infinity) { l = 0; t = 0; r = 1; b = 1; }
         const sg = actionScreen().geometry;
         const f = Logic.fitBox(l, t, r, b, sg, 80, zoomMin);
-        if (animate) { camGo(f.zoom, f.viewX, f.viewY); return; }
+        if (animate) { camGo(f.zoom, f.viewX, f.viewY, undefined, undefined, rate); return; }
         camStop();
         zoom = f.zoom;
         viewX = f.viewX;
@@ -2142,7 +2163,7 @@ KWin.SceneEffect {
     // the desktop mid-press.
     function commit(activate) {
         dbg("commit", "entering at zoom " + zoom.toFixed(3) + ", activate=" + activate);
-        switcherActive = false;
+        endSwitcher();
         if (sceneGestures > 0) {
             deferredClose = function () { commit(activate); };
             return;
@@ -2255,7 +2276,7 @@ KWin.SceneEffect {
 
     function doCancel() {
         dbg("cancel", "switcher=" + switcherActive);
-        switcherActive = false;
+        endSwitcher();
         if (!visible) return;
         if (sceneGestures > 0) {
             deferredClose = doCancel;
@@ -4730,8 +4751,8 @@ KWin.SceneEffect {
                 // stack up with it. Rank 1 is the top, and the shadow and the
                 // size below follow the rank, so the stacking is legible at a
                 // glance instead of being a property only the pointer sees.
-                readonly property real depth: { effect.revision; effect.focusEntry; effect.selectionRev; return ((thumb.entry === effect.focusEntry ? effect.entries.length + 1 : index + 1) / (effect.entries.length + (effect.focusEntry ? 1 : 0))); }
-                readonly property real depthScale: (effect.quiet || effect.ql >= 2) ? 1 : (1 + (0.025 * thumb.depth - 0.01) * effect.skinReveal)
+                readonly property real depth: { effect.revision; effect.focusEntry; effect.selectionRev; effect.switcherActive; return ((thumb.entry === effect.focusEntry || (effect.switcherActive && effect.isSelected(thumb.entry)) ? effect.entries.length + 1 : index + 1) / (effect.entries.length + (effect.focusEntry ? 1 : 0))); }
+                readonly property real depthScale: (effect.quiet || effect.ql >= 2) ? 1 : (1 + (0.025 * thumb.depth - 0.01) * Math.max(effect.skinReveal, effect.switcherRise))
                 scale: depthScale * (lifted ? 1.03 : (thumb.hovered && heavy ? 1.008 : 1))
                 Behavior on scale { enabled: !effect.quiet; SpringAnimation { spring: 3.6; damping: 0.5; epsilon: 0.001 } }
                 transform: [
@@ -4789,8 +4810,8 @@ KWin.SceneEffect {
                     z: -2
                     radius: 8
                     color: "#000000"
-                    visible: effect.ql < 2 && effect.skinReveal > 0.02
-                    opacity: effect.skinReveal * (liftedNow ? 0.30 : (thumb.hovered ? 0.16 : 0.05 + 0.13 * thumb.depth))
+                    visible: effect.ql < 2 && Math.max(effect.skinReveal, effect.switcherRise) > 0.02
+                    opacity: Math.max(effect.skinReveal, effect.switcherRise) * (liftedNow ? 0.30 : (thumb.hovered ? 0.16 : 0.05 + 0.13 * thumb.depth))
                     readonly property bool liftedNow: body.active && body.moving && thumb.heavy
                     Behavior on opacity { NumberAnimation { duration: 150 } }
                 }

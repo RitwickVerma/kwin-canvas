@@ -131,6 +131,13 @@ and the release-enter cycles to the next window when nothing is picked
 - a tap is now the tabbox's plain Alt+Tab, a hold steps per deliberate
 re-tap, the release enters the pick.
 
+The same week, the user asked for a snappier switcher and suggested the
+windows come up in z with it: the switcher's fit now rides a brisk
+flight (rate 3), the pile's depth rises on its own 180 ms ramp the
+moment it opens (`switcherRise`), and the picked window ranks at the
+top of the pile while the switcher is up, so the cycle reads in the
+shadows and the size.
+
 The same week, two ladder bugs closed: the memory channel had never
 read anything (/proc/meminfo reports a zero size, so QFile::atEnd() was
 true before the first read - the loop now runs on readLine() alone),
