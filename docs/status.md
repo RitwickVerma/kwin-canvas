@@ -115,6 +115,32 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-09 — the switcher stops machine-gunning, and the ladder's memory channel reads
+
+The user reported "the switcher is broken at a very basic level": a
+tap of Alt+Tab opened the canvas and closed it instantly with no
+result, and holding the chord cycled the windows at light speed. Both
+were the chord's mechanics: KWin refires the shortcut on every key
+repeat of the held Tab, so the switcher's repeat branch cycled per
+repeat, and a tap's release hit the release-enter with nothing picked,
+which applied the enter to the window already focused - a no-op close.
+The fix: one gated cycle (`switcherCycle`, a 150 ms window - real
+re-taps pass, auto-repeats and double deliveries are swallowed), the
+scene's Tab branches route through the gate while the switcher is up,
+and the release-enter cycles to the next window when nothing is picked
+- a tap is now the tabbox's plain Alt+Tab, a hold steps per deliberate
+re-tap, the release enters the pick.
+
+The same week, two ladder bugs closed: the memory channel had never
+read anything (/proc/meminfo reports a zero size, so QFile::atEnd() was
+true before the first read - the loop now runs on readLine() alone),
+and the quality channel now clamps every reading to [0,100] so a stale
+plugin's kilobyte-scale answer can never force the canvas bare. The
+toolbar's glass followed the machine's mutable colour scheme and
+flipped between sessions; it now wears fixed house colours. And the
+minimap's camera rectangle clamps to the lens - panned past the
+world's edge it hugs the chip's border.
+
 ### 2026-10-08 — the desktops leave the plane, the ladder reads the memory, tidy stays
 
 Three takes on virtual desktops - shadow tiles, live zones, a slide

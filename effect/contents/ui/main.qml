@@ -1612,6 +1612,20 @@ KWin.SceneEffect {
     // Set when the switcher opened from the chord (Meta+Tab / Alt+Tab), not
     // the debug verb, so the chord's release is the enter only for real holds.
     property bool switcherFromChord: false
+    // The last time the switcher cycled. The chord refires on every key
+    // repeat of a held Tab, and a deliberate re-tap is the only cycle
+    // worth taking: the gate passes real re-taps and swallows auto-repeat
+    // (and any double delivery of one press), so a hold never machine-guns.
+    property real lastSwitchAt: 0
+    // One cycle of the switcher, gated: whatever path the press took (the
+    // chord's re-fire or the scene's key), at most one cycle lands per
+    // 150 ms window.
+    function switcherCycle(dir) {
+        const now = Date.now();
+        if (now - lastSwitchAt < 150) return;
+        lastSwitchAt = now;
+        cycleSelection(dir);
+    }
     // The switcher: the hold's map as a toggle. The chord opens the canvas
     // quietly with the map up; Tab and Shift+Tab step the selection - the
     // camera and the map's highlight follow - Enter enters the chosen
@@ -1620,8 +1634,10 @@ KWin.SceneEffect {
     function switcherToggle() {
         if (switcherActive) {
             // A repeat of the chord while the switcher is up steps the
-            // selection, the way Alt+Tab cycles while the key is held.
-            cycleSelection(1);
+            // selection, the way Alt+Tab cycles while the key is held -
+            // through the gate, so a held key's repeats are ignored and
+            // only a deliberate re-tap moves it.
+            switcherCycle(1);
             return;
         }
         if (visible && !quiet) { switcherActive = false; return; }
@@ -5425,11 +5441,20 @@ KWin.SceneEffect {
                 if (!event.isAutoRepeat) view.spaceHeld = true;
             } else if (effect.bound("next", k) && !(event.modifiers & Qt.ShiftModifier)) {
                 effect.dbg("key", "next pressed k=" + k);
-                if (!event.isAutoRepeat) effect.cycleSelection(1);
+                if (!event.isAutoRepeat) {
+                    // In the switcher the cycle rides the gate, so a held
+                    // key's repeats can never machine-gun it whatever the
+                    // delivery; the plain overview keeps its own Tab cycle.
+                    if (effect.switcherActive) effect.switcherCycle(1);
+                    else effect.cycleSelection(1);
+                }
             } else if (effect.bound("prev", k) || (effect.bound("next", k) && (event.modifiers & Qt.ShiftModifier))) {
                 // Shift+Tab arrives as Tab with the shift modifier, whatever
                 // the platform does about Backtab, so both count as previous.
-                if (!event.isAutoRepeat) effect.cycleSelection(-1);
+                if (!event.isAutoRepeat) {
+                    if (effect.switcherActive) effect.switcherCycle(-1);
+                    else effect.cycleSelection(-1);
+                }
             } else if (effect.bound("cancel", k)) {
                 effect.cancel();
             } else if (effect.bound("apply", k)) {
@@ -5476,11 +5501,18 @@ KWin.SceneEffect {
                 event.accepted = true;
             }
             // Releasing the switcher's chord enters the selected window, the
-            // way releasing Alt+Tab lands on the tabbox's pick. Only for a
-            // chord-held switcher (the debug verb and the Tab/Enter keys keep
-            // their own cycle-and-enter paths).
+            // way releasing Alt+Tab lands on the tabbox's pick. A tap - a
+            // release with nothing picked - lands on the next window instead
+            // of the same one, the tabbox's plain Alt+Tab, and that fallback
+            // cycle rides the same gate. Only for a chord-held switcher (the
+            // debug verb and the Tab/Enter keys keep their own paths).
             if (effect.switcherActive && effect.switcherFromChord && !event.isAutoRepeat
                     && effect.bound("switcher", event.key)) {
+                let picked = false;
+                for (let i = 0; i < effect.entries.length; ++i) {
+                    if (effect.isSelected(effect.entries[i])) { picked = true; break; }
+                }
+                if (!picked) effect.switcherCycle(1);
                 effect.applyKey();
                 event.accepted = true;
             }

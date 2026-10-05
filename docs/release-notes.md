@@ -1,5 +1,23 @@
 Unreleased:
 
+- The switcher reads a held chord as a hold. The chord refired on every
+  key repeat of a held Tab, so holding Alt+Tab machine-gunned the cycle;
+  a single gate now passes one step per deliberate re-tap and swallows
+  the repeats. And a plain tap - a release with nothing picked - lands
+  on the next window, the way Alt+Tab behaves everywhere else, instead
+  of entering the window you were already on and closing without a
+  trace. Release still enters the pick, Tab and Shift+Tab still step it,
+  and Esc still steps out.
+
+- The toolbar wears the canvas's own glass. Its colours had followed
+  the machine's mutable colour scheme, so the same build rendered two
+  different toolbars across sessions; the glass, the borders and the
+  hand dot are now fixed house colours.
+
+- The minimap's camera rectangle stays inside the lens. Panned past the
+  world's edge it hugs the chip's border instead of sliding off it, and
+  a view bigger than the world fills the chip exactly.
+
 - The fidelity ladder reads the memory too. The machine's used share
   joins the CPU and the GPU as a third channel, and whichever channel
   sees the worse pressure sets the step - a browser hoarding gigabytes
