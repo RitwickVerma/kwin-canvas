@@ -390,13 +390,32 @@ KWin.SceneEffect {
     // Shift+Tab steps the other way. Overview-like, on a canvas: the camera
     // follows the selection, so the next window is always where the eye goes.
     function cycleSelection(dir) {
-        if (entries.length === 0) return;
+        // The cluster switcher steps only among the windows of the cluster
+        // the eye is on; the plain Tab cycle and the world switcher walk
+        // every entry.
+        const pool = (switcherActive && switcherCluster) ? switcherMembers() : entries;
+        if (pool.length === 0) return;
         let idx = -1;
-        for (let i = 0; i < entries.length; ++i) if (isSelected(entries[i])) { idx = i; break; }
-        const n = idx < 0 ? (dir > 0 ? 0 : entries.length - 1) : (idx + dir + entries.length) % entries.length;
-        selectOnly(entries[n]);
-        dbg("sel", "cycle " + dir + " -> " + entries[n].window.caption);
-        bringIntoView(entries[n]);
+        for (let i = 0; i < pool.length; ++i) if (isSelected(pool[i])) { idx = i; break; }
+        const n = idx < 0 ? (dir > 0 ? 0 : pool.length - 1) : (idx + dir + pool.length) % pool.length;
+        selectOnly(pool[n]);
+        dbg("sel", "cycle " + dir + " -> " + pool[n].window.caption);
+        bringIntoView(pool[n]);
+    }
+
+    // The cluster the switcher scopes to: the active window's, or the
+    // focus's, whichever the eye is on. A lone window's cluster (or none)
+    // falls back to the whole plane - there is nothing to scope to.
+    function switcherMembers() {
+        const ci = clusterIndex();
+        const c = ci >= 0 ? clusters[ci] : null;
+        if (!c || !c.ids || c.ids.length < 2) return entries;
+        const pool = [];
+        for (let i = 0; i < c.ids.length; ++i) {
+            const e = entries.find(en => en.window.internalId === c.ids[i]);
+            if (e) pool.push(e);
+        }
+        return pool.length > 1 ? pool : entries;
     }
 
     // Pan the camera the least that puts the window wholly on the screen the
@@ -470,25 +489,33 @@ KWin.SceneEffect {
     // The world's cluster chips fly the camera to fit the cluster: the hold
     // keeps its view (the fit never passes zoom 0.75), and the release
     // lands the overworld there.
-    function graspClusterTo(ci) {
-        dbg("chip", "graspClusterTo ci=" + ci + " grasp=" + grasp + " n=" + clusters.length);
-        if (!grasp || ci < 0 || ci >= clusters.length) return;
+    // The bounds of a cluster, over its live entries, for the switcher's
+    // cluster fit and the chip flight. ids holds window internalIds, so
+    // each one is looked up in the live entries rather than used as an
+    // index.
+    function clusterRect(ci) {
         const c = clusters[ci];
-        if (!c.ids || !c.ids.length) return;
+        if (!c || !c.ids || !c.ids.length) return null;
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (let i = 0; i < c.ids.length; ++i) {
-            // ids holds window internalIds (logic.js sorts the cluster's
-            // members by their thread rank), so each one is looked up in
-            // the live entries rather than used as an index.
             const e = entries.find(en => en.window.internalId === c.ids[i]);
             if (!e) continue;
             x0 = Math.min(x0, e.x); y0 = Math.min(y0, e.y);
             x1 = Math.max(x1, e.x + e.width); y1 = Math.max(y1, e.y + e.height);
         }
-        const w = x1 - x0, h = y1 - y0;
+        if (x0 === Infinity) return null;
+        return { x: x0, y: y0, width: x1 - x0, height: y1 - y0 };
+    }
+
+    function graspClusterTo(ci) {
+        dbg("chip", "graspClusterTo ci=" + ci + " grasp=" + grasp + " n=" + clusters.length);
+        if (!grasp || ci < 0 || ci >= clusters.length) return;
+        const r = clusterRect(ci);
+        if (!r) return;
+        const w = r.width, h = r.height;
         const sg = actionScreen().geometry;
         const z = Math.min(0.75, Math.max(0.2, Math.min(sg.width / (w + 48), sg.height / (h + 48))));
-        const cx = x0 + w / 2, cy = y0 + h / 2;
+        const cx = r.x + w / 2, cy = r.y + h / 2;
         dbg("map", "cluster " + (ci + 1) + " chip: flying to zoom " + z.toFixed(2) + " at (" + Math.round(cx) + "," + Math.round(cy) + ")");
         noteGesture();
         camGo(z, cx - sg.width / (2 * z), cy - sg.height / (2 * z), undefined, undefined, 2.0);
@@ -1614,6 +1641,11 @@ KWin.SceneEffect {
     // Set when the switcher opened from the chord (Meta+Tab / Alt+Tab), not
     // the debug verb, so the chord's release is the enter only for real holds.
     property bool switcherFromChord: false
+    // The cluster switcher: the alternate chord steps only among the
+    // windows of the cluster the eye is on and fits that cluster, where
+    // the primary chord sweeps the whole plane. Set by the chord that
+    // opened the switcher, cleared when it closes.
+    property bool switcherCluster: false
     // The switcher's z-rise: the windows come up in z the moment the
     // switcher opens, on this ramp, instead of waiting for the zoom-out
     // to reveal the depth - the switch-in reads as the pile rising to
@@ -1629,6 +1661,7 @@ KWin.SceneEffect {
     }
     function endSwitcher() {
         switcherActive = false;
+        switcherCluster = false;
         switcherRise = 0;
         switcherRiseAnim.stop();
         switcherSettle.stop();
@@ -1681,7 +1714,23 @@ KWin.SceneEffect {
         if (!visible) open();
         switcherActive = true;
         switcherRiseAnim.restart();
-        zoomExtents(true, 3.0);
+        if (switcherCluster) {
+            // The cluster switcher fits the cluster the eye is on, not the
+            // whole plane: the pick is a short hop among neighbours. A
+            // cluster of one (or none) has nothing to scope to - the world
+            // fit stands in.
+            const ci = clusterIndex();
+            const r = ci >= 0 ? clusterRect(ci) : null;
+            if (r && (r.width > 0 || r.height > 0)) {
+                const sg = actionScreen().geometry;
+                const z = Math.min(1.0, Math.max(0.2, Math.min(sg.width / (r.width + 48), sg.height / (r.height + 48))));
+                camGo(z, r.x + r.width / 2 - sg.width / (2 * z), r.y + r.height / 2 - sg.height / (2 * z), undefined, undefined, 3.0);
+            } else {
+                zoomExtents(true, 3.0);
+            }
+        } else {
+            zoomExtents(true, 3.0);
+        }
         // The overworld's chrome can take the scene's keyboard focus (the
         // menus' focus scopes) - the switcher needs the keys, so the view
         // takes the focus back once the fit is on screen.
@@ -3823,13 +3872,13 @@ KWin.SceneEffect {
         name: "Canvas Switcher"
         text: "Canvas: the switcher - the whole plane as a map; hold the chord and step with Tab, release or press Enter to enter"
         sequence: effect.configuration.SwitcherShortcut
-        onActivated: { effect.switcherFromChord = true; effect.switcherToggle() }
+        onActivated: { effect.switcherFromChord = true; effect.switcherCluster = false; effect.switcherToggle() }
     }
     KWin.ShortcutHandler {
         name: "Canvas Switcher Alternate"
-        text: "Canvas: the switcher on a second chord (bind over KWin's own Alt+Tab)"
+        text: "Canvas: the cluster switcher - steps among the windows of the cluster the eye is on, fitted to it (bind over KWin's own Alt+Tab)"
         sequence: effect.configuration.SwitcherAltShortcut
-        onActivated: { effect.switcherFromChord = true; effect.switcherToggle() }
+        onActivated: { effect.switcherFromChord = true; effect.switcherCluster = true; effect.switcherToggle() }
     }
     KWin.ShortcutHandler {
         name: "Canvas Home"
@@ -4054,7 +4103,8 @@ KWin.SceneEffect {
             console.log(s);
             break;
         }
-        case "switch": switcherFromChord = false; switcherToggle(); break;
+        case "switch": switcherFromChord = false; switcherCluster = false; switcherToggle(); break;
+        case "switchcluster": switcherFromChord = false; switcherCluster = true; switcherToggle(); break;
         default: console.warn("kwin-canvas: unknown debug command", cmd);
         }
         logState();

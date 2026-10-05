@@ -237,7 +237,7 @@
             <default>Shift+DoubleClick</default>
         </entry>
         <entry name="SwitcherAltShortcut" type="String">
-            <label>A second chord for the switcher, so it can live on both Meta+Tab and Alt+Tab. Hold the chord and tap it again to step, release it or press Enter to enter the chosen window, Esc to step back out. Bind this over KWin's own task switcher in System Settings.</label>
+            <label>The cluster switcher: this chord steps among the windows of the cluster the eye is on, fitted to that cluster instead of the whole plane - the quick switch among neighbours, where SwitcherShortcut sweeps everything. Hold the chord and tap it again to step, release it or press Enter to enter the chosen window, Esc to step back out. Bind this over KWin's own task switcher in System Settings.</label>
             <default>Alt+Tab</default>
         </entry>
         <entry name="SwitcherSettleMs" type="Int">
