@@ -648,7 +648,7 @@ KWin.SceneEffect {
         let any = false;
         for (let i = 0; i < list.length; ++i) {
             const e = list[i];
-            if (!e) continue;
+            if (!e || e.window.deleted) continue;
             if (e.window.keepAbove) e.window.keepAbove = false;
             if (delete pinned[e.window.caption]) any = true;
         }
@@ -1000,7 +1000,7 @@ KWin.SceneEffect {
         // A pointer parked on the seam is not a hover: the desk put it there
         // (deskflow handing the mouse to another machine), not the hand.
         if (navHeld || quiet) return;
-        const c = globalToCanvas(p.x, p.y);
+        const c = screenToCanvas(p.x, p.y);
         let e = null;
         for (let i = entries.length - 1; i >= 0; --i) {
             const en = entries[i];
@@ -1326,7 +1326,7 @@ KWin.SceneEffect {
             dbusInterface: "org.kde.ActivityManager.Activities"
             method: "ActivityName"
             arguments: [modelData]
-            onFinished: (ret) => effect.setActivityName(modelData, String(ret[0]))
+            onFinished: (ret) => effect.setActivityName(modelData, ret && ret.length ? String(ret[0]) : "")
             Component.onCompleted: call()
         }
     }
@@ -1902,6 +1902,37 @@ KWin.SceneEffect {
     // ---- camera ops --------------------------------------------------------
     function globalToCanvas(gx, gy) { const c = Logic.canvasOf(gx, gy, viewX, viewY, zoom); return Qt.point(c.x, c.y); }
 
+    // The tilt-aware inverse: the flat mapping above does not know the
+    // pitch, so the pointer's canvas point is a skew away from the window
+    // under the tilted picture. This undoes the pitch - the plugin's
+    // toCanvas carries the same math for the pass-through - while the
+    // screen-centre callers (enterHere, the HUD's zooms) stay on the flat
+    // mapping: the centre is the pivot, so the two agree there exactly.
+    function screenToCanvas(gx, gy) {
+        if (!depth3d || ql >= 2 || zoom >= 0.999) {
+            const c = Logic.canvasOf(gx, gy, viewX, viewY, zoom);
+            return Qt.point(c.x, c.y);
+        }
+        const t = (1 - zoom) * tiltFactor;
+        const D = 900;
+        const cosT = Math.cos(t), sinT = Math.sin(t);
+        let cx = 0, cy = 0, found = false;
+        for (let i = 0; i < KWin.Workspace.screens.length; ++i) {
+            const g = KWin.Workspace.screens[i].geometry;
+            if (gx >= g.x && gx < g.x + g.width && gy >= g.y && gy < g.y + g.height) {
+                cx = g.x + g.width / 2; cy = g.y + g.height / 2; found = true; break;
+            }
+        }
+        if (!found) {
+            const g = actionScreen().geometry;
+            cx = g.x + g.width / 2; cy = g.y + g.height / 2;
+        }
+        const A = (gx - cx) / D, B = (gy - cy) / D;
+        const y0 = B * D / (cosT + B * sinT);
+        const x0 = A * (D - y0 * sinT);
+        return Qt.point(viewX + (cx + x0) / zoom, viewY + (cy + y0) / zoom);
+    }
+
     function clampZoom(z) {
         if (!Number.isFinite(Number(z))) return zoom;
         return Math.max(zoomMin, Math.min(1.0, Number(z)));
@@ -2032,7 +2063,7 @@ KWin.SceneEffect {
         if (zoomRising) skinFromZoom = zoom;
         lastZoom = zoom;
         if (pinned) {
-            const c = globalToCanvas(gx, gy);
+            const c = screenToCanvas(gx, gy);
             camAnchorX = c.x; camAnchorY = c.y; camAnchorGX = gx; camAnchorGY = gy;
             camAnchored = true;
             camGoalX = viewX; camGoalY = viewY;
@@ -4814,7 +4845,7 @@ KWin.SceneEffect {
                     // The centroid resets on release; the box kept the last corner.
                     marquee = false;
                     const r = marqueeBox.rect;
-                    const c0 = effect.globalToCanvas(r.x + view.sg.x, r.y + view.sg.y);
+                    const c0 = effect.screenToCanvas(r.x + view.sg.x, r.y + view.sg.y);
                     effect.selectInRect(c0.x, c0.y, r.width / effect.zoom, r.height / effect.zoom);
                 } else {
                     // Let go: carry the plane if the hand was still moving.
@@ -5299,11 +5330,12 @@ KWin.SceneEffect {
                         }
                         onDragged: {
                             const t = grip.total;
+                            const k = thumb.proj.k;
                             let rw = startW, rh = startH;
-                            if (east) rw = startW + t.x / effect.zoom;
-                            if (west) rw = startW - t.x / effect.zoom;
-                            if (south) rh = startH + t.y / effect.zoom;
-                            if (north) rh = startH - t.y / effect.zoom;
+                            if (east) rw = startW + t.x * k / effect.zoom;
+                            if (west) rw = startW - t.x * k / effect.zoom;
+                            if (south) rh = startH + t.y * k / effect.zoom;
+                            if (north) rh = startH - t.y * k / effect.zoom;
                             effect.requestSize(thumb.heldIndex, rw, rh, west, north);
                         }
                     }

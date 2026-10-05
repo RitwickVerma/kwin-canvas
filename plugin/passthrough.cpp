@@ -362,7 +362,7 @@ QPointF CanvasPassthrough::toCanvas(const QPointF &screen) const
     // flat inverse would find the wrong window under the pointer: the pitch
     // is undone here. The forward map mirrors the effect's tiltMatrix - the
     // point, taken from its screen's centre, rotates about the horizontal
-    // axis by t = (1 - zoom) * 0.21 and projects through the perspective
+    // axis by t = (1 - zoom) * m_tiltFactor and projects through the perspective
     // whose scale matches the camera's distance (900). The dz lift is
     // neglected: it is at most tens of pixels, and the hover tolerance
     // absorbs it.
