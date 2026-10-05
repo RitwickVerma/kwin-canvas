@@ -109,7 +109,7 @@ KWin.SceneEffect {
     // number and the plugin obeys it, so the hover and the handoff can
     // never disagree with the picture (a stale plugin once did, landing
     // the pointer a window away at deep zoom).
-    readonly property real tiltFactor: 0.30
+    readonly property real tiltFactor: 0.42
     // A window's place on the tilted plane, computed as a point instead of
     // a matrix: the delegate stays a flat item - so Qt's drag and tap
     // machinery keeps clean local coordinates - and only its centre rides
@@ -159,6 +159,7 @@ KWin.SceneEffect {
     property real gpuBusy: 0
     property real memBusy: 0
     property int quietSamples: 0
+    property int hotSamples: 0
     function qualityCap() {
         switch (String(configuration.QualityMode)) {
             case "Full": return 0;
@@ -182,6 +183,7 @@ KWin.SceneEffect {
         if (String(configuration.QualityMode) !== "Auto") {
             ql = qualityCap();
             quietSamples = 0;
+            hotSamples = 0;
             return;
         }
         const cpuReduced = Number(configuration.CpuReduced);
@@ -198,16 +200,31 @@ KWin.SceneEffect {
         const memQl = Logic.qualityFor(mm, Number.isFinite(memReduced) ? memReduced : 80, Number.isFinite(memMinimal) ? memMinimal : 90, Number.isFinite(memBare) ? memBare : 97);
         // The three channels race each other: whichever sees the worse
         // pressure sets the step, and a calm machine must clear ALL of them
-        // before the ladder climbs back up.
+        // before the ladder climbs back up. Both directions need two
+        // consecutive samples - a launch spike cannot flash the canvas bare,
+        // and a calm blip cannot bring the finery back early - and the
+        // canvas says so when it moves, so a step down never reads as a
+        // broken desktop.
         const target = Math.max(cpuQl, gpuQl, memQl);
         if (target > ql) {
-            ql = target;
-            quietSamples = 0;
+            hotSamples++;
+            if (hotSamples >= 2) {
+                if (target >= 2) toast("The canvas steps down to keep the machine yours");
+                ql = target;
+                quietSamples = 0;
+                hotSamples = 0;
+            }
         } else if (target < ql) {
             quietSamples++;
-            if (quietSamples >= 2) { ql = target; quietSamples = 0; }
+            hotSamples = 0;
+            if (quietSamples >= 2) {
+                if (ql >= 2 && target < 2) toast("The canvas is back to full");
+                ql = target;
+                quietSamples = 0;
+            }
         } else {
             quietSamples = 0;
+            hotSamples = 0;
         }
     }
     // Plane input: under the preload shim (dev/spike/preload) KWin's pointer
@@ -3267,6 +3284,17 @@ KWin.SceneEffect {
         dbusInterface: "org.kde.kwin.canvas.Passthrough"
         method: "setCamera"
     }
+    // The pitch's strength, on its own channel: the camera's five arguments
+    // are a contract the older installed plugin must keep answering, so the
+    // tilt travels separately and a plugin that predates it simply keeps
+    // its own default.
+    KWin.DBusCall {
+        id: tiltCall
+        service: "org.kde.KWin"
+        path: "/KWinCanvas"
+        dbusInterface: "org.kde.kwin.canvas.Passthrough"
+        method: "setTilt"
+    }
     KWin.DBusCall {
         id: navCall
         service: "org.kde.KWin"
@@ -3374,8 +3402,10 @@ KWin.SceneEffect {
     }
     function publishCamera() {
         if (!passthroughLive) return;
-        cameraCall.arguments = [viewX, viewY, zoom, currentActivity, JSON.stringify(targets), tiltFactor];
+        cameraCall.arguments = [viewX, viewY, zoom, currentActivity, JSON.stringify(targets)];
         cameraCall.call();
+        tiltCall.arguments = [tiltFactor];
+        tiltCall.call();
     }
     // The buttons the plugin leaves to the canvas whatever is drawn under the
     // pointer: the same mask the shim reads (planeNavButtons). Told when the
@@ -4671,7 +4701,7 @@ KWin.SceneEffect {
             // shimmer. Flat (or under load) it keeps its usual weight.
             lineColor: {
                 const c = effect.configuration.LineColor;
-                const boost = (effect.depth3d && effect.ql < 2) ? 1 + 0.9 * effect.skinReveal : 1;
+                const boost = (effect.depth3d && effect.ql < 2) ? 1 + 1.8 * effect.skinReveal : 1;
                 return Qt.rgba(c.r, c.g, c.b, Math.min(1, c.a * boost));
             }
             tileImage: effect.configuration.TileImage
@@ -5028,7 +5058,7 @@ KWin.SceneEffect {
                 // stack, the farther it floats toward the camera while the
                 // world is tilted, so near windows genuinely parallax
                 // against the far ones. Gone at 1:1 with the rest of the 3D.
-                readonly property real lift: thumb.depth * (1 - effect.zoom) * 60
+                readonly property real lift: thumb.depth * (1 - effect.zoom) * 90
                 // The projected centre: the flat position plus the float's
                 // screen-space picture short-circuiting the projection (a
                 // float is screen chrome, not plane content), pushed through
@@ -5045,7 +5075,7 @@ KWin.SceneEffect {
                 // The depth fog: windows far from the camera dim into the
                 // distance while it is out. Full strength where the tilt
                 // lives, gone at 1:1, gone under minimal fidelity.
-                readonly property real fog: { effect.revision; effect.viewX; effect.viewY; effect.zoom; effect.ql; effect.depth3d; if (effect.ql >= 2 || !effect.depth3d || effect.zoom >= 0.999) return 1; const vs = KWin.Workspace.virtualScreenGeometry; const dist = Math.hypot(thumb.entry.x - effect.viewX, thumb.entry.y - effect.viewY); return 1 - 0.5 * (1 - effect.zoom) * Math.min(1, dist / (Math.max(vs.width, vs.height) * 1.8)); }
+                readonly property real fog: { effect.revision; effect.viewX; effect.viewY; effect.zoom; effect.ql; effect.depth3d; if (effect.ql >= 2 || !effect.depth3d || effect.zoom >= 0.999) return 1; const vs = KWin.Workspace.virtualScreenGeometry; const dist = Math.hypot(thumb.entry.x - effect.viewX, thumb.entry.y - effect.viewY); const reach = Math.max(vs.width, vs.height) / Math.max(effect.zoom, 0.25); return 1 - 0.35 * (1 - effect.zoom) * Math.min(1, dist / reach); }
                 scale: depthScale * (lifted ? 1.03 : (thumb.hovered && heavy ? 1.008 : 1)) * (0.94 + 0.06 * thumb.enterFade)
                 opacity: effect.thumbOpacity * thumb.enterFade * thumb.fog
                 Behavior on scale { enabled: !effect.quiet; SpringAnimation { spring: 3.6; damping: 0.5; epsilon: 0.001 } }
@@ -5423,7 +5453,7 @@ KWin.SceneEffect {
                     // fly slides across - is the desktop alone. Full strength by
                     // zoom 0.75, gone at 1:1; the unlit constellation dissolves
                     // between 0.45 and 0.5 instead of cutting out at half zoom.
-                    readonly property real want: (modelData.lit ? 0.55 : (effect.ql >= 1 ? 0 : 0.22 * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20)))) * modelData.co * effect.skinReveal
+                    readonly property real want: (modelData.lit ? Math.max(0.3, 0.55 * modelData.co) : (effect.ql >= 1 ? 0 : 0.22 * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20)) * modelData.co)) * effect.skinReveal
                     property real show: 0
                     opacity: show
                     Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }

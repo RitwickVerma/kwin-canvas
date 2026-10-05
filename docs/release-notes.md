@@ -1,19 +1,24 @@
 Unreleased:
 
-- The plane tilts into depth. Zooming out pitches the plane away like a
-  table - the far edge recedes, the near edge comes toward you, and the
-  windows lift off it by their place in the stack, higher windows
-  higher, and fog with their distance from the camera. The centre stays
-  put, so the tilt reads as the camera lifting, not the desk sliding.
-  The floor reads the pitch: the backdrop haze sharpens and lifts as
-  the zoom drops, and the ground's grid brightens so the converging
-  lines carry the perspective - the blur never swallowed the 3D again.
-  The whole input follows the tilted picture: the drag lands exactly
-  where the hand puts the window, the hover and the pass-through find
-  the window under the pointer through the same projection, and the 1:1
-  seam never tilts at all - the location is stock KWin, pixel for
-  pixel. Under load the ladder flattens the plane back down at the
-  minimal rung. Depth3D is the hidden knob; off is the flat map.
+- The plane tilts into depth, and the tilt fits a real desk. Zooming
+  out pitches the plane away like a table - the far edge recedes, the
+  near edge comes toward you, and the windows lift off it by their
+  place in the stack, higher windows higher. The fog is scoped to the
+  world beyond the viewport's edge: a window on the screen keeps its
+  body, however scattered the desk, and only the distance recedes -
+  nothing ever washes translucent again. The lit cluster's thread
+  keeps a floor instead of dissolving with the cohesion, the grid
+  brightens harder so the converging lines carry the pitch, and the
+  centre stays put, so the tilt reads as the camera lifting, not the
+  desk sliding. The whole input follows the tilted picture: the drag
+  lands exactly where the hand puts the window, the hover and the
+  pass-through find the window under the pointer through the same
+  projection, and the 1:1 seam never tilts at all. The ladder needs
+  two hot samples before it steps down and says so when it does, so a
+  launch spike can never flash the canvas bare and a real step reads
+  as a courtesy, not a broken desktop. Under load the ladder still
+  flattens the plane at the minimal rung. Depth3D is the hidden knob;
+  off is the flat map.
 
 - The switcher's release no longer waits on a key-up the scene may
   never see. The chord's end is read from the seat itself - the

@@ -753,6 +753,14 @@ the zoom, so the floor sharpens and lifts as the table comes out) and the
 grid (the ground's lines brighten with the skin, so the converging lines
 trace the perspective).
 
+The fog is scoped to the visible world: its reach is the viewport's own
+size at the current zoom (`vs.max / max(zoom, 0.25)`), and its cap is
+0.35, so a window on the screen keeps its body however scattered the desk
+is, and only the world beyond the edge recedes - nothing washes
+translucent. The lit cluster's thread carries a floor (never below 0.3
+of its strength), so the web the eye is on outlives the cohesion's
+dissolve.
+
 The windows themselves never carry the matrix: Qt's picking and drag through
 a perspective transform is broken, so each window stays a flat item whose
 centre is re-sited by `projectWindow()` - the same tilt as a closed form

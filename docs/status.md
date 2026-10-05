@@ -115,6 +115,31 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-13 — the tilt fits a scattered desk, and the ladder asks twice
+
+The user's verdict on the first 3D look: "no threads, translusent
+windows, no tilt, no 3d, no grid, half ass job." The misdiagnosis first
+(the ladder degrading under a busy GPU - the user: "I have not been
+playing any game since boot") - the live state (ql=0, gpu 46) proved
+the ladder innocent. The real cause: the tuning was built for a tight
+desk and the user's desk is scattered (a saved view at -43048 canvas
+px, windows thousands of px apart) - the distance fog washed every far
+window translucent, the cluster's cohesion fade dissolved the threads
+to nothing, and the pitch was too timid to read. Fixes: the fog scoped
+to the world beyond the viewport's edge (reach = vs.max/max(zoom,
+0.25), cap 0.35), the lit thread's floor (never below 0.3), the pitch
+0.30 → 0.42 + the lift 90 + the grid boost 1.8. Also found: the
+camera channel was broken for the user's stale system plugin - the
+6-arg setCamera had become a contract mismatch, so the camera channel
+is back to 5 args and the tilt travels its own setTilt channel; and
+the ladder now needs two hot samples before stepping down and toasts
+when it does, so a launch spike cannot flash the canvas bare. The
+scenario batch re-verified green (the whole list), the depth goldens
+re-recorded for the stronger picture, and the one reinstall the user
+owes: the system plugin is 3+ hours stale - `sudo make
+plugin-install-system` + re-login once (the camera works with the old
+plugin again; only the tilt-aware hover needs the fresh one).
+
 ### 2026-10-13 — the tilt's floor reads: the haze lifts, the grid brightens
 
 The user's first look at the 3D: "bro the whole backgroundd is blur. no

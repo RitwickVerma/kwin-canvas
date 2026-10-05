@@ -32,7 +32,7 @@ run_scenario() {
     # dz 0).
     proj() {
         awk -v px="$1" -v py="$2" 'BEGIN {
-            t = (1 - 0.4) * 0.30; d = 900; cx = 960; cy = 540;
+            t = (1 - 0.4) * 0.42; d = 900; cx = 960; cy = 540;
             x0 = px - cx; y0 = py - cy;
             w = d - y0 * sin(t);
             printf "%d %d\n", int(cx + d * x0 / w), int(cy + d * y0 * cos(t) / w);

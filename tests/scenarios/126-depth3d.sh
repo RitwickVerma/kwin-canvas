@@ -53,7 +53,9 @@ run_scenario() {
 
     # The ladder: minimal fidelity and below flatten the world even at zoom.
     setcfg CpuBare 0
-    sleep 2.6
+    # The ladder needs two hot samples to step down now (a spike must not
+    # flash the canvas bare): two 2 s pulses plus slack.
+    sleep 5.2
     c state
     assert_eq "the ladder is bare" "$(sget ql)" 3
     shot "$OUT/d3-bare-on.png"

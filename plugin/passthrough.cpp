@@ -147,9 +147,8 @@ void CanvasPassthrough::setActive(bool active)
     }
 }
 
-void CanvasPassthrough::setCamera(double viewX, double viewY, double zoom, const QString &currentActivity, const QString &targetsJson, double tiltFactor)
+void CanvasPassthrough::setCamera(double viewX, double viewY, double zoom, const QString &currentActivity, const QString &targetsJson)
 {
-    m_tiltFactor = tiltFactor > 0 ? tiltFactor : 0.30;
     m_viewX = viewX;
     m_viewY = viewY;
     m_zoom = zoom > 0 ? zoom : 1;
@@ -160,6 +159,11 @@ void CanvasPassthrough::setCamera(double viewX, double viewY, double zoom, const
         const QJsonObject t = it->toObject();
         m_targets.insert(it.key(), QPointF(t.value(QStringLiteral("x")).toDouble(), t.value(QStringLiteral("y")).toDouble()));
     }
+}
+
+void CanvasPassthrough::setTilt(double factor)
+{
+    m_tiltFactor = factor > 0 ? factor : m_tiltFactor;
 }
 
 void CanvasPassthrough::setNavButtons(int buttons)
