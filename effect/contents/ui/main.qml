@@ -1631,6 +1631,18 @@ KWin.SceneEffect {
         switcherActive = false;
         switcherRise = 0;
         switcherRiseAnim.stop();
+        switcherSettle.stop();
+    }
+    // The beat the enter waits after the chord's release: the pick settles
+    // under the eye for this long, then the canvas steps in by itself. A
+    // re-tap of the chord during the beat steps on, and Esc steps out.
+    Timer {
+        id: switcherSettle
+        interval: Math.max(100, Number(configuration.SwitcherSettleMs) || 450)
+        repeat: false
+        onTriggered: {
+            if (effect.switcherActive) effect.applyKey();
+        }
     }
     // The last time the switcher cycled. The chord refires on every key
     // repeat of a held Tab, and a deliberate re-tap is the only cycle
@@ -5576,20 +5588,28 @@ KWin.SceneEffect {
                 event.accepted = true;
             }
             // Releasing the switcher's chord enters the selected window, the
-            // way releasing Alt+Tab lands on the tabbox's pick. A tap - a
-            // release with nothing picked - lands on the next window instead
-            // of the same one, the tabbox's plain Alt+Tab, and that fallback
-            // cycle rides the same gate. Only for a chord-held switcher (the
-            // debug verb and the Tab/Enter keys keep their own paths).
-            if (effect.switcherActive && effect.switcherFromChord && !event.isAutoRepeat
-                    && effect.bound("switcher", event.key)) {
-                let picked = false;
-                for (let i = 0; i < effect.entries.length; ++i) {
-                    if (effect.isSelected(effect.entries[i])) { picked = true; break; }
+            // way releasing Alt+Tab lands on the tabbox's pick - but it
+            // waits a human beat first, so the pick settles under the eye
+            // instead of jumping in at the tab keyup (a re-tap mid-hold
+            // carries the modifiers, so its keyup is neither a modifier
+            // nor a modifier-less Tab and never arms the settle). A tap -
+            // a release with nothing picked - lands on the next window
+            // instead of the same one, the tabbox's plain Alt+Tab, and that
+            // fallback cycle rides the same gate. Only for a chord-held
+            // switcher (the debug verb and the Tab/Enter keys keep their
+            // own paths).
+            if (effect.switcherActive && effect.switcherFromChord && !event.isAutoRepeat) {
+                const mod = event.key === Qt.Key_Alt || event.key === Qt.Key_Control
+                        || event.key === Qt.Key_Meta || event.key === Qt.Key_Shift;
+                if (mod || effect.bound("switcher", event.key)) {
+                    let picked = false;
+                    for (let i = 0; i < effect.entries.length; ++i) {
+                        if (effect.isSelected(effect.entries[i])) { picked = true; break; }
+                    }
+                    if (!picked) effect.switcherCycle(1);
+                    effect.switcherSettle.restart();
+                    event.accepted = true;
                 }
-                if (!picked) effect.switcherCycle(1);
-                effect.applyKey();
-                event.accepted = true;
             }
         }
 
