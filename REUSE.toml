@@ -60,6 +60,7 @@ path = [
     "tests/golden/backdrop-undimmed.png",
     "tests/golden/backdrop-wallpaper.png",
     "tests/golden/corner-zoom.png",
+    "tests/golden/minimap-rect.png",
     "tests/golden/two-output-corner.png",
 ]
 SPDX-FileCopyrightText = "2026 Ritwick Verma <verma1997@gmail.com>"
