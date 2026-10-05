@@ -1699,6 +1699,59 @@ KWin.SceneEffect {
         lastSwitchAt = now;
         cycleSelection(dir);
     }
+    // The modifier mask the open chord held, and the release detection.
+    // The scene cannot always see the release of a key the global
+    // shortcut consumed - KWin feeds the chord's own key-ups back on
+    // some setups and swallows them on others - so the effect asks the
+    // pass-through plugin for the seat's live modifier mask instead:
+    // while a chord-held switcher is up, a small poll watches the mask,
+    // and the chord's end is the moment its modifier clears. The
+    // scene's own key-up remains the fast path.
+    property int switcherModMask: 0
+    function modMaskOf(spec) {
+        let m = 0;
+        const parts = String(spec || "").split("+");
+        for (let i = 0; i < parts.length; ++i) {
+            const t = parts[i].trim().toLowerCase();
+            if (t === "meta" || t === "super" || t === "win") m |= Qt.MetaModifier;
+            else if (t === "alt") m |= Qt.AltModifier;
+            else if (t === "ctrl" || t === "control") m |= Qt.ControlModifier;
+            else if (t === "shift") m |= Qt.ShiftModifier;
+        }
+        return m;
+    }
+    // The release itself: a release with nothing picked lands on the
+    // next window - the tabbox's plain Alt+Tab - and the settle beat
+    // begins (the enter fires from the settle, not the release).
+    function chordRelease() {
+        if (!switcherActive) return;
+        let picked = false;
+        for (let i = 0; i < entries.length; ++i) {
+            if (isSelected(entries[i])) { picked = true; break; }
+        }
+        if (!picked) switcherCycle(1);
+        switcherSettle.restart();
+    }
+    Timer {
+        interval: 80
+        repeat: true
+        running: effect.switcherActive && effect.switcherFromChord && effect.switcherModMask !== 0
+        onTriggered: {
+            if (effect.passthroughLive) modifiersCall.call();
+        }
+    }
+    KWin.DBusCall {
+        id: modifiersCall
+        service: "org.kde.KWin"
+        path: "/KWinCanvas"
+        dbusInterface: "org.kde.kwin.canvas.Passthrough"
+        method: "modifiers"
+        onFinished: (result) => {
+            if (!effect.switcherActive || !effect.switcherFromChord || effect.switcherModMask === 0) return;
+            const m = Number(result);
+            if ((m & effect.switcherModMask) === 0) effect.chordRelease();
+        }
+    }
     // The switcher: the hold's map as a toggle. The chord opens the canvas
     // quietly with the map up; Tab and Shift+Tab step the selection - the
     // camera and the map's highlight follow - Enter enters the chosen
@@ -3882,13 +3935,13 @@ KWin.SceneEffect {
         name: "Canvas Switcher"
         text: "Canvas: the switcher - the whole plane as a map; hold the chord and step with Tab, release or press Enter to enter"
         sequence: effect.configuration.SwitcherShortcut
-        onActivated: { effect.switcherFromChord = true; effect.switcherCluster = false; effect.switcherToggle() }
+        onActivated: { effect.switcherFromChord = true; effect.switcherCluster = false; effect.switcherModMask = effect.modMaskOf(effect.configuration.SwitcherShortcut); effect.switcherToggle() }
     }
     KWin.ShortcutHandler {
         name: "Canvas Switcher Alternate"
         text: "Canvas: the cluster switcher - steps among the windows of the cluster the eye is on, fitted to it (bind over KWin's own Alt+Tab)"
         sequence: effect.configuration.SwitcherAltShortcut
-        onActivated: { effect.switcherFromChord = true; effect.switcherCluster = true; effect.switcherToggle() }
+        onActivated: { effect.switcherFromChord = true; effect.switcherCluster = true; effect.switcherModMask = effect.modMaskOf(effect.configuration.SwitcherAltShortcut); effect.switcherToggle() }
     }
     KWin.ShortcutHandler {
         name: "Canvas Home"
@@ -5652,22 +5705,18 @@ KWin.SceneEffect {
             // waits a human beat first, so the pick settles under the eye
             // instead of jumping in at the tab keyup (a re-tap mid-hold
             // carries the modifiers, so its keyup is neither a modifier
-            // nor a modifier-less Tab and never arms the settle). A tap -
-            // a release with nothing picked - lands on the next window
-            // instead of the same one, the tabbox's plain Alt+Tab, and that
-            // fallback cycle rides the same gate. Only for a chord-held
-            // switcher (the debug verb and the Tab/Enter keys keep their
-            // own paths).
+            // The release. The scene cannot always see the release of a
+            // key the global shortcut consumed, so this is only the fast
+            // path - the modifier key-up arms the settle through the
+            // shared handler (the plugin's live modifier poll is the
+            // slow, always-works path). A re-tap's Tab key-up arrives
+            // with the modifiers still held and must NOT arm the settle,
+            // so only a bare modifier key-up qualifies.
             if (effect.switcherActive && effect.switcherFromChord && !event.isAutoRepeat) {
                 const mod = event.key === Qt.Key_Alt || event.key === Qt.Key_Control
                         || event.key === Qt.Key_Meta || event.key === Qt.Key_Shift;
-                if (mod || effect.bound("switcher", event.key)) {
-                    let picked = false;
-                    for (let i = 0; i < effect.entries.length; ++i) {
-                        if (effect.isSelected(effect.entries[i])) { picked = true; break; }
-                    }
-                    if (!picked) effect.switcherCycle(1);
-                    effect.switcherSettle.restart();
+                if (mod) {
+                    effect.chordRelease();
                     event.accepted = true;
                 }
             }

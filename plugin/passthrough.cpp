@@ -339,6 +339,15 @@ QString CanvasPassthrough::load() const
     return QStringLiteral("cpu=%1 load=%2 mem=%3 gpu=%4").arg(cpu).arg(load1, 0, 'f', 2).arg(mem).arg(gpu);
 }
 
+int CanvasPassthrough::modifiers() const
+{
+    // The live keyboard modifier mask. The effect polls this while a
+    // chord-held switcher is up and reads the chord's end when its
+    // modifier clears - the scene cannot always see the release of a key
+    // the global shortcut consumed.
+    return int(input()->keyboardModifiers());
+}
+
 // ---- the plane ---------------------------------------------------------------
 
 QPointF CanvasPassthrough::toCanvas(const QPointF &screen) const

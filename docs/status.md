@@ -115,6 +115,21 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-11 — the switcher reads its release from the seat
+
+The user reported "switcher release doesnt always work". The release
+depended on the scene receiving the chord's key-ups, which KWin's
+global-shortcut consumption delivers inconsistently - and the Tab-keyup
+arm also armed mid-hold (a re-tap's Tab key-up with the modifiers still
+held). The release now reads the seat itself: the pass-through plugin
+exposes `modifiers()` (KWin::InputRedirection's live keyboard mask),
+and while a chord-held switcher is up the effect polls it at 80 ms - the
+moment the chord's modifier clears, `chordRelease()` runs the
+picked-scan, steps once when nothing was picked, and arms the settle
+beat. The scene's bare modifier keyup remains the fast path; the
+Tab-keyup arm is gone, so a re-tap mid-hold can never fire the release.
+The plugin needs `sudo make plugin-install-system` for the channel.
+
 ### 2026-10-11 — the switcher wears its pick, and the demo walks the tour again
 
 The user asked how to make it even more mindblowing; the picks were

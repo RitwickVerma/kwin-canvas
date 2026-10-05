@@ -111,6 +111,10 @@ public Q_SLOTS:
      * seconds while the overworld is open.
      */
     Q_SCRIPTABLE QString load() const;
+    // The live keyboard modifier mask, for the switcher's release
+    // detection: the effect polls this while a chord-held switcher is up,
+    // and reads the chord's end when its modifier clears.
+    Q_SCRIPTABLE int modifiers() const;
 
 public:
     bool pointerMotion(KWin::PointerMotionEvent *event) override;

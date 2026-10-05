@@ -1,5 +1,12 @@
 Unreleased:
 
+- The switcher's release no longer waits on a key-up the scene may
+  never see. The chord's end is read from the seat itself - the
+  pass-through plugin reports the live modifier keys, and the moment
+  the chord's modifier clears, the switcher settles on the pick for its
+  beat and steps in. A re-tap of the chord mid-hold can never arm the
+  release, and the scene's own key-up remains the fast path.
+
 - The switcher wears its pick. While the chord is held, a glass card
   under the toolbar names the chosen window, shows it live, and says
   which cluster it belongs to - riding the same rise the windows ride,
