@@ -147,8 +147,9 @@ void CanvasPassthrough::setActive(bool active)
     }
 }
 
-void CanvasPassthrough::setCamera(double viewX, double viewY, double zoom, const QString &currentActivity, const QString &targetsJson)
+void CanvasPassthrough::setCamera(double viewX, double viewY, double zoom, const QString &currentActivity, const QString &targetsJson, double tiltFactor)
 {
+    m_tiltFactor = tiltFactor > 0 ? tiltFactor : 0.30;
     m_viewX = viewX;
     m_viewY = viewY;
     m_zoom = zoom > 0 ? zoom : 1;
@@ -364,7 +365,7 @@ QPointF CanvasPassthrough::toCanvas(const QPointF &screen) const
     if (m_zoom >= 0.999 || m_zoom <= 0.0) {
         return QPointF(m_viewX + screen.x() / m_zoom, m_viewY + screen.y() / m_zoom);
     }
-    const double t = (1.0 - m_zoom) * 0.30;
+    const double t = (1.0 - m_zoom) * m_tiltFactor;
     const double D = 900.0;
     // The screen whose centre is the pivot: the one holding the pointer.
     const QList<LogicalOutput *> outputs = workspace()->outputs();

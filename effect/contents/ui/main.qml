@@ -105,6 +105,11 @@ KWin.SceneEffect {
     // pixel-exact seam never tilts - and flat whenever the fidelity ladder
     // is at minimal or bare. Off = a flat map at every zoom.
     property bool depth3d: configuration.Depth3D !== false
+    // The pitch's strength, shared with the plugin: the effect owns the
+    // number and the plugin obeys it, so the hover and the handoff can
+    // never disagree with the picture (a stale plugin once did, landing
+    // the pointer a window away at deep zoom).
+    readonly property real tiltFactor: 0.30
     // A window's place on the tilted plane, computed as a point instead of
     // a matrix: the delegate stays a flat item - so Qt's drag and tap
     // machinery keeps clean local coordinates - and only its centre rides
@@ -112,7 +117,7 @@ KWin.SceneEffect {
     // folded back into the delegate's transform.
     function projectWindow(sg, sx, sy, dz) {
         if (ql >= 2 || !depth3d || zoom >= 0.999) return { x: sx, y: sy, k: 1 };
-        const t = (1 - zoom) * 0.30;
+        const t = (1 - zoom) * tiltFactor;
         const cx = sg.width / 2, cy = sg.height / 2;
         const d = 900;
         const x0 = sx - cx, y0 = sy - cy;
@@ -126,7 +131,7 @@ KWin.SceneEffect {
     // whenever the tilt is off, so the scene is bit-for-bit the flat one.
     function tiltMatrix(sg, dz) {
         if (ql >= 2 || !depth3d || zoom >= 0.999) return Qt.matrix4x4();
-        const t = (1 - zoom) * 0.30;
+        const t = (1 - zoom) * tiltFactor;
         const cx = sg.width / 2, cy = sg.height / 2;
         const d = 900;
         var m = Qt.matrix4x4();
@@ -3369,7 +3374,7 @@ KWin.SceneEffect {
     }
     function publishCamera() {
         if (!passthroughLive) return;
-        cameraCall.arguments = [viewX, viewY, zoom, currentActivity, JSON.stringify(targets)];
+        cameraCall.arguments = [viewX, viewY, zoom, currentActivity, JSON.stringify(targets), tiltFactor];
         cameraCall.call();
     }
     // The buttons the plugin leaves to the canvas whatever is drawn under the
