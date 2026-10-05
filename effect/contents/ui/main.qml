@@ -5295,10 +5295,16 @@ KWin.SceneEffect {
             // content fades with the chrome.
             Item {
                 id: cameraRect
-                x: { effect.revision; effect.viewX; effect.zoom; planeMap.width; planeMap.height; return planeMap.mx(effect.viewX + view.sg.x / effect.zoom); }
-                y: { effect.revision; effect.viewY; effect.zoom; planeMap.width; planeMap.height; return planeMap.my(effect.viewY + view.sg.y / effect.zoom); }
-                width: { effect.zoom; effect.revision; return Math.max(3, view.sg.width / effect.zoom * planeMap.sc); }
-                height: { effect.zoom; effect.revision; return Math.max(3, view.sg.height / effect.zoom * planeMap.sc); }
+                // The camera can wander past the world's edge, and the
+                // rect must never wander past the map's: it hugs the
+                // chip's border there, and a view bigger than the world
+                // fills the chip exactly instead of sticking out.
+                readonly property real rectW: { effect.zoom; effect.revision; planeMap.width; return Math.min(Math.max(3, view.sg.width / effect.zoom * planeMap.sc), planeMap.width); }
+                readonly property real rectH: { effect.zoom; effect.revision; planeMap.height; return Math.min(Math.max(3, view.sg.height / effect.zoom * planeMap.sc), planeMap.height); }
+                width: rectW
+                height: rectH
+                x: { effect.revision; effect.viewX; effect.zoom; planeMap.width; planeMap.height; const raw = planeMap.mx(effect.viewX + view.sg.x / effect.zoom); return Math.max(0, Math.min(raw, planeMap.width - rectW)); }
+                y: { effect.revision; effect.viewY; effect.zoom; planeMap.width; planeMap.height; const raw = planeMap.my(effect.viewY + view.sg.y / effect.zoom); return Math.max(0, Math.min(raw, planeMap.height - rectH)); }
                 // The graceful extreme: a view that covers most of the map
                 // melts instead of becoming a huge slab.
                 readonly property real cover: Math.min(1, (width * height) / Math.max(1, planeMap.width * planeMap.height))
