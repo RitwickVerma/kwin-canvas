@@ -1,5 +1,17 @@
 Unreleased:
 
+- The ladder asks twice before it moves, and it says so. A launch spike
+  can no longer flash the canvas down, a single breath cannot flash it
+  back up - both directions wait for two consecutive samples - and a
+  step down to the bare rungs announces itself with a toast instead of
+  reading as a broken desktop.
+
+- The cluster the eye is on never fully dissolves: its thread keeps a
+  floor of strength no matter how scattered the desk. A re-sort of the
+  pile no longer replays a window's entrance fade, and the switcher
+  asks the scene for its keyboard focus through a proper channel
+  instead of an exception.
+
 - The switcher's release no longer waits on a key-up the scene may
   never see. The chord's end is read from the seat itself - the
   pass-through plugin reports the live modifier keys, and the moment

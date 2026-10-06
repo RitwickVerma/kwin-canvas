@@ -939,7 +939,7 @@ KWin.SceneEffect {
         }
         // A pointer parked on the seam is not a hover: the desk put it there
         // (deskflow handing the mouse to another machine), not the hand.
-        if (navHeld || quiet) return;
+        if (navHeld || quiet || pointerButtons !== Qt.NoButton) return;
         const c = globalToCanvas(p.x, p.y);
         let e = null;
         for (let i = entries.length - 1; i >= 0; --i) {
@@ -1662,6 +1662,9 @@ KWin.SceneEffect {
     // Set when the switcher opened from the chord (Meta+Tab / Alt+Tab), not
     // the debug verb, so the chord's release is the enter only for real holds.
     property bool switcherFromChord: false
+    // The keyboard-focus request from the switcher to the view (an effect
+    // function cannot name the view delegate's id - it bumps this instead).
+    property int switcherFocusReq: 0
     // The cluster switcher: the alternate chord steps only among the
     // windows of the cluster the eye is on and fits that cluster, where
     // the primary chord sweeps the whole plane. Set by the chord that
@@ -1810,7 +1813,7 @@ KWin.SceneEffect {
         // The overworld's chrome can take the scene's keyboard focus (the
         // menus' focus scopes) - the switcher needs the keys, so the view
         // takes the focus back once the fit is on screen.
-        view.focus = true;
+        switcherFocusReq++;
         clickPanEntry = null;
         clickPanTimer.stop();
     }
@@ -3132,8 +3135,7 @@ KWin.SceneEffect {
     // is snapped as one, so a drag can always pull away from a snap.
     function dragEntry(index, dx, dy) {
         const e = entries[index];
-        if (!e) return;
-        if (!dragRaw[e.window.internalId]) beginDrag(index);
+        if (!e) return;        if (!dragRaw[e.window.internalId]) beginDrag(index);
         const set = [];
         for (let i = 0; i < entries.length; ++i) if (dragRaw[entries[i].window.internalId]) set.push(entries[i]);
         for (let i = 0; i < set.length; ++i) {
@@ -4243,6 +4245,14 @@ KWin.SceneEffect {
         console.log(s);
     }
 
+    // A closed canvas never carries a flight: whatever closed it, the
+    // camera's spring must not freeze mid-air with a live goal (the physics
+    // timer only runs while the canvas is visible, so a goal set at the
+    // close would hang until the next open resumed it mid-flight).
+    onVisibleChanged: {
+        if (!visible) camStop();
+    }
+
     onConfigurationChanged: {
         rebuildBindings();
         readSwipeFingers();
@@ -4502,6 +4512,9 @@ KWin.SceneEffect {
         Connections {
             target: effect
             function onVisibleChanged() { if (effect.visible) view.hoverCount = 0; }
+            // The switcher asks for the keyboard focus through a property
+            // bump: the effect's own scope cannot name a view delegate.
+            function onSwitcherFocusReqChanged() { view.focus = true; }
         }
 
         // The plane's base: opaque, so nothing shows through to the real
@@ -5088,7 +5101,13 @@ KWin.SceneEffect {
                     // area keeps the app's cursor under the pass-through.
                     cursor: Qt.OpenHandCursor
                     onDragStarted: { thumb.held = thumb.entry; effect.beginDrag(thumb.index); }
-                    onDragged: (dx, dy) => { effect.dragEntry(thumb.heldIndex, dx, dy); effect.noteDrag(dx, dy); }
+                    onDragged: (dx, dy) => {
+                        // The held entry, not the held index: a raise or a
+                        // re-sort mid-drag renumbers the entries, and the
+                        // drag must keep following the window the hand holds.
+                        effect.dragEntry(effect.entries.indexOf(thumb.held), dx, dy);
+                        effect.noteDrag(dx, dy);
+                    }
                     onDragEnded: effect.endDrag()
                     onTapped: (count, modifiers, button) => {
                         // The world is the map: during the grasp a tap on a

@@ -95,7 +95,12 @@ run_scenario() {
     sleep 0.5; c state
     assert_eq "no trail with the physics off" "$(sget draglag)" 0
     assert_eq "and no lean" "$(sget lean)" 0.00
-    sleep 2.5; c state
+    # The injector's stream paces on the runner's wall clock, which a busy
+    # nest can stretch: poll for the landing instead of trusting a fixed
+    # sleep.
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12; do c state; [ "$(eget KCalc x)" = "-100" ] && break; sleep 0.4; done
+    c state
     local ox oy; ox=$(eget KCalc x); oy=$(eget KCalc y)
     assert_eq "the physics-off drag lands where it was put" "$ox,$oy" "-100,20"
 
@@ -108,19 +113,26 @@ run_scenario() {
         "$(awk -v l="$(sget draglag)" 'BEGIN{print (l > 0)}')" = 1
     assert_true "and leans after it" \
         "$(awk -v l="$(abs "$(sget lean)")" 'BEGIN{print (l > 0.05)}')" = 1
-    sleep 2.5; c state
+    # The same poll: the physics-on drag must settle on the very landing the
+    # entry kept - read it only once the trail has fully unwound.
+    local j
+    for j in 1 2 3 4 5 6 7 8 9 10 11 12; do c state; [ "$(sget draglag)" = "0" ] && [ "$(eget KCalc x)" = "$ox" ] && break; sleep 0.4; done
+    c state
     assert_eq "and settles when the hand lets go" "$(sget draglag)" 0
     assert_eq "and stops leaning" "$(sget lean)" 0.00
     assert_eq "with the entry exactly where the same drag put it" \
         "$(eget KCalc x),$(eget KCalc y)" "$ox,$oy"
 
     # Back to the nest's own knobs: the motion is off everywhere else.
+    # The cancel flies home on the slow spring while SmoothZoom is still on;
+    # wait that flight out too.
     c cancel
     setcfg SmoothZoom false
     setcfg PanInertia false
     setcfg WindowPhysics false
     kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key CamSpring --delete
-    c state
+    local k
+    for k in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do c state; [ "$(sget cam)" = "-" ] && break; sleep 0.3; done
     assert_eq "the nest's knobs are back and nothing is left moving" "$(sget cam)" -
     arrange >/dev/null
 }
