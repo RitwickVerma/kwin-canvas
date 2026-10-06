@@ -409,7 +409,15 @@ clean() {
 run() {
     alive || { echo "not up"; exit 1; }
     local b; b=$(nestbus) || exit 1
-    ( export WAYLAND_DISPLAY=$SOCKET DBUS_SESSION_BUS_ADDRESS=$b $(nest_env client); unset DISPLAY; "${LOW[@]}" "$@" >"${RUN_LOG:-/dev/null}" 2>&1 & echo $! >> "$STATE/clients" )
+    # The session exports QT_WAYLAND_RECONNECT=1 (startplasma sets it for the
+    # whole desktop), and Qt treats the variable's PRESENCE - not its value -
+    # as the reconnect switch. When the nest's compositor goes away at
+    # down/reload, the fixture apps walk Qt's reconnect path and die in
+    # QWaylandShmBuffer's null deref. The nest's clients are disposable by
+    # design: genuinely unset the variable for them (never =0 - the presence
+    # check ignores the value), and keep a teardown from dropping cores into
+    # the session's journal.
+    ( export WAYLAND_DISPLAY=$SOCKET DBUS_SESSION_BUS_ADDRESS=$b $(nest_env client); unset DISPLAY QT_WAYLAND_RECONNECT; ulimit -c 0; "${LOW[@]}" "$@" >"${RUN_LOG:-/dev/null}" 2>&1 & echo $! >> "$STATE/clients" )
     echo "launched: $*"
 }
 
