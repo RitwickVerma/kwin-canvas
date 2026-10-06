@@ -963,7 +963,10 @@ KWin.SceneEffect {
         }
         // A pointer parked on the seam is not a hover: the desk put it there
         // (deskflow handing the mouse to another machine), not the hand.
-        if (navHeld || quiet || pointerButtons !== Qt.NoButton) return;
+        // The pass-through's own rest shows the cue while its clock runs;
+        // the canvas's glow waits for the handoff instead of duelling
+        // with that cue, so the two never overlap.
+        if (navHeld || quiet || pointerButtons !== Qt.NoButton || restStart !== "") return;
         const c = globalToCanvas(p.x, p.y);
         let e = null;
         for (let i = entries.length - 1; i >= 0; --i) {
@@ -1721,6 +1724,11 @@ KWin.SceneEffect {
     // The beat the enter waits after the chord's release: the pick settles
     // under the eye for this long, then the canvas steps in by itself. A
     // re-tap of the chord during the beat steps on, and Esc steps out.
+    // The settle arms on every chord event and the modifier poll keeps it
+    // at bay while the chord is held, so the enter cannot be missed:
+    // whatever link of the release chain works - the scene's key-up, the
+    // seat's modifier poll, or nothing at all - the beat still fires and
+    // the switcher steps in.
     Timer {
         id: switcherSettle
         interval: Math.max(100, Number(configuration.SwitcherSettleMs) || 450)
@@ -1742,6 +1750,10 @@ KWin.SceneEffect {
         if (now - lastSwitchAt < 150) return;
         lastSwitchAt = now;
         cycleSelection(dir);
+        // Every step re-arms the enter's beat: the settle fires a moment
+        // after the last chord activity, whatever that activity was. The
+        // plain Tab cycle (no chord) keeps the manual Enter instead.
+        if (effect.switcherFromChord) switcherSettle.restart();
     }
     // The modifier mask the open chord held, and the release detection.
     // The scene cannot always see the release of a key the global
@@ -1793,7 +1805,15 @@ KWin.SceneEffect {
         onFinished: (result) => {
             if (!effect.switcherActive || !effect.switcherFromChord || effect.switcherModMask === 0) return;
             const m = Number(result);
+            if (isNaN(m)) {
+                // The channel is gone (an older plugin without modifiers):
+                // treat it as the release - the settle's beat is the only
+                // path left, and it must never leave the switcher stuck.
+                effect.chordRelease();
+                return;
+            }
             if ((m & effect.switcherModMask) === 0) effect.chordRelease();
+            else effect.switcherSettle.restart();
         }
     }
     // The switcher: the hold's map as a toggle. The chord opens the canvas
@@ -1844,6 +1864,13 @@ KWin.SceneEffect {
         switcherFocusReq++;
         clickPanEntry = null;
         clickPanTimer.stop();
+        // The chord's own beat: the settle arms here, every step re-arms
+        // it, and the modifier poll keeps it at bay while the chord is
+        // held - so the enter always comes, whatever link of the release
+        // chain survives. The debug channel's switch (no chord held)
+        // keeps the manual Enter instead, so the scenarios drive it
+        // deterministically.
+        if (switcherFromChord) switcherSettle.restart();
     }
     property var clickedWindow: null
     onPointerButtonsChanged: {
@@ -5691,24 +5718,6 @@ KWin.SceneEffect {
                 }
             }
         }
-        }
-
-        // The grasp's landing promise: the release commits the canvas point
-        // under the screen centre, and this ring is that point. It fades
-        // away as the zoom crosses the 0.72 boundary past which a release
-        // widens into the overworld instead of landing - the two outcomes
-        // of the hold read on the plane before either happens.
-        Rectangle {
-            z: 50000
-            width: 36
-            height: 36
-            radius: 18
-            anchors.centerIn: parent
-            color: "transparent"
-            border.width: 1.5
-            border.color: "#80ffffff"
-            visible: { effect.skinReveal; effect.zoom; return effect.grasp && effect.skinReveal > 0.02 && effect.zoom > 0.72; }
-            opacity: Math.min(1, Math.max(0, (effect.zoom - 0.72) / 0.12))
         }
 
         // The grasp teaches itself: one line, while the hold is zoomed out

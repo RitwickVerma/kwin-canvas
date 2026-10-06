@@ -115,6 +115,42 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-16 — the switcher steps out by itself, the cue and the glow take turns, and the ring lands on the window
+
+The user's live reports after the deep set: "switcher never exits"
+(the switcher opened and cycled but neither the release-enter nor the
+Esc stepped it out), "ring is useless and only shows at the center of
+the screen" (the centre ring died), and "handoff animation is now
+visible wiht hover glow" (the rest cue and the hover glow dueled).
+
+Three fixes, all small. The switcher's enter self-heals: the settle's
+beat now arms on every chord event (the open, each cycle, each poll of
+the seat's modifiers), and the 80 ms modifier poll keeps the beat at
+bay while the chord is held - whatever link of the release chain
+survives, the enter comes; a dead modifiers channel (an older plugin)
+is treated as the release rather than a stuck switcher. The nest
+cannot exercise the chord reliably (the ShortcutHandler registrations
+are flaky across a nest's life), so the design is verified via the
+debug path plus the code review. The glow now waits for the handoff
+(the hoverTick stands down while the pass-through's rest is running),
+so the cue owns the delay and the glow reads as the engagement after
+it. And the centre ring is gone - the window under the pointer keeps
+its landing ring.
+
+Scenario 126's two traps (banked): the corner-cluster placebys at
+canvas y 1200 sat below the screen at the 0.8 zoom, so the pointer
+move clamped to the bottom edge and the hold's edge-pan rode it
+away; and a separate fakeinput device's first event lands at its
+default (0,0) - the corner - so the pointer move belongs inside the
+hold's single stream. The scenario now parks the cluster at y 600 and
+drives the whole part from one device.
+
+Verified: 126-grasp-landing 5/0, 127-rest-cue 6/0, 107 6/0, 124 9/0,
+125 5/0 + the touch batch (10-open 11/0, 30 14/0, 71 12/0, 70 6/0,
+103 24/0, 85 21/0, 87/88 2/0, 106 8/0, 111 6/0, 112 20/0, 113 4/0,
+114 10/0, 109 9/0, 110 5/0, 116 13/0); make lint green; make unit
+85/0. No goldens moved.
+
 ### 2026-10-16 — the handoff is anticipated, and the grasp shows its destinations
 
 The user's lesson landed: the big rounds (the tilt, the desktops) all

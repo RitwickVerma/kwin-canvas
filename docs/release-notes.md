@@ -1,13 +1,30 @@
 Unreleased:
 
+- The switcher's enter cannot be missed. The settle's beat now arms on
+  every chord event - the open, each step, each poll of the seat's
+  modifier keys - and the poll keeps the beat at bay while the chord is
+  held, so whatever link of the release chain survives, the pick settles
+  for its moment and the canvas steps in by itself. A dead modifiers
+  channel (an older plugin) is treated as the release rather than a
+  stuck switcher.
+
+- The cue and the glow take turns. The pass-through's rest cue owns the
+  hover delay, and the canvas's own hover glow now waits for the handoff
+  instead of lighting up halfway through the cue - the two no longer
+  duel, and the glow reads as the engagement that follows the handover.
+
+- The grasp's ring lands on the window, not the screen. The ring that
+  marked the screen centre is gone - the release's spot was not what the
+  hand needed - and the window under the pointer keeps its landing ring
+  through the hold, so the one a click would fly to is marked, and the
+  release still lands.
+
 - The handoff is anticipated, and the grasp shows its destinations. While
   the pointer rests out the hover delay over a window, a thin line fills
   along its top edge - the pass-through's handover reads before it happens
   instead of surprising the pointer - and during the hold a soft ring
-  marks the window under the pointer as the one a click would fly to,
-  while a ring at the screen centre marks where the release lands, fading
-  out as the widen boundary approaches. The hold's two outcomes are
-  legible before it ends.
+  marks the window under the pointer as the one a click would fly to.
+  The hold's two outcomes are legible before it ends.
 
 - The toolbar says what the canvas is doing. The fidelity ladder's
   current rung now shows as a quiet dot in the toolbar - amber for
