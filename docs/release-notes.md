@@ -1,5 +1,13 @@
 Unreleased:
 
+- Hold the grasp and tap the side button, and the camera hops to the
+  next cluster - the plane's desktops - and the release opens the
+  location there. Clusters were always the plane's answer to virtual
+  desktops; the travel between them is now the grasp's own gesture,
+  and the hop is brisker everywhere (the bracket keys' tour rides the
+  same quick flight). The old side-button swap between recent windows
+  is gone with it: the clusters won the button.
+
 - The switcher's enter cannot be missed. The settle's beat now arms on
   every chord event - the open, each step, each poll of the seat's
   modifier keys - and the poll keeps the beat at bay while the chord is

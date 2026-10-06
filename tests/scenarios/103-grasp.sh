@@ -50,18 +50,26 @@ run_scenario() {
     assert_near "and y" "$(tget 0 y)" 100 1
     wait
 
-    # MB5 while the modifier is held flies between the two most recent
-    # windows, an Alt-Tab on the plane: the focus and the camera go to the
-    # other recent window, and the release opens the location there, focused.
+    # MB5 during the hold tours the clusters - the plane's desktops: the
+    # camera hops to the next cluster's centroid at 1:1, and the release
+    # opens the location there. A far pair makes a second cluster to tour to.
+    open_1to1
+    c "placeby Dolphin 4000 800 700 360"
+    c "placeby wallpaper.png 4000 300 460 420"
+    c commit
+    sleep 0.3
+    c state
+    assert_eq "the far pair is its own cluster" "$(sget clusters)" 2
     printf 'move 1700 900\nsleep 60\ndown back\nsleep 900\nmove 1700 900\nsleep 60\nclick forward\nsleep 700\nup back\n' | input &
     sleep 0.7; c state
     assert_eq "the third hold opens quietly" "$(head -1 <<<"$LAST_STATE" | grep -c 'visible=true quiet grasp')" 1
-    sleep 0.7; c state
-    assert_eq "the swap moved the focus to the other recent window" "$(grep -c 'active="wallpaper.png' <<<"$LAST_STATE")" 1
+    sleep 0.9
+    for i in $(seq 1 12); do c state; [ "$(sget viewx)" != "200.0" ] && break; sleep 0.4; done
+    assert_eq "the swap tours to the far cluster" "$(sget cluster)" 1
     sleep 0.9; c state
     assert_eq "and the release opens the location there" "$(sget visible)" false
-    assert_true "with the swapped-to window wholly on screen" \
-        "$(awk -v x="$(eget Gwenview fx)" 'BEGIN{print (x>=0 && x+460<=1920)}')" = 1
+    assert_near "at the cluster's centroid, x" "$(sget viewx)" 3330 60
+    assert_near "and y" "$(sget viewy)" 205 60
     wait
 
     # A double-click during the hold animates like any step in: with the

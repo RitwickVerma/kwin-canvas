@@ -115,6 +115,26 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-17 — the grasp's side button tours the clusters
+
+The user's words: "clusters are like virtual desktops. I need to travel
+b/w them quick" → "maybe make mb4+mb5 fly to clusters instead". Clusters
+were already the plane's desktops; the grasp's MB5 still did the old
+recent-window swap. The swap is gone: `swapWindow()` is now one line -
+the cluster tour - and the focusHistory/noteFocus bookkeeping went with
+it. The tour's flight is brisker too (the rate-3 hop, the switcher's
+fit rate, on the bracket keys and the overworld's MB5 alike).
+
+The 103 rewrite found a real reading: the state's cluster numbering
+follows the recluster's component order, not the plane's geometry - the
+far pair came out c0, so the travel's destination reads "#1" while the
+centroid view is the real proof. The scenario polls the landing (the
+MB5's flight races the reads) and asserts both.
+
+Verified: 103-grasp 26/0, 106-clusters 8/0, 107-grasp-map 6/0, 102-keys
+17/0, 112-overlay 20/0, 114-overlay-map 10/0; make lint green (deadcode
+clean - the swap's removal passed the census); make unit 85/0.
+
 ### 2026-10-16 — the switcher steps out by itself, the cue and the glow take turns, and the ring lands on the window
 
 The user's live reports after the deep set: "switcher never exits"

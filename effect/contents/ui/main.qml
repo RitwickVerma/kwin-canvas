@@ -367,34 +367,13 @@ KWin.SceneEffect {
         commit(null);
     }
 
-    // SwapButton while the modifier is held: fly between the two most recent
-    // windows, an Alt-Tab on the plane. The camera springs to the other
-    // window, the focus follows, and the release opens the location there.
+    // MB5 tours the clusters wherever it fires - the grasp's own travel
+    // and the overworld's - at the speed of the click. Clusters are the
+    // plane's desktops; the side button is the hop between them.
     function swapWindow() {
         if (!grasp && !canvasOpen) return;
-        if (!grasp || graspOverworld) {
-            // In the overworld the swap tours the clusters - the bracket
-            // keys' own travel, at the speed of the click. A hold in the
-            // overworld is the overworld still, so the swap keeps touring.
-            dbg("swap", "overworld: touring the clusters");
-            clusterTravel(1);
-            return;
-        }
-        let target = null;
-        for (let i = 0; i < focusHistory.length; ++i) {
-            const w = focusHistory[i];
-            if (!w || w.deleted) continue;
-            if (w !== KWin.Workspace.activeWindow) { target = w; break; }
-        }
-        if (!target) return;
-        KWin.Workspace.activeWindow = target;
-        // The swap's own flight is the move; the activation it caused must
-        // not fly again on the release, or the two flights fight and the
-        // windows jump.
-        pendingFly = null;
-        clickedWindow = null;
-        const e = entryFor(target);
-        if (e) flyToEntry(e, 2.0);
+        dbg("swap", "touring the clusters");
+        clusterTravel(1);
     }
     // Frame positions at open, for cancel to put back what settle() wrote.
     property var openFrames: ({})
@@ -806,7 +785,7 @@ KWin.SceneEffect {
         // destination until the eye settles on something new.
         hoverEntry = null;
         focusEntry = null;
-        camGo(zoom, c.cx - (g.x + g.width / 2) / zoom, c.cy - (g.y + g.height / 2) / zoom);
+        camGo(zoom, c.cx - (g.x + g.width / 2) / zoom, c.cy - (g.y + g.height / 2) / zoom, undefined, undefined, 3.0);
         toast("Cluster " + (k + 1) + " of " + clusters.length);
     }
     // A window's z in the overworld: the stacking order itself - the entries
@@ -3891,10 +3870,6 @@ KWin.SceneEffect {
         }
     }
 
-    // The two most recent windows, most recent first: what the canvas
-    // modifier's swap (SwapButton while the modifier is held) flies between,
-    // an Alt-Tab on the plane.
-    property var focusHistory: []
     // The activation fly: the desktop slides until the window is wholly in
     // view, at the pan that leaves the most of the other windows in view for
     // the least movement - not always centred, so a desk keeps its shape.
@@ -3913,13 +3888,6 @@ KWin.SceneEffect {
         }
         const d = smartPan(rect, others, 24);
         if (d.dx !== 0 || d.dy !== 0) slideTo(d.dx, d.dy);
-    }
-    function noteFocus(w) {
-        if (!w || w.deleted) return;
-        if (focusHistory.length > 0 && focusHistory[0] === w) return;
-        const out = [w];
-        for (let i = 0; i < focusHistory.length && out.length < 2; ++i) if (focusHistory[i] !== w) out.push(focusHistory[i]);
-        focusHistory = out;
     }
     // The entry a window is drawn from, or null.
     function entryFor(w) {
@@ -3943,8 +3911,7 @@ KWin.SceneEffect {
     Connections {
         target: KWin.Workspace
         function onWindowActivated(w) {
-            effect.noteFocus(w);
-            // Open: a raise (pass-through clicks, the swap) restacks the thumbnails.
+            // Open: a raise (pass-through clicks) restacks the thumbnails.
             // The plane transform is only ever live while open, so the
             // on-screen test below always sees geometry as drawn.
             if (effect.visible) { Qt.callLater(effect.resync); return; }
@@ -4722,11 +4689,10 @@ KWin.SceneEffect {
             enabled: !effect.chromeHover
         }
 
-        // SwapButton while the canvas modifier is held: fly between the two
-        // most recent windows. Only the grasp acts on it; the press is
-        // otherwise someone else's (in the overworld the pass-through plugin
-        // hands it to the window under the pointer, at 1:1 the window's own
-        // back/forward gesture).
+        // MB5 tours the clusters wherever it fires - the grasp's hold and
+        // the open overworld alike. The press is otherwise someone else's
+        // (over a window in the overworld the pass-through hands it on; at
+        // 1:1 it is the window's own back/forward gesture).
         TapHandler {
             acceptedButtons: effect.swapButtons
             enabled: !effect.chromeHover
@@ -6204,7 +6170,7 @@ KWin.SceneEffect {
                 K { text: "hold " + effect.holdLabel(effect.configuration.PanHold) + " or middle" } V { text: "the canvas takes the pointer: drag the ground to pan, drag a window to move it" }
                 K { text: "hold it / to a screen edge" }                        V { text: "the canvas keeps panning; a window in hand comes along" }
                 K { text: "hold " + effect.holdLabel(effect.configuration.CanvasHold) } V { text: "on the desktop: the location itself becomes the canvas; drags and the wheel work, release applies" }
-                K { text: "hold it, tap " + effect.holdLabel(effect.configuration.SwapButton) } V { text: "fly between the two most recent windows; release opens the location there, focused" }
+                K { text: "hold it, tap " + effect.holdLabel(effect.configuration.SwapButton) } V { text: "tour the clusters - the plane's desktops - the camera hops to the next one" }
                 K { text: "click a window / rest on it" }                        V { text: "the camera pans the least that fits it wholly into view" }
                 K { text: "wheel / " + effect.keyLabel(effect.configuration.KeyZoomIn) + " / " + effect.keyLabel(effect.configuration.KeyZoomOut) } V { text: "zoom at the cursor" }
                 K { text: "drag window" }                                       V { text: "move it on the plane" }
