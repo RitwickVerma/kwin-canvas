@@ -115,6 +115,41 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-18 — the seam's ground is proven, and the grasp's hint names the release
+
+The user asked how the interaction feels overall; my honest answer
+listed the weak halves, and they picked two: prove the wallpaper half
+end-to-end, and give the grasp's widen boundary its one honest mark.
+
+The boundary mark: the hint strip's last word now flips at the exact
+0.72 boundary the release uses - "release to land" above, "release to
+open the world" below - and the state line carries `outcome=` with the
+same word, so the scenario 126 asserts both outcomes (and the flip
+back) directly.
+
+The wallpaper proof (scenario 128, new) found three real things:
+`publishGround` had only ever written the offsets - the user's grid
+knobs (GridBase, GridOctaveFactor, GridOctaves, Background, LineColor,
+TileImage, ShowLabels) never reached the wallpaper, so the closed
+desktop's grid could not follow the canvas's; the nest's own
+ground-wallpaper seed was broken by its trailing `reloadConfig()`
+re-reading the stale `wallpaperplugin=` key and putting the fixture
+image back; and the scripting's desktop object has no `wallpaper`
+property (the map is unreachable - the switch works via the
+`wallpaperPlugin` set + the config writes with NO reload). The scenario
+switches the nest's desktop to kwin-canvas-ground, proves the effect's
+ground continues across the frame's edge at 1:1 (within the label's
+antialiasing noise - the `similar` threshold, not `changed`), proves a
+knob change lands on the desktop, and restores the fixture image for
+the batch.
+
+Verified: 128 3/0, 126 8/0, and the rest of the batch green (85 21/0,
+87/88 2/0, 106 8/0, 111 6/0, 113 4/0, 109 9/0, 110 5/0, 116 13/0, 20
+8/0, 90 28/0, 93 14/0, 123 4/0, 124 9/0, 125 5/0, 71 12/0, 70 6/0,
+102 17/0, 105 10/0, 100-flight 19/0, 98 5/0, 50 4/0, plus the earlier
+10-open/30/103/107/112/114/127); make lint green (REUSE compliant,
+deadcode clean); make unit 85/0. No goldens moved.
+
 ### 2026-10-17 — the grasp's side button tours the clusters
 
 The user's words: "clusters are like virtual desktops. I need to travel

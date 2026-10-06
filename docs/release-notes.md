@@ -1,5 +1,21 @@
 Unreleased:
 
+- The grasp's hint names the release. Its last word flips at the exact
+  boundary the release uses: zoomed in, it says "release to land"; past
+  the widen point it says "release to open the world". The two outcomes
+  of the hold - the location it lands on, or the overworld it opens -
+  are now written on the plane while the hand is still down, not guessed
+  after the release. The debug channel's state line carries the same
+  word as `outcome=`.
+
+- The seam's ground is proven. The effect's ground knobs - the grid's
+  spacing, its octaves, its colours, its labels - now reach the
+  wallpaper plugin too, so the closed desktop and the canvas's ground
+  draw the same picture (they always should have; the knobs had only
+  ever reached the effect). A new scenario measures the actual seam: the
+  ground continues across the frame's edge at 1:1 within the noise of
+  the label's antialiasing, and a knob change shows up on both sides.
+
 - Hold the grasp and tap the side button, and the camera hops to the
   next cluster - the plane's desktops - and the release opens the
   location there. Clusters were always the plane's answer to virtual

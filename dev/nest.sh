@@ -236,7 +236,6 @@ shell() {
                 d.currentConfigGroup = ['Wallpaper', 'kwin-canvas-ground', 'General'];
                 d.writeConfig('OffsetX', 0);
                 d.writeConfig('OffsetY', 0);
-                d.reloadConfig();
             }" >/dev/null
     fi
     if [ "${NEST_PANEL:-0}" = 1 ]; then

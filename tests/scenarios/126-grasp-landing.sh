@@ -36,6 +36,7 @@ run_scenario() {
     c state
     assert_eq "the hold is quiet at the eighth" "$(sget zoom)" "0.8000"
     assert_eq "and the camera is pinned" "$(sget viewx),$(sget viewy)" "-240.0,-135.0"
+    assert_eq "the release would land" "$(grep -o 'outcome=[a-z-]*' <<<"$(head -1 <<<"$LAST_STATE")" | cut -d= -f2)" "land"
     shot "$OUT/ring-off.png" >/dev/null 2>&1
 
     # The pointer has walked onto KCalc: the grasp's pick names it, and
@@ -46,6 +47,18 @@ run_scenario() {
     assert_eq "the pointer's window is named as the fly target" "$(grep -o 'graspTarget=[0-9-]*' <<<"$(head -1 <<<"$LAST_STATE")" | cut -d= -f2)" "$ki"
     shot "$OUT/ring-on.png" >/dev/null 2>&1
     assert_eq "the window's edge wears the ring" "$(changed "$(region_rmse "$OUT/ring-off.png" "$OUT/ring-on.png" "20x2+500+922")")" 1
+    # Past the 0.72 boundary the release widens instead of landing: the
+    # strip's last word says so, on the wheel's own motion.
+    c "zoom 0.6 960 540"
+    sleep 0.8
+    c state
+    assert_eq "the release would widen" "$(grep -o 'outcome=[a-z-]*' <<<"$(head -1 <<<"$LAST_STATE")" | cut -d= -f2)" "world"
+
+    # Back above the boundary, so the release that follows lands.
+    c "zoom 0.8 960 540"
+    sleep 0.5
+    c state
+    assert_eq "and back above it, the release would land" "$(grep -o 'outcome=[a-z-]*' <<<"$(head -1 <<<"$LAST_STATE")" | cut -d= -f2)" "land"
 
     # The release at 0.8 commits the location.
     wait "$holdpid" 2>/dev/null || true

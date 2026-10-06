@@ -3576,6 +3576,17 @@ KWin.SceneEffect {
             "  ds[i].currentConfigGroup = ['Wallpaper', 'kwin-canvas-ground', 'General'];" +
             "  ds[i].writeConfig('OffsetX', " + viewX + ");" +
             "  ds[i].writeConfig('OffsetY', " + viewY + ");" +
+            // The ground's own knobs ride the same channel: the wallpaper
+            // must draw the grid the user configured, or the seam between
+            // the closed desktop and the canvas's ground would show two
+            // different grids wherever the camera leaves the frame.
+            "  ds[i].writeConfig('GridBase', " + (Number(configuration.GridBase) || 64) + ");" +
+            "  ds[i].writeConfig('GridOctaveFactor', " + (Number(configuration.GridOctaveFactor) || 8) + ");" +
+            "  ds[i].writeConfig('GridOctaves', " + (Number(configuration.GridOctaves) || 4) + ");" +
+            "  ds[i].writeConfig('Background', '" + String(configuration.Background || "#1c1f26").replace(/'/g, "") + "');" +
+            "  ds[i].writeConfig('LineColor', '" + String(configuration.LineColor || "#7f8fb0").replace(/'/g, "") + "');" +
+            "  ds[i].writeConfig('TileImage', '" + String(configuration.TileImage || "").replace(/'/g, "") + "');" +
+            "  ds[i].writeConfig('ShowLabels', " + (configuration.ShowLabels === false ? "false" : "true") + ");" +
             "}";
         groundCall.arguments = [script];
         groundCall.call();
@@ -4232,6 +4243,7 @@ KWin.SceneEffect {
             + " idle=" + (passthroughIdle ? "1" : "0")
             + " seam=" + (seamPark ? "1" : "0")
             + " graspTarget=" + (graspTarget ? entries.indexOf(graspTarget) : "-")
+            + " outcome=" + (grasp ? (zoom < 0.72 ? "world" : "land") : "-")
             + " rest=" + (restStart ? "1" : "0")
             + " map=" + (mapMinimap ? "minimap" : "-")
             + " verb=" + (verb ? "1" : "0")
@@ -5714,7 +5726,11 @@ KWin.SceneEffect {
                 Text { text: "·"; color: "#77ffffff"; font.pixelSize: 11 }
                 Text { text: "wheel to zoom"; color: "#ffffff"; font.pixelSize: 11 }
                 Text { text: "·"; color: "#77ffffff"; font.pixelSize: 11 }
-                Text { text: "release to land"; color: "#ffffff"; font.pixelSize: 11 }
+                // The last word flips exactly where the release's outcome
+                // flips: above 0.72 the release lands, below it the release
+                // widens into the overworld. The grasp's two outcomes read
+                // before the hold ends.
+                Text { text: { effect.zoom; return effect.zoom < 0.72 ? "release to open the world" : "release to land" } color: "#ffffff"; font.pixelSize: 11 }
             }
         }
 
