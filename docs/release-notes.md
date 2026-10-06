@@ -1,5 +1,21 @@
 Unreleased:
 
+- The handoff is anticipated, and the grasp shows its destinations. While
+  the pointer rests out the hover delay over a window, a thin line fills
+  along its top edge - the pass-through's handover reads before it happens
+  instead of surprising the pointer - and during the hold a soft ring
+  marks the window under the pointer as the one a click would fly to,
+  while a ring at the screen centre marks where the release lands, fading
+  out as the widen boundary approaches. The hold's two outcomes are
+  legible before it ends.
+
+- The toolbar says what the canvas is doing. The fidelity ladder's
+  current rung now shows as a quiet dot in the toolbar - amber for
+  reduced, orange for minimal, red for bare - appearing only when the
+  canvas has stepped down, and its hover names the rung. The zoom
+  readout and the hand dot were already there; the three together make
+  the toolbar the canvas's own status line.
+
 - The ladder asks twice before it moves, and it says so. A launch spike
   can no longer flash the canvas down, a single breath cannot flash it
   back up - both directions wait for two consecutive samples - and a

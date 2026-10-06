@@ -210,6 +210,20 @@ void CanvasPassthrough::setVerbose(bool verbose)
     qCDebug(KWIN_CANVAS) << "canvas-passthrough: verbose" << (verbose ? "on" : "off");
 }
 
+void CanvasPassthrough::publishRest(KWin::Window *w)
+{
+    if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+        if (w) {
+            // The window and the delay the hover clock is waiting out, so
+            // the canvas can fill a cue along the window's edge while the
+            // rest runs: the handoff is anticipated instead of a surprise.
+            canvas->setProperty("restStart", QStringLiteral("%1|%2").arg(w->internalId().toString()).arg(m_hoverTimer.interval()));
+        } else {
+            canvas->setProperty("restStart", QString());
+        }
+    }
+}
+
 // The press of a hold button that turned out to be a click, not a hold:
 // deliver it to the window under the pointer, press and release, at the
 // pointer's own place. The seat's pointer state is whatever the normal
@@ -553,6 +567,9 @@ bool CanvasPassthrough::enter(Window *window, const QPointF &canvas)
         seat->notifyPointerMotion(global);
     }
     seat->notifyPointerFrame();
+    // The rest the hover clock waited out is over: the handoff happened,
+    // so the canvas's filling cue is done too.
+    publishRest(nullptr);
     return true;
 }
 
@@ -566,6 +583,8 @@ void CanvasPassthrough::leave()
     }
     m_hoverSurface = nullptr;
     m_hover = nullptr;
+    // Whatever rest was running over the window is over with it.
+    publishRest(nullptr);
 }
 
 void CanvasPassthrough::clearGrab()
@@ -660,6 +679,7 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
         if (w != m_hoverCandidate.data()) {
             m_hoverCandidate = w;
             m_hoverTimer.start();
+            publishRest(w);
         }
         if (m_hover == w) {
             return enter(w, canvas);
@@ -675,6 +695,9 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
 bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
 {
     publishChrome(event->position);
+    // A press is never a rest: whatever cue the hover clock was filling
+    // stops the moment a button lands.
+    publishRest(nullptr);
     m_idle = false;
     m_idleTimer.start();
     // Every button change is published to the effect: a focus fly must wait

@@ -115,6 +115,34 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-16 — the handoff is anticipated, and the grasp shows its destinations
+
+The user's lesson landed: the big rounds (the tilt, the desktops) all
+got reverted; the small rounds stuck. The new direction - no new
+things; the things that exist get to mean what they already are - made
+this round: the three deepest interactions that were still invisible
+now read.
+
+The rest cue: the pass-through publishes its live hover clock
+(`publishRest`, a "internalId|delay" property on the canvas on every
+candidate rest and its end), and the window under the pointer fills a
+thin line along its top edge over exactly the hover delay - the handoff
+is anticipated instead of a surprise.
+
+The grasp's legibility: a 100 ms pick names the window under the
+pointer during the hold (`graspTarget`, the state line's new field),
+and a landing ring draws around it; a second ring at the screen centre
+marks where the release lands, fading out as the 0.72 widen boundary
+approaches - the hold's two outcomes read before it ends. The toolbar
+gained the ladder's rung dot (amber/orange/red, hover names it), so the
+status line now answers all three questions: where am I, why does it
+look like this, whose hand.
+
+Verified: 126-grasp-landing 6/0 (the ring's arc at the eighth, gone
+past the boundary - the probe is the arc box's mean, the boosted grid
+at the deep zoom is the noise the max could not beat), 127-rest-cue
+6/0, the full batch green with no golden churn, lint clean, unit 85/0.
+
 ### 2026-10-13 — the tilt leaves: the plane is flat again
 
 The user's verdict on the 3D after the tuning rounds: "nope. kill 3d. go

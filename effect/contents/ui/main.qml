@@ -232,6 +232,28 @@ KWin.SceneEffect {
     // grasp from the overworld's side, so the map comes back for it and the
     // release returns to the overworld, not to the location.
     property bool graspOverworld: false
+    // The grasp's landing target: during the hold, the window under the
+    // pointer is the one a click would fly to, so the scene rings it and
+    // the state line names it - the gesture shows its destination before
+    // the click lands.
+    property var graspTarget: null
+    function graspPick() {
+        if (!grasp) return;
+        const p = cursorScreen();
+        const c = globalToCanvas(p.x, p.y);
+        let e = null;
+        for (let i = entries.length - 1; i >= 0; --i) {
+            const en = entries[i];
+            if (c.x >= en.x && c.x < en.x + en.width && c.y >= en.y && c.y < en.y + en.height) { e = en; break; }
+        }
+        if (e !== graspTarget) graspTarget = e;
+    }
+    Timer {
+        interval: 100
+        repeat: true
+        running: effect.grasp
+        onTriggered: effect.graspPick()
+    }
     onCanvasHoldChanged: {
         if (canvasHold) {
             // Held while the overworld is open: the hold itself IS the
@@ -239,6 +261,7 @@ KWin.SceneEffect {
             if (!visible) graspStart();
             else if (!grasp) {
                 grasp = true;
+                graspTarget = null;
                 chipCount = clusters.length;
                 graspOverworld = true;
                 graspJumped = false;
@@ -274,6 +297,7 @@ KWin.SceneEffect {
         if (visible) return;
         dbg("graspStart", "hold from the location at 1:1");
         grasp = true;
+        graspTarget = null;
         chipCount = clusters.length;
         graspStartActive = KWin.Workspace.activeWindow;
         open(true);
@@ -288,7 +312,7 @@ KWin.SceneEffect {
         if (fullscreenOpen()) fullscreenZoomTo();
     }
     function graspEnd() {
-        if (!quiet || !grasp) { grasp = false; graspOverworld = false; chipCount = 0; return; }
+        if (!quiet || !grasp) { grasp = false; graspOverworld = false; graspTarget = null; chipCount = 0; return; }
         if (sceneGestures > 0) {
             deferredClose = graspEnd;
             return;
@@ -1612,6 +1636,10 @@ KWin.SceneEffect {
     // plugin: a click on an already-active window raises no activation, so
     // the fly has to learn about the click this way too.
     property int pointerButtons: 0
+    // The pass-through's resting hand: "internalId|delay" while the hover
+    // clock waits its delay out over a window, empty otherwise. The scene
+    // fills a cue along that window's edge while it lasts.
+    property string restStart: ""
     // The pass-through has let go after the idle: the canvas owns the
     // input again, until the pointer's next touch.
     property bool passthroughIdle: false
@@ -4209,6 +4237,8 @@ KWin.SceneEffect {
             + " draglag=" + Math.round(Math.sqrt(dragLagX * dragLagX + dragLagY * dragLagY)) + " lean=" + dragLean.toFixed(2)
             + " idle=" + (passthroughIdle ? "1" : "0")
             + " seam=" + (seamPark ? "1" : "0")
+            + " graspTarget=" + (graspTarget ? entries.indexOf(graspTarget) : "-")
+            + " rest=" + (restStart ? "1" : "0")
             + " map=" + (mapMinimap ? "minimap" : "-")
             + " verb=" + (verb ? "1" : "0")
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
@@ -5052,6 +5082,53 @@ KWin.SceneEffect {
                                 : (thumb.hovered || body.active ? effect.activityColor(thumb.entry.activity) : "#40ffffff")
                 }
 
+                // The grasp's landing ring: during the hold, the window
+                // under the pointer is the one a click would fly to. The
+                // ring says so before the click lands, and disappears the
+                // moment the hold ends or the skin comes in.
+                Rectangle {
+                    anchors.fill: parent
+                    anchors.margins: 2
+                    radius: 6
+                    color: "transparent"
+                    border.width: 2
+                    border.color: "#b8ffffff"
+                    visible: { effect.graspTarget; effect.skinReveal; return effect.grasp && effect.skinReveal > 0.02 && thumb.entry === effect.graspTarget; }
+                }
+
+                // The pass-through's rest cue: while the pointer rests out
+                // the hover delay over this window, a thin line fills along
+                // its top edge, so the handoff is anticipated instead of a
+                // surprise. The pass-through publishes the window and the
+                // delay; this fills over exactly that delay.
+                readonly property bool resting: { effect.restStart; return String(thumb.entry.window.internalId) === effect.restStart.split("|")[0]; }
+                property real restFill: 0
+                onRestingChanged: {
+                    if (resting) {
+                        restFill = 0;
+                        restAnim.duration = Math.max(1, Number(effect.restStart.split("|")[1]) || 900);
+                        restAnim.restart();
+                    } else {
+                        restFill = 0;
+                        restAnim.stop();
+                    }
+                }
+                NumberAnimation {
+                    id: restAnim
+                    target: thumb
+                    property: "restFill"
+                    to: 1
+                    easing.type: Easing.Linear
+                }
+                Rectangle {
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    width: parent.width * thumb.restFill
+                    height: 2
+                    color: "#2a6ddf"
+                    visible: thumb.restFill > 0
+                }
+
                 Text {
                     anchors.left: parent.left
                     anchors.bottom: parent.top
@@ -5616,6 +5693,24 @@ KWin.SceneEffect {
         }
         }
 
+        // The grasp's landing promise: the release commits the canvas point
+        // under the screen centre, and this ring is that point. It fades
+        // away as the zoom crosses the 0.72 boundary past which a release
+        // widens into the overworld instead of landing - the two outcomes
+        // of the hold read on the plane before either happens.
+        Rectangle {
+            z: 50000
+            width: 36
+            height: 36
+            radius: 18
+            anchors.centerIn: parent
+            color: "transparent"
+            border.width: 1.5
+            border.color: "#80ffffff"
+            visible: { effect.skinReveal; effect.zoom; return effect.grasp && effect.skinReveal > 0.02 && effect.zoom > 0.72; }
+            opacity: Math.min(1, Math.max(0, (effect.zoom - 0.72) / 0.12))
+        }
+
         // The grasp teaches itself: one line, while the hold is zoomed out
         // enough for the world to be the map, naming what the hand can do.
         Item {
@@ -6015,6 +6110,21 @@ KWin.SceneEffect {
                     PC3.ToolTip.text: effect.handOnWindow ? "The pointer is the window's" : "The pointer is the canvas's"
                     PC3.ToolTip.visible: handDotHover.hovered
                     HoverHandler { id: handDotHover; cursorShape: Qt.PointingHandCursor }
+                }
+                // The fidelity rung: a quiet dot appears only when the canvas
+                // has stepped down for the machine's load, coloured by how far.
+                Rectangle {
+                    visible: effect.ql > 0
+                    width: 10
+                    height: 10
+                    radius: 5
+                    color: effect.ql === 1 ? "#d9a441" : (effect.ql === 2 ? "#d97a41" : "#d95050")
+                    border.width: 1
+                    border.color: "#80ffffff"
+                    Layout.alignment: Qt.AlignCenter
+                    PC3.ToolTip.text: effect.ql === 1 ? "The canvas is reduced: the machine is busy" : (effect.ql === 2 ? "The canvas is minimal: the machine is loaded" : "The canvas is bare: only the rectangles work")
+                    PC3.ToolTip.visible: rungHover.hovered
+                    HoverHandler { id: rungHover; cursorShape: Qt.PointingHandCursor }
                 }
                 Sep {}
                 PC3.ToolButton { icon.name: "zoom-fit-best";   text: "Fit";    display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Zoom to fit (" + effect.keyLabel(effect.configuration.KeyFit) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.zoomExtents(true) }

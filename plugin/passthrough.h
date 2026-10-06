@@ -138,6 +138,7 @@ private:
     KWin::Window *chromeAt(const QPointF &screen) const;
     /** Publish the chrome flag to the effect on every change. */
     void publishChrome(const QPointF &screen);
+    void publishRest(KWin::Window *w);
     /** The seam: within the margin of the desk's outer border, where a shared mouse parks its pointer. */
     bool atSeam(const QPointF &screen) const;
     /** Enter (or stay on) the input surface of @p window under @p canvas. False if no surface takes input there. */
