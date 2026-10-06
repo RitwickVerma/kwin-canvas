@@ -13,9 +13,6 @@ changed() { awk -v m="$1" 'BEGIN{print (m>0.005)}'; }
 run_scenario() {
     if ! have_input; then skip "fakeinput not built (make tools)"; return; fi
     arrange >/dev/null
-    # The pixel probes assume the flat plane's geometry; the 3D tilt is
-    # scenario 126's subject, so it is pinned off here.
-    setcfg Depth3D false
 
     # One cluster of three - KCalc, Dolphin (opaque) overlapping KCalc's
     # centre, KWrite past Dolphin - and the rest far away, their own
@@ -84,5 +81,4 @@ run_scenario() {
         "$(changed "$(region_rmse "$OUT/td-unlit.png" "$OUT/td-lit.png" "$b2")")" 1
 
     c cancel
-    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key Depth3D --delete
 }

@@ -26,26 +26,11 @@ run_scenario() {
     # at zoom 0.4. Snapping off: this measures the drag, not the snap (98
     # covers snapping).
     c "snap edges off"; c "snap corners off"; c "snap grid off"
-    # The canvas pitches into perspective below 1:1, so the title bar the
-    # eye sees sits where the flat math projects it: push the flat point
-    # through the tilt before pressing it (the effect's own closed form,
-    # dz 0).
-    proj() {
-        awk -v px="$1" -v py="$2" 'BEGIN {
-            t = (1 - 0.4) * 0.42; d = 900; cx = 960; cy = 540;
-            x0 = px - cx; y0 = py - cy;
-            w = d - y0 * sin(t);
-            printf "%d %d\n", int(cx + d * x0 / w), int(cy + d * y0 * cos(t) / w);
-        }'
-    }
-    read -r sx sy <<<"$(proj $(screen_of $(( $(eget KCalc x) + 240 )) $(( $(eget KCalc y) + 22 ))))"
+    read -r sx sy <<<"$(screen_of $(( $(eget KCalc x) + 240 )) $(( $(eget KCalc y) + 22 )))"
     printf "drag $sx $sy $((sx + 100)) $((sy + 50))\n" | input
     sleep 0.3; c state
-    # The tilt's affine approximation leaves a small perspective residue on
-    # the drag (the window's own scale k is constant, the true gradient is
-    # not): the tolerance absorbs the measured <2%.
-    assert_near "window drag moves x" "$(eget KCalc x)" 350 8
-    assert_near "window drag moves y" "$(eget KCalc y)" 245 8
+    assert_near "window drag moves x" "$(eget KCalc x)" 350 3
+    assert_near "window drag moves y" "$(eget KCalc y)" 245 3
     snap input-dragged
     # The chord enters the location under the screen centre: canvas
     # (1460, 790) at this camera, so the viewport lands at (500, 250) and
@@ -53,7 +38,7 @@ run_scenario() {
     printf 'key leftctrl down\nkey leftalt down\nkey space\nkey leftalt up\nkey leftctrl up\n' | input
     sleep 0.6; c state
     assert_eq "the chord enters" "$(sget visible)" false
-    assert_near "KCalc written relative to the entered viewport x" "$(eget KCalc fx)" -150 8
-    assert_near "KCalc written relative to the entered viewport y" "$(eget KCalc fy)" -5 8
+    assert_near "KCalc written relative to the entered viewport x" "$(eget KCalc fx)" -150 3
+    assert_near "KCalc written relative to the entered viewport y" "$(eget KCalc fy)" -5 3
     arrange >/dev/null
 }

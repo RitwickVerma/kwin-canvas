@@ -64,11 +64,6 @@ public Q_SLOTS:
      * the canvas point each activity's frames put at global (0,0).
      */
     Q_SCRIPTABLE void setCamera(double viewX, double viewY, double zoom, const QString &currentActivity, const QString &targetsJson);
-    // The pitch's strength, published by the effect on its own channel: the
-    // camera's signature is a contract the older installed plugin must keep
-    // answering, so the tilt travels separately and a plugin that predates
-    // it keeps its compiled default.
-    Q_SCRIPTABLE void setTilt(double factor);
     /**
      * The mouse buttons the canvas owns while they are down (its PanHold
      * buttons, the middle button). A press of one of them is never handed to a
@@ -160,10 +155,6 @@ private:
     double m_viewX = 0;
     double m_viewY = 0;
     double m_zoom = 1;
-    // The pitch's strength, published by the effect with the camera: the
-    // hover and the handoff invert the same tilt the picture wears, so the
-    // two can never disagree.
-    double m_tiltFactor = 0.42;
     QString m_current;
     QHash<QString, QPointF> m_targets;
     /** The trace flag (setVerbose): log every decision this filter takes. */

@@ -99,62 +99,6 @@ KWin.SceneEffect {
     // overworld is open; the ladder steps down the moment the machine gets
     // busy and back up only after two calm readings, so it never flutters.
     property int ql: 0
-    // The plane in perspective. Zooming out tilts the camera back, so the
-    // world reads as a table receding into the distance, and the windows
-    // float above it by their z-depth. Flat at 1:1 - the location's
-    // pixel-exact seam never tilts - and flat whenever the fidelity ladder
-    // is at minimal or bare. Off = a flat map at every zoom.
-    property bool depth3d: configuration.Depth3D !== false
-    // The pitch's strength, shared with the plugin: the effect owns the
-    // number and the plugin obeys it, so the hover and the handoff can
-    // never disagree with the picture (a stale plugin once did, landing
-    // the pointer a window away at deep zoom).
-    readonly property real tiltFactor: 0.42
-    // A window's place on the tilted plane, computed as a point instead of
-    // a matrix: the delegate stays a flat item - so Qt's drag and tap
-    // machinery keeps clean local coordinates - and only its centre rides
-    // the projection. k is the projected size of one flat pixel there,
-    // folded back into the delegate's transform.
-    function projectWindow(sg, sx, sy, dz) {
-        if (ql >= 2 || !depth3d || zoom >= 0.999) return { x: sx, y: sy, k: 1 };
-        const t = (1 - zoom) * tiltFactor;
-        const cx = sg.width / 2, cy = sg.height / 2;
-        const d = 900;
-        const x0 = sx - cx, y0 = sy - cy;
-        const y1 = y0 * Math.cos(t) - dz * Math.sin(t);
-        const w = d - y0 * Math.sin(t) - dz * Math.cos(t);
-        return { x: cx + d * x0 / w, y: cy + d * y1 / w, k: d / w };
-    }
-    // The camera's projection matrix, per item: the whole world shares one
-    // perspective. dz is the lift in pixels of depth; the ground, the
-    // frames, the threads, the chips and the tags ride dz 0. Identity
-    // whenever the tilt is off, so the scene is bit-for-bit the flat one.
-    function tiltMatrix(sg, dz) {
-        if (ql >= 2 || !depth3d || zoom >= 0.999) return Qt.matrix4x4();
-        const t = (1 - zoom) * tiltFactor;
-        const cx = sg.width / 2, cy = sg.height / 2;
-        const d = 900;
-        var m = Qt.matrix4x4();
-        m.translate(Qt.vector3d(cx, cy, 0));
-        // The perspective projection, built by hand: this engine's QML
-        // matrix4x4 exposes no perspective() helper. Column-major, the
-        // scale matched to the camera's distance (f = 2d/h) so the centre
-        // renders at its flat size, the plane sitting at d in front of the
-        // camera.
-        const f = 2 * d / sg.height;
-        const n = 1, fr = 4000;
-        var p = Qt.matrix4x4(f / (sg.width / sg.height), 0, 0, 0, 0, f, 0, 0, 0, 0, (fr + n) / (n - fr), -1, 0, 0, (2 * fr * n) / (n - fr), 0);
-        var d2 = Qt.matrix4x4();
-        d2.translate(Qt.vector3d(0, 0, -d));
-        var r = Qt.matrix4x4();
-        r.rotate(t, Qt.vector3d(1, 0, 0));
-        var o = Qt.matrix4x4();
-        o.translate(Qt.vector3d(-cx, -cy, dz));
-        // The pitch pivots at the screen's centre on the plane: the centre
-        // never moves under the tilt, the far edge recedes and the near
-        // edge grows.
-        return m.times(p).times(d2).times(r).times(o);
-    }
     property real cpuBusy: 0
     property real gpuBusy: 0
     property real memBusy: 0
@@ -200,28 +144,24 @@ KWin.SceneEffect {
         const memQl = Logic.qualityFor(mm, Number.isFinite(memReduced) ? memReduced : 80, Number.isFinite(memMinimal) ? memMinimal : 90, Number.isFinite(memBare) ? memBare : 97);
         // The three channels race each other: whichever sees the worse
         // pressure sets the step, and a calm machine must clear ALL of them
-        // before the ladder climbs back up. Both directions need two
-        // consecutive samples - a launch spike cannot flash the canvas bare,
-        // and a calm blip cannot bring the finery back early - and the
-        // canvas says so when it moves, so a step down never reads as a
-        // broken desktop.
+        // before the ladder climbs back up.
         const target = Math.max(cpuQl, gpuQl, memQl);
+        // Both directions wait for two consecutive samples: a launch spike
+        // cannot flash the canvas down, and a single breath cannot flash it
+        // up. A step down to the bare rungs announces itself, so it never
+        // reads as a broken desktop.
         if (target > ql) {
             hotSamples++;
+            quietSamples = 0;
             if (hotSamples >= 2) {
                 if (target >= 2) toast("The canvas steps down to keep the machine yours");
                 ql = target;
-                quietSamples = 0;
                 hotSamples = 0;
             }
         } else if (target < ql) {
             quietSamples++;
             hotSamples = 0;
-            if (quietSamples >= 2) {
-                if (ql >= 2 && target < 2) toast("The canvas is back to full");
-                ql = target;
-                quietSamples = 0;
-            }
+            if (quietSamples >= 2) { ql = target; quietSamples = 0; toast("The canvas is back to full"); }
         } else {
             quietSamples = 0;
             hotSamples = 0;
@@ -1000,7 +940,7 @@ KWin.SceneEffect {
         // A pointer parked on the seam is not a hover: the desk put it there
         // (deskflow handing the mouse to another machine), not the hand.
         if (navHeld || quiet) return;
-        const c = screenToCanvas(p.x, p.y);
+        const c = globalToCanvas(p.x, p.y);
         let e = null;
         for (let i = entries.length - 1; i >= 0; --i) {
             const en = entries[i];
@@ -1722,10 +1662,6 @@ KWin.SceneEffect {
     // Set when the switcher opened from the chord (Meta+Tab / Alt+Tab), not
     // the debug verb, so the chord's release is the enter only for real holds.
     property bool switcherFromChord: false
-    // The switcher asks the view delegates for the scene's keyboard focus
-    // with a bump, not a named reference: the effect's own scope has no
-    // view, and a direct read there is a ReferenceError on every chord.
-    property int switcherFocusReq: 0
     // The cluster switcher: the alternate chord steps only among the
     // windows of the cluster the eye is on and fits that cluster, where
     // the primary chord sweeps the whole plane. Set by the chord that
@@ -1873,9 +1809,8 @@ KWin.SceneEffect {
         }
         // The overworld's chrome can take the scene's keyboard focus (the
         // menus' focus scopes) - the switcher needs the keys, so the view
-        // takes the focus back once the fit is on screen. The request is a
-        // bump the views watch: the effect's own scope cannot name a view.
-        switcherFocusReq++;
+        // takes the focus back once the fit is on screen.
+        view.focus = true;
         clickPanEntry = null;
         clickPanTimer.stop();
     }
@@ -1901,37 +1836,6 @@ KWin.SceneEffect {
 
     // ---- camera ops --------------------------------------------------------
     function globalToCanvas(gx, gy) { const c = Logic.canvasOf(gx, gy, viewX, viewY, zoom); return Qt.point(c.x, c.y); }
-
-    // The tilt-aware inverse: the flat mapping above does not know the
-    // pitch, so the pointer's canvas point is a skew away from the window
-    // under the tilted picture. This undoes the pitch - the plugin's
-    // toCanvas carries the same math for the pass-through - while the
-    // screen-centre callers (enterHere, the HUD's zooms) stay on the flat
-    // mapping: the centre is the pivot, so the two agree there exactly.
-    function screenToCanvas(gx, gy) {
-        if (!depth3d || ql >= 2 || zoom >= 0.999) {
-            const c = Logic.canvasOf(gx, gy, viewX, viewY, zoom);
-            return Qt.point(c.x, c.y);
-        }
-        const t = (1 - zoom) * tiltFactor;
-        const D = 900;
-        const cosT = Math.cos(t), sinT = Math.sin(t);
-        let cx = 0, cy = 0, found = false;
-        for (let i = 0; i < KWin.Workspace.screens.length; ++i) {
-            const g = KWin.Workspace.screens[i].geometry;
-            if (gx >= g.x && gx < g.x + g.width && gy >= g.y && gy < g.y + g.height) {
-                cx = g.x + g.width / 2; cy = g.y + g.height / 2; found = true; break;
-            }
-        }
-        if (!found) {
-            const g = actionScreen().geometry;
-            cx = g.x + g.width / 2; cy = g.y + g.height / 2;
-        }
-        const A = (gx - cx) / D, B = (gy - cy) / D;
-        const y0 = B * D / (cosT + B * sinT);
-        const x0 = A * (D - y0 * sinT);
-        return Qt.point(viewX + (cx + x0) / zoom, viewY + (cy + y0) / zoom);
-    }
 
     function clampZoom(z) {
         if (!Number.isFinite(Number(z))) return zoom;
@@ -2063,7 +1967,7 @@ KWin.SceneEffect {
         if (zoomRising) skinFromZoom = zoom;
         lastZoom = zoom;
         if (pinned) {
-            const c = screenToCanvas(gx, gy);
+            const c = globalToCanvas(gx, gy);
             camAnchorX = c.x; camAnchorY = c.y; camAnchorGX = gx; camAnchorGY = gy;
             camAnchored = true;
             camGoalX = viewX; camGoalY = viewY;
@@ -3315,17 +3219,6 @@ KWin.SceneEffect {
         dbusInterface: "org.kde.kwin.canvas.Passthrough"
         method: "setCamera"
     }
-    // The pitch's strength, on its own channel: the camera's five arguments
-    // are a contract the older installed plugin must keep answering, so the
-    // tilt travels separately and a plugin that predates it simply keeps
-    // its own default.
-    KWin.DBusCall {
-        id: tiltCall
-        service: "org.kde.KWin"
-        path: "/KWinCanvas"
-        dbusInterface: "org.kde.kwin.canvas.Passthrough"
-        method: "setTilt"
-    }
     KWin.DBusCall {
         id: navCall
         service: "org.kde.KWin"
@@ -3435,8 +3328,6 @@ KWin.SceneEffect {
         if (!passthroughLive) return;
         cameraCall.arguments = [viewX, viewY, zoom, currentActivity, JSON.stringify(targets)];
         cameraCall.call();
-        tiltCall.arguments = [tiltFactor];
-        tiltCall.call();
     }
     // The buttons the plugin leaves to the canvas whatever is drawn under the
     // pointer: the same mask the shim reads (planeNavButtons). Told when the
@@ -4353,11 +4244,6 @@ KWin.SceneEffect {
     }
 
     onConfigurationChanged: {
-        // The knob mirror: KConfig's own change notification does not
-        // reliably re-evaluate a binding that reads it, so the mirror is
-        // refreshed here, where the reconfigure is guaranteed to land (the
-        // debug channel itself rides this hook).
-        depth3d = configuration.Depth3D !== false;
         rebuildBindings();
         readSwipeFingers();
         publishHold();
@@ -4616,7 +4502,6 @@ KWin.SceneEffect {
         Connections {
             target: effect
             function onVisibleChanged() { if (effect.visible) view.hoverCount = 0; }
-            function onSwitcherFocusReqChanged() { view.focus = true; }
         }
 
         // The plane's base: opaque, so nothing shows through to the real
@@ -4665,12 +4550,6 @@ KWin.SceneEffect {
             Behavior on blurAlpha { NumberAnimation { duration: 280; easing.type: Easing.InOutCubic } }
             visible: wallpaper && (wantShown || blurAlpha > 0.004)
             opacity: blurAlpha
-            // The backdrop must NOT carry the tilt: a perspective matrix on
-            // this layer makes the scene graph drop it entirely (measured -
-            // the whole floor vanishes). The plane's tilt is carried by the
-            // ground's grid and the desks; the wallpaper haze below stays
-            // flat, and as the pitch comes in it sharpens and lifts, so it
-            // reads as the room's floor rather than fighting the warp.
             // The source is rendered at half resolution and the blur is
             // upscaled: a quarter of the pixels for the same haze, which is
             // the difference between a full-screen blur that runs and one
@@ -4693,33 +4572,26 @@ KWin.SceneEffect {
                 // The quiet slide (a focus fly, a pan chord at 1:1) is the
                 // desktop gliding: the wallpaper stays, sharp, so a
                 // transient move never flashes grey or the overworld's blur.
-                // The tilt's floor wants the same: as the plane pitches the
-                // haze lifts with the zoom, so the table reads instead of a
-                // formless blur. Under load the blur is the first pass to
-                // go: it is a half-screen FBO sampled every frame, and a
-                // busy machine keeps the wallpaper sharp rather than pay
-                // for the haze.
-                radius: (effect.quiet || effect.ql >= 1) ? 0 : Math.max(0, Math.round(effect.backdropBlur() * effect.zoom))
+                // Under load the blur is the first pass to go: it is a
+                // half-screen FBO sampled every frame, and a busy machine
+                // keeps the wallpaper sharp rather than pay for the haze.
+                radius: (effect.quiet || effect.ql >= 1) ? 0 : effect.backdropBlur()
                 transparentBorder: false
             }
             // The dim over the blur only: the desks ride above it and stay
             // bright. Zero while the canvas slides at 1:1, where the plane
             // and the desktop have to be the same thing, and it fades in
             // with the chrome on open and out with it on the step in, so
-            // stepping out and back never flashes the dim. It lifts with
-            // the tilt too: the pitched floor stays bright enough to read.
+            // stepping out and back never flashes the dim.
             Rectangle {
                 anchors.fill: parent
                 color: effect.configuration.Background
-                opacity: effect.backdropDim() * effect.chromeFade * effect.skinReveal * (0.25 + 0.75 * effect.zoom)
+                opacity: effect.backdropDim() * effect.chromeFade * effect.skinReveal
             }
         }
 
         Ground {
             anchors.fill: parent
-            transform: Matrix4x4 {
-                matrix: { effect.zoom; effect.ql; effect.depth3d; return effect.tiltMatrix(view.sg, 0); }
-            }
             originX: -effect.viewX * effect.zoom - view.sg.x
             originY: -effect.viewY * effect.zoom - view.sg.y
             zoom: effect.zoom
@@ -4727,14 +4599,7 @@ KWin.SceneEffect {
             octaveFactor: effect.configuration.GridOctaveFactor
             octaves: effect.configuration.GridOctaves
             background: effect.configuration.Background
-            // The tilted plane's texture: the grid brightens with the pitch
-            // so the table's converging lines read instead of a faint
-            // shimmer. Flat (or under load) it keeps its usual weight.
-            lineColor: {
-                const c = effect.configuration.LineColor;
-                const boost = (effect.depth3d && effect.ql < 2) ? 1 + 1.8 * effect.skinReveal : 1;
-                return Qt.rgba(c.r, c.g, c.b, Math.min(1, c.a * boost));
-            }
+            lineColor: effect.configuration.LineColor
             tileImage: effect.configuration.TileImage
             // With the wallpaper behind it the base rect above is the ground's
             // background, and the grid draws over the wallpaper.
@@ -4845,7 +4710,7 @@ KWin.SceneEffect {
                     // The centroid resets on release; the box kept the last corner.
                     marquee = false;
                     const r = marqueeBox.rect;
-                    const c0 = effect.screenToCanvas(r.x + view.sg.x, r.y + view.sg.y);
+                    const c0 = effect.globalToCanvas(r.x + view.sg.x, r.y + view.sg.y);
                     effect.selectInRect(c0.x, c0.y, r.width / effect.zoom, r.height / effect.zoom);
                 } else {
                     // Let go: carry the plane if the hand was still moving.
@@ -4929,9 +4794,6 @@ KWin.SceneEffect {
                     id: frame
                     required property var modelData
                     readonly property rect og: modelData.geometry
-                    transform: Matrix4x4 {
-                        matrix: { effect.zoom; effect.ql; effect.depth3d; return effect.tiltMatrix(view.sg, 0); }
-                    }
                     // Quiet, the frame is just its wallpaper, no tint or
                     // outline, until the skin comes out with the zoom and
                     // the pan - so the desktop looks like itself at the seam.
@@ -5018,9 +4880,9 @@ KWin.SceneEffect {
                 // instead of popping. The open's own populate never fades
                 // (its entries carry no born), and neither does the quiet
                 // seam - the location is the real windows. Only a freshly
-                // born entry fades in: a re-sort hands a delegate an old
-                // entry it has not held before, and that must not replay
-                // the entrance.
+                // born entry fades: a re-sort hands a delegate an old entry
+                // it has not held before, and that must not replay the
+                // entrance.
                 property var seen: null
                 property real enterFade: 1
                 onEntryChanged: {
@@ -5054,8 +4916,8 @@ KWin.SceneEffect {
                 // The float's bob: each window hovers at its own phase.
                 readonly property real phase: index * 137.508
                 readonly property real bob: { effect.floatRev; effect.ql; return effect.ql >= 2 ? 0 : Math.sin(effect.floatRev * 0.035 + phase) * 2.4 * effect.floatAmt; }
-                x: thumb.proj.x - thumb.width / 2
-                y: thumb.proj.y - thumb.height / 2
+                x: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].x - effect.viewX) * effect.zoom - view.sg.x; return f ? f.x : base; }
+                y: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; return (f ? f.y : base) + thumb.bob; }
                 width: { effect.revision; return effect.entries[index].width * effect.zoom; }
                 height: { effect.revision; return effect.entries[index].height * effect.zoom; }
                 visible: !effect.quiet || entry.activity === effect.currentActivity
@@ -5085,30 +4947,8 @@ KWin.SceneEffect {
                 // glance instead of being a property only the pointer sees.
                 readonly property real depth: { effect.revision; effect.focusEntry; effect.selectionRev; effect.switcherActive; return ((thumb.entry === effect.focusEntry || (effect.switcherActive && effect.isSelected(thumb.entry)) ? effect.entries.length + 1 : index + 1) / (effect.entries.length + (effect.focusEntry ? 1 : 0))); }
                 readonly property real depthScale: (effect.quiet || effect.ql >= 2) ? 1 : (1 + (0.025 * thumb.depth - 0.01) * Math.max(effect.skinReveal, effect.switcherRise))
-                // The lift above the plane: the higher a window sits in the
-                // stack, the farther it floats toward the camera while the
-                // world is tilted, so near windows genuinely parallax
-                // against the far ones. Gone at 1:1 with the rest of the 3D.
-                readonly property real lift: thumb.depth * (1 - effect.zoom) * 90
-                // The projected centre: the flat position plus the float's
-                // screen-space picture short-circuiting the projection (a
-                // float is screen chrome, not plane content), pushed through
-                // tiltMatrix by hand so the delegate can stay a flat item.
-                readonly property var proj: {
-                    effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom;
-                    effect.ql; effect.depth3d; effect.focusEntry; effect.selectionRev; effect.switcherActive;
-                    const f = effect.floatOf[thumb.entry.window.internalId];
-                    if (f) return { x: f.x, y: f.y, k: 1 };
-                    const baseX = (effect.entries[index].x - effect.viewX) * effect.zoom - view.sg.x;
-                    const baseY = (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y + thumb.bob;
-                    return effect.projectWindow(view.sg, baseX + thumb.width / 2, baseY + thumb.height / 2, thumb.lift);
-                }
-                // The depth fog: windows far from the camera dim into the
-                // distance while it is out. Full strength where the tilt
-                // lives, gone at 1:1, gone under minimal fidelity.
-                readonly property real fog: { effect.revision; effect.viewX; effect.viewY; effect.zoom; effect.ql; effect.depth3d; if (effect.ql >= 2 || !effect.depth3d || effect.zoom >= 0.999) return 1; const vs = KWin.Workspace.virtualScreenGeometry; const dist = Math.hypot(thumb.entry.x - effect.viewX, thumb.entry.y - effect.viewY); const reach = Math.max(vs.width, vs.height) / Math.max(effect.zoom, 0.25); return 1 - 0.35 * (1 - effect.zoom) * Math.min(1, dist / reach); }
                 scale: depthScale * (lifted ? 1.03 : (thumb.hovered && heavy ? 1.008 : 1)) * (0.94 + 0.06 * thumb.enterFade)
-                opacity: effect.thumbOpacity * thumb.enterFade * thumb.fog
+                opacity: effect.thumbOpacity * thumb.enterFade
                 Behavior on scale { enabled: !effect.quiet; SpringAnimation { spring: 3.6; damping: 0.5; epsilon: 0.001 } }
                 transform: [
                     Rotation {
@@ -5131,15 +4971,6 @@ KWin.SceneEffect {
                             enabled: thumb.heavy
                             SpringAnimation { spring: 3.4; damping: 0.42; epsilon: 0.2 }
                         }
-                    },
-                    Scale {
-                        // The projection's size at this window's spot on the
-                        // plane. A transform, not the scale property: the
-                        // spring on scale would lag it behind the camera.
-                        origin.x: thumb.width / 2
-                        origin.y: thumb.height / 2
-                        xScale: thumb.proj.k
-                        yScale: thumb.proj.k
                     }
                 ]
 
@@ -5257,18 +5088,7 @@ KWin.SceneEffect {
                     // area keeps the app's cursor under the pass-through.
                     cursor: Qt.OpenHandCursor
                     onDragStarted: { thumb.held = thumb.entry; effect.beginDrag(thumb.index); }
-                    onDragged: (dx, dy) => {
-                        // The handler reports the delta in the item's local
-                        // space; the projection's scale k turns it back into
-                        // screen pixels, which is what dragEntry's /zoom
-                        // expects. The scale property (the depth spring) is
-                        // deliberately left out: the handler does not divide
-                        // by it, and the pre-tilt drag measured true without
-                        // it.
-                        const k = thumb.proj.k;
-                        effect.dragEntry(thumb.heldIndex, dx * k, dy * k);
-                        effect.noteDrag(dx * k, dy * k);
-                    }
+                    onDragged: (dx, dy) => { effect.dragEntry(thumb.heldIndex, dx, dy); effect.noteDrag(dx, dy); }
                     onDragEnded: effect.endDrag()
                     onTapped: (count, modifiers, button) => {
                         // The world is the map: during the grasp a tap on a
@@ -5330,12 +5150,11 @@ KWin.SceneEffect {
                         }
                         onDragged: {
                             const t = grip.total;
-                            const k = thumb.proj.k;
                             let rw = startW, rh = startH;
-                            if (east) rw = startW + t.x * k / effect.zoom;
-                            if (west) rw = startW - t.x * k / effect.zoom;
-                            if (south) rh = startH + t.y * k / effect.zoom;
-                            if (north) rh = startH - t.y * k / effect.zoom;
+                            if (east) rw = startW + t.x / effect.zoom;
+                            if (west) rw = startW - t.x / effect.zoom;
+                            if (south) rh = startH + t.y / effect.zoom;
+                            if (north) rh = startH - t.y / effect.zoom;
                             effect.requestSize(thumb.heldIndex, rw, rh, west, north);
                         }
                     }
@@ -5393,9 +5212,6 @@ KWin.SceneEffect {
                 width: view.width
                 height: view.height
                 z: 59000
-                transform: Matrix4x4 {
-                    matrix: { effect.zoom; effect.ql; effect.depth3d; return effect.tiltMatrix(view.sg, 0); }
-                }
                 // The badge: the cluster's number in reading order, glass. A
                 // hand on it drags the whole cluster across the plane.
                 Rectangle {
@@ -5475,9 +5291,6 @@ KWin.SceneEffect {
                 y: -(effect.viewY * effect.zoom) - view.sg.y
                 scale: effect.zoom
                 transformOrigin: Item.TopLeft
-                transform: Matrix4x4 {
-                    matrix: { effect.zoom; effect.ql; effect.depth3d; return effect.tiltMatrix(view.sg, 0); }
-                }
                 z: modelData.z
                 Shape {
                     // The web is overworld chrome: it fades out with the zoom,
@@ -5535,9 +5348,6 @@ KWin.SceneEffect {
                 width: 24 * effect.zoom
                 height: 24 * effect.zoom
                 z: 40000
-                transform: Matrix4x4 {
-                    matrix: { effect.zoom; effect.ql; effect.depth3d; return effect.tiltMatrix(view.sg, 0); }
-                }
                 // The wrapper stays visible: Qt skips bindings on invisible
                 // items, so a visible gate here would freeze the chip out of
                 // the grasp that should show it. The chip's pixels and its
@@ -5837,9 +5647,6 @@ KWin.SceneEffect {
                     x: { effect.revision; return (effect.peekTarget(activity).x + screen.geometry.x - effect.viewX) * effect.zoom - view.sg.x; }
                     y: { effect.revision; return (effect.peekTarget(activity).y + screen.geometry.y - effect.viewY) * effect.zoom - view.sg.y - height - 2; }
                     z: 60000
-                    transform: Matrix4x4 {
-                        matrix: { effect.zoom; effect.ql; effect.depth3d; return effect.tiltMatrix(view.sg, 0); }
-                    }
                 }
             }
         }

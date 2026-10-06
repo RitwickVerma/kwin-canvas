@@ -733,45 +733,6 @@ lean are zero, so what the state reports is what the screen shows. Everything
 is one per drag, not per window, which is what makes a group drag read as one
 piece of paper.
 
-**The tilt** is the camera's pitch into perspective, on while `Depth3D` (the
-hidden knob) is on and the fidelity is above minimal. `tiltMatrix(sg, dz)`
-builds it: the plane pitches back by `t = (1 - zoom) * 0.30` radians around
-the horizontal axis through the screen's centre - the pivot is the centre, so
-the desk never slides as it tilts - and a perspective projection whose scale
-matches the camera distance (900) sits the camera so the centre renders at its
-flat size while the far edge recedes and the near edge grows. Every plane layer
-(the ground, the frames, the threads, the chips, the badge, the frame tags)
-rides the matrix; each window adds `dz`, its lift - the depth rank times
-`(1 - zoom) * 60` - so a higher window floats higher, and a distance fog dims
-it (`fog`, off below 1:1 or when the ladder flattens the plane).
-
-The backdrop does not ride the matrix: the perspective transform on the
-blur layer made the scene graph drop the whole layer (measured - the dim
-vanished), so the floor stays flat and the pitch is carried by what the
-eye actually reads: the haze (the blur radius and the dim scale down with
-the zoom, so the floor sharpens and lifts as the table comes out) and the
-grid (the ground's lines brighten with the skin, so the converging lines
-trace the perspective).
-
-The fog is scoped to the visible world: its reach is the viewport's own
-size at the current zoom (`vs.max / max(zoom, 0.25)`), and its cap is
-0.35, so a window on the screen keeps its body however scattered the desk
-is, and only the world beyond the edge recedes - nothing washes
-translucent. The lit cluster's thread carries a floor (never below 0.3
-of its strength), so the web the eye is on outlives the cohesion's
-dissolve.
-
-The windows themselves never carry the matrix: Qt's picking and drag through
-a perspective transform is broken, so each window stays a flat item whose
-centre is re-sited by `projectWindow()` - the same tilt as a closed form
-returning the projected centre and the local scale - applied as an affine
-`Scale`/`Translate` pair, which the drag machinery maps exactly. The drag
-handler's local delta is compensated by the projected scale, and the
-pass-through plugin's `toCanvas` undoes the pitch with the closed-form
-inverse, so the hover and the handoff land on the window under the visual
-pointer. The 1:1 seam never tilts (identity at `zoom >= 0.999`), and neither
-does a minimal or bare plane.
-
 ## Screen edges
 
 `X-KWin-Border-Activate` in the metadata puts the effect into the Screen

@@ -13,9 +13,6 @@ changed() { awk -v m="$1" 'BEGIN{print (m>0.005)}'; }
 run_scenario() {
     if ! have_input; then skip "fakeinput not built (make tools)"; return; fi
     arrange >/dev/null
-    # The click lands on the chip's flat position; the 3D tilt shifts the
-    # plane's rendering, so it is pinned off here (126 covers the tilt).
-    setcfg Depth3D false
 
     # Two clusters: the five near fixtures, and a pair stacked vertically
     # beyond them - Gwenview and Dolphin at (2200,300)/(2200,800). The far
@@ -94,6 +91,5 @@ run_scenario() {
     assert_eq "the release lands the location" "$(sget visible)" false
     assert_near "at the cluster" "$(sget viewx)" "1590.0" 3
     assert_near "its centre kept" "$(sget viewy)" "190.0" 3
-    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key Depth3D --delete
     arrange >/dev/null
 }

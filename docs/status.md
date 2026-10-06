@@ -115,80 +115,20 @@ those, from this side of the fork:
 
 ## Sessions
 
-### 2026-10-13 — the tilt fits a scattered desk, and the ladder asks twice
+### 2026-10-13 — the tilt leaves: the plane is flat again
 
-The user's verdict on the first 3D look: "no threads, translusent
-windows, no tilt, no 3d, no grid, half ass job." The misdiagnosis first
-(the ladder degrading under a busy GPU - the user: "I have not been
-playing any game since boot") - the live state (ql=0, gpu 46) proved
-the ladder innocent. The real cause: the tuning was built for a tight
-desk and the user's desk is scattered (a saved view at -43048 canvas
-px, windows thousands of px apart) - the distance fog washed every far
-window translucent, the cluster's cohesion fade dissolved the threads
-to nothing, and the pitch was too timid to read. Fixes: the fog scoped
-to the world beyond the viewport's edge (reach = vs.max/max(zoom,
-0.25), cap 0.35), the lit thread's floor (never below 0.3), the pitch
-0.30 → 0.42 + the lift 90 + the grid boost 1.8. Also found: the
-camera channel was broken for the user's stale system plugin - the
-6-arg setCamera had become a contract mismatch, so the camera channel
-is back to 5 args and the tilt travels its own setTilt channel; and
-the ladder now needs two hot samples before stepping down and toasts
-when it does, so a launch spike cannot flash the canvas bare. The
-scenario batch re-verified green (the whole list), the depth goldens
-re-recorded for the stronger picture, and the one reinstall the user
-owes: the system plugin is 3+ hours stale - `sudo make
-plugin-install-system` + re-login once (the camera works with the old
-plugin again; only the tilt-aware hover needs the fresh one).
-
-### 2026-10-13 — the tilt's floor reads: the haze lifts, the grid brightens
-
-The user's first look at the 3D: "bro the whole backgroundd is blur. no
-grid no nothing. how am I supposed to see 3d with just windows zoomed
-out???" The tilt existed but had no floor to express itself on - the
-backdrop haze (the designed blur 48 + dim 0.45) and the faint grid
-swallowed the pitch. Three changes: the pitch deepens (0.21 → 0.30, 17°
-max); the floor reads it (the blur radius and the dim scale down with
-the zoom - the floor sharpens and lifts as the table comes out - and
-the ground's grid brightens with the skin, so the converging lines
-carry the perspective); and the backdrop stays flat by necessity - a
-perspective transform on the blur layer made the scene graph drop the
-whole layer (measured: the dim A/B collapsed to rmse 1.5e-05; flat it
-is 16.8%), which is documented in the code and in the architecture.
-The seven depth goldens were re-recorded for the stronger picture, the
-whole batch stayed green (lint 147/147, unit 85/0).
-
-### 2026-10-12 — the plane tilts into depth, and the input follows it through
-
-The user asked "can we make everything 3D?" - and the plane now pitches
-into perspective as it zooms out. The tilt pivots at the screen's centre
-(the first cut drifted the whole desk as it tilted - the matrix rotated
-around the origin, not the centre; the pivot-correct chain keeps the
-centre fixed and scales the projection so the centre renders at its flat
-size), the windows lift by their depth and fog with their distance, and
-the camera's layers (ground, frames, threads, chips, badge, tags) ride
-the same matrix.
-
-The hard part was the input. Qt's picking and drag through a
-perspective matrix is broken - a window with the matrix on it lost its
-whole drag (80-input measured zero movement) - so the windows stay flat
-items re-sited by projecting their centres through the matrix (a
-Scale/Translate affine, which the drag machinery handles exactly, times
-the tilt-aware compensation for the perspective's gradient). The
-pass-through plugin's toCanvas gains the closed-form inverse of the
-pitch, so the hover and the pointer handoff land on the window under the
-visual pointer, not the flat-math one. The 1:1 seam never tilts
-(pixel-identical A/B), the ladder flattens the plane at the minimal
-rung, and Depth3D is the hidden knob.
-
-Measured: the tilt A/B at zoom 0.5 moves 12.6% of the picture; the drag
-through the tilt lands within 2% of the flat prediction (the affine's
-constant-k approximation); 126-depth3d 7/0 pins the seam, the tilt, the
-drag and the ladder-flatten; 80-input 9/0 pins the drag and the
-pass-through math. Two follow-up fixes: the enter-fade re-fired on
-every re-sort (the activation's re-raise re-assigns the positional
-delegates - the born check now also demands the entry is younger than
-500 ms), and the fog gained the depth3d gate so the flat picture is
-bit-for-bit the old one when the tilt is off.
+The user's verdict on the 3D after the tuning rounds: "nope. kill 3d. go
+back this is shit." The tilt, the lift, the fog, the grid boost and the
+whole Depth3D machinery are gone - main.qml, the plugin and the config
+are the pre-3D state (d741a45), the depth scenario and the depth goldens
+with them, and the docs no longer mention the tilt. Four fixes from the
+3D era stay, because they were never about the tilt: the ladder's
+two-sample grace in BOTH directions with its toasts (a launch spike
+cannot flash the canvas bare), the lit thread's 0.3 floor (a scattered
+desk can no longer dissolve the cluster the eye is on), the
+activity-name guard (an unnamed activity no longer reads "undefined"),
+and the unpin guard (a dead window's caption is never read). The 1:1
+seam, the switcher, the threads and the ladder are untouched.
 
 ### 2026-10-11 — the switcher reads its release from the seat
 

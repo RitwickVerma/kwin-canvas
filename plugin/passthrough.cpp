@@ -5,7 +5,6 @@
 #include "passthrough.h"
 
 #include <config-kwin.h>
-#include <cmath>
 #include <core/output.h>
 #include <effect/effecthandler.h>
 #include <wayland/seat.h>
@@ -159,11 +158,6 @@ void CanvasPassthrough::setCamera(double viewX, double viewY, double zoom, const
         const QJsonObject t = it->toObject();
         m_targets.insert(it.key(), QPointF(t.value(QStringLiteral("x")).toDouble(), t.value(QStringLiteral("y")).toDouble()));
     }
-}
-
-void CanvasPassthrough::setTilt(double factor)
-{
-    m_tiltFactor = factor > 0 ? factor : m_tiltFactor;
 }
 
 void CanvasPassthrough::setNavButtons(int buttons)
@@ -358,40 +352,7 @@ int CanvasPassthrough::modifiers() const
 
 QPointF CanvasPassthrough::toCanvas(const QPointF &screen) const
 {
-    // The canvas pitches into perspective as the camera zooms out, and the
-    // flat inverse would find the wrong window under the pointer: the pitch
-    // is undone here. The forward map mirrors the effect's tiltMatrix - the
-    // point, taken from its screen's centre, rotates about the horizontal
-    // axis by t = (1 - zoom) * m_tiltFactor and projects through the perspective
-    // whose scale matches the camera's distance (900). The dz lift is
-    // neglected: it is at most tens of pixels, and the hover tolerance
-    // absorbs it.
-    if (m_zoom >= 0.999 || m_zoom <= 0.0) {
-        return QPointF(m_viewX + screen.x() / m_zoom, m_viewY + screen.y() / m_zoom);
-    }
-    const double t = (1.0 - m_zoom) * m_tiltFactor;
-    const double D = 900.0;
-    // The screen whose centre is the pivot: the one holding the pointer.
-    const QList<LogicalOutput *> outputs = workspace()->outputs();
-    const LogicalOutput *out = nullptr;
-    for (const LogicalOutput *o : outputs) {
-        const QRect g = QRect(o->geometry());
-        if (screen.x() >= g.x() && screen.x() < g.x() + g.width() && screen.y() >= g.y() && screen.y() < g.y() + g.height()) {
-            out = o;
-            break;
-        }
-    }
-    const QRect g = out ? QRect(out->geometry()) : QRect(workspace()->geometry());
-    const double cx = g.x() + g.width() / 2.0;
-    const double cy = g.y() + g.height() / 2.0;
-    const double A = (screen.x() - cx) / D;
-    const double B = (screen.y() - cy) / D;
-    const double cosT = std::cos(t);
-    const double sinT = std::sin(t);
-    // B = y0 cosT / (D - y0 sinT), solved for y0:
-    const double y0 = B * D / (cosT + B * sinT);
-    const double x0 = A * (D - y0 * sinT);
-    return QPointF(m_viewX + (cx + x0) / m_zoom, m_viewY + (cy + y0) / m_zoom);
+    return QPointF(m_viewX + screen.x() / m_zoom, m_viewY + screen.y() / m_zoom);
 }
 
 // The activity a window belongs to for placement: the current one when it is
