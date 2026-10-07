@@ -115,6 +115,25 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-06 — the tour's smart placement pulls the neighbours in
+
+The user asked how the smart placement works and what matters more -
+the lesser displacement or the more windows on screen. The answer: the
+constraint wins first (the focused window wholly visible), then the
+least displacement that maximises the count of the windows around it,
+scoped to a screen's reach around the focused window. The new
+`Logic.smartPanNeighbourhood` (logic.js) does exactly that: the valid
+pan ranges keeping the focused rect inside the padded screen, the
+radius filter (a window across the plane never competes), then a sweep
+over the midpoints between the sorted edge breakpoints - the count only
+changes at a neighbour's edge, so the midpoints cover exactly the
+constant-count regions and the sweep IS the optimum; the tie goes to
+the least displacement. The cluster tour rides it (the others = the
+entries minus the destination); the hover and the activation fly keep
+the plain least-pan. Scenario 131 pins the behaviour: a just-off-screen
+neighbour pulls the camera to the midpoint (3278) so the neighbour
+comes partially in, and the focused window stays completely inside.
+
 ### 2026-10-20 — every commit is a checkpoint
 
 The second of the two approved features: the undo stack. Every commit

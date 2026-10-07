@@ -155,6 +155,81 @@ function smartPan(rect, g, viewX, viewY, zoom, pad) {
     return { dx: dx, dy: dy };
 }
 
+// The neighbourhood-aware smart pan: the focused rect wholly inside the
+// padded screen (smartPan's own rule), then, among the pans that keep it
+// there, the one that brings the most neighbours at least partially on
+// screen, then the least displacement among the ties. The candidates are
+// the midpoints between the neighbours' edge breakpoints: a neighbour's
+// visibility only changes at its edges, so a midpoint sits safely inside
+// its interval and the sweep cannot miss a jump.
+function smartPanNeighbourhood(rect, others, g, viewX, viewY, zoom, pad) {
+    const padC = (pad === undefined ? 24 : pad) / zoom;
+    const sl = viewX + g.x / zoom, st = viewY + g.y / zoom;
+    const sw = g.width / zoom, sh = g.height / zoom;
+    let xMin = -Infinity, xMax = Infinity;
+    let yMin = -Infinity, yMax = Infinity;
+    if (rect.width <= sw - 2 * padC) {
+        xMax = rect.x - (sl + padC);
+        xMin = rect.x + rect.width - (sl + sw - padC);
+    } else { xMin = rect.x - sl; xMax = xMin; }
+    if (rect.height <= sh - 2 * padC) {
+        yMax = rect.y - (st + padC);
+        yMin = rect.y + rect.height - (st + sh - padC);
+    } else { yMin = rect.y - st; yMax = yMin; }
+    // The base: the least displacement (smartPan's own pick).
+    let dx = Math.max(xMin, Math.min(0, xMax));
+    let dy = Math.max(yMin, Math.min(0, yMax));
+    if (!others || others.length === 0) return { dx: dx, dy: dy };
+    // The neighbourhood is local: only the windows within a screen's own
+    // scale of the focused one may pull the camera. A window across the
+    // plane never competes - the pan stays around the window it lands on.
+    const radius = Math.max(sw, sh);
+    const cx = rect.x + rect.width / 2, cy = rect.y + rect.height / 2;
+    const near = [];
+    for (let i = 0; i < others.length; ++i) {
+        const w = others[i];
+        const dxc = w.x + w.width / 2 - cx, dyc = w.y + w.height / 2 - cy;
+        if (Math.hypot(dxc, dyc) <= radius) near.push(w);
+    }
+    others = near;
+    if (others.length === 0) return { dx: dx, dy: dy };
+    function xIn(w, d) { return d > w.x - sl - sw && d < w.x + w.width - sl; }
+    function yIn(w, d) { return d > w.y - st - sh && d < w.y + w.height - st; }
+    function count(dxx, dyy) {
+        let n = 0;
+        for (let i = 0; i < others.length; ++i) {
+            if (xIn(others[i], dxx) && yIn(others[i], dyy)) n++;
+        }
+        return n;
+    }
+    function sweep(cur, fixed, lo, hi, xAxis) {
+        const pts = [lo, hi];
+        for (let i = 0; i < others.length; ++i) {
+            const w = others[i];
+            const a = xAxis ? w.x - sl - sw : w.y - st - sh;
+            const b = xAxis ? w.x + w.width - sl : w.y + w.height - st;
+            if (a > lo && a < hi) pts.push(a);
+            if (b > lo && b < hi) pts.push(b);
+        }
+        pts.sort(function (p, q) { return p - q; });
+        let best = cur;
+        let bestN = xAxis ? count(cur, fixed) : count(fixed, cur);
+        let bestD = Math.abs(cur);
+        for (let i = 0; i + 1 < pts.length; ++i) {
+            const mid = (pts[i] + pts[i + 1]) / 2;
+            const n = xAxis ? count(mid, fixed) : count(fixed, mid);
+            const d = Math.abs(mid);
+            if (n > bestN || (n === bestN && d < bestD)) { bestN = n; bestD = d; best = mid; }
+        }
+        return best;
+    }
+    for (let pass = 0; pass < 2; ++pass) {
+        dx = sweep(dx, dy, xMin, xMax, true);
+        dy = sweep(dy, dx, yMin, yMax, false);
+    }
+    return { dx: dx, dy: dy };
+}
+
 // The canvas point under a global screen position: the inverse of the
 // plane transform. The screen's own origin lives inside the global
 // position, so one formula serves every output - a pointer on a second

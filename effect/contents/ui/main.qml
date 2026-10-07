@@ -467,7 +467,7 @@ KWin.SceneEffect {
     // other windows stay in view precisely because nothing moved more than
     // it had to. A rect larger than the screen is left- and top-aligned.
     function smartPan(rect, others, pad) {
-        return Logic.smartPan(rect, actionScreen().geometry, viewX, viewY, zoom, pad);
+        return Logic.smartPanNeighbourhood(rect, others, actionScreen().geometry, viewX, viewY, zoom, pad);
     }
 
     // Enter with a window selected steps into that window, as the double-
@@ -801,12 +801,19 @@ KWin.SceneEffect {
             }
         }
         // Smart placement: pan the least that brings the window wholly on
-        // screen, padded - a pick's landing, not a centring - so the tour
-        // arrives where the window already sits. A cluster no one has
-        // focused falls back to its centre.
+        // screen, padded, then pull the neighbours in - the focused window
+        // stays completely inside while as many of the windows around it
+        // as possible come at least partially into view. A cluster no one
+        // has focused falls back to its centre.
         let dx, dy;
         if (destEntry) {
-            const d = smartPan({ x: destEntry.x, y: destEntry.y, width: destEntry.width, height: destEntry.height }, null, 24);
+            const others = [];
+            for (let i = 0; i < entries.length; ++i) {
+                if (entries[i] !== destEntry) {
+                    others.push({ x: entries[i].x, y: entries[i].y, width: entries[i].width, height: entries[i].height });
+                }
+            }
+            const d = smartPan({ x: destEntry.x, y: destEntry.y, width: destEntry.width, height: destEntry.height }, others, 24);
             dx = d.dx;
             dy = d.dy;
         } else {

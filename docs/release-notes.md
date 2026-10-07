@@ -1,5 +1,14 @@
 Unreleased:
 
+- The tour's smart placement pulls the neighbours in. When a hop lands
+  on a cluster's window, the camera now keeps the focused window
+  completely inside while bringing as many of the windows around it at
+  least partially into view - the least displacement that does it,
+  scoped to the windows within a screen's reach, so a window across the
+  plane never tugs the camera. The sweep is the optimum for the count:
+  the visible set only changes at a window's edge, and the candidates
+  are exactly the points between the edges.
+
 - Every commit is a checkpoint. Ctrl+Z in the open canvas steps the
   layout back one commit - the windows' spots, the activities they sat
   in, and the real frames alike - and steps back up to twenty times,

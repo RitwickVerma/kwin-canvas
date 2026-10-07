@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, floatStep, fitRange, smartPan, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows };")();
+const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, floatStep, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -301,6 +301,36 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
     ok("tidy respects the origin and the row gap", (function () {
         const out = L.tidyRows([{ x: 0, y: 0, width: 40, height: 10 }, { x: 0, y: 0, width: 40, height: 10 }, { x: 0, y: 0, width: 40, height: 10 }], { gap: 8, origin: { x: 2, y: 3 }, maxWidth: 90 });
         return near(out[0].x, 2) && near(out[0].y, 3) && near(out[1].x, 50) && near(out[1].y, 3) && near(out[2].x, 2) && near(out[2].y, 21);
+    })());
+    const g1920 = { x: 0, y: 0, width: 1920, height: 1080 };
+    ok("the neighbourhood pan is the smart pan with no neighbours", (function () {
+        const d = L.smartPanNeighbourhood({ x: 4000, y: 300, width: 460, height: 420 }, [], g1920, 0, 0, 1, 24);
+        return near(d.dx, 2564) && near(d.dy, 0);
+    })());
+    ok("a neighbour just off the screen pulls the pan over to include it", (function () {
+        const d = L.smartPanNeighbourhood({ x: 4000, y: 300, width: 460, height: 420 },
+            [{ x: 4500, y: 300, width: 700, height: 360 }], g1920, 0, 0, 1, 24);
+        return near(d.dx, 3278) && near(d.dy, 0);
+    })());
+    ok("an already-visible neighbour keeps the least pan", (function () {
+        const d = L.smartPanNeighbourhood({ x: 4000, y: 300, width: 460, height: 420 },
+            [{ x: 4000, y: 800, width: 700, height: 360 }], g1920, 0, 0, 1, 24);
+        return near(d.dx, 2564) && near(d.dy, 0);
+    })());
+    ok("two neighbours on the same side: the pan takes the nearest edge that shows both", (function () {
+        const d = L.smartPanNeighbourhood({ x: 4000, y: 300, width: 460, height: 420 },
+            [{ x: 4500, y: 300, width: 700, height: 360 }, { x: 5300, y: 300, width: 400, height: 300 }], g1920, 0, 0, 1, 24);
+        return d.dx > 2580 && d.dx < 4000 && near(d.dy, 0);
+    })());
+    ok("an oversized focused window keeps the edge alignment", (function () {
+        const d = L.smartPanNeighbourhood({ x: 24, y: 0, width: 1920, height: 1080 },
+            [{ x: 3000, y: 0, width: 400, height: 300 }], g1920, 0, 0, 1, 24);
+        return near(d.dx, 24) && near(d.dy, 0);
+    })());
+    ok("a window beyond the radius never competes", (function () {
+        const d = L.smartPanNeighbourhood({ x: 4000, y: 300, width: 460, height: 420 },
+            [{ x: 100, y: 120, width: 480, height: 420 }], g1920, 0, 0, 1, 24);
+        return near(d.dx, 2564) && near(d.dy, 0);
     })());
 }
 
