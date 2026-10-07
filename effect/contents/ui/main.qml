@@ -768,24 +768,20 @@ KWin.SceneEffect {
         if (w && !w.deleted) { const e = entryFor(w); if (e) return clusterIndexOfEntry(e); }
         return -1;
     }
-    // Fly to the next or previous cluster in reading order (top to bottom,
-    // left to right), from the one the eye is on. The camera springs to the
-    // cluster's last-focused window - the one the hand left there - at the
-    // current zoom; a cluster no one has focused yet falls back to its
-    // centre. The toast names the stop.
-    function clusterTravel(dir) {
-        if (clusters.length === 0) return;
-        const cur = clusterIndex();
-        const order = [];
-        for (let i = 0; i < clusters.length; ++i) order.push(i);
-        order.sort(function (p, q) { return (clusters[p].cy - clusters[q].cy) || (clusters[p].cx - clusters[q].cx); });
-        let k = 0;
-        if (cur >= 0) {
-            const pos = order.indexOf(cur);
-            k = (pos + dir + order.length) % order.length;
-        } else if (dir < 0) k = order.length - 1;
-        travelCluster = order[k];
-        const c = clusters[order[k]];
+    // Fly to cluster ci: a room remembers where you left it - the stored
+    // home wins - else the camera springs to the cluster's last-focused
+    // window (the one the hand left there), smart-placed, at the current
+    // zoom; a cluster no one has focused falls back to its centre.
+    function flyToCluster(ci) {
+        if (ci < 0 || ci >= clusters.length) return;
+        const c = clusters[ci];
+        const fp = clusterFingerprint(c);
+        const home = clusterHomes[fp];
+        if (home && Number.isFinite(home.x) && Number.isFinite(home.y) && home.z > 0) {
+            camGo(home.z, home.x, home.y, undefined, undefined, 3.0);
+            toast(clusterNames[fp] ? ("Back to " + clusterNames[fp]) : ("Back to cluster " + (ci + 1)));
+            return;
+        }
         const g = actionScreen().geometry;
         let dest = null;
         let bestAt = 0;
@@ -807,12 +803,54 @@ KWin.SceneEffect {
             dx = c.cx - (g.x + g.width / 2) / zoom - viewX;
             dy = c.cy - (g.y + g.height / 2) / zoom - viewY;
         }
+        camGo(zoom, viewX + dx, viewY + dy, undefined, undefined, 3.0);
+        toast(destEntry ? destEntry.window.caption : ("Cluster " + (ci + 1) + " of " + clusters.length));
+    }
+    // Fly to the next or previous cluster in reading order (top to bottom,
+    // left to right), from the one the eye is on. The room the flight
+    // leaves remembers the camera spot it left it at. The toast names the
+    // stop.
+    function clusterTravel(dir) {
+        if (clusters.length === 0) return;
+        const cur = clusterIndex();
+        // The room we leave remembers where we left it.
+        if (cur >= 0 && cur < clusters.length) {
+            const fp = clusterFingerprint(clusters[cur]);
+            clusterHomes[fp] = { x: viewX, y: viewY, z: zoom };
+            saveClusterState();
+        }
+        const order = [];
+        for (let i = 0; i < clusters.length; ++i) order.push(i);
+        order.sort(function (p, q) { return (clusters[p].cy - clusters[q].cy) || (clusters[p].cx - clusters[q].cx); });
+        let k = 0;
+        if (cur >= 0) {
+            const pos = order.indexOf(cur);
+            k = (pos + dir + order.length) % order.length;
+        } else if (dir < 0) k = order.length - 1;
+        travelCluster = order[k];
         // The jump leaves the old hover behind: the tour anchors to the
         // destination until the eye settles on something new.
         hoverEntry = null;
         focusEntry = null;
-        camGo(zoom, viewX + dx, viewY + dy, undefined, undefined, 3.0);
-        toast(destEntry ? destEntry.window.caption : ("Cluster " + (k + 1) + " of " + clusters.length));
+        flyToCluster(order[k]);
+    }
+    // The digit keys: jump straight to cluster N (the badge's number), the
+    // absolute travel - no walk, no order step. The room it leaves
+    // remembers the spot, like the tour's departure.
+    function clusterJumpTo(n) {
+        dbg("jump", "digit " + n + " of " + clusters.length);
+        if (n < 1 || n > clusters.length) return;
+        const cur = clusterIndex();
+        if (cur >= 0 && cur < clusters.length && cur !== n - 1) {
+            const fp = clusterFingerprint(clusters[cur]);
+            clusterHomes[fp] = { x: viewX, y: viewY, z: zoom };
+            saveClusterState();
+        }
+        const ci = n - 1;
+        hoverEntry = null;
+        focusEntry = null;
+        travelCluster = ci;
+        flyToCluster(ci);
     }
     // A window's z in the overworld: the stacking order itself - the entries
     // are KWin's order, so the index IS the z - with the hovered window
@@ -890,33 +928,30 @@ KWin.SceneEffect {
         return null;
     }
 
-    // ---- bookmarks -----------------------------------------------------------
-    // Saved views on the plane, the desks: the digit keys jump to them and
-    // Ctrl+digit saves the current view as one. The one thing virtual
-    // desktops had that the plane lacks is a way to name where you were;
-    // this is it, and the jump springs like every camera move.
-    property var bookmarks: []
-    function loadBookmarks() {
-        let list = [];
-        try { list = JSON.parse(configuration.Bookmarks || "[]"); } catch (err) { list = []; }
-        bookmarks = list;
+    // ---- cluster workspaces ----------------------------------------------------
+    // Clusters are the plane's rooms: each keeps its own camera home and a
+    // name the hand can give it. The key is the cluster's fingerprint - its
+    // members' ids, sorted - which survives reclusters and re-orders. The
+    // tour leaves a room at the camera spot it had, and returns there the
+    // next time; the digit keys jump straight to a room.
+    property var clusterHomes: ({})   // fingerprint -> { x, y, z }
+    property var clusterNames: ({})   // fingerprint -> name
+    function clusterFingerprint(c) {
+        if (!c || !c.ids || c.ids.length === 0) return "";
+        return c.ids.slice().sort().join(",");
     }
-    function saveBookmarks() {
-        configuration.Bookmarks = JSON.stringify(bookmarks);
+    function loadClusterState() {
+        let h = {};
+        let n = {};
+        try { h = JSON.parse(configuration.ClusterHomes || "{}"); } catch (err) { h = {}; }
+        try { n = JSON.parse(configuration.ClusterNames || "{}"); } catch (err) { n = {}; }
+        clusterHomes = h;
+        clusterNames = n;
+    }
+    function saveClusterState() {
+        configuration.ClusterHomes = JSON.stringify(clusterHomes);
+        configuration.ClusterNames = JSON.stringify(clusterNames);
         configuration.writeConfig();
-    }
-    function gotoBookmark(i) {
-        const b = bookmarks[i];
-        if (!b) return;
-        dbg("camGo", "bookmark " + i + " to (" + Math.round(b.x) + "," + Math.round(b.y) + ")");
-        camGo(b.z || 1, b.x, b.y);
-        toast("Spot " + (i + 1) + (b.n ? ": " + b.n : ""));
-    }
-    function saveBookmark(i) {
-        while (bookmarks.length <= i) bookmarks.push(null);
-        bookmarks[i] = { n: bookmarks[i] ? bookmarks[i].n : ("Spot " + (i + 1)), x: viewX, y: viewY, z: zoom };
-        saveBookmarks();
-        toast("Saved spot " + (i + 1));
     }
     // The toast: a brief glass chip naming what just happened.
     property string toastText: ""
@@ -4239,6 +4274,19 @@ KWin.SceneEffect {
         }
         case "switch": switcherFromChord = false; switcherCluster = false; switcherToggle(); break;
         case "switchcluster": switcherFromChord = false; switcherCluster = true; switcherToggle(); break;
+        case "clusterjump": if (numok(1)) clusterJumpTo(Number(a[1])); break;
+        case "clustername": {
+            // clustername N name...: the badge's number names that cluster.
+            if (numok(1)) {
+                const ci = Number(a[1]) - 1;
+                if (ci >= 0 && ci < clusters.length) {
+                    clusterNames[clusterFingerprint(clusters[ci])] = a.length > 2 ? a.slice(2).join(" ") : "";
+                    saveClusterState();
+                    clusterRev++;
+                }
+            }
+            break;
+        }
         default: console.warn("kwin-canvas: unknown debug command", cmd);
         }
         logState();
@@ -4299,7 +4347,8 @@ KWin.SceneEffect {
             for (let k = 0; k < clusters[i].ids.length; ++k) {
                 for (let j = 0; j < entries.length; ++j) if (entries[j].window.internalId === clusters[i].ids[k]) { mem.push(j); break; }
             }
-            s += "\n  c" + i + ": " + mem.join(" ");
+            const nm = clusterNames[clusterFingerprint(clusters[i])];
+            s += "\n  c" + i + ": " + mem.join(" ") + (nm ? " " + JSON.stringify(nm) : "");
         }
         console.log(s);
     }
@@ -4330,7 +4379,7 @@ KWin.SceneEffect {
         readSwipeFingers();
         loadHiddenFrames();
         loadPinned();
-        loadBookmarks();
+        loadClusterState();
         refreshActivities();
         lastDebugSeq = configuration.DebugSeq;
         publishHold();
@@ -5370,7 +5419,7 @@ KWin.SceneEffect {
                         spacing: 5
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: "#" + (index + 1)
+                            text: { effect.clusterRev; const n = effect.clusterNames[effect.clusterFingerprint(cluster)]; return n ? n : "#" + (index + 1); }
                             color: "#ffffff"
                             font.pixelSize: 11
                             font.bold: true
@@ -5486,7 +5535,7 @@ KWin.SceneEffect {
                     border.color: "#66ffffff"
                     Text {
                         anchors.centerIn: parent
-                        text: "#" + (index + 1)
+                        text: { effect.clusterRev; const n = effect.clusterNames[effect.clusterFingerprint(effect.clusters[index])]; return n ? n : "#" + (index + 1); }
                         color: "#ffffff"
                         font.pixelSize: 11 * effect.zoom
                     }
@@ -5828,10 +5877,9 @@ KWin.SceneEffect {
             } else if (effect.bound("clusterPrev", k) || (effect.bound("clusterNext", k) && (event.modifiers & Qt.ShiftModifier))) {
                 if (!event.isAutoRepeat) effect.clusterTravel(-1);
             } else if (k >= Qt.Key_1 && k <= Qt.Key_9) {
-                // The digits are the plane's desks: jump, or save with Ctrl.
-                const i = k - Qt.Key_1;
-                if (event.modifiers & Qt.ControlModifier) effect.saveBookmark(i);
-                else if (!(event.modifiers & (Qt.ShiftModifier | Qt.AltModifier | Qt.MetaModifier))) effect.gotoBookmark(i);
+                // The digits hop straight to cluster N - the badge's number.
+                // The cluster is the room, so a bare digit is the jump.
+                if (!(event.modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier | Qt.MetaModifier))) effect.clusterJumpTo(k - Qt.Key_1 + 1);
                 else return;
             } else {
                 return;
@@ -6226,17 +6274,7 @@ KWin.SceneEffect {
                 K { text: effect.gestureLabel(effect.configuration.MouseNewActivityAt) + " window outside frames" } V { text: "new activity centred on it" }
                 K { text: effect.keyLabel(effect.configuration.KeyNext) + " / " + effect.keyLabel(effect.configuration.KeyPrev) } V { text: "step the selection through the windows; the camera follows" }
                 K { text: effect.keyLabel(effect.configuration.KeyPanLeft) + " / " + effect.keyLabel(effect.configuration.KeyPanRight) + " / " + effect.keyLabel(effect.configuration.KeyPanUp) + " / " + effect.keyLabel(effect.configuration.KeyPanDown) } V { text: "pan the camera one step" }
-                K { text: "1..9 / ctrl+1..9" }                               V { text: "jump to a saved view / save the current view" }
-                Repeater {
-                    model: effect.bookmarks.length
-                    delegate: Row {
-                        required property int index
-                        visible: effect.bookmarks[index] !== null
-                        spacing: Kirigami.Units.largeSpacing
-                        K { text: "spot " + (index + 1) }
-                        V { text: effect.bookmarks[index] ? (effect.bookmarks[index].n + " — press " + (index + 1) + " to fly, ctrl+" + (index + 1) + " to re-save") : "" }
-                    }
-                }
+                K { text: "1..9" }                                          V { text: "jump straight to that cluster - its number on the badge; the camera returns to the spot you left it at" }
                 K { text: "the dot in the toolbar" }                          V { text: "whose hand is on the pointer: filled - the window's, hollow - the canvas's" }
                 K { text: effect.keyLabel(effect.configuration.KeyApply) }      V { text: "enter the location under the screen centre; with a window selected, enter it focused" }
                 K { text: effect.keyLabel(effect.configuration.KeyCancel) }     V { text: "back to where you were, nothing moved" }

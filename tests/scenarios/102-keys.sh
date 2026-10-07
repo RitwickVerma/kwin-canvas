@@ -95,24 +95,25 @@ run_scenario() {
     sleep 0.6; c state
     assert_eq "enter applies with the hovered window" "$(sget visible)" false
     assert_eq "and it ends focused" "$(grep -c 'active="KCalc"' <<<"$LAST_STATE")" 1
-    # The digits are the plane's desks: Ctrl+1 saves the view, 1 springs back.
+    # The digits hop straight to a cluster: a far pair becomes the second
+    # room, and its number lands on it.
     c cancel
     c resetview
     open_1to1
-    c "zoom 0.5 960 540"
-    sleep 0.5
-    c state
-    printf 'key leftctrl down\nkey 1\nkey leftctrl up\n' | input
-    sleep 0.4; c state
-    assert_true "ctrl+1 saved the view" \
-        "$(kreadconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key Bookmarks | grep -ci 'spot')" -ge 1
-    c home
-    c "pan 500 0"
+    c "placeby Dolphin 4000 800 700 360"
+    c "placeby wallpaper.png 4000 300 460 420"
+    c commit
     sleep 0.3
-    printf 'key 1\n' | input
+    open_1to1
+    c state
+    di=$(eget Dolphin index)
+    gi=$(eget "wallpaper.png" index)
+    far=$(awk -v a="$di" -v b="$gi" '/^  c[0-9]+:/ { hasa=0; hasb=0; for (i=2; i<=NF; i++) { if ($i==a) hasa=1; if ($i==b) hasb=1 } if (hasa && hasb) { idx=$1; sub("^c", "", idx); sub(":", "", idx); print idx; exit } }' <<<"$LAST_STATE")
+    assert_true "the far pair is its own room" -n "$far"
+    printf 'key %d\n' "$((far + 1))" | input
     sleep 0.4; c state
-    assert_near "1 springs back to the saved view" "$(sget viewx)" -960 2
-    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key Bookmarks --delete
+    assert_eq "the digit lands on the far room" "$(sget cluster)" "$((far + 1))"
+    assert_near "smart-placed" "$(sget viewx)" 2564 60
     c cancel
     kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key Passthrough --delete
     arrange >/dev/null

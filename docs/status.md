@@ -115,6 +115,23 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-19 — the clusters become rooms
+
+"new feature level" — the user wanted a feature. Two were approved and
+the first shipped: each cluster is a room that remembers where it was
+left — the camera spot, the zoom and the last-focused window, keyed by
+the member set's fingerprint so a recluster never loses a room. The
+tour and the digits (1-9, the badge's numbers) return to the remembered
+spot instead of re-deriving the smart pan; rooms survive the session
+(two hidden knobs, ClusterHomes and ClusterNames); a room can be named
+via the debug channel's clustername and wears the name on its badge and
+its plane chip; and the old invisible bookmarks are retired — the digits
+belonged to the rooms all along. Scenario 129 proves the whole loop
+(name, first smart-pan visit, pan away, jump back to the remembered
+spot), and 102's digit part was rewritten to it. Two traps: the digit
+keys go to the focused fixture when the canvas is closed (open first),
+and awk's $1 is whitespace-stripped (the sub("^c"), never sub("^  c")).
+
 ### 2026-10-18 — the flights glide, and the cluster tour lands where the hand left off
 
 The user asked whether the flies could be more seamless and fluid "with
