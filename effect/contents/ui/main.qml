@@ -5545,11 +5545,14 @@ KWin.SceneEffect {
             model: effect.clusters.length
             delegate: Item {
                 required property int index
-                readonly property var cluster: effect.clusters[index]
-                readonly property bool active: { effect.clusterRev; effect.focusEntry; effect.selectionRev; return effect.clusterIndex() === index; }
-                readonly property real cx: { effect.revision; effect.viewX; effect.viewY; effect.zoom; return (cluster.cx - effect.viewX) * effect.zoom - view.sg.x; }
-                readonly property real cy: { effect.revision; effect.viewX; effect.viewY; effect.zoom; return (cluster.cy - effect.viewY) * effect.zoom - view.sg.y; }
-                visible: !effect.quiet && cluster.n > 1
+                // The cluster list is replaced wholesale by every recluster,
+                // and a delegate can outlive the list it was built for by a
+                // frame: the read must never throw on the stale index.
+                readonly property var cluster: effect.clusters[index] || null
+                readonly property bool active: { effect.clusterRev; effect.focusEntry; effect.selectionRev; return cluster !== null && effect.clusterIndex() === index; }
+                readonly property real cx: { effect.revision; effect.viewX; effect.viewY; effect.zoom; return cluster ? (cluster.cx - effect.viewX) * effect.zoom - view.sg.x : 0; }
+                readonly property real cy: { effect.revision; effect.viewX; effect.viewY; effect.zoom; return cluster ? (cluster.cy - effect.viewY) * effect.zoom - view.sg.y : 0; }
+                visible: !effect.quiet && cluster !== null && cluster.n > 1
                 // The delegate fills the whole view - the wrapper has no size
                 // of its own, and the badge positions from the cluster's
                 // centre. The badge floats above the windows, so the wrapper
@@ -5714,9 +5717,9 @@ KWin.SceneEffect {
             model: effect.chipCount
             delegate: Item {
                 required property int index
-                readonly property var c: effect.clusters[index]
-                x: { effect.revision; effect.clusterRev; effect.viewX; effect.viewY; effect.zoom; return -(effect.viewX * effect.zoom) - view.sg.x + (c.cx - 12) * effect.zoom; }
-                y: { effect.revision; effect.clusterRev; effect.viewX; effect.viewY; effect.zoom; return -(effect.viewY * effect.zoom) - view.sg.y + (c.cy - 12) * effect.zoom; }
+                readonly property var c: effect.clusters[index] || null
+                x: { effect.revision; effect.clusterRev; effect.viewX; effect.viewY; effect.zoom; return c ? -(effect.viewX * effect.zoom) - view.sg.x + (c.cx - 12) * effect.zoom : 0; }
+                y: { effect.revision; effect.clusterRev; effect.viewX; effect.viewY; effect.zoom; return c ? -(effect.viewY * effect.zoom) - view.sg.y + (c.cy - 12) * effect.zoom : 0; }
                 width: 24 * effect.zoom
                 height: 24 * effect.zoom
                 z: 40000
@@ -5734,7 +5737,7 @@ KWin.SceneEffect {
                     border.color: "#66ffffff"
                     Text {
                         anchors.centerIn: parent
-                        text: { effect.clusterRev; const n = effect.clusterNames[effect.clusterFingerprint(effect.clusters[index])]; return n ? n : "#" + (index + 1); }
+                        text: { effect.clusterRev; const c2 = effect.clusters[index]; const n = c2 ? effect.clusterNames[effect.clusterFingerprint(c2)] : ""; return n ? n : "#" + (index + 1); }
                         color: "#ffffff"
                         font.pixelSize: 11 * effect.zoom
                     }
