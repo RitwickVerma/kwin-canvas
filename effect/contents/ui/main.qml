@@ -852,6 +852,42 @@ KWin.SceneEffect {
         travelCluster = ci;
         flyToCluster(ci);
     }
+    // The undo stack: every commit leaves its layout behind - the targets,
+    // the windows' spots, the activities they ended on - and Ctrl+Z (or the
+    // debug channel's undo) steps the plane back to the one beneath the
+    // last. The stack holds up to twenty layouts, in the session only.
+    property var undoStack: []
+    function restoreLayout(back) {
+        if (!back) return;
+        targets = copyTargets(back.targets);
+        const byId = {};
+        for (const p of back.layout) byId[p.internalId] = p;
+        for (const e of entries) {
+            const p = byId[e.window.internalId];
+            if (!p) continue;
+            e.x = p.x;
+            e.y = p.y;
+            e.activity = p.activity;
+        }
+        for (const e of entries) {
+            if (e.window.deleted) continue;
+            const t = targetOf(e.activity);
+            const fx = Math.round(e.x - t.x), fy = Math.round(e.y - t.y);
+            e.frameX = fx;
+            e.frameY = fy;
+            e.window.frameGeometry = Qt.rect(fx, fy, e.width, e.height);
+        }
+        revision++;
+        toast("Stepped the layout back");
+    }
+    function undo() {
+        // The top of the stack is the commit just made; the undo restores
+        // the layout beneath it. The first commit ever made leaves nothing
+        // to step back to.
+        if (undoStack.length < 2) { toast("Nothing to undo"); return; }
+        undoStack.pop();
+        restoreLayout(undoStack[undoStack.length - 1]);
+    }
     // A window's z in the overworld: the stacking order itself - the entries
     // are KWin's order, so the index IS the z - with the hovered window
     // lifted above the whole web. The hover has just raised that window for
@@ -2493,6 +2529,10 @@ KWin.SceneEffect {
         viewX = cur.x;
         viewY = cur.y;
         zoom = 1.0;
+        // Every commit leaves its layout on the undo stack, so Ctrl+Z can
+        // step back to the one before it.
+        if (undoStack.length >= 20) undoStack.shift();
+        undoStack.push({ targets: copyTargets(targets), layout: entries.map(function (e) { return { internalId: e.window.internalId, x: e.x, y: e.y, activity: e.activity }; }) });
         // The location survives the session: where the eye left the plane
         // is where it comes back to after a restart.
         configuration.ViewX = Math.round(viewX);
@@ -4248,6 +4288,7 @@ KWin.SceneEffect {
         case "unpinall": pinned = {}; savePinned(); break;
         case "arrange": arrange(a[1], Number(a[2]), Number(a[3])); break;
         case "tidy": tidy(); break;
+        case "undo": undo(); break;
         case "snap": {
             const on = a[2] === "on";
             if (a[1] === "edges") snapEdges = on; else if (a[1] === "corners") snapCorners = on; else if (a[1] === "grid") snapGrid = on;
@@ -5830,6 +5871,13 @@ KWin.SceneEffect {
 
         Keys.onPressed: (event) => {
             const k = event.key;
+            // Ctrl+Z steps the layout back one commit, wherever the canvas
+            // is open - the undo belongs to the plane, not to a window.
+            if ((event.modifiers & Qt.ControlModifier) && k === Qt.Key_Z) {
+                if (!event.isAutoRepeat) effect.undo();
+                event.accepted = true;
+                return;
+            }
             if (effect.bound("pan", k)) {
                 if (!event.isAutoRepeat) view.spaceHeld = true;
             } else if (effect.bound("next", k) && !(event.modifiers & Qt.ShiftModifier)) {

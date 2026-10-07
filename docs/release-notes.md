@@ -1,5 +1,11 @@
 Unreleased:
 
+- Every commit is a checkpoint. Ctrl+Z in the open canvas steps the
+  layout back one commit - the windows' spots, the activities they sat
+  in, and the real frames alike - and steps back up to twenty times,
+  the session's own history. The debug channel's undo verb is the same
+  step.
+
 - The clusters are rooms now. The tour - the side button, the brackets
   - and the digits 1-9 all return to the spot each room was left at:
   the camera, the zoom and the last-focused window come back together,

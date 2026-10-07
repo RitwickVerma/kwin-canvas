@@ -115,6 +115,20 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-20 — every commit is a checkpoint
+
+The second of the two approved features: the undo stack. Every commit
+leaves its layout behind (the targets, the windows' spots, their
+activities) on a session-only stack capped at twenty; Ctrl+Z in the
+open canvas pops the just-made commit and restores the one beneath -
+entry positions and the real frames alike - and the debug channel's
+undo verb is the same step for the scenarios. The trick: undo skips
+the top of the stack, because the top is the layout the user just
+stepped INTO. Scenario 130 proves the loop: placeby + commit, undo
+steps the entry and the real frame back, a second undo has nothing
+to step back to. The arrange's own commit seeds the stack, so 130's
+first undo lands on the arranged layout.
+
 ### 2026-10-19 — the clusters become rooms
 
 "new feature level" — the user wanted a feature. Two were approved and
