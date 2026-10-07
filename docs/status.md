@@ -115,6 +115,48 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-07 — the seam becomes a zoom: the frontier five
+
+The user asked for frontier-level intelligence ("time for frontier level
+intelligence. how can we imrove this and make it the coolest most fluid
+amazing thing ever") and approved the pitch: the frontier is the seam
+becoming a zoom, not a switch, in five small increments - "do all".
+Each shipped:
+
+1. The wheel is the door. The plugin's pointerAxis gained the door
+   branch (while inactive, over the bare ground - no window, no chrome -
+   it publishes the step; the raw delta is positive scrolling down,
+   which is the zoom out); the effect's doorStep opens the overworld at
+   the seam and zooms out; the WheelHandler's zoom-in crossing 1:1
+   flies the camera home and commits on the arrival (the instant commit
+   when the spring is off). Scenario 132 pins it: the wheel out opens
+   and zooms, the wheel in re-enters, a window keeps its wheel, the
+   knob closes the door.
+2. The window wears the hand. The rest cue fades at the handoff instead
+   of cutting (the onRestingChanged else-branch fades restFill over 260
+   ms), and the plugin's publishHover (the internalId on enter/leave)
+   keeps the cue's line full along the engaged window's top edge.
+3. The tour draws its path. camGo records the flight's start
+   (camFromX/Y), camStep fades camTraceFade with the distance eaten,
+   camStop zeroes it; a camera-transform Shape in the view draws the
+   line at z 500 - gone when the camera settles, so no golden moved.
+4. The ladder sheds in the eye's order: the standing shadows and the
+   depthScale moved to the ql 1 rung, the backdrop blur, the unlit
+   constellation and the minimap's edge blur to the ql 2 rung.
+5. The windows glide to their tidy spots: entryAnims (keyed by the
+   internalId, 220 ms OutCubic in the physics tick, moveRev for the
+   delegate repaints, the commit's finishEntryAnims snaps any
+   mid-flight window before the geometry write). The first cut's
+   lookup compared the QUuid to the string key - String() on both
+   sides fixed it.
+
+One regression the batch caught: the neighbourhood smart pan had leaked
+into the activation fly (flyToWindow passed the others list, which the
+plain smartPan used to ignore) - 70-activation's "least movement"
+assert failed because the fly now pulled Dolphin in. The activation fly
+is the plain least-pan again (the others removed); the neighbourhood
+belongs to the cluster tour alone.
+
 ### 2026-10-06 — the tour's smart placement pulls the neighbours in
 
 The user asked how the smart placement works and what matters more -

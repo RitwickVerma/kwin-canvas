@@ -1,5 +1,33 @@
 Unreleased:
 
+- The wheel is the door. With the canvas closed, the wheel over the bare
+  ground zooms the world out of the location - the canvas opens at the
+  1:1 seam, pixel for pixel, and the wheel keeps zooming into the
+  overworld; zooming back in to 1:1 flies the camera home and re-enters
+  the location on the arrival. Over a window the wheel stays that
+  window's, so games and apps keep their scroll. The WheelDoor knob
+  turns it off; it needs the pass-through plugin to see the wheel while
+  the canvas is closed.
+
+- The window wears the hand. The pass-through's rest cue no longer cuts
+  at the handoff: the line completes, hands the pointer over, and fades
+  into the window's own glow. And while the pass-through owns the input,
+  the line stays full along that window's top edge - the engaged window
+  is visible at a glance, wherever the pointer sits.
+
+- The tour draws its path. A flight leaves a thin fading trace from
+  where the camera came - the plane keeps its spatial history until the
+  arrival erases it, and a settled canvas never carries it.
+
+- The ladder sheds in the eye's order, not the cost's. The standing
+  shadows and the depth go first (the quiet-night rung - the pile
+  flattens, the world stays legible), the cluster web and the blur
+  next, the live pictures last. The motion is never degraded.
+
+- The windows glide to the spots the plane gives them: the tidy lays the
+  desk out with a straight 220 ms glide per window instead of a
+  teleport, and a commit never catches a window mid-flight.
+
 - The tour's smart placement pulls the neighbours in. When a hop lands
   on a cluster's window, the camera now keeps the focused window
   completely inside while bringing as many of the windows around it at

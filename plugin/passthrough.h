@@ -86,6 +86,11 @@ public Q_SLOTS:
      */
     Q_SCRIPTABLE void setHoverDelay(int ms);
     /**
+     * The zoom door (WheelDoor): with the canvas closed, a wheel over the
+     * bare ground opens the canvas at the seam and zooms the world out.
+     */
+    Q_SCRIPTABLE void setDoorEnabled(bool enabled);
+    /**
      * The canvas-modifier buttons (CanvasHold). A press of one of them is
      * consumed wherever the pointer is and flips the effect's canvasHold
      * property, so the effect can open quietly at 1:1 and commit on the
@@ -139,6 +144,7 @@ private:
     /** Publish the chrome flag to the effect on every change. */
     void publishChrome(const QPointF &screen);
     void publishRest(KWin::Window *w);
+    void publishHover(KWin::Window *w);
     /** The seam: within the margin of the desk's outer border, where a shared mouse parks its pointer. */
     bool atSeam(const QPointF &screen) const;
     /** Enter (or stay on) the input surface of @p window under @p canvas. False if no surface takes input there. */
@@ -160,6 +166,8 @@ private:
     QHash<QString, QPointF> m_targets;
     /** The trace flag (setVerbose): log every decision this filter takes. */
     bool m_verbose = false;
+    /** The zoom door (WheelDoor): the wheel over the ground opens the canvas. */
+    bool m_door = true;
 
     QPointer<KWin::Window> m_grab;
     bool m_grabGround = false;

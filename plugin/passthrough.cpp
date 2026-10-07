@@ -95,6 +95,10 @@ CanvasPassthrough::CanvasPassthrough()
     // around never activates a window.
     m_hoverTimer.setSingleShot(true);
     m_hoverTimer.setInterval(std::max(50, KSharedConfig::openConfig(QStringLiteral("kwinrc"))->group(QStringLiteral("Effect-kwin-canvas")).readEntry("HoverDelay", 900)));
+    // The zoom door: the wheel over the bare ground opens the canvas from
+    // the closed location. The knob is read once at load - the effect and
+    // the plugin both live until the session ends.
+    m_door = KSharedConfig::openConfig(QStringLiteral("kwinrc"))->group(QStringLiteral("Effect-kwin-canvas")).readEntry("WheelDoor", true);
     connect(&m_hoverTimer, &QTimer::timeout, this, [this]() {
         if (m_hoverCandidate && m_active && !m_grabGround) {
             const QPointF canvas = toCanvas(m_lastPosition);
@@ -180,6 +184,11 @@ void CanvasPassthrough::setHoverDelay(int ms)
     }
 }
 
+void CanvasPassthrough::setDoorEnabled(bool enabled)
+{
+    m_door = enabled;
+}
+
 void CanvasPassthrough::setHoldButtons(int buttons)
 {
     const uint mask = uint(buttons);
@@ -221,6 +230,16 @@ void CanvasPassthrough::publishRest(KWin::Window *w)
         } else {
             canvas->setProperty("restStart", QString());
         }
+    }
+}
+
+void CanvasPassthrough::publishHover(KWin::Window *w)
+{
+    if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+        // The window that holds the pointer wears the hand: the canvas
+        // keeps its cue's line full along that window's edge while the
+        // pass-through owns the input.
+        canvas->setProperty("hoverId", w ? w->internalId().toString() : QString());
     }
 }
 
@@ -570,6 +589,7 @@ bool CanvasPassthrough::enter(Window *window, const QPointF &canvas)
     // The rest the hover clock waited out is over: the handoff happened,
     // so the canvas's filling cue is done too.
     publishRest(nullptr);
+    publishHover(window);
     return true;
 }
 
@@ -583,8 +603,10 @@ void CanvasPassthrough::leave()
     }
     m_hoverSurface = nullptr;
     m_hover = nullptr;
-    // Whatever rest was running over the window is over with it.
+    // Whatever rest was running over the window is over with it, and the
+    // window no longer wears the hand.
     publishRest(nullptr);
+    publishHover(nullptr);
 }
 
 void CanvasPassthrough::clearGrab()
@@ -871,6 +893,21 @@ bool CanvasPassthrough::keyboardKey(KeyboardKeyEvent *event)
 
 bool CanvasPassthrough::pointerAxis(PointerAxisEvent *event)
 {
+    // The door: with the canvas closed, the wheel over the bare ground
+    // zooms the world out of the location - the plugin publishes the step
+    // and the effect opens at the seam. Over a window, the chrome, or
+    // during a hold the wheel stays theirs.
+    if (!m_active && m_door && !m_holdDown) {
+        if (!windowUnder(toCanvas(event->position)) && !chromeAt(event->position)) {
+            if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+                // The raw delta is positive scrolling down (KWin maps the
+                // fake axis so), which is the zoom out - the door's step.
+                canvas->setProperty("doorStep", event->delta > 0 ? -1 : 1);
+                return true;
+            }
+        }
+        return false;
+    }
     // The idle's wheel is the canvas's, and it does not wake the
     // passthrough - only the pointer's touch does.
     if (m_idle) {

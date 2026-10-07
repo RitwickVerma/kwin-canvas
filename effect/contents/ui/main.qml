@@ -876,6 +876,54 @@ KWin.SceneEffect {
     // debug channel's undo) steps the plane back to the one beneath the
     // last. The stack holds up to twenty layouts, in the session only.
     property var undoStack: []
+    // The windows glide to the spots the plane gives them: the tidy (and
+    // whatever else moves entries without the hand) animates the travel
+    // instead of teleporting it. Each anim is a straight 220 ms glide in
+    // the physics tick; the commit finishes them instantly so a geometry
+    // write never catches a window mid-flight.
+    property var entryAnims: ({})
+    property int moveRev: 0
+    function animateEntry(e, tx, ty) {
+        if (!e || !e.window) return;
+        const id = e.window.internalId;
+        if (dragRaw && dragRaw[id] !== undefined) return; // the hand moves its own
+        entryAnims[id] = { sx: e.x, sy: e.y, tx: tx, ty: ty, t0: Date.now() };
+        moveRev++;
+    }
+    function stepEntryAnims() {
+        const now = Date.now();
+        let any = false;
+        for (const id in entryAnims) {
+            const a = entryAnims[id];
+            const e = entries.find(function (en) { return String(en.window.internalId) === id; });
+            if (!e) { delete entryAnims[id]; any = true; continue; }
+            const p = Math.min(1, (now - a.t0) / 220);
+            if (p >= 1) {
+                e.x = a.tx;
+                e.y = a.ty;
+                delete entryAnims[id];
+            } else {
+                const q = 1 - Math.pow(1 - p, 3); // the OutCubic glide
+                e.x = a.sx + (a.tx - a.sx) * q;
+                e.y = a.sy + (a.ty - a.sy) * q;
+            }
+            any = true;
+        }
+        if (any) moveRev++;
+    }
+    function finishEntryAnims() {
+        const keys = Object.keys(entryAnims);
+        for (let i = 0; i < keys.length; ++i) {
+            const a = entryAnims[keys[i]];
+            const e = entries.find(function (en) { return String(en.window.internalId) === keys[i]; });
+            if (e) {
+                e.x = a.tx;
+                e.y = a.ty;
+            }
+        }
+        entryAnims = {};
+        if (keys.length) moveRev++;
+    }
     function restoreLayout(back) {
         if (!back) return;
         targets = copyTargets(back.targets);
@@ -1738,6 +1786,26 @@ KWin.SceneEffect {
     // clock waits its delay out over a window, empty otherwise. The scene
     // fills a cue along that window's edge while it lasts.
     property string restStart: ""
+    // The window the pass-through currently hands the pointer to - its
+    // internalId while the hover or the grab holds it. The engaged window
+    // wears the hand: the cue's line stays full along its top edge.
+    property string hoverId: ""
+    // The zoom door: with the canvas closed, a wheel over the bare ground
+    // zooms the world out of the location. The plugin publishes the step
+    // and the effect opens at the seam, so the wheel is the same motion
+    // in both places - out to the overworld, back in to the location.
+    property int doorStep: 0
+    onDoorStepChanged: {
+        if (doorStep === 0 || configuration.WheelDoor === false || visible) {
+            doorStep = 0;
+            return;
+        }
+        const d = doorStep;
+        doorStep = 0;
+        if (d > 0) return; // the zoom-in while closed is the desktop's own
+        open();
+        camZoomTo(zoom / zoomStep, cursorScreen().x, cursorScreen().y);
+    }
     // The pass-through has let go after the idle: the canvas owns the
     // input again, until the pointer's next touch.
     property bool passthroughIdle: false
@@ -2028,6 +2096,13 @@ KWin.SceneEffect {
     property real camGoalX: 0
     property real camGoalY: 0
     property real camGoalZoom: 1.0
+    // The tour's trace: the flight's start and how much of its path is
+    // left, so the plane can draw the way the camera came until the
+    // arrival erases it.
+    property real camFromX: 0
+    property real camFromY: 0
+    property real camFromZoom: 1.0
+    property real camTraceFade: 0
     // A zoom can pin a point: the canvas point under a screen point when the
     // zoom starts is under it at every step, as a pinch and a wheel at the
     // cursor both do. The anchor owns the position while it is live and only
@@ -2062,6 +2137,7 @@ KWin.SceneEffect {
         camRate = 1.0;
         lastZoom = zoom;
         zoomRising = false;
+        camTraceFade = 0;
     }
 
     // A pan the hand let go of: keep the plane moving the way it was, under
@@ -2114,6 +2190,12 @@ KWin.SceneEffect {
         }
         const w = camSpring * camRate;
         camGoalZoom = z;
+        // The tour draws its path: the flight's start is remembered so the
+        // trace can draw from where the camera came to where it is now.
+        camFromX = viewX;
+        camFromY = viewY;
+        camFromZoom = zoom;
+        camTraceFade = 1;
         // The skin's retire measures against this flight's own start, so a
         // step in from any zoom fades the chrome evenly with the flight.
         zoomRising = z > zoom;
@@ -2162,6 +2244,11 @@ KWin.SceneEffect {
                 camVX += (-k * (viewX - camGoalX) - c * camVX) * dt;
                 camVY += (-k * (viewY - camGoalY) - c * camVY) * dt;
             }
+            // The flight's trace fades as the camera eats the distance: the
+            // plane remembers where the eye came from until the arrival.
+            const tdist = Math.hypot(camGoalX - camFromX, camGoalY - camFromY);
+            const walked = Math.min(1, Math.hypot(viewX - camFromX, viewY - camFromY) / Math.max(1, tdist));
+            camTraceFade = 1 - walked;
         } else {
             const f = Math.exp(-panFriction * dt);
             camVX *= f; camVY *= f; camVZoom *= f;
@@ -2227,6 +2314,7 @@ KWin.SceneEffect {
             const dt = effect.frameDt();
             if (effect.camLive()) effect.camStep(dt);
             effect.floatPinned(dt);
+            effect.stepEntryAnims();
         }
     }
 
@@ -2472,6 +2560,7 @@ KWin.SceneEffect {
     function commit(activate) {
         dbg("commit", "entering at zoom " + zoom.toFixed(3) + ", activate=" + activate);
         endSwitcher();
+        finishEntryAnims();
         if (sceneGestures > 0) {
             deferredClose = function () { commit(activate); };
             return;
@@ -3164,8 +3253,7 @@ KWin.SceneEffect {
         list.sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
         const spots = Logic.tidyRows(list, { gap: gap, origin: { x: t.x + gap, y: t.y + gap }, maxWidth: vs.width - gap * 2 });
         for (let i = 0; i < list.length; ++i) {
-            list[i].e.x = spots[i].x;
-            list[i].e.y = spots[i].y;
+            animateEntry(list[i].e, spots[i].x, spots[i].y);
         }
         revision++;
     }
@@ -4003,16 +4091,11 @@ KWin.SceneEffect {
         const t = peekTarget(activityOf(w));
         const f = w.frameGeometry;
         const rect = { x: f.x + t.x, y: f.y + t.y, width: f.width, height: f.height };
-        const others = [];
-        const all = KWin.Workspace.stackingOrder;
-        for (let i = 0; i < all.length; ++i) {
-            const o = all[i];
-            if (o === w || !isCanvasWindow(o, false)) continue;
-            const ot = peekTarget(activityOf(o));
-            const of = o.frameGeometry;
-            others.push({ x: of.x + ot.x, y: of.y + ot.y, width: of.width, height: of.height });
-        }
-        const d = smartPan(rect, others, 24);
+        // The activation fly is the plain least-pan: the focused window
+        // wholly on screen with the least movement. The neighbourhood pan
+        // (the tour's own) belongs to the cluster hops, where the eye
+        // wants the windows around the destination too.
+        const d = smartPan(rect, null, 24);
         if (d.dx !== 0 || d.dy !== 0) slideTo(d.dx, d.dy);
     }
     // The entry a window is drawn from, or null.
@@ -4753,10 +4836,13 @@ KWin.SceneEffect {
                 // The quiet slide (a focus fly, a pan chord at 1:1) is the
                 // desktop gliding: the wallpaper stays, sharp, so a
                 // transient move never flashes grey or the overworld's blur.
-                // Under load the blur is the first pass to go: it is a
-                // half-screen FBO sampled every frame, and a busy machine
-                // keeps the wallpaper sharp rather than pay for the haze.
-                radius: (effect.quiet || effect.ql >= 1) ? 0 : effect.backdropBlur()
+                // The ladder sheds in the eye's order, not the cost's: the
+                // standing shadows and the depth go first (the quiet-night
+                // rung), the web and the blur next, the pictures last. The
+                // blur is a half-screen FBO sampled every frame, but the
+                // haze is what the eye forgives first, so it stays a rung
+                // longer than the shadows.
+                radius: (effect.quiet || effect.ql >= 2) ? 0 : effect.backdropBlur()
                 transparentBorder: false
             }
             // The dim over the blur only: the desks ride above it and stay
@@ -4947,6 +5033,18 @@ KWin.SceneEffect {
                 // and a burst of notches rides as one motion; several notches
                 // from where the last one was heading, never from mid-step.
                 const from = effect.camHasGoal ? effect.camGoalZoom : effect.zoom;
+                // The door closes at the seam: a zoom-in that would cross
+                // 1:1 flies the camera home and re-enters the location on
+                // the arrival instead of clamping at the boundary.
+                if (effect.configuration.WheelDoor !== false && steps > 0 && from * Math.pow(effect.zoomStep, steps) >= 1.0) {
+                    if (!effect.smoothZoom) {
+                        effect.commit(null);
+                        return;
+                    }
+                    effect.camGo(1.0, effect.viewX, effect.viewY, anchor.x, anchor.y, 2.0);
+                    effect.camOnArrive = function () { effect.commit(null); };
+                    return;
+                }
                 effect.camZoomTo(from * Math.pow(effect.zoomStep, steps), anchor.x, anchor.y);
             }
         }
@@ -5096,8 +5194,8 @@ KWin.SceneEffect {
                 // The float's bob: each window hovers at its own phase.
                 readonly property real phase: index * 137.508
                 readonly property real bob: { effect.floatRev; effect.ql; return effect.ql >= 2 ? 0 : Math.sin(effect.floatRev * 0.035 + phase) * 2.4 * effect.floatAmt; }
-                x: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].x - effect.viewX) * effect.zoom - view.sg.x; return f ? f.x : base; }
-                y: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; return (f ? f.y : base) + thumb.bob; }
+                x: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; effect.moveRev; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].x - effect.viewX) * effect.zoom - view.sg.x; return f ? f.x : base; }
+                y: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; effect.moveRev; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; return (f ? f.y : base) + thumb.bob; }
                 width: { effect.revision; return effect.entries[index].width * effect.zoom; }
                 height: { effect.revision; return effect.entries[index].height * effect.zoom; }
                 visible: !effect.quiet || entry.activity === effect.currentActivity
@@ -5126,7 +5224,7 @@ KWin.SceneEffect {
                 // size below follow the rank, so the stacking is legible at a
                 // glance instead of being a property only the pointer sees.
                 readonly property real depth: { effect.revision; effect.focusEntry; effect.selectionRev; effect.switcherActive; return ((thumb.entry === effect.focusEntry || (effect.switcherActive && effect.isSelected(thumb.entry)) ? effect.entries.length + 1 : index + 1) / (effect.entries.length + (effect.focusEntry ? 1 : 0))); }
-                readonly property real depthScale: (effect.quiet || effect.ql >= 2) ? 1 : (1 + (0.025 * thumb.depth - 0.01) * Math.max(effect.skinReveal, effect.switcherRise))
+                readonly property real depthScale: (effect.quiet || effect.ql >= 1) ? 1 : (1 + (0.025 * thumb.depth - 0.01) * Math.max(effect.skinReveal, effect.switcherRise))
                 scale: depthScale * (lifted ? 1.03 : (thumb.hovered && heavy ? 1.008 : 1)) * (0.94 + 0.06 * thumb.enterFade)
                 opacity: effect.thumbOpacity * thumb.enterFade
                 Behavior on scale { enabled: !effect.quiet; SpringAnimation { spring: 3.6; damping: 0.5; epsilon: 0.001 } }
@@ -5185,7 +5283,7 @@ KWin.SceneEffect {
                     z: -2
                     radius: 8
                     color: "#000000"
-                    visible: effect.ql < 2 && Math.max(effect.skinReveal, effect.switcherRise) > 0.02
+                    visible: effect.ql < 1 && Math.max(effect.skinReveal, effect.switcherRise) > 0.02
                     opacity: Math.max(effect.skinReveal, effect.switcherRise) * (liftedNow ? 0.30 : (thumb.hovered ? 0.16 : 0.05 + 0.13 * thumb.depth))
                     readonly property bool liftedNow: body.active && body.moving && thumb.heavy
                     Behavior on opacity { NumberAnimation { duration: 150 } }
@@ -5237,16 +5335,31 @@ KWin.SceneEffect {
                 // the hover delay over this window, a thin line fills along
                 // its top edge, so the handoff is anticipated instead of a
                 // surprise. The pass-through publishes the window and the
-                // delay; this fills over exactly that delay.
+                // delay; this fills over exactly that delay. The handoff
+                // completes it - the line hands the pointer over and fades
+                // into the window's own glow instead of cutting - and while
+                // the window holds the pointer, the line stays full: the
+                // window wears the hand.
                 readonly property bool resting: { effect.restStart; return String(thumb.entry.window.internalId) === effect.restStart.split("|")[0]; }
+                readonly property bool engaged: { effect.hoverId; return String(thumb.entry.window.internalId) === effect.hoverId; }
                 property real restFill: 0
                 onRestingChanged: {
                     if (resting) {
                         restFill = 0;
                         restAnim.duration = Math.max(1, Number(effect.restStart.split("|")[1]) || 900);
                         restAnim.restart();
+                    } else if (restFill > 0.01) {
+                        restAnim.to = 0;
+                        restAnim.duration = 260;
+                        restAnim.restart();
                     } else {
                         restFill = 0;
+                        restAnim.stop();
+                    }
+                }
+                onEngagedChanged: {
+                    if (engaged) {
+                        restFill = 1;
                         restAnim.stop();
                     }
                 }
@@ -5264,6 +5377,7 @@ KWin.SceneEffect {
                     height: 2
                     color: "#2a6ddf"
                     visible: thumb.restFill > 0
+                    opacity: thumb.engaged ? 1 : 0.85
                 }
 
                 Text {
@@ -5502,6 +5616,31 @@ KWin.SceneEffect {
         // float bobs and the hover re-stacks. One neon thread per pair of
         // windows, lit where the eye's cluster is, a faint sketch for the
         // rest when zoomed out far enough to see the plane.
+
+        // The tour's trace: while a flight runs, a thin line remembers
+        // where the camera came from. The plane keeps its spatial history
+        // until the arrival erases it; the line fades as the flight eats
+        // the distance, so a settled canvas never carries it.
+        Item {
+            visible: effect.camTraceFade > 0.01 && !effect.quiet
+            x: -(effect.viewX * effect.zoom) - view.sg.x
+            y: -(effect.viewY * effect.zoom) - view.sg.y
+            scale: effect.zoom
+            transformOrigin: Item.TopLeft
+            z: 500
+            opacity: effect.camTraceFade * 0.35
+            Shape {
+                ShapePath {
+                    strokeColor: "#ffffff"
+                    strokeWidth: 2 / effect.zoom
+                    fillColor: "transparent"
+                    startX: effect.camFromX
+                    startY: effect.camFromY
+                    PathLine { x: effect.viewX; y: effect.viewY }
+                }
+            }
+        }
+
         Repeater {
             model: {
                 effect.revision; effect.clusterRev; effect.floatRev; effect.hoverRev;
@@ -5531,7 +5670,7 @@ KWin.SceneEffect {
                     // fly slides across - is the desktop alone. Full strength by
                     // zoom 0.75, gone at 1:1; the unlit constellation dissolves
                     // between 0.45 and 0.5 instead of cutting out at half zoom.
-                    readonly property real want: (modelData.lit ? Math.max(0.3, 0.55 * modelData.co) : (effect.ql >= 1 ? 0 : 0.22 * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20)) * modelData.co)) * effect.skinReveal
+                    readonly property real want: (modelData.lit ? Math.max(0.3, 0.55 * modelData.co) : (effect.ql >= 2 ? 0 : 0.22 * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20)) * modelData.co)) * effect.skinReveal
                     property real show: 0
                     opacity: show
                     Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
@@ -5675,9 +5814,9 @@ KWin.SceneEffect {
                 radius: 16
                 color: Qt.rgba(0.07, 0.07, 0.09, 0.42)
                 // The minimap's dark region bleeds into the plane instead of
-                // ending at a line: the edge is a soft falloff. Under load
-                // the edge hardens - the blur is an FBO the ladder sheds.
-                layer.enabled: effect.ql < 1
+                // ending at a line: the edge is a soft falloff. The ladder
+                // sheds the edge's blur at the same rung as the backdrop's.
+                layer.enabled: effect.ql < 2
                 layer.effect: GaussianBlur {
                     radius: 5
                     samples: 17
