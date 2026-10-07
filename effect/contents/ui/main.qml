@@ -5509,6 +5509,36 @@ KWin.SceneEffect {
             }
         }
 
+        // The hover spotlight: the window the pointer has settled on steps
+        // forward into the light - the ground, the frames, the threads and
+        // the windows behind it dim under a whisper of the house dark, and
+        // the light comes back when the hand leaves. The dim rides the same
+        // gates as the glow: only the deliberate rest (never a press, never
+        // a pass-through handoff, never the quiet seam, never the switcher's
+        // own light, never below the ladder's top rung). It carries no
+        // pointer handlers, so every press falls through to whatever is
+        // beneath it. The hovered window itself paints at z 2000, above
+        // this veil, so it alone keeps the full light.
+        Rectangle {
+            anchors.fill: parent
+            z: 1999
+            color: Qt.rgba(0.05, 0.05, 0.08, 0.30)
+            visible: !effect.quiet && effect.ql < 1 && !effect.switcherActive
+            opacity: {
+                effect.hoverEntry;
+                effect.focusEntry;
+                effect.skinReveal;
+                effect.pointerButtons;
+                effect.restStart;
+                return effect.hoverEntry !== null && effect.focusEntry === effect.hoverEntry
+                    && effect.skinReveal > 0.02 && effect.pointerButtons === Qt.NoButton
+                    && effect.restStart === "" ? 1 : 0;
+            }
+            Behavior on opacity {
+                NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+            }
+        }
+
         // App popups, above the windows and the frame tags, below the
         // toolbar and the canvas's menus, in KWin's stacking order. Each is
         // drawn at its real geometry with the plane transform, and its area

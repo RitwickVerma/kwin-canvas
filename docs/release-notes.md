@@ -1,5 +1,20 @@
 Unreleased:
 
+- The hover steps forward into the light. When the pointer settles on a
+  window in the overworld, the rest of the plane - the ground, the
+  frames, the threads, the windows behind it - dims under a whisper of
+  the house dark, and the light comes back when the hand leaves. The
+  hovered window alone keeps the full light. The spotlight rides the
+  same gates as the glow: only the deliberate rest brings it, never a
+  press, never a pass-through handoff, never the quiet seam, never the
+  switcher's own light, and never below the ladder's top rung.
+
+- The cluster badges never read a stale list. A delegate that outlived
+  the cluster list it was built for by a frame - a fast window churn, a
+  game launching - could read past the new list's end and throw; the
+  badges and the chips now read a stale index as nothing instead of
+  throwing.
+
 - The wheel is the door. With the canvas closed, the wheel over the bare
   ground zooms the world out of the location - the canvas opens at the
   1:1 seam, pixel for pixel, and the wheel keeps zooming into the

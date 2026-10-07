@@ -115,6 +115,35 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-08 — the hover steps forward into the light
+
+The user's reports ran two ways: "im done playing. even logged in
+again" (the live session now runs the badge-guard build) and the pasted
+live log line - a repeating `TypeError: Value is undefined and could
+not be converted to an object` in the badge delegate. The badge read
+`effect.clusters[index]` unguarded: the cluster list is replaced
+wholesale by every recluster, a delegate can outlive the list it was
+built for by a frame, and the user's window churn (a game launching and
+closing) made the window wide enough to hit it - the exact class the
+plane chips were hardened against long ago, which the badge never was.
+The badge's cluster/active/cx/cy reads and the chips' c/x/y and name
+reads now carry the `|| null` guard (a stale index reads as nothing
+instead of throwing), committed 9403e7d.
+
+Then the spotlight the user picked ("you tell me?" - my choice): the
+raise is the most-used move, so it gets a light. A veil at z 1999 - one
+step under the hovered window's 2000, over every other window, the
+threads, the frames and the ground - dims the plane behind the rested
+window under a whisper of the house dark, fading in and out over 220 ms
+with the glow's own gates (only the deliberate rest: never a press, a
+pass-through handoff, the quiet seam, the switcher's own light, or
+below the ladder's top rung; it carries no pointer handlers, so every
+press falls through). Scenario 133-hover-spotlight pins it: the bare
+ground behind dims, and the light comes back when the hand leaves. Two
+harness traps re-hit: the bare-relative `shot NAME` lands in the CWD
+(use `$OUT/name.png`), and `assert_true` treats the string "0" as
+truthy - the changed() asserts must be assert_eq ... 1.
+
 ### 2026-10-07 — the seam becomes a zoom: the frontier five
 
 The user asked for frontier-level intelligence ("time for frontier level
