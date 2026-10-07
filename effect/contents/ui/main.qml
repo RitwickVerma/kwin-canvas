@@ -772,17 +772,15 @@ KWin.SceneEffect {
     // home wins - else the camera springs to the cluster's last-focused
     // window (the one the hand left there), smart-placed, at the current
     // zoom; a cluster no one has focused falls back to its centre.
-    function flyToCluster(ci) {
+    function flyToCluster(ci, preferHome) {
         if (ci < 0 || ci >= clusters.length) return;
         const c = clusters[ci];
         const fp = clusterFingerprint(c);
-        const home = clusterHomes[fp];
-        if (home && Number.isFinite(home.x) && Number.isFinite(home.y) && home.z > 0) {
-            camGo(home.z, home.x, home.y, undefined, undefined, 3.0);
-            toast(clusterNames[fp] ? ("Back to " + clusterNames[fp]) : ("Back to cluster " + (ci + 1)));
-            return;
-        }
         const g = actionScreen().geometry;
+        // The switch's focus: the most-recently-focused window of the
+        // cluster being arrived at - like switching a workspace, the
+        // arrival lands on the window the hand last used there, and the
+        // glow, the pick and the next step all point at it.
         let dest = null;
         let bestAt = 0;
         for (const id of c.ids) {
@@ -790,6 +788,18 @@ KWin.SceneEffect {
             if (at > bestAt) { bestAt = at; dest = id; }
         }
         const destEntry = dest !== null ? entries.find(function (en) { return en.window.internalId === dest; }) : null;
+        if (destEntry) focusEntry = destEntry;
+        // The remembered spot: the digit jumps return to it (the room's
+        // place), the tour never does - a hop is a switch, and it lands on
+        // the window the hand last used there.
+        if (preferHome !== false) {
+            const home = clusterHomes[fp];
+            if (home && Number.isFinite(home.x) && Number.isFinite(home.y) && home.z > 0) {
+                camGo(home.z, home.x, home.y, undefined, undefined, 3.0);
+                toast(clusterNames[fp] ? ("Back to " + clusterNames[fp]) : ("Back to cluster " + (ci + 1)));
+                return;
+            }
+        }
         // Smart placement: pan the least that brings the window wholly on
         // screen, padded - a pick's landing, not a centring - so the tour
         // arrives where the window already sits. A cluster no one has
@@ -807,9 +817,11 @@ KWin.SceneEffect {
         toast(destEntry ? destEntry.window.caption : ("Cluster " + (ci + 1) + " of " + clusters.length));
     }
     // Fly to the next or previous cluster in reading order (top to bottom,
-    // left to right), from the one the eye is on. The room the flight
-    // leaves remembers the camera spot it left it at. The toast names the
-    // stop.
+    // left to right), from the one the eye is on. A hop is a switch: it
+    // lands on the next cluster's most-recently-focused window, smart-
+    // placed, every time - the remembered spots belong to the digit
+    // jumps. The room the flight leaves remembers the camera spot for
+    // them. The toast names the stop.
     function clusterTravel(dir) {
         if (clusters.length === 0) return;
         const cur = clusterIndex();
@@ -832,7 +844,7 @@ KWin.SceneEffect {
         // destination until the eye settles on something new.
         hoverEntry = null;
         focusEntry = null;
-        flyToCluster(order[k]);
+        flyToCluster(order[k], false);
     }
     // The digit keys: jump straight to cluster N (the badge's number), the
     // absolute travel - no walk, no order step. The room it leaves

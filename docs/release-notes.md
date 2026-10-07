@@ -6,13 +6,13 @@ Unreleased:
   the session's own history. The debug channel's undo verb is the same
   step.
 
-- The clusters are rooms now. The tour - the side button, the brackets
-  - and the digits 1-9 all return to the spot each room was left at:
-  the camera, the zoom and the last-focused window come back together,
-  and the rooms survive the session. A room can wear a name (the debug
-  channel's clustername, shown on its badge and its chip), and the old
-  invisible bookmarks are retired - the digits belonged to the rooms
-  all along.
+- The clusters are rooms now. The tour - the side button, the brackets -
+  is a workspace switch: every hop lands the camera and the focus on the
+  next cluster's most-recently-focused window, smart-placed, every time.
+  The digits 1-9 return to the spot each room was left at, the rooms
+  survive the session, and a room can wear a name (the debug channel's
+  clustername, shown on its badge and its chip). The old invisible
+  bookmarks are retired - the digits belonged to the rooms all along.
 
 - The flights leave no pop behind. The camera's spring used to push
   itself a few percent of the way in its first frame - a snap the eye

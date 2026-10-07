@@ -146,6 +146,13 @@ spot), and 102's digit part was rewritten to it. Two traps: the digit
 keys go to the focused fixture when the canvas is closed (open first),
 and awk's $1 is whitespace-stripped (the sub("^c"), never sub("^  c")).
 
+A day later the user sharpened the tour: "mb4+mb5 need to always switch
+between clusters. just focus most recently focused" + "like switching
+workspace" — the tour no longer reads the remembered spots at all; every
+hop is a workspace switch: the camera AND the focus land on the next
+cluster's most-recently-focused window, smart-placed, every time. The
+remembered spots now belong to the digit jumps alone.
+
 ### 2026-10-18 — the flights glide, and the cluster tour lands where the hand left off
 
 The user asked whether the flies could be more seamless and fluid "with
