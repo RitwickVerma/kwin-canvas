@@ -898,7 +898,7 @@ bool CanvasPassthrough::pointerAxis(PointerAxisEvent *event)
     // and the effect opens at the seam. Over a window, the chrome, or
     // during a hold the wheel stays theirs.
     if (!m_active && m_door && !m_holdDown) {
-        if (!windowUnder(toCanvas(event->position)) && !chromeAt(event->position)) {
+        if (!windowUnder(event->position) && !chromeAt(event->position)) {
             if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
                 // The raw delta is positive scrolling down (KWin maps the
                 // fake axis so), which is the zoom out - the door's step.

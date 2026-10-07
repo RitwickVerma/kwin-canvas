@@ -14,6 +14,17 @@ run_scenario() {
     fi
     arrange >/dev/null
 
+    # A real session's camera sits wherever the location was left, not at
+    # the origin: the door's ground test must read the SCREEN point (a
+    # window's wheel stays the window's no matter where the location sits).
+    # Park the location away from the origin so the whole door flow runs
+    # with a far-from-zero closed camera.
+    c "zoom 0.5 960 540"
+    c open
+    c commit
+    sleep 0.3
+    c state
+
     # The closed location: the wheel out over the bare ground (1700,1000)
     # crosses the seam and keeps zooming into the overworld. The wheel and
     # the move ride the same device, so the pointer is where the wheel is.
