@@ -65,6 +65,7 @@ sget() {
         map)      sed -n 's/.* map=\([a-z-]*\).*/\1/p' <<<"$line" ;;
         verb)     sed -n 's/.* verb=\([0-9]*\).*/\1/p' <<<"$line" ;;
         ql)       sed -n 's/.* ql=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        trail)    sed -n 's/.* trail=\([0-9]*\).*/\1/p' <<<"$line" ;;
         cpu)      sed -n 's/.* cpu=\([0-9]*\).*/\1/p' <<<"$line" ;;
         gpu)      sed -n 's/.* gpu=\(-\?[0-9]*\).*/\1/p' <<<"$line" ;;
         mem)      sed -n 's/.* mem=\([0-9]*\).*/\1/p' <<<"$line" ;;

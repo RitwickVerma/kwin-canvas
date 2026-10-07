@@ -924,6 +924,41 @@ KWin.SceneEffect {
         entryAnims = {};
         if (keys.length) moveRev++;
     }
+    // The plane remembers the day. Every movement of the camera leaves a
+    // point on the path behind it; the trail draws the last few minutes of
+    // that path on the ground, so the zoomed-out plane answers "where have
+    // I been today". It lives at the skin's zoom and stays out of the 1:1
+    // seam - the closed location never changes.
+    property var pathPts: []
+    property int pathRev: 0
+    property string pathSvg: ""
+    property real lastPathAt: 0
+    function pathPrune() {
+        const now = Date.now();
+        let cut = 0;
+        while (cut < pathPts.length && now - pathPts[cut].t > 600000) cut++;
+        if (cut > 0) pathPts.splice(0, cut);
+        const parts = [];
+        for (let i = 0; i < pathPts.length; ++i) parts.push(pathPts[i].x.toFixed(0) + " " + pathPts[i].y.toFixed(0));
+        pathSvg = parts.length > 1 ? "M" + parts.join("L") : "";
+        pathRev++;
+    }
+    function pathSample() {
+        if (configuration.DayTrail === false) {
+            if (pathPts.length) { pathPts = []; pathSvg = ""; pathRev++; }
+            return;
+        }
+        const now = Date.now();
+        if (now - lastPathAt > 5000) { lastPathAt = now; pathPrune(); } // the parked trail still ages away
+        const vs = KWin.Workspace.virtualScreenGeometry;
+        const cx = viewX + vs.width / (2 * zoom);
+        const cy = viewY + vs.height / (2 * zoom);
+        const last = pathPts.length ? pathPts[pathPts.length - 1] : null;
+        if (last && Math.hypot(cx - last.x, cy - last.y) < 60) return;
+        pathPts.push({ x: cx, y: cy, t: now });
+        if (pathPts.length > 500) pathPts.shift();
+        pathPrune();
+    }
     function restoreLayout(back) {
         if (!back) return;
         targets = copyTargets(back.targets);
@@ -2315,6 +2350,7 @@ KWin.SceneEffect {
             if (effect.camLive()) effect.camStep(dt);
             effect.floatPinned(dt);
             effect.stepEntryAnims();
+            effect.pathSample();
         }
     }
 
@@ -4463,6 +4499,7 @@ KWin.SceneEffect {
             + " verb=" + (verb ? "1" : "0")
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
             + " ql=" + ql
+            + " trail=" + pathPts.length
             + " cpu=" + Math.round(cpuBusy)
             + " gpu=" + Math.round(gpuBusy)
             + " mem=" + Math.round(memBusy)
@@ -4871,6 +4908,34 @@ KWin.SceneEffect {
             // With the wallpaper behind it the base rect above is the ground's
             // background, and the grid draws over the wallpaper.
             drawBackground: effect.backdropMode() !== "wallpaper"
+        }
+
+        // The trail: the camera's path over the last few minutes, drawn on
+        // the ground. It is canvas-space like the threads - the wrapper maps
+        // the camera once per frame and the path string rebuilds only when
+        // the buffer changes (pathRev).
+        Item {
+            visible: effect.skinReveal > 0.02 && effect.ql < 2 && effect.pathSvg !== ""
+            x: -(effect.viewX * effect.zoom) - view.sg.x
+            y: -(effect.viewY * effect.zoom) - view.sg.y
+            scale: effect.zoom
+            transformOrigin: Item.TopLeft
+            z: 500
+            opacity: {
+                effect.skinReveal; effect.pathRev;
+                const n = effect.pathPts.length;
+                if (!n) return 0;
+                const headAge = Date.now() - effect.pathPts[n - 1].t;
+                return effect.skinReveal * 0.55 * Math.max(0, 1 - headAge / 600000);
+            }
+            Shape {
+                ShapePath {
+                    strokeWidth: 2.5 / effect.zoom
+                    strokeColor: "#2a6ddf"
+                    fillColor: "transparent"
+                    PathSvg { path: effect.pathSvg }
+                }
+            }
         }
 
         // Pan: left-drag on the ground, middle-drag anywhere, hold Space and

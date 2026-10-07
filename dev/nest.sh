@@ -138,6 +138,9 @@ GpuBare=100
 MemReduced=100
 MemMinimal=100
 MemBare=100
+# The trail would grow in every scenario's pans and shift every zoomed
+# golden; 134-day-trail sets it on and deletes it itself.
+DayTrail=false
 DebugSeq=0
 ToggleShortcut=Ctrl+Alt+Space
 HomeShortcut=Ctrl+Alt+Home

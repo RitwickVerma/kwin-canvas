@@ -115,6 +115,19 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-08 — the plane remembers the day
+
+The user approved the trail: the camera's path over the session, drawn
+on the ground as a faint fading line - the plane is the only continuous
+space, and its act is remembering. The sampler runs in the physics
+tick (a point every ~60 canvas px of the centre's travel, capped at
+500, pruned to the last ten minutes - the parked trail still ages
+away); the render is a camera-transform Shape like the threads, a
+#2a6ddf stroke at 2.5/zoom over the ground, fading with the head's age
+and the skin, gone at 1:1. The nest seeds DayTrail=false so no golden
+sees it; scenario 134 (3/0) proves the points, the line and the knob.
+The state line gained trail=.
+
 ### 2026-10-08 — the hover steps forward into the light
 
 The user's reports ran two ways: "im done playing. even logged in

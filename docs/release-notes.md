@@ -1,5 +1,12 @@
 Unreleased:
 
+- The plane remembers the day. The open canvas draws a faint fading
+  line on the ground where the camera has travelled this session - every
+  pan and zoom leaves a point behind, the oldest part is gone after
+  about ten minutes, and the whole trail lives in the zoomed-out world,
+  out of the 1:1 seam, so the normal desktop never changes. The DayTrail
+  knob turns it off.
+
 - The hover steps forward into the light. When the pointer settles on a
   window in the overworld, the rest of the plane - the ground, the
   frames, the threads, the windows behind it - dims under a whisper of
