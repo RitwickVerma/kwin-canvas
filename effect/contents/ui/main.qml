@@ -237,6 +237,10 @@ KWin.SceneEffect {
     // the state line names it - the gesture shows its destination before
     // the click lands.
     property var graspTarget: null
+    // When each window last had the focus, keyed by internalId: the cluster
+    // tour hops between the windows the hand actually used, like switching
+    // desktops that remember their own window.
+    property var focusAt: ({})
     function graspPick() {
         if (!grasp) return;
         const p = cursorScreen();
@@ -766,7 +770,9 @@ KWin.SceneEffect {
     }
     // Fly to the next or previous cluster in reading order (top to bottom,
     // left to right), from the one the eye is on. The camera springs to the
-    // cluster's centre at the current zoom, the toast names the stop.
+    // cluster's last-focused window - the one the hand left there - at the
+    // current zoom; a cluster no one has focused yet falls back to its
+    // centre. The toast names the stop.
     function clusterTravel(dir) {
         if (clusters.length === 0) return;
         const cur = clusterIndex();
@@ -781,12 +787,32 @@ KWin.SceneEffect {
         travelCluster = order[k];
         const c = clusters[order[k]];
         const g = actionScreen().geometry;
+        let dest = null;
+        let bestAt = 0;
+        for (const id of c.ids) {
+            const at = focusAt[id] || 0;
+            if (at > bestAt) { bestAt = at; dest = id; }
+        }
+        const destEntry = dest !== null ? entries.find(function (en) { return en.window.internalId === dest; }) : null;
+        // Smart placement: pan the least that brings the window wholly on
+        // screen, padded - a pick's landing, not a centring - so the tour
+        // arrives where the window already sits. A cluster no one has
+        // focused falls back to its centre.
+        let dx, dy;
+        if (destEntry) {
+            const d = smartPan({ x: destEntry.x, y: destEntry.y, width: destEntry.width, height: destEntry.height }, null, 24);
+            dx = d.dx;
+            dy = d.dy;
+        } else {
+            dx = c.cx - (g.x + g.width / 2) / zoom - viewX;
+            dy = c.cy - (g.y + g.height / 2) / zoom - viewY;
+        }
         // The jump leaves the old hover behind: the tour anchors to the
         // destination until the eye settles on something new.
         hoverEntry = null;
         focusEntry = null;
-        camGo(zoom, c.cx - (g.x + g.width / 2) / zoom, c.cy - (g.y + g.height / 2) / zoom, undefined, undefined, 3.0);
-        toast("Cluster " + (k + 1) + " of " + clusters.length);
+        camGo(zoom, viewX + dx, viewY + dy, undefined, undefined, 3.0);
+        toast(destEntry ? destEntry.window.caption : ("Cluster " + (k + 1) + " of " + clusters.length));
     }
     // A window's z in the overworld: the stacking order itself - the entries
     // are KWin's order, so the index IS the z - with the hovered window
@@ -2011,18 +2037,13 @@ KWin.SceneEffect {
         } else {
             camAnchored = false;
             camGoalX = goalX; camGoalY = goalY;
-            // A gentle push toward the goal, so a spring heading somewhere
-            // starts moving this frame rather than the next without
-            // snapping: a tenth of the critical speed moves a few percent
-            // of the distance in the first frame, an acceleration the eye
-            // reads as the flight getting under way, not a jerk.
-            if (camVX === 0) camVX = (camGoalX - viewX) * w * 0.12;
-            if (camVY === 0) camVY = (camGoalY - viewY) * w * 0.12;
+            // No kick. A critically damped spring let go from rest starts
+            // with the full acceleration and zero velocity: the first step
+            // is imperceptible and the flight builds into one unbroken
+            // glide. A push toward the goal here would snap the first
+            // frame - a jump the eye reads as a cut, not a flight.
         }
         camHasGoal = true;
-        // A push off the mark, so a spring heading somewhere starts moving this
-        // frame rather than the next.
-        if (camVZoom === 0) camVZoom = (z - zoom) * w * 0.12;
     }
 
     // A zoom about a screen point: the wheel at the cursor, a pinch, an edge
@@ -3803,8 +3824,8 @@ KWin.SceneEffect {
 
     ParallelAnimation {
         id: slideAnim
-        NumberAnimation { target: effect; property: "viewX"; to: effect.slideToX; duration: effect.panDuration; easing.type: Easing.OutCubic }
-        NumberAnimation { target: effect; property: "viewY"; to: effect.slideToY; duration: effect.panDuration; easing.type: Easing.OutCubic }
+        NumberAnimation { target: effect; property: "viewX"; to: effect.slideToX; duration: effect.panDuration; easing.type: Easing.InOutCubic }
+        NumberAnimation { target: effect; property: "viewY"; to: effect.slideToY; duration: effect.panDuration; easing.type: Easing.InOutCubic }
         onFinished: effect.endSlide()
     }
 
@@ -3922,6 +3943,8 @@ KWin.SceneEffect {
     Connections {
         target: KWin.Workspace
         function onWindowActivated(w) {
+            // Remember the focus for the cluster tour's destination.
+            if (w && !w.deleted) { focusAt[w.internalId] = Date.now(); }
             // Open: a raise (pass-through clicks) restacks the thumbnails.
             // The plane transform is only ever live while open, so the
             // on-screen test below always sees geometry as drawn.
@@ -3947,7 +3970,7 @@ KWin.SceneEffect {
         function onActivitiesChanged(id) { Qt.callLater(effect.activitiesChanged); }
         // App popups come and go with these too; resync() refreshes them.
         function onWindowAdded(w) { if (effect.visible) Qt.callLater(effect.resync); }
-        function onWindowRemoved(w) { if (effect.visible) Qt.callLater(effect.resync); }
+        function onWindowRemoved(w) { if (w) delete effect.focusAt[w.internalId]; if (effect.visible) Qt.callLater(effect.resync); }
         // Switching activities at 1:1 switches viewport: the ground follows.
         function onCurrentActivityChanged(id) {
             if (effect.refreshActivities()) effect.ensureTargets();

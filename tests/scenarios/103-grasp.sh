@@ -51,8 +51,10 @@ run_scenario() {
     wait
 
     # MB5 during the hold tours the clusters - the plane's desktops: the
-    # camera hops to the next cluster's centroid at 1:1, and the release
-    # opens the location there. A far pair makes a second cluster to tour to.
+    # camera hops to the next cluster's last-focused window at 1:1, and the
+    # release opens the location there. A far pair makes a second cluster to
+    # tour to; the arrange's chain activated Gwenview after Dolphin, so the
+    # far stop is Gwenview's centre (4230, 510).
     open_1to1
     c "placeby Dolphin 4000 800 700 360"
     c "placeby wallpaper.png 4000 300 460 420"
@@ -68,8 +70,8 @@ run_scenario() {
     assert_eq "the swap tours to the far cluster" "$(sget cluster)" 1
     sleep 0.9; c state
     assert_eq "and the release opens the location there" "$(sget visible)" false
-    assert_near "at the cluster's centroid, x" "$(sget viewx)" 3330 60
-    assert_near "and y" "$(sget viewy)" 205 60
+    assert_near "at the cluster's last-focused window, x" "$(sget viewx)" 2564 60
+    assert_near "and y" "$(sget viewy)" 100 60
     wait
 
     # A double-click during the hold animates like any step in: with the

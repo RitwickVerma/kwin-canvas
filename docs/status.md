@@ -115,6 +115,40 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-18 — the flights glide, and the cluster tour lands where the hand left off
+
+The user asked whether the flies could be more seamless and fluid "with
+no loss of fidelity", and floated the always-in-canvas idea. The answer
+shipped is the small one: the flights had two real seams left - the
+spring's kick (a push of ~5% of the distance in the first frame, read as
+a cut) and the slide's OutCubic lurch off the mark. The kick is gone:
+a critically damped spring from rest starts with zero velocity and full
+acceleration, so a step in, a step out and an activation fly are one
+continuous motion. The slide now eases in and out. Nothing about the
+landings changed - the scenario polls all stayed green. The
+always-in-canvas answer stands: the closed location is the reason the
+overworld can be fancy - the native desktop with zero overhead and the
+games' safe path; the direction is to make the transitions so cheap the
+canvas feels like it never left, which is exactly what this round does.
+
+Then the cluster tour (the grasp's MB5, the overworld's side button, the
+brackets) learned the desktop-switcher's memory: it flies to each
+cluster's last-focused window (tracked per window in `focusAt`, stamped
+on every activation, cleaned on removal) instead of the centroid, and
+the landing is a pick's placement - `smartPan`'s least pan bringing the
+window wholly on screen. A cluster nobody has focused falls back to its
+centre. One trap caught: the first cut built the camGo goal relative to
+the current view and overshot by exactly the starting view - the goal
+must be absolute. The scenario numbers moved because the landings moved
+by design (103: Gwenview's smart pan 2564,100; 106: 4944/2976/4944).
+
+Verified: make lint green; make unit 85/0; the full batch green - 94 27/0,
+100-flight 19/0, 71 12/0, 70 6/0, 103 26/0, 106 8/0, 107 6/0, 102 17/0,
+124 9/0, 125 5/0, 10-open 11/0, 30 14/0, 20 17/0, 90 28/0, 93 14/0,
+123 4/0, 116 13/0, 85 21/0, 87/88 2/0, 109 9/0, 110 5/0, 111 6/0,
+113 4/0, 112 20/0, 114 10/0, 126 8/0, 127 6/0, 128 3/0, 105 10/0,
+98 5/0, 50 4/0. No goldens moved.
+
 ### 2026-10-18 — the seam's ground is proven, and the grasp's hint names the release
 
 The user asked how the interaction feels overall; my honest answer

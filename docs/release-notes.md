@@ -1,5 +1,22 @@
 Unreleased:
 
+- The flights leave no pop behind. The camera's spring used to push
+  itself a few percent of the way in its first frame - a snap the eye
+  read as a cut - and the quiet slide used to lurch off the mark. The
+  spring now starts from rest with its full acceleration and builds into
+  one unbroken glide, and the slide eases in and out of its motion, so a
+  step in, a step out and an activation fly are one continuous motion
+  from the first frame to the seam.
+
+- The cluster tour lands where the hand left off. MB5 in the grasp, the
+  side button in the overworld and the bracket keys now fly to the
+  cluster's last-focused window - the one the hand actually used there,
+  the way a desktop remembers its own window - instead of its geometric
+  centre, and the landing is a pick's placement: the least pan that
+  brings the window wholly on screen, padded. A cluster no one has
+  focused yet still falls back to its centre, and the toast names the
+  window it landed on.
+
 - The grasp's hint names the release. Its last word flips at the exact
   boundary the release uses: zoomed in, it says "release to land"; past
   the widen point it says "release to open the world". The two outcomes

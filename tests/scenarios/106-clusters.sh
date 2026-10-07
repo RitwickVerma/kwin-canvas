@@ -25,16 +25,19 @@ run_scenario() {
     assert_true "the hovered window's cluster is current" \
         "$(grep -oE 'cluster=#[0-9]+' <<<"$LAST_STATE" | grep -oE '[0-9]+$' | awk '{print ($1 >= 1)}')" = 1
     # The bracket keys fly between the clusters in reading order: from the
-    # KCalc cluster the next stop is the lone KWrite, then the far cluster.
+    # KCalc cluster the next stop is the lone KWrite, then the far cluster's
+    # last-focused window (the arrange's chain touched Gwenview after
+    # Dolphin, so the far stop is Gwenview). Each landing is the smart pan:
+    # the least the camera must move to bring the window wholly on screen.
     printf 'key bracketright\n' | input
     sleep 0.5; c state
-    assert_near "the next cluster is the lone window's" "$(sget viewx)" "$(awk 'BEGIN{print 6520-960}')" 2
+    assert_near "the next cluster is the lone window's" "$(sget viewx)" "$(awk 'BEGIN{print 6840-1896}')" 2
     printf 'key bracketright\n' | input
     sleep 0.5; c state
-    assert_near "and the next is the far cluster" "$(sget viewx)" "$(awk 'BEGIN{print 3590-960}')" 2
+    assert_near "and the next is the far cluster's window" "$(sget viewx)" 2976 2
     printf 'key bracketleft\n' | input
     sleep 0.5; c state
-    assert_near "the previous key steps back" "$(sget viewx)" "$(awk 'BEGIN{print 6520-960}')" 2
+    assert_near "the previous key steps back" "$(sget viewx)" "$(awk 'BEGIN{print 6840-1896}')" 2
     # A hand on the cluster drags it whole: the pair moves together, their
     # geometry kept. The pair's cluster is whichever the state's cluster
     # lines name both KCalc and Konsole.
