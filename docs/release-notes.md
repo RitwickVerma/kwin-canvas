@@ -1,5 +1,13 @@
 Unreleased:
 
+- The scene tree hot-reloads. The canvas's look - everything the eye
+  sees - now lives in its own file, ui.qml, loaded through a
+  version-stamped URL: `make hot` bumps the revision and the running
+  session recompiles the scene on the spot, no re-login, no cache
+  dance. The effect's logic still lives in main.qml and still needs a
+  compositor restart, but a polish edit - a colour, a fade, a spacing -
+  lands in the moment.
+
 - The plane remembers the day. The open canvas draws a faint fading
   trail on the ground where the camera has travelled this session - a
   smooth comet of a line in the threads' own white, bright at the head

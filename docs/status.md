@@ -115,6 +115,30 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-09 — the scene tree hot-reloads: make hot replaces the re-login
+
+The user asked for a better way than re-logging in after every QML
+change. The mechanism was already pinned: KWin's QML engine holds the
+compiled component in memory, so neither `make reload` nor a cache wipe
+picks up an edit - only a compositor restart does. The fix is the Loader
+split: the scene tree moved out of main.qml into ui.qml, loaded through a
+version-stamped URL (`?rev=` from the hidden HotRev knob), so `make hot`
+(install + a knob bump + a reconfigure) gives the engine a new cache key
+and the scene recompiles in the running session. The proof: a UI-side
+edit (the trail's opacity) installed + bumped + reconfigured put a second
+`kwin-canvas ui: loaded` line in the nest's log without restarting its
+kwin. The effect's logic stays in main.qml and still needs the restart -
+the split is the honest line: the look hot-reloads, the logic restarts.
+
+Three bugs the proof surfaced, all fixed: the extracted ui.qml carried an
+extra closing brace; the four shared components (Grip, MenuBackground,
+IconButton, FrameTag) stayed in the root where the loaded scene cannot
+see their types ("FrameTag is not a type") - they moved into ui.qml's
+root Item, because a file's top level rejects `component` declarations;
+until then the scene rendered black (the root's state still answered -
+the split's root works regardless of the scene). The dead-code census
+now greps both files and scans the ui.qml ids.
+
 ### 2026-10-08 — the plane remembers the day
 
 The user approved the trail: the camera's path over the session, drawn

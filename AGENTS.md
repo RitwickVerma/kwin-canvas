@@ -18,7 +18,11 @@ stands right now is [docs/status.md](docs/status.md).
 2. **A QML edit needs a nest restart** (`make nest-reload`), not `make reload`:
    KWin's QML engine holds the component it compiled, so neither a reload nor
    clearing the QML cache picks up a new `main.qml`. In a live session only a
-   new Plasma session does.
+   new Plasma session does. The one exception is the scene tree: `ui.qml` is
+   loaded through a version-stamped URL, so a UI edit there applies with
+   `make hot` (it bumps the `HotRev` knob and the engine recompiles the
+   scene live). The effect's logic still lives in `main.qml` and still needs
+   the restart.
 3. **Measured, not assumed.** A scenario measures the effect's own state
    (`make nest-cmd CMD=state`), a screenshot pins the pixels, and a commit
    message ends with a `Verified:` paragraph naming the commands that passed.

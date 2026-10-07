@@ -329,7 +329,13 @@ recording, point OBS at the nest window while `DEMO_FRAMES=0 make demo` runs.
   as it is in a nest: `make reload` cannot pick up a `main.qml` edit, and
   clearing `~/.cache/kwin/qmlcache` does not either, since the cache is
   KWin's own QML engine. `make nest-reload` restarts the nest; the live
-  session needs a new Plasma session. A config-only change needs no restart:
+  session needs a new Plasma session. The exception: the scene tree lives in
+  `ui.qml`, loaded through a version-stamped URL, so `make hot` (install +
+  a `HotRev` bump + a reconfigure) recompiles the scene in the running
+  session - the engine treats the new revision as a new cache key. The
+  effect's logic stays in `main.qml` and still needs the restart; the proof
+  is the `kwin-canvas ui: loaded` line appearing twice in KWin's log without
+  one. A config-only change needs no restart:
   `reconfigureEffect` is enough.
 - **Socket name.** The Wayland socket lands in `$XDG_RUNTIME_DIR`, so it must
   not share a name with the harness state directory.

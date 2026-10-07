@@ -19,7 +19,10 @@ DEAD=()
 census() {
     local n=$1 desc=$2
     local uses
-    uses=$(grep -c "\b${n}\b" "${CENSUS_FILE:-effect/contents/ui/main.qml}")
+    # The references may live in either side of the hot-reload split: the
+    # logic declares in main.qml, the scene tree in ui.qml.
+    uses=$(grep -c "\b${n}\b" effect/contents/ui/main.qml)
+    uses=$((uses + $(grep -c "\b${n}\b" effect/contents/ui/ui.qml)))
     if [ "$uses" -le 1 ]; then
         DEAD+=("$desc: $n (declared, never referenced)")
     fi
@@ -29,20 +32,24 @@ census() {
 # use), properties, signals and ids.
 while IFS= read -r n; do
     case "$n" in on[A-Z]*) continue ;; esac
-    CENSUS_FILE=effect/contents/ui/main.qml census "$n" "main.qml function"
+    census "$n" "main.qml function"
 done < <(grep -oE "^[[:space:]]*function[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*\(" effect/contents/ui/main.qml \
     | sed -E 's/^[[:space:]]*function ([a-zA-Z_][a-zA-Z0-9_]*)\(/\1/')
 while IFS= read -r n; do
-    CENSUS_FILE=effect/contents/ui/main.qml census "$n" "main.qml property"
+    census "$n" "main.qml property"
 done < <(grep -oE "^[[:space:]]*(readonly[[:space:]]+)?property[[:space:]]+[a-zA-Z]+[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*" effect/contents/ui/main.qml \
     | awk '{print $NF}')
 while IFS= read -r n; do
-    CENSUS_FILE=effect/contents/ui/main.qml census "$n" "main.qml signal"
+    census "$n" "main.qml signal"
 done < <(grep -oE "^[[:space:]]*signal[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*" effect/contents/ui/main.qml \
     | awk '{print $NF}')
 while IFS= read -r n; do
-    CENSUS_FILE=effect/contents/ui/main.qml census "$n" "main.qml id"
+    census "$n" "main.qml id"
 done < <(grep -oE "^[[:space:]]*id:[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*" effect/contents/ui/main.qml \
+    | sed -E 's/.*id:[[:space:]]*//')
+while IFS= read -r n; do
+    census "$n" "ui.qml id"
+done < <(grep -oE "^[[:space:]]*id:[[:space:]]+[a-zA-Z_][a-zA-Z0-9_]*" effect/contents/ui/ui.qml \
     | sed -E 's/.*id:[[:space:]]*//')
 
 # The pure logic: each function needs a use in its own file, the effect or

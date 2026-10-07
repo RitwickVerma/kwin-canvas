@@ -121,6 +121,11 @@ reload: install ## Reinstall and reload the effect in the live session (QML chan
 	-$(QDBUS) org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect $(EFFECT_ID)
 	$(QDBUS) org.kde.KWin /Effects org.kde.kwin.Effects.loadEffect $(EFFECT_ID)
 
+hot: install ## Reinstall and hot-reload the scene tree: bump the HotRev knob so ui.qml recompiles live
+	@rev=$$(kreadconfig6 --file $(HOME)/.config/kwinrc --group Effect-kwin-canvas --key HotRev --default 0); \
+	kwriteconfig6 --file $(HOME)/.config/kwinrc --group Effect-kwin-canvas --key HotRev $$((rev + 1)); \
+	$(QDBUS) org.kde.KWin /Effects org.kde.kwin.Effects.reconfigureEffect $(EFFECT_ID)
+
 # A plain /KWin reconfigure never loads a newly enabled effect; ask by name.
 enable: ## Turn the effect on in the live session (disable the stock Zoom effect if it owns Meta+wheel)
 	@kwriteconfig6 --file kwinrc --group Plugins --key $(EFFECT_ID)Enabled true
