@@ -932,20 +932,50 @@ KWin.SceneEffect {
     property var pathPts: []
     property int pathRev: 0
     property string pathSvg: ""
+    property var pathChunks: []
     property real lastPathAt: 0
     function pathPrune() {
         const now = Date.now();
         let cut = 0;
         while (cut < pathPts.length && now - pathPts[cut].t > 600000) cut++;
         if (cut > 0) pathPts.splice(0, cut);
-        const parts = [];
-        for (let i = 0; i < pathPts.length; ++i) parts.push(pathPts[i].x.toFixed(0) + " " + pathPts[i].y.toFixed(0));
-        pathSvg = parts.length > 1 ? "M" + parts.join("L") : "";
+        const pts = pathPts;
+        const n = pts.length;
+        pathSvg = "";
+        pathChunks = [];
+        if (n < 2) { pathRev++; return; }
+        // The trail is a comet, not a crayon: a smooth Catmull-Rom curve
+        // (each segment pulled toward its neighbours), split into a few
+        // chunks so the oldest end fades out of existence instead of
+        // stopping dead.
+        const seg = function (i) {
+            const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(n - 1, i + 2)];
+            return "C" + (p1.x + (p2.x - p0.x) / 6).toFixed(1) + " " + (p1.y + (p2.y - p0.y) / 6).toFixed(1) + " "
+                + (p2.x - (p3.x - p1.x) / 6).toFixed(1) + " " + (p2.y - (p3.y - p1.y) / 6).toFixed(1) + " "
+                + p2.x.toFixed(1) + " " + p2.y.toFixed(1);
+        };
+        const ttl = 600000;
+        const K = Math.min(10, Math.max(1, Math.ceil(n / 24)));
+        const step = Math.max(1, Math.floor(n / K));
+        const chunks = [];
+        for (let k = 0; k < K; k++) {
+            const a = k * step;
+            const b = Math.min(n - 1, (k + 1) * step);
+            if (b <= a) continue;
+            const headAge = now - pts[b].t;
+            const o = 0.45 * Math.max(0, 1 - headAge / ttl);
+            if (o < 0.015) continue;
+            const c = [];
+            for (let i = a; i < b; i++) c.push(seg(i));
+            chunks.push({ svg: "M" + pts[a].x.toFixed(1) + " " + pts[a].y.toFixed(1) + " " + c.join(" "), o: o });
+        }
+        pathChunks = chunks;
+        pathSvg = chunks.length ? chunks[chunks.length - 1].svg : "";
         pathRev++;
     }
     function pathSample() {
         if (configuration.DayTrail === false) {
-            if (pathPts.length) { pathPts = []; pathSvg = ""; pathRev++; }
+            if (pathPts.length) { pathPts = []; pathSvg = ""; pathChunks = []; pathRev++; }
             return;
         }
         const now = Date.now();
@@ -4912,8 +4942,11 @@ KWin.SceneEffect {
 
         // The trail: the camera's path over the last few minutes, drawn on
         // the ground. It is canvas-space like the threads - the wrapper maps
-        // the camera once per frame and the path string rebuilds only when
-        // the buffer changes (pathRev).
+        // the camera once per frame and the path strings rebuild only when
+        // the buffer changes (pathRev). A comet, not a crayon: a smooth
+        // curve split into chunks that fade with their age, each a thin
+        // white core over a soft halo - the threads' own two-stroke, at a
+        // whisper.
         Item {
             visible: effect.skinReveal > 0.02 && effect.ql < 2 && effect.pathSvg !== ""
             x: -(effect.viewX * effect.zoom) - view.sg.x
@@ -4921,19 +4954,31 @@ KWin.SceneEffect {
             scale: effect.zoom
             transformOrigin: Item.TopLeft
             z: 500
-            opacity: {
-                effect.skinReveal; effect.pathRev;
-                const n = effect.pathPts.length;
-                if (!n) return 0;
-                const headAge = Date.now() - effect.pathPts[n - 1].t;
-                return effect.skinReveal * 0.55 * Math.max(0, 1 - headAge / 600000);
-            }
-            Shape {
-                ShapePath {
-                    strokeWidth: 2.5 / effect.zoom
-                    strokeColor: "#2a6ddf"
-                    fillColor: "transparent"
-                    PathSvg { path: effect.pathSvg }
+            opacity: effect.skinReveal * 0.5
+            Repeater {
+                model: { effect.pathRev; return effect.pathChunks.length; }
+                delegate: Item {
+                    required property int index
+                    readonly property var chunk: { effect.pathRev; return effect.pathChunks[index] || null; }
+                    Shape {
+                        opacity: chunk ? chunk.o : 0
+                        ShapePath {
+                            strokeWidth: 5 / effect.zoom
+                            strokeColor: Qt.rgba(1, 1, 1, 0.08)
+                            fillColor: "transparent"
+                            capStyle: ShapePath.RoundCap
+                            joinStyle: ShapePath.RoundJoin
+                            PathSvg { path: chunk ? chunk.svg : "" }
+                        }
+                        ShapePath {
+                            strokeWidth: 1.4 / effect.zoom
+                            strokeColor: Qt.rgba(1, 1, 1, 0.55)
+                            fillColor: "transparent"
+                            capStyle: ShapePath.RoundCap
+                            joinStyle: ShapePath.RoundJoin
+                            PathSvg { path: chunk ? chunk.svg : "" }
+                        }
+                    }
                 }
             }
         }
