@@ -115,6 +115,25 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-16 — the effect's pill leaves, the decoration's pill stays
+
+Two rounds, one verdict. First the user saw two pills on the focused
+window (the decoration's and the effect's coexisting), so the
+decoration was stripped to the invisible frame and the state accents
+moved onto the effect's pill. Then the user disliked the effect's
+decor outright ("i dont like the effects window decor. needs to go
+away. kill.") - so the effect-side pill is removed entirely (the
+plugin's pillAt/publishPill/pillRect/pillAction, the pillPress
+channel, the effect's pillTarget/pillSeam/pillClick machinery, the
+ui.qml pill item, scenario 136) and the decoration's pill is the
+chrome again (restored from 5b8165d: the focus-gated top-edge pill
+with the state accents). 135's glass_count focus-delta test back, 2/0/1.
+The translucency question answered honestly: the overworld's pictures
+are the windows' own textures, so a window translucent of itself shows
+the plane through it, but the blur extension's glass is the
+compositor's own paint on the real screen and cannot travel to the
+plane.
+
 ### 2026-10-16 — one pill, once
 
 The user saw two pills on the focused window: the decoration's

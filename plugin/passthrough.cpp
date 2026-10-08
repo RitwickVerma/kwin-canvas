@@ -119,12 +119,6 @@ CanvasPassthrough::CanvasPassthrough()
         if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
             canvas->setProperty("canvasHold", true);
         }
-        // The hold is the canvas's domain: the pill stands down, wherever
-        // the pointer rides during the grasp.
-        m_pillId.clear();
-        if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
-            canvas->setProperty("pillTarget", QString());
-        }
     });
 }
 
@@ -492,205 +486,6 @@ void CanvasPassthrough::publishChrome(const QPointF &screen)
     }
 }
 
-Window *CanvasPassthrough::pillAt(const QPointF &screen) const
-{
-    // The pill rides whichever edge the pointer approaches: a band above
-    // and below the frame's top and bottom, and left and right of the
-    // frame's sides - high enough for the pill's own capsule plus the
-    // approach. The topmost window in the stacking order wins.
-    if (m_pillGrab) {
-        // The grab owns the pointer: the pill hides while the window
-        // rides the hand. The window follows the pointer, so its edge
-        // stays under the pointer and the pill would never leave it.
-        m_pillEdge.clear();
-        return nullptr;
-    }
-    const QList<Window *> &stack = workspace()->stackingOrder();
-    for (auto it = stack.crbegin(); it != stack.crend(); ++it) {
-        Window *w = *it;
-        if (!w->isClient() || w->isDeleted()) {
-            continue;
-        }
-        if (w->isDesktop() || w->isDock() || w->isPopupWindow() || w->isSpecialWindow()) {
-            continue;
-        }
-        if (w->isMinimized() || w->isHidden() || !w->isOnCurrentDesktop()) {
-            continue;
-        }
-        const QRectF f = QRectF(w->frameGeometry());
-        const bool inX = screen.x() >= f.x() && screen.x() <= f.x() + f.width();
-        const bool inY = screen.y() >= f.y() && screen.y() <= f.y() + f.height();
-        // The bands hug the frame: the pill's own capsule just outside,
-        // a small lip inside. A wider band would catch the pointer on its
-        // way between windows and flip the pill from frame to frame (the
-        // churn the mouse's walk caused).
-        if (inX && screen.y() >= f.y() - 30 && screen.y() <= f.y() + 8) {
-            m_pillEdge = QStringLiteral("top");
-            if (m_pillSuppressed && m_pillEdge == m_pillSuppressEdge) {
-                return nullptr;
-            }
-            m_pillSuppressed = false;
-            return w;
-        }
-        if (inX && screen.y() >= f.y() + f.height() - 8 && screen.y() <= f.y() + f.height() + 30) {
-            m_pillEdge = QStringLiteral("bottom");
-            if (m_pillSuppressed && m_pillEdge == m_pillSuppressEdge) {
-                return nullptr;
-            }
-            m_pillSuppressed = false;
-            return w;
-        }
-        if (inY && screen.x() >= f.x() - 30 && screen.x() <= f.x() + 8) {
-            m_pillEdge = QStringLiteral("left");
-            if (m_pillSuppressed && m_pillEdge == m_pillSuppressEdge) {
-                return nullptr;
-            }
-            m_pillSuppressed = false;
-            return w;
-        }
-        if (inY && screen.x() >= f.x() + f.width() - 8 && screen.x() <= f.x() + f.width() + 30) {
-            m_pillEdge = QStringLiteral("right");
-            if (m_pillSuppressed && m_pillEdge == m_pillSuppressEdge) {
-                return nullptr;
-            }
-            m_pillSuppressed = false;
-            return w;
-        }
-    }
-    // The pointer left every band: the pill may come back when the
-    // pointer rides an edge again.
-    m_pillSuppressed = false;
-    m_pillEdge.clear();
-    return nullptr;
-}
-
-void CanvasPassthrough::publishPill(const QPointF &screen)
-{
-    // The pill follows the pointer along its edge - but the pointer
-    // riding the pill itself must not chase it: while the pointer sits
-    // inside the pill's rect, the pill stays put, so its cells stay
-    // reachable. The moment the pointer leaves, the pill glides to the
-    // new spot.
-    if (!m_pillId.isEmpty() && pillRect().contains(screen)) {
-        return;
-    }
-    const Window *w = pillAt(screen);
-    QString target;
-    if (w) {
-        const QRectF f = QRectF(w->frameGeometry());
-        // The pill travels its edge to sit closest to the pointer: the
-        // pointer's projection onto the edge, clamped so the whole
-        // capsule stays on it. A window narrower than the pill centres it.
-        // The target carries the pill's centre on screen.
-        qreal cx = screen.x();
-        qreal cy = screen.y();
-        const bool horizontal = m_pillEdge == QLatin1String("top") || m_pillEdge == QLatin1String("bottom");
-        if (horizontal) {
-            cx = f.width() >= 184 ? qBound(f.x() + 92, screen.x(), f.x() + f.width() - 92) : f.center().x();
-            cy = m_pillEdge == QLatin1String("top") ? f.y() - 15 : f.bottom() + 15;
-        } else {
-            cx = m_pillEdge == QLatin1String("left") ? f.x() - 15 : f.right() + 15;
-            cy = f.height() >= 184 ? qBound(f.y() + 92, screen.y(), f.y() + f.height() - 92) : f.center().y();
-        }
-        const QRectF r = horizontal ? QRectF(cx - 92, cy - 15, 184, 30) : QRectF(cx - 15, cy - 92, 30, 184);
-        // The pill never paints over another window: any client whose
-        // frame covers a stretch of the capsule hides it. The edge's
-        // clear portions are the pill's; the covered ones stay bare, and
-        // the pill glides past them as the pointer travels the edge.
-        bool covered = false;
-        for (Window *o : workspace()->stackingOrder()) {
-            if (o == w || !o->isClient() || o->isDeleted()) {
-                continue;
-            }
-            if (o->isDesktop() || o->isDock() || o->isPopupWindow() || o->isSpecialWindow()) {
-                continue;
-            }
-            if (o->isMinimized() || o->isHidden() || !o->isOnCurrentDesktop()) {
-                continue;
-            }
-            if (r.intersects(QRectF(o->frameGeometry()))) {
-                covered = true;
-                break;
-            }
-        }
-        if (!covered) {
-            target = QStringLiteral("%1|%2|%3|%4|%5|%6").arg(w->internalId().toString()).arg(m_pillEdge).arg(cx).arg(cy).arg(f.width()).arg(f.height());
-        }
-    }
-    if (target == m_pillId) {
-        return;
-    }
-    m_pillId = target;
-    if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
-        canvas->setProperty("pillTarget", target);
-    }
-}
-
-QRectF CanvasPassthrough::pillRect() const
-{
-    const QStringList p = m_pillId.split('|');
-    if (p.size() < 4) {
-        return QRectF();
-    }
-    const QString edge = p[1];
-    const qreal x = p[2].toDouble();
-    const qreal y = p[3].toDouble();
-    if (edge == QLatin1String("left") || edge == QLatin1String("right")) {
-        return QRectF(x - 15, y - 92, 30, 184);
-    }
-    return QRectF(x - 92, y - 15, 184, 30);
-}
-
-void CanvasPassthrough::pillAction(const QString &action, const QString &id)
-{
-    if (action == QLatin1String("grabend")) {
-        // The grab's end is by the grab itself, not by a window: the pill
-        // stood down and its id cleared while the window rode the hand,
-        // so the release has no target left - the grab member is the
-        // truth.
-        if (m_pillGrab) {
-            m_pillGrab = nullptr;
-            // The released window sits exactly under the pointer, so its
-            // edge band would pop the pill straight back. Keep it away
-            // until the pointer leaves every band, and clear the pill now
-            // so the effect's seam closes with it.
-            m_pillSuppressed = true;
-            m_pillId.clear();
-            if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
-                canvas->setProperty("pillTarget", QString());
-            }
-        }
-        return;
-    }
-    const QUuid uuid(id);
-    for (Window *w : workspace()->stackingOrder()) {
-        if (!w || w->internalId() != uuid) {
-            continue;
-        }
-        if (action == QLatin1String("close")) {
-            w->closeWindow();
-        } else if (action == QLatin1String("minimize")) {
-            w->setMinimized(!w->isMinimized());
-        } else if (action == QLatin1String("maximize")) {
-            const bool full = w->maximizeMode() == MaximizeMode::MaximizeFull;
-            w->setMaximize(!full, !full);
-        } else if (action == QLatin1String("float")) {
-            w->setKeepAbove(!w->keepAbove());
-        } else if (action == QLatin1String("grabstart")) {
-            // The pill's empty stretch is the grab: the window rides the
-            // pointer until the grab ends, the real frame moving with it.
-            // The start is the last pointer position the closed branches
-            // saw - the seat's own pointerPos lags behind the events the
-            // filter is processing.
-            m_pillSuppressEdge = m_pillEdge;
-            m_pillGrab = w;
-            m_pillStart = m_lastPosition;
-            m_pillOrigin = w->frameGeometry().topLeft();
-        }
-        break;
-    }
-}
-
 Window *CanvasPassthrough::windowAt(const QPointF &canvas) const
 {
     const QList<Window *> &stack = workspace()->stackingOrder();
@@ -840,26 +635,6 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
         }
     }
     m_idleTimer.start();
-    if (!m_active) {
-        // The pill's grab rides the window with the pointer: the frame
-        // follows the hand until the grab ends.
-        if (m_pillGrab) {
-            const QPointF d = event->position - m_pillStart;
-            m_pillGrab->move(m_pillOrigin + d);
-        }
-        // The closed desktop's pill: the pointer riding a window's edge
-        // publishes the target so the effect can show its pill there
-        // through the quiet seam. The canvas is closed, so no window takes
-        // the motion; the effect owns it. The hold stands it down: a glide
-        // can ride past a window's edge mid-grasp, and a pill popping up
-        // there would swallow the release that ends the drag (the 103
-        // class) - during the hold every press and motion is the canvas's.
-        if (!m_holdDown) {
-            publishPill(event->position);
-        }
-        return false;
-    }
-    // The first motion is the user aiming at the canvas: from here the
     // passthrough is live and the window under the pointer takes input.
     m_settled = true;
     // The grasp's overlay owns the pointer outright: once the hold zooms
@@ -1008,31 +783,6 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
         }
         m_clickWindow = nullptr;
     }
-    if (!m_active) {
-        // The pill owns its pixels: a press inside the pill's rect belongs
-        // to the effect - the glyph actions and the grab's start and end -
-        // never to the window stack under it. The quiet seam's scene takes
-        // no input of its own, so the plugin publishes the press (the empty
-        // string = the release) and consumes it; the effect reads it and
-        // answers through pillAction.
-        // The grab's release arrives after the pill hid itself (the grab
-        // owns the pointer and the pill stood down), so the branch must
-        // also serve the release that ends a live grab - the pill's rect
-        // is empty by then, but the grab still is.
-        if (!m_holdDown && (m_pillGrab || (!m_pillId.isEmpty() && pillRect().contains(event->position)))) {
-            m_lastPosition = event->position;
-            if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
-                // The press publishes the point, the release publishes a
-                // distinct sentinel - an empty string would be the same
-                // value the effect resets the property to after consuming
-                // a press, and QML would not re-fire the handler.
-                canvas->setProperty("pillPress", event->state == PointerButtonState::Pressed ? QStringLiteral("%1|%2").arg(event->position.x()).arg(event->position.y()) : QStringLiteral("up"));
-            }
-            return true;
-        }
-        return false;
-    }
-    // The system's own chrome - a dock, a panel, an applet's dropdown -
     // owns its pixels. A press over it never enters or activates the
     // window drawn underneath; the scene's handlers stand back too (the
     // chromeHover gate), so the chrome gets the click natively.
