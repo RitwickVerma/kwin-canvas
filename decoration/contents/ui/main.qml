@@ -59,8 +59,10 @@ Decoration {
         // client's top edge); one pill height lower it is entirely
         // behind the client and invisible. The activeWindow switch is
         // the whole show: the slide out and the slide back are the same
-        // spring.
-        y: dragBand.y + dragBand.height - pill.height + (root.activeWindow ? 0 : pill.height)
+        // spring. A maximized window keeps the pill tucked away too -
+        // the full-bleed surface is its own chrome, and the band above
+        // it still drags (KWin un-maximizes on the drag).
+        y: dragBand.y + dragBand.height - pill.height + ((root.activeWindow && !root.maximized) ? 0 : pill.height)
         Behavior on y {
             SpringAnimation { spring: 2.6; damping: 0.8; epsilon: 0.01 }
         }
