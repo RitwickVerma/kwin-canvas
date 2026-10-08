@@ -15,9 +15,12 @@
 
     The QML decoration cannot blur the desktop behind it (the engine
     exposes no blur region - Klassy can, as a C++ decoration); the glass
-    and the refraction here are drawn, and read the same.
+    and the refraction here are drawn, and read the same. The corners
+    are the same story: the compositor draws the client square, so the
+    QML frame cannot round it - the shadow rounds, the window does not.
 */
 import QtQuick
+import Qt5Compat.GraphicalEffects
 import org.kde.kwin.decoration
 
 Decoration {
@@ -25,10 +28,26 @@ Decoration {
     alpha: true
 
     readonly property bool activeWindow: decoration.client.active
-    readonly property color line: activeWindow ? Qt.rgba(1, 1, 1, 0.30) : Qt.rgba(1, 1, 1, 0.14)
+    readonly property color line: activeWindow ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(1, 1, 1, 0.08)
     readonly property color glyph: activeWindow ? Qt.rgba(1, 1, 1, 0.88) : Qt.rgba(1, 1, 1, 0.45)
     readonly property color glass: Qt.rgba(0.05, 0.05, 0.08, 0.62)
     readonly property bool pillShown: stripHover.hovered || closeButton.hovered || minButton.hovered || maxButton.hovered || closeButton.pressed || minButton.pressed || maxButton.pressed
+
+    // The shadow: the window's own, drawn into the extended borders.
+    // The frame reads as a sheet floating above the desktop instead of
+    // a flat rectangle on it.
+    Rectangle {
+        anchors.fill: parent
+        anchors.margins: -28
+        radius: 10
+        color: root.activeWindow ? Qt.rgba(0, 0, 0, 0.55) : Qt.rgba(0, 0, 0, 0.35)
+        layer.enabled: true
+        layer.effect: GaussianBlur {
+            radius: 20
+            samples: 32
+            transparentBorder: true
+        }
+    }
 
     // The frame: a hairline, the window's own content untouched inside.
     Rectangle {
@@ -36,6 +55,18 @@ Decoration {
         color: "transparent"
         border.width: 1
         border.color: root.line
+    }
+
+    // The bevel: a faint lift along the top edge - the light that makes
+    // the sheet read as a sheet.
+    Rectangle {
+        anchors {
+            left: parent.left
+            right: parent.right
+            top: parent.top
+        }
+        height: 1
+        color: root.activeWindow ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(1, 1, 1, 0.04)
     }
 
     // The drag band: the whole top edge drags the window. Invisible by
@@ -240,7 +271,7 @@ Decoration {
         borders.setBorders(6);
         borders.setTitle(24);
         maximizedBorders.setTitle(24);
-        extendedBorders.setAllBorders(0);
+        extendedBorders.setAllBorders(28);
         decoration.installTitleItem(dragBand);
     }
 }
