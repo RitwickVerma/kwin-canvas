@@ -24,6 +24,10 @@ Decoration {
     alpha: true
 
     readonly property bool activeWindow: decoration.client.active
+    // The states the pill shows: a floated window wears the accent ring
+    // and the filled arrow; a maximized one shows the restore glyph.
+    readonly property bool floating: decoration.client.keepAbove
+    readonly property bool maximized: decoration.client.maximized
     readonly property color glyph: activeWindow ? Qt.rgba(1, 1, 1, 0.88) : Qt.rgba(1, 1, 1, 0.45)
     readonly property color glass: Qt.rgba(0.05, 0.05, 0.08, 0.62)
     readonly property bool pillShown: stripHover.hovered || closeButton.hovered || minButton.hovered || maxButton.hovered || floatButton.hovered || closeButton.pressed || minButton.pressed || maxButton.pressed || floatButton.pressed
@@ -121,10 +125,10 @@ Decoration {
                         ctx.strokeStyle = "#ffffff";
                         ctx.lineWidth = 1.2;
                         ctx.beginPath();
-                        ctx.moveTo(1, 1);
-                        ctx.lineTo(8, 8);
-                        ctx.moveTo(8, 1);
-                        ctx.lineTo(1, 8);
+                        ctx.moveTo(1.5, 1.5);
+                        ctx.lineTo(8.5, 8.5);
+                        ctx.moveTo(8.5, 1.5);
+                        ctx.lineTo(1.5, 8.5);
                         ctx.stroke();
                     }
                 }
@@ -173,7 +177,7 @@ Decoration {
                 }
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 9
+                    width: 8
                     height: 1.2
                     color: "#ffffff"
                 }
@@ -210,7 +214,7 @@ Decoration {
                     width: 16
                     height: 16
                     radius: 8
-                    color: maxButton.pressed ? Qt.rgba(1, 1, 1, 0.42) : (maxButton.hovered ? Qt.rgba(1, 1, 1, 0.28) : "transparent")
+                    color: maxButton.pressed ? Qt.rgba(1, 1, 1, 0.42) : (maxButton.hovered ? Qt.rgba(1, 1, 1, 0.28) : (root.maximized ? Qt.rgba(0.16, 0.43, 0.87, 0.30) : "transparent"))
                     Behavior on color {
                         ColorAnimation {
                             duration: 140
@@ -218,16 +222,39 @@ Decoration {
                         }
                     }
                     border.width: 1
-                    border.color: maxButton.hovered || maxButton.pressed ? Qt.rgba(1, 1, 1, 0.95) : root.glyph
+                    border.color: maxButton.hovered || maxButton.pressed ? Qt.rgba(1, 1, 1, 0.95) : (root.maximized ? "#2a6ddf" : root.glyph)
+                    Behavior on border.color {
+                        ColorAnimation {
+                            duration: 140
+                            easing.type: Easing.OutCubic
+                        }
+                    }
                 }
-                // The maximize mark: a hollow square.
-                Rectangle {
+                // The maximize mark: a hollow square, or the restore pair
+                // when the window is maximized - drawn in the accent.
+                Canvas {
+                    id: maxGlyph
                     anchors.centerIn: parent
-                    width: 9
-                    height: 9
-                    color: "transparent"
-                    border.width: 1.2
-                    border.color: "#ffffff"
+                    width: 10
+                    height: 10
+                    onPaint: {
+                        const ctx = getContext("2d");
+                        const lit = root.maximized;
+                        ctx.strokeStyle = lit ? "#2a6ddf" : "#ffffff";
+                        ctx.lineWidth = 1.2;
+                        if (lit) {
+                            ctx.strokeRect(1.2, 3.2, 5.6, 5.6);
+                            ctx.strokeRect(3.2, 1.2, 5.6, 5.6);
+                        } else {
+                            ctx.strokeRect(1.5, 1.5, 7, 7);
+                        }
+                    }
+                    Connections {
+                        target: root
+                        function onMaximizedChanged() {
+                            maxGlyph.requestPaint();
+                        }
+                    }
                 }
                 MouseArea {
                     anchors.fill: parent
@@ -262,7 +289,7 @@ Decoration {
                     width: 16
                     height: 16
                     radius: 8
-                    color: floatButton.pressed ? Qt.rgba(1, 1, 1, 0.42) : (floatButton.hovered ? Qt.rgba(1, 1, 1, 0.28) : "transparent")
+                    color: floatButton.pressed ? Qt.rgba(1, 1, 1, 0.42) : (floatButton.hovered ? Qt.rgba(1, 1, 1, 0.28) : (root.floating ? Qt.rgba(0.16, 0.43, 0.87, 0.30) : "transparent"))
                     Behavior on color {
                         ColorAnimation {
                             duration: 140
@@ -270,26 +297,44 @@ Decoration {
                         }
                     }
                     border.width: 1
-                    border.color: floatButton.hovered || floatButton.pressed ? Qt.rgba(1, 1, 1, 0.95) : root.glyph
+                    border.color: floatButton.hovered || floatButton.pressed ? Qt.rgba(1, 1, 1, 0.95) : (root.floating ? "#2a6ddf" : root.glyph)
+                    Behavior on border.color {
+                        ColorAnimation {
+                            duration: 140
+                            easing.type: Easing.OutCubic
+                        }
+                    }
                 }
-                // The float mark: an up arrow - keep above others.
+                // The float mark: an up arrow - filled in the canvas's
+                // accent when the window floats, hollow when it does not.
                 Canvas {
+                    id: floatGlyph
                     anchors.centerIn: parent
                     width: 10
                     height: 10
                     onPaint: {
                         const ctx = getContext("2d");
-                        ctx.strokeStyle = "#ffffff";
+                        const lit = root.floating;
+                        ctx.strokeStyle = lit ? "#2a6ddf" : "#ffffff";
+                        ctx.fillStyle = lit ? "#2a6ddf" : "transparent";
                         ctx.lineWidth = 1.3;
                         ctx.beginPath();
                         ctx.moveTo(1.5, 7);
                         ctx.lineTo(5, 2.5);
                         ctx.lineTo(8.5, 7);
+                        ctx.closePath();
+                        if (lit) ctx.fill();
                         ctx.stroke();
                         ctx.beginPath();
                         ctx.moveTo(5, 2.5);
                         ctx.lineTo(5, 8);
                         ctx.stroke();
+                    }
+                    Connections {
+                        target: root
+                        function onFloatingChanged() {
+                            floatGlyph.requestPaint();
+                        }
                     }
                 }
                 MouseArea {
