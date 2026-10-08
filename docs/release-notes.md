@@ -1,5 +1,18 @@
 Unreleased:
 
+- The pill travels its edge, never covers a window, and the grab lets
+  go. The one pill now rides its edge to stay nearest the pointer, so
+  it is always where the hand is, and it glides there instead of
+  jumping. It never paints over another window: a stretch of the edge
+  that another window covers stays bare, and the pill slides past it.
+  Dragging a window by the grip dots hides the pill while the window
+  rides the hand, and the release ends the drag cleanly - the pill
+  stands down on the grabbed window's own edge until the pointer
+  leaves it, while every other edge keeps working. And the seam no
+  longer churns: walking the pointer across windows opens the canvas
+  once and closes it a beat after the pill is gone, instead of
+  flickering in and out per window.
+
 - The canvas has its own window chrome: one pill, wherever the pointer
   rides. Approach any edge of any window - top, bottom, left or right,
   over the closed desktop too - and the pill appears there, one glass

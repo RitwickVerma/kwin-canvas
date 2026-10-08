@@ -498,6 +498,13 @@ Window *CanvasPassthrough::pillAt(const QPointF &screen) const
     // and below the frame's top and bottom, and left and right of the
     // frame's sides - high enough for the pill's own capsule plus the
     // approach. The topmost window in the stacking order wins.
+    if (m_pillGrab) {
+        // The grab owns the pointer: the pill hides while the window
+        // rides the hand. The window follows the pointer, so its edge
+        // stays under the pointer and the pill would never leave it.
+        m_pillEdge.clear();
+        return nullptr;
+    }
     const QList<Window *> &stack = workspace()->stackingOrder();
     for (auto it = stack.crbegin(); it != stack.crend(); ++it) {
         Window *w = *it;
@@ -513,37 +520,102 @@ Window *CanvasPassthrough::pillAt(const QPointF &screen) const
         const QRectF f = QRectF(w->frameGeometry());
         const bool inX = screen.x() >= f.x() && screen.x() <= f.x() + f.width();
         const bool inY = screen.y() >= f.y() && screen.y() <= f.y() + f.height();
-        if (inX && screen.y() >= f.y() - 36 && screen.y() <= f.y() + 14) {
+        // The bands hug the frame: the pill's own capsule just outside,
+        // a small lip inside. A wider band would catch the pointer on its
+        // way between windows and flip the pill from frame to frame (the
+        // churn the mouse's walk caused).
+        if (inX && screen.y() >= f.y() - 30 && screen.y() <= f.y() + 8) {
             m_pillEdge = QStringLiteral("top");
+            if (m_pillSuppressed && m_pillEdge == m_pillSuppressEdge) {
+                return nullptr;
+            }
+            m_pillSuppressed = false;
             return w;
         }
-        if (inX && screen.y() >= f.y() + f.height() - 14 && screen.y() <= f.y() + f.height() + 36) {
+        if (inX && screen.y() >= f.y() + f.height() - 8 && screen.y() <= f.y() + f.height() + 30) {
             m_pillEdge = QStringLiteral("bottom");
+            if (m_pillSuppressed && m_pillEdge == m_pillSuppressEdge) {
+                return nullptr;
+            }
+            m_pillSuppressed = false;
             return w;
         }
-        if (inY && screen.x() >= f.x() - 36 && screen.x() <= f.x() + 14) {
+        if (inY && screen.x() >= f.x() - 30 && screen.x() <= f.x() + 8) {
             m_pillEdge = QStringLiteral("left");
+            if (m_pillSuppressed && m_pillEdge == m_pillSuppressEdge) {
+                return nullptr;
+            }
+            m_pillSuppressed = false;
             return w;
         }
-        if (inY && screen.x() >= f.x() + f.width() - 14 && screen.x() <= f.x() + f.width() + 36) {
+        if (inY && screen.x() >= f.x() + f.width() - 8 && screen.x() <= f.x() + f.width() + 30) {
             m_pillEdge = QStringLiteral("right");
+            if (m_pillSuppressed && m_pillEdge == m_pillSuppressEdge) {
+                return nullptr;
+            }
+            m_pillSuppressed = false;
             return w;
         }
     }
+    // The pointer left every band: the pill may come back when the
+    // pointer rides an edge again.
+    m_pillSuppressed = false;
     m_pillEdge.clear();
     return nullptr;
 }
 
 void CanvasPassthrough::publishPill(const QPointF &screen)
 {
+    // The pill follows the pointer along its edge - but the pointer
+    // riding the pill itself must not chase it: while the pointer sits
+    // inside the pill's rect, the pill stays put, so its cells stay
+    // reachable. The moment the pointer leaves, the pill glides to the
+    // new spot.
+    if (!m_pillId.isEmpty() && pillRect().contains(screen)) {
+        return;
+    }
     const Window *w = pillAt(screen);
     QString target;
     if (w) {
         const QRectF f = QRectF(w->frameGeometry());
-        // The whole picture the effect needs: the window's id for the
-        // actions, the edge the pointer is riding, and the frame itself
-        // for the pill's spot.
-        target = QStringLiteral("%1|%2|%3|%4|%5|%6").arg(w->internalId().toString()).arg(m_pillEdge).arg(f.x()).arg(f.y()).arg(f.width()).arg(f.height());
+        // The pill travels its edge to sit closest to the pointer: the
+        // pointer's projection onto the edge, clamped so the whole
+        // capsule stays on it. A window narrower than the pill centres it.
+        // The target carries the pill's centre on screen.
+        qreal cx = screen.x();
+        qreal cy = screen.y();
+        const bool horizontal = m_pillEdge == QLatin1String("top") || m_pillEdge == QLatin1String("bottom");
+        if (horizontal) {
+            cx = f.width() >= 184 ? qBound(f.x() + 92, screen.x(), f.x() + f.width() - 92) : f.center().x();
+            cy = m_pillEdge == QLatin1String("top") ? f.y() - 15 : f.bottom() + 15;
+        } else {
+            cx = m_pillEdge == QLatin1String("left") ? f.x() - 15 : f.right() + 15;
+            cy = f.height() >= 184 ? qBound(f.y() + 92, screen.y(), f.y() + f.height() - 92) : f.center().y();
+        }
+        const QRectF r = horizontal ? QRectF(cx - 92, cy - 15, 184, 30) : QRectF(cx - 15, cy - 92, 30, 184);
+        // The pill never paints over another window: any client whose
+        // frame covers a stretch of the capsule hides it. The edge's
+        // clear portions are the pill's; the covered ones stay bare, and
+        // the pill glides past them as the pointer travels the edge.
+        bool covered = false;
+        for (Window *o : workspace()->stackingOrder()) {
+            if (o == w || !o->isClient() || o->isDeleted()) {
+                continue;
+            }
+            if (o->isDesktop() || o->isDock() || o->isPopupWindow() || o->isSpecialWindow()) {
+                continue;
+            }
+            if (o->isMinimized() || o->isHidden() || !o->isOnCurrentDesktop()) {
+                continue;
+            }
+            if (r.intersects(QRectF(o->frameGeometry()))) {
+                covered = true;
+                break;
+            }
+        }
+        if (!covered) {
+            target = QStringLiteral("%1|%2|%3|%4|%5|%6").arg(w->internalId().toString()).arg(m_pillEdge).arg(cx).arg(cy).arg(f.width()).arg(f.height());
+        }
     }
     if (target == m_pillId) {
         return;
@@ -557,21 +629,39 @@ void CanvasPassthrough::publishPill(const QPointF &screen)
 QRectF CanvasPassthrough::pillRect() const
 {
     const QStringList p = m_pillId.split('|');
-    if (p.size() < 6) {
+    if (p.size() < 4) {
         return QRectF();
     }
-    const QRectF f(p[2].toDouble(), p[3].toDouble(), p[4].toDouble(), p[5].toDouble());
     const QString edge = p[1];
+    const qreal x = p[2].toDouble();
+    const qreal y = p[3].toDouble();
     if (edge == QLatin1String("left") || edge == QLatin1String("right")) {
-        const qreal x = edge == QLatin1String("left") ? f.x() - 30 : f.right();
-        return QRectF(x, f.center().y() - 92, 30, 184);
+        return QRectF(x - 15, y - 92, 30, 184);
     }
-    const qreal y = edge == QLatin1String("top") ? f.y() - 30 : f.bottom();
-    return QRectF(f.center().x() - 92, y, 184, 30);
+    return QRectF(x - 92, y - 15, 184, 30);
 }
 
 void CanvasPassthrough::pillAction(const QString &action, const QString &id)
 {
+    if (action == QLatin1String("grabend")) {
+        // The grab's end is by the grab itself, not by a window: the pill
+        // stood down and its id cleared while the window rode the hand,
+        // so the release has no target left - the grab member is the
+        // truth.
+        if (m_pillGrab) {
+            m_pillGrab = nullptr;
+            // The released window sits exactly under the pointer, so its
+            // edge band would pop the pill straight back. Keep it away
+            // until the pointer leaves every band, and clear the pill now
+            // so the effect's seam closes with it.
+            m_pillSuppressed = true;
+            m_pillId.clear();
+            if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+                canvas->setProperty("pillTarget", QString());
+            }
+        }
+        return;
+    }
     const QUuid uuid(id);
     for (Window *w : workspace()->stackingOrder()) {
         if (!w || w->internalId() != uuid) {
@@ -592,11 +682,10 @@ void CanvasPassthrough::pillAction(const QString &action, const QString &id)
             // The start is the last pointer position the closed branches
             // saw - the seat's own pointerPos lags behind the events the
             // filter is processing.
+            m_pillSuppressEdge = m_pillEdge;
             m_pillGrab = w;
             m_pillStart = m_lastPosition;
             m_pillOrigin = w->frameGeometry().topLeft();
-        } else if (action == QLatin1String("grabend")) {
-            m_pillGrab = nullptr;
         }
         break;
     }
@@ -756,7 +845,6 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
         // follows the hand until the grab ends.
         if (m_pillGrab) {
             const QPointF d = event->position - m_pillStart;
-            qCDebug(KWIN_CANVAS) << "canvas-passthrough: pill grab-move ev=" << event->position << "start=" << m_pillStart << "d=" << d << "origin=" << m_pillOrigin;
             m_pillGrab->move(m_pillOrigin + d);
         }
         // The closed desktop's pill: the pointer riding a window's edge
@@ -927,10 +1015,18 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
         // no input of its own, so the plugin publishes the press (the empty
         // string = the release) and consumes it; the effect reads it and
         // answers through pillAction.
-        if (!m_holdDown && !m_pillId.isEmpty() && pillRect().contains(event->position)) {
+        // The grab's release arrives after the pill hid itself (the grab
+        // owns the pointer and the pill stood down), so the branch must
+        // also serve the release that ends a live grab - the pill's rect
+        // is empty by then, but the grab still is.
+        if (!m_holdDown && (m_pillGrab || (!m_pillId.isEmpty() && pillRect().contains(event->position)))) {
             m_lastPosition = event->position;
             if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
-                canvas->setProperty("pillPress", event->state == PointerButtonState::Pressed ? QStringLiteral("%1|%2").arg(event->position.x()).arg(event->position.y()) : QString());
+                // The press publishes the point, the release publishes a
+                // distinct sentinel - an empty string would be the same
+                // value the effect resets the property to after consuming
+                // a press, and QML would not re-fire the handler.
+                canvas->setProperty("pillPress", event->state == PointerButtonState::Pressed ? QStringLiteral("%1|%2").arg(event->position.x()).arg(event->position.y()) : QStringLiteral("up"));
             }
             return true;
         }

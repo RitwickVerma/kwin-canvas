@@ -195,7 +195,11 @@ Item {
     // way to pick up a QML edit without restarting the compositor.
     // The logic above this delegate lives on the effect itself and is
     // unaffected by the bump.
-    Component.onCompleted: console.log("kwin-canvas ui: loaded")
+    // The loaded scene must own the keyboard focus: KWin delivers the
+    // scene's keys to the QuickView's active focus item, and a static
+    // focus binding inside a loaded item never takes it - the split's
+    // own regression. The force is the only form that registers.
+    Component.onCompleted: { console.log("kwin-canvas ui: loaded"); view.forceActiveFocus(); }
         id: view
         readonly property var screen: KWin.SceneView.screen
         readonly property rect sg: KWin.SceneView.screen.geometry
@@ -1783,16 +1787,22 @@ Item {
             readonly property string edge: p.length > 1 ? p[1] : "top"
             readonly property real fx: p.length > 2 ? Number(p[2]) : 0
             readonly property real fy: p.length > 3 ? Number(p[3]) : 0
-            readonly property real fw: p.length > 4 ? Number(p[4]) : 0
-            readonly property real fh: p.length > 5 ? Number(p[5]) : 0
             // The pill hugs whichever edge the pointer is riding: the
             // top and bottom keep it horizontal, the sides rotate it so
-            // the capsule stands along the frame's edge.
+            // the capsule stands along the frame's edge. The target
+            // carries the pill's centre, and the rotation spins about
+            // the centre too, so the capsule sits exactly where the
+            // plugin placed it - travelling its edge with the pointer.
             rotation: edge === "left" ? -90 : (edge === "right" ? 90 : 0)
             width: 184
             height: 30
-            x: edge === "left" ? fx - 15 - width / 2 : (edge === "right" ? fx + fw + 15 - width / 2 : fx + fw / 2 - width / 2)
-            y: edge === "top" ? fy - height : (edge === "bottom" ? fy + fh : fy + fh / 2 - height / 2)
+            x: fx - width / 2
+            y: fy - height / 2
+            // The pill glides between the edges it rides instead of
+            // teleporting: the pointer walking the desktop would make the
+            // instant hop read as a glitch across every window it passes.
+            Behavior on x { enabled: effect.pillTarget !== ""; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+            Behavior on y { enabled: effect.pillTarget !== ""; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
             Rectangle {
                 anchors.fill: parent
                 radius: 15

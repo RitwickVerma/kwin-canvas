@@ -115,6 +115,30 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-15 — the pill travels, and the seam stops churning
+
+The pill round's live reports, in order: it glitched on the unfocused
+windows, the windows flickered in and out of the canvas as the mouse
+moved, the grab button never left, the pill should travel its edge to
+the pointer, and it must never paint over another window. Five fixes,
+each a measured root: (1) the pill's target became its screen CENTRE,
+clamped along the edge to the pointer's position, so it travels and
+the ui glides it (140 ms); (2) the seam-churn became a debounce - the
+quiet close waits 600 ms after the target clears, so a walk across
+the desktop opens the seam once instead of per window; (3) the grab
+hides the pill while the window rides the hand (it would chase the
+window forever), and the release's grabend moved out of the target
+lookup with an edge-scoped suppression, so the grabbed window's own
+edge stays quiet while every other edge keeps working; (4) the
+release publishes a "up" sentinel because a QML property's same-value
+write never re-fires its handler; (5) the pill hides on any stretch
+its capsule would overlap another window's frame. The 136 scenario
+grew the covered/clear asserts and passed 11/0; 110-hover-raise's
+focus assert became a poll after the pill round's latency exposed its
+race. The banked traps: the commit on the closed canvas does not
+write the frames; the Timer's id must exist before the handlers
+reference it.
+
 ### 2026-10-14 — the canvas's one pill: any edge, a grab, the real actions
 
 The decoration's per-window pill grew a canvas-wide twin. The plugin

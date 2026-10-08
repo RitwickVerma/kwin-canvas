@@ -12,6 +12,7 @@ run_scenario() {
     # The scenario reads absolute positions: put the layout back first,
     # whatever the earlier scenarios slid where.
     arrange >/dev/null
+
     open_1to1
     c "zoom 0.5 960 540"
     # WASD pans the camera one step each, left first.

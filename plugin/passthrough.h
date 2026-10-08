@@ -240,6 +240,12 @@ private:
     /** The grab's press position and the frame's top-left at the press. */
     QPointF m_pillStart;
     QPointF m_pillOrigin;
+    /** The grab just ended: the pill stays away from the grab's own edge
+     * until the pointer leaves it, so the released window does not re-pop
+     * it - other edges stay live. */
+    mutable bool m_pillSuppressed = false;
+    /** The edge the grab held, for the suppression above. */
+    mutable QString m_pillSuppressEdge;
     /** The /proc/stat jiffies at the previous load() call, for the busy delta. */
     mutable qulonglong m_prevTotal = 0;
     mutable qulonglong m_prevIdle = 0;

@@ -1891,17 +1891,41 @@ KWin.SceneEffect {
     property bool pillSeam: false
     onPillTargetChanged: {
         if (pillTarget !== "") {
+            pillCloseTimer.stop();
             if (!visible) {
                 pillSeam = true;
                 open(true);
             }
         } else if (pillSeam && visible && quiet) {
-            pillSeam = false;
-            visible = false;
-            quiet = false;
+            // The pill is gone: give the pointer a beat to land on another
+            // edge before closing the seam. The walk across the desktop
+            // must not thrash the open and the close.
+            pillCloseTimer.restart();
+        }
+    }
+    // The seam's own close waits out the beat, so a pill re-appearing on
+    // a neighbouring edge never flickers the desktop in and out.
+    Timer {
+        id: pillCloseTimer
+        interval: 600
+        repeat: false
+        onTriggered: {
+            if (pillSeam && visible && quiet && pillTarget === "") {
+                pillSeam = false;
+                visible = false;
+                quiet = false;
+            }
         }
     }
     function pillClick(action) {
+        if (action === "grabend") {
+            // The grab's end has no target: the pill stood down and its
+            // id cleared while the window rode the hand, so the release
+            // names no window - the plugin's grab member is the truth.
+            pillActionCall.arguments = [action, ""];
+            pillActionCall.call();
+            return;
+        }
         if (pillTarget === "") return;
         pillActionCall.arguments = [action, pillTarget.split("|")[0]];
         pillActionCall.call();
@@ -1914,11 +1938,19 @@ KWin.SceneEffect {
     // the drag, a glyph fires its action.
     property string pillPress: ""
     onPillPressChanged: {
-        if (pillPress === "") {
+        if (pillPress === "up") {
+            // The grab's release: the pill stood down during the drag,
+            // so this sentinel (not an empty string - the handler resets
+            // to it after each press, and QML skips a same-value write)
+            // ends the grab.
             if (pillGrabDown) {
                 pillGrabDown = false;
                 pillClick("grabend");
             }
+            pillPress = "";
+            return;
+        }
+        if (pillPress === "") {
             return;
         }
         const parts = pillPress.split("|");
@@ -1930,17 +1962,15 @@ KWin.SceneEffect {
         const edge = p[1];
         const fx = Number(p[2]);
         const fy = Number(p[3]);
-        const fw = Number(p[4]);
-        const fh = Number(p[5]);
         // The cell's local x along the pill's row axis - the same geometry
         // the item uses, so the press lands on the cell it is drawn under.
+        // The target carries the pill's centre; the row starts 12px
+        // inside the capsule (the half-length 92).
         let lx;
-        if (edge === "left") {
-            lx = 92 - (py - (fy + fh / 2)) - 12;
-        } else if (edge === "right") {
-            lx = (py - (fy + fh / 2)) + 92 - 12;
+        if (edge === "left" || edge === "right") {
+            lx = py - (fy - 92) - 12;
         } else {
-            lx = px - (fx + fw / 2 - 92 + 12);
+            lx = px - (fx - 92) - 12;
         }
         if (lx >= 0 && lx < 40) {
             pillGrabDown = true;
@@ -4713,9 +4743,13 @@ KWin.SceneEffect {
     // their own cursor, and both are disabled while Space is held.
 
     // The scene's shared components live in ui.qml (the hot-reload side).
-    // The scene's shared components live in ui.qml (the hot-reload side).
     delegate: Loader {
         source: Qt.resolvedUrl("ui.qml") + (effect.hotRev > 0 ? "?rev=" + effect.hotRev : "")
+        // The loaded scene must own the keyboard focus: KWin delivers the
+        // scene's keys to the QuickView's active focus item, and a static
+        // focus binding inside a loaded item does not take it - the split
+        // taught us that the hard way. Re-assert on every load.
+        onLoaded: item.forceActiveFocus();
     }
 }
 

@@ -18,6 +18,8 @@ run_scenario() {
     # Dolphin: the settle raises it in the canvas and in KWin together.
     input move "$sx" "$sy"
     sleep 1.2; c state
+    # The rest's focus lands a beat after the pointer settles; poll it.
+    for _ in 1 2 3 4 5 6 7 8 9 10; do c state; [ "$(head -1 <<<"$LAST_STATE" | grep -c 'focus=.*Konsole')" = 1 ] && break; sleep 0.2; done
     assert_eq "the rest focused Konsole" "$(head -1 <<<"$LAST_STATE" | grep -c 'focus=.*Konsole')" 1
     assert_eq "and the canvas put it on top" "$(awk '/^  \[/{e=$0} END{print e}' <<<"$LAST_STATE" | grep -c Konsole)" 1
     assert_eq "and the real stacking agrees" "$(c list; grep -a '^  \*' <<<"$LAST_STATE" | tail -1 | grep -c Konsole)" 1

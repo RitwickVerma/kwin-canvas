@@ -62,14 +62,41 @@ run_scenario() {
 
     # The grab: the pill's empty stretch (its leftmost cell) is the drag
     # handle - the window rides the pointer, the real frame moving with it.
-    { printf 'move 280 105\nsleep 300\ndown left\nsleep 200\nglide 440 105 10 20\nsleep 200\nup left\n'; } | input
+    # The pill travels its edge to the pointer, so the press must ride
+    # INTO the frozen pill (the pointer inside the pill keeps it put):
+    # the first move parks at the edge (the pill appears at that x), the
+    # second steps onto the grab cell - 60px left of the pill's centre.
+    { printf 'move 280 105\nsleep 300\nmove 220 105\nsleep 200\ndown left\nsleep 200\nglide 440 105 10 20\nsleep 200\nup left\n'; } | input
     sleep 1.2
     # The entries snapshot the frames at the last resync; re-open so the
     # effect reads the frame the grab moved.
     c cancel
     open_1to1
     c state
-    assert_near "the grab drags the window" "$(eget KCalc fx)" 260 20
+    assert_near "the grab drags the window" "$(eget KCalc fx)" 320 20
+    input move 1700 1000
+    sleep 0.8
+    c cancel
+
+    # The pill never paints over another window: KWrite overlaps KCalc's
+    # bottom edge, so the covered stretch hides the pill and the clear
+    # stretch shows it. The pill lives on the closed desktop - the quiet
+    # seam - so this part runs there (the grab's tail already cancelled).
+    c "placeby sample.txt 400 100 700 520"
+    c commit
+    sleep 0.3
+    c state
+    echo "DBG-NEWPART: kcalc-fx=$(eget KCalc fx) kwrite-fx=$(eget sample.txt fx) kwrite-fy=$(eget sample.txt fy)"
+    input move 480 550
+    sleep 0.6
+    c state
+    assert_eq "the covered stretch hides the pill" "$(sget pill)" 0
+    # The clear stretch: KCalc's left edge (the grab parked the window at
+    # 320, and KWrite covers its bottom rightward of 400).
+    input move 300 450
+    sleep 0.6
+    c state
+    assert_eq "the clear stretch shows it again" "$(sget pill)" 1
     input move 1700 1000
     sleep 0.8
     c cancel
