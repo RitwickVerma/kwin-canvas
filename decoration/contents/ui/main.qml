@@ -4,23 +4,19 @@
     SPDX-License-Identifier: GPL-2.0-or-later
 */
 /*
-    The canvas's window frame. No title bar: a hairline border, and a
-    small glass pill - close, minimize, maximize - fading in at the top
-    left (Klassy's own side) when the pointer rests on the top edge. The
-    pill wears the canvas's glass with a refraction gradient: a light
-    streak across the capsule, the look of the thing bent behind it. The
-    whole top edge drags the window. This is the decoration, so it is the
-    window's frame in the normal desktop too, not only on the plane; the
-    canvas keeps its own semantics untouched.
+    The canvas's window frame is no frame at all. The window wears
+    nothing - no border, no shadow - just a glass pill that pops up at
+    the top edge's centre, half in and half out of the window, when the
+    pointer comes near. The whole top edge drags the window. This is
+    the decoration, so it is the window's frame in the normal desktop
+    too, not only on the plane; the canvas keeps its own semantics
+    untouched.
 
     The QML decoration cannot blur the desktop behind it (the engine
-    exposes no blur region - Klassy can, as a C++ decoration); the glass
-    and the refraction here are drawn, and read the same. The corners
-    are the same story: the compositor draws the client square, so the
-    QML frame cannot round it - the shadow rounds, the window does not.
+    exposes no blur region - Klassy can, as a C++ decoration); the
+    pill's glass and the refraction here are drawn, and read the same.
 */
 import QtQuick
-import Qt5Compat.GraphicalEffects
 import org.kde.kwin.decoration
 
 Decoration {
@@ -28,46 +24,9 @@ Decoration {
     alpha: true
 
     readonly property bool activeWindow: decoration.client.active
-    readonly property color line: activeWindow ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(1, 1, 1, 0.08)
     readonly property color glyph: activeWindow ? Qt.rgba(1, 1, 1, 0.88) : Qt.rgba(1, 1, 1, 0.45)
     readonly property color glass: Qt.rgba(0.05, 0.05, 0.08, 0.62)
     readonly property bool pillShown: stripHover.hovered || closeButton.hovered || minButton.hovered || maxButton.hovered || closeButton.pressed || minButton.pressed || maxButton.pressed
-
-    // The shadow: the window's own, drawn into the extended borders.
-    // The frame reads as a sheet floating above the desktop instead of
-    // a flat rectangle on it.
-    Rectangle {
-        anchors.fill: parent
-        anchors.margins: -28
-        radius: 10
-        color: root.activeWindow ? Qt.rgba(0, 0, 0, 0.55) : Qt.rgba(0, 0, 0, 0.35)
-        layer.enabled: true
-        layer.effect: GaussianBlur {
-            radius: 20
-            samples: 32
-            transparentBorder: true
-        }
-    }
-
-    // The frame: a hairline, the window's own content untouched inside.
-    Rectangle {
-        anchors.fill: parent
-        color: "transparent"
-        border.width: 1
-        border.color: root.line
-    }
-
-    // The bevel: a faint lift along the top edge - the light that makes
-    // the sheet read as a sheet.
-    Rectangle {
-        anchors {
-            left: parent.left
-            right: parent.right
-            top: parent.top
-        }
-        height: 1
-        color: root.activeWindow ? Qt.rgba(1, 1, 1, 0.10) : Qt.rgba(1, 1, 1, 0.04)
-    }
 
     // The drag band: the whole top edge drags the window. Invisible by
     // design; the pill floats on it.
@@ -81,7 +40,9 @@ Decoration {
         height: 24
     }
 
-    // The pill: one small glass capsule with the three glyphs inside.
+    // The pill: one glass capsule with the three glyphs inside. It pops
+    // out of the edge - a springy rise from a small crouch, half in and
+    // half out of the window.
     Item {
         id: pill
         anchors {
@@ -89,13 +50,21 @@ Decoration {
             bottomMargin: 1
             horizontalCenter: parent.horizontalCenter
         }
-        width: 66
-        height: 22
+        width: 76
+        height: 26
+        scale: root.pillShown ? 1 : 0.9
+        transformOrigin: Item.Bottom
         opacity: root.pillShown ? 1 : 0
         Behavior on opacity {
             NumberAnimation {
-                duration: 160
+                duration: 200
                 easing.type: Easing.OutCubic
+            }
+        }
+        Behavior on scale {
+            NumberAnimation {
+                duration: 260
+                easing.type: Easing.OutBack
             }
         }
 
@@ -105,7 +74,7 @@ Decoration {
         Rectangle {
             id: capsule
             anchors.fill: parent
-            radius: 11
+            radius: 13
             color: root.glass
             border.width: 1
             border.color: Qt.rgba(1, 1, 1, 0.24)
@@ -134,16 +103,16 @@ Decoration {
 
             Item {
                 id: closeButton
-                width: 18
-                height: 18
+                width: 20
+                height: 20
                 property bool hovered: false
                 property bool pressed: false
 
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 12
-                    height: 12
-                    radius: 6
+                    width: 14
+                    height: 14
+                    radius: 7
                     color: closeButton.hovered || closeButton.pressed ? Qt.rgba(1, 1, 1, 0.18) : "transparent"
                     border.width: 1
                     border.color: root.glyph
@@ -151,8 +120,8 @@ Decoration {
                 // The close mark: two crossed strokes.
                 Canvas {
                     anchors.centerIn: parent
-                    width: 8
-                    height: 8
+                    width: 9
+                    height: 9
                     onPaint: {
                         const ctx = getContext("2d");
                         ctx.strokeStyle = "#ffffff";
@@ -181,16 +150,16 @@ Decoration {
 
             Item {
                 id: minButton
-                width: 18
-                height: 18
+                width: 20
+                height: 20
                 property bool hovered: false
                 property bool pressed: false
 
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 12
-                    height: 12
-                    radius: 6
+                    width: 14
+                    height: 14
+                    radius: 7
                     color: minButton.hovered || minButton.pressed ? Qt.rgba(1, 1, 1, 0.18) : "transparent"
                     border.width: 1
                     border.color: root.glyph
@@ -217,16 +186,16 @@ Decoration {
 
             Item {
                 id: maxButton
-                width: 18
-                height: 18
+                width: 20
+                height: 20
                 property bool hovered: false
                 property bool pressed: false
 
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 12
-                    height: 12
-                    radius: 6
+                    width: 14
+                    height: 14
+                    radius: 7
                     color: maxButton.hovered || maxButton.pressed ? Qt.rgba(1, 1, 1, 0.18) : "transparent"
                     border.width: 1
                     border.color: root.glyph
@@ -234,8 +203,8 @@ Decoration {
                 // The maximize mark: a hollow square.
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 7
-                    height: 7
+                    width: 8
+                    height: 8
                     color: "transparent"
                     border.width: 1.2
                     border.color: "#ffffff"
@@ -262,16 +231,18 @@ Decoration {
     }
 
     Component.onCompleted: {
-        // The resize borders: a generous invisible band, the hairline is
-        // the visible edge. The title is an invisible 24 px band - the
-        // hover surface for the drag and the pill. With the title at 0
-        // the client covers the whole interior and the pill could never
-        // be hovered; the band is transparent (alpha: true), so the look
-        // stays borderless while the pill floats exactly on the edge.
+        // The resize borders: a generous invisible band - the only
+        // decoration the window carries besides the pill, and it is
+        // invisible by design. The title is an invisible 24 px band -
+        // the hover surface for the drag and the pill. With the title
+        // at 0 the client covers the whole interior and the pill could
+        // never be hovered; the band is transparent (alpha: true), so
+        // the window wears nothing while the pill floats exactly on the
+        // edge.
         borders.setBorders(6);
         borders.setTitle(24);
         maximizedBorders.setTitle(24);
-        extendedBorders.setAllBorders(28);
+        extendedBorders.setAllBorders(0);
         decoration.installTitleItem(dragBand);
     }
 }

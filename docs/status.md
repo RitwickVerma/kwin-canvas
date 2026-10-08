@@ -115,6 +115,19 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-12 — the window wears nothing but the pill
+
+The decoration's second act: the user saw the shadow as "a dark
+transparent frame" and asked for no window decoration at all - "i dont
+want any window decoration except the pill... it pops up half in half
+outside the window (a lil bigger too) animation max". The frame,
+the shadow and the bevel are gone; the pill is bigger (76x26) and
+pops out of the edge with a springy rise (the scale 0.9 - 1 with the
+OutBack easing from the bottom origin, the opacity alongside). The
+window carries nothing visible but the pill: the resize edges, the
+title band and the drag handle are all invisible by design. Scenario
+135 still proves the pill (2/0/1 - the close's honest skip stands).
+
 ### 2026-10-11 — the canvas decoration: a hairline frame and a glass pill
 
 The user asked to lose the title bars ("maybe all windows should lose
