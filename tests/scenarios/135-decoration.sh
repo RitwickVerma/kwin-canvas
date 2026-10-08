@@ -3,11 +3,12 @@
 scenario_desc="the canvas decoration: the glass pill rides the focused window's top edge, follows the focus, and disappears from every other window - the close glyph's proof belongs to the live session (the nest's KWin cannot close a window at all)"
 
 glass_count() {
-    # The pill's glass over the wallpaper: the dark pixels in a crop, the
-    # same crop compared across the focus switch - only the pill's presence
-    # changes them, so the delta is the pill.
+    # The pill's glass over the wallpaper: the glass blends to a
+    # distinctive deep tone (51,40,66)-ish, while the fixture wallpaper's
+    # purple (114,83,140) stays above these gates - so only the pill's
+    # own pixels count, wherever it sits along the band.
     magick "$1" -crop "$2" +repage -depth 8 txt: \
-        | awk -F'[(),]' 'NR>1 { if ($3 < 120 && $4 < 110 && $5 < 160) n++ } END { print n + 0 }'
+        | awk -F'[(),]' 'NR>1 { if ($3 < 80 && $4 < 70 && $5 < 110) n++ } END { print n + 0 }'
 }
 
 run_scenario() {

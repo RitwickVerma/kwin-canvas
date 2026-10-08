@@ -1,5 +1,13 @@
 Unreleased:
 
+- The pill wears the native buttons, and sits on the left. System
+  Settings' titlebar-buttons configuration now decides which glyphs the
+  pill shows and in what order - the left set first, then the right -
+  so dragging the buttons between the sides reshapes the pill without a
+  re-login; the pill itself moved from the top edge's centre to its
+  left end. The close, minimize, maximize and float buttons have a
+  glyph; the rest are left out.
+
 - The pill tucks away for maximized windows, and a maximized window is
   full-bleed: no band, no reserved strip - the client runs to the
   screen's top edge, so nothing transparent shows above it. The normal

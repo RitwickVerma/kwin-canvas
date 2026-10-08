@@ -115,6 +115,21 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-16 — the pill wears the native buttons, on the left
+
+The user's complaint: the pill ignored System Settings' titlebar-buttons
+configuration, and it sat centred. The pill now reads the native config
+through the DecorationOptions object - `titleButtonsLeft` and
+`titleButtonsRight` are QLists of the DecorationButton enum, not the
+letter strings (the measured nest values: L=1,3,0 R=4,5,6,7) - maps
+Close/Minimize/MaximizeRestore/KeepAbove to the four glyphs in the
+user's own order, left set first, and the capsule sits at the top
+edge's left end with its width hugging the glyphs. The scenario's
+glass_count threshold tightened to the glass's own blend (r<80, g<70,
+b<110) - the fixture wallpaper's purple (114,83,140) passed the old
+gates and hid the delta. Verified: 135-decoration 2/0/1, qmllint 0,
+lint green, unit 95/0.
+
 ### 2026-10-16 — the effect's pill leaves, the decoration's pill stays
 
 Two rounds, one verdict. First the user saw two pills on the focused

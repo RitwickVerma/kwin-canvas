@@ -6,11 +6,18 @@
 /*
     The canvas's window frame is no frame at all. The window wears
     nothing - no border, no shadow - just a glass pill that pops up at
-    the top edge's centre, half in and half out of the window, when the
-    pointer comes near. The whole top edge drags the window. This is
+    the top edge's left end, half in and half out of the window, when
+    the pointer comes near. The whole top edge drags the window. This is
     the decoration, so it is the window's frame in the normal desktop
     too, not only on the plane; the canvas keeps its own semantics
     untouched.
+
+    The pill wears the native configuration: System Settings' titlebar
+    buttons decide which glyphs it shows and in what order (the left
+    set first, then the right), and moving them between the sides
+    reshapes the pill without a re-login. Only the close, minimize,
+    maximize and float buttons have a glyph here; the others are left
+    out.
 
     The QML decoration cannot blur the desktop behind it (the engine
     exposes no blur region - Klassy can, as a C++ decoration); the
@@ -30,7 +37,28 @@ Decoration {
     readonly property bool maximized: decoration.client.maximized
     readonly property color glyph: activeWindow ? Qt.rgba(1, 1, 1, 0.88) : Qt.rgba(1, 1, 1, 0.45)
     readonly property color glass: Qt.rgba(0.05, 0.05, 0.08, 0.62)
-    readonly property bool pillShown: stripHover.hovered || closeButton.hovered || minButton.hovered || maxButton.hovered || floatButton.hovered || closeButton.pressed || minButton.pressed || maxButton.pressed || floatButton.pressed
+
+    // The native titlebar-buttons configuration: which glyphs the pill
+    // shows, in the user's own order - the left set first, then the
+    // right - so the pill is the system's buttons, just drawn in the
+    // canvas's glass. Only the codes the pill can draw survive: X the
+    // close, I the minimize, A the maximize, F the float.
+    DecorationOptions {
+        id: options
+        deco: decoration
+    }
+    readonly property var pillButtons: {
+        const sets = options.titleButtonsLeft.concat(options.titleButtonsRight);
+        const out = [];
+        for (let i = 0; i < sets.length; i++) {
+            const t = sets[i];
+            if (t === DecorationOptions.DecorationButtonClose) out.push("X");
+            else if (t === DecorationOptions.DecorationButtonMinimize) out.push("I");
+            else if (t === DecorationOptions.DecorationButtonMaximizeRestore) out.push("A");
+            else if (t === DecorationOptions.DecorationButtonKeepAbove) out.push("F");
+        }
+        return out;
+    }
 
     // The drag band: the whole top edge drags the window. Invisible by
     // design; the pill floats on it.
@@ -44,17 +72,18 @@ Decoration {
         height: 32
     }
 
-    // The pill: one glass capsule with the four glyphs inside. It pops
-    // Only the focused window wears its pill. The unfocused pill waits
-    // behind the window's top edge, invisible under the client; the
-    // moment the window takes the focus, the pill slides out from
-    // behind the edge and settles on top of it, a springy rise with a
-    // hint of overshoot. When the focus leaves, it slides back behind.
-    // Each glyph swells when the pointer comes near it, and sinks a
-    // touch when pressed.
+    // The pill: one glass capsule with the configured glyphs inside. It
+    // sits at the top edge's left end. Only the focused window wears
+    // its pill. The unfocused pill waits behind the window's top edge,
+    // invisible under the client; the moment the window takes the
+    // focus, the pill slides out from behind the edge and settles on
+    // top of it, a springy rise with a hint of overshoot. When the
+    // focus leaves, it slides back behind. Each glyph swells when the
+    // pointer comes near it, and sinks a touch when pressed.
     Item {
         id: pill
-        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.left: parent.left
+        anchors.leftMargin: 8
         // The pill rests with its bottom on the drag band's floor (the
         // client's top edge); one pill height lower it is entirely
         // behind the client and invisible. The activeWindow switch is
@@ -66,8 +95,12 @@ Decoration {
         Behavior on y {
             SpringAnimation { spring: 2.6; damping: 0.8; epsilon: 0.01 }
         }
-        width: 136
+        // The capsule hugs its glyphs: the four-glyph pill is the
+        // familiar 136, fewer buttons make a shorter pill, and a
+        // configuration with none of the four hides it entirely.
+        width: 24 + root.pillButtons.length * 30 - (root.pillButtons.length > 0 ? 8 : 0)
         height: 30
+        visible: root.pillButtons.length > 0
 
         // The capsule's glass, with the refraction: the gradient's own
         // top light reads as the lens; no extra streak, so nothing
@@ -88,238 +121,90 @@ Decoration {
             anchors.centerIn: parent
             spacing: 8
 
-            Item {
-                id: closeButton
-                width: 22
-                height: 22
-                property bool hovered: false
-                property bool pressed: false
-                scale: closeButton.pressed ? 0.86 : (closeButton.hovered ? 1.2 : 1)
-                Behavior on scale {
-                    NumberAnimation {
-                        duration: 150
-                        easing.type: Easing.OutBack
-                    }
-                }
+            Repeater {
+                model: root.pillButtons
+                delegate: glyphDelegate
+            }
+        }
+    }
 
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 16
-                    height: 16
-                    radius: 8
-                    color: closeButton.pressed ? Qt.rgba(1, 1, 1, 0.42) : (closeButton.hovered ? Qt.rgba(1, 1, 1, 0.28) : "transparent")
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 140
-                            easing.type: Easing.OutCubic
-                        }
-                    }
-                    border.width: 1
-                    border.color: closeButton.hovered || closeButton.pressed ? Qt.rgba(1, 1, 1, 0.95) : root.glyph
+    // One glyph, drawn by its code: the circle carries the hover and
+    // press fills, and the float and maximize marks wear the accent
+    // when their state is on.
+    Component {
+        id: glyphDelegate
+        Item {
+            required property string modelData
+            property bool hovered: false
+            property bool pressed: false
+            readonly property bool lit: (modelData === "F" && root.floating) || (modelData === "A" && root.maximized)
+            scale: pressed ? 0.86 : (hovered ? 1.2 : 1)
+            width: 22
+            height: 22
+            Behavior on scale {
+                NumberAnimation {
+                    duration: 150
+                    easing.type: Easing.OutBack
                 }
-                // The close mark: two crossed strokes.
-                Canvas {
-                    anchors.centerIn: parent
-                    width: 10
-                    height: 10
-                    onPaint: {
-                        const ctx = getContext("2d");
-                        ctx.strokeStyle = "#ffffff";
-                        ctx.lineWidth = 1.2;
+            }
+
+            Rectangle {
+                anchors.centerIn: parent
+                width: 16
+                height: 16
+                radius: 8
+                color: parent.pressed ? Qt.rgba(1, 1, 1, 0.42) : (parent.hovered ? Qt.rgba(1, 1, 1, 0.28) : (parent.lit ? Qt.rgba(0.16, 0.43, 0.87, 0.30) : "transparent"))
+                Behavior on color {
+                    ColorAnimation {
+                        duration: 140
+                        easing.type: Easing.OutCubic
+                    }
+                }
+                border.width: 1
+                border.color: parent.hovered || parent.pressed ? Qt.rgba(1, 1, 1, 0.95) : (parent.lit ? "#2a6ddf" : root.glyph)
+                Behavior on border.color {
+                    ColorAnimation {
+                        duration: 140
+                        easing.type: Easing.OutCubic
+                    }
+                }
+            }
+
+            // The marks: X the crossed strokes, I the bar, A the hollow
+            // square (the restore pair when maximized, in the accent),
+            // F the up arrow (filled in the accent when floating).
+            Canvas {
+                id: mark
+                anchors.centerIn: parent
+                width: 10
+                height: 10
+                onPaint: {
+                    const ctx = getContext("2d");
+                    const code = parent.modelData;
+                    const lit = parent.lit;
+                    ctx.strokeStyle = lit ? "#2a6ddf" : "#ffffff";
+                    ctx.fillStyle = lit ? "#2a6ddf" : "transparent";
+                    ctx.lineWidth = code === "F" ? 1.3 : 1.2;
+                    if (code === "X") {
                         ctx.beginPath();
                         ctx.moveTo(1.5, 1.5);
                         ctx.lineTo(8.5, 8.5);
                         ctx.moveTo(8.5, 1.5);
                         ctx.lineTo(1.5, 8.5);
                         ctx.stroke();
-                    }
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    acceptedButtons: Qt.LeftButton
-                    onEntered: closeButton.hovered = true
-                    onExited: closeButton.hovered = false
-                    onPressed: closeButton.pressed = true
-                    onReleased: closeButton.pressed = false
-                    onClicked: {
-                            decoration.requestClose();
-                    }
-                }
-            }
-
-            Item {
-                id: minButton
-                width: 22
-                height: 22
-                property bool hovered: false
-                property bool pressed: false
-                scale: minButton.pressed ? 0.86 : (minButton.hovered ? 1.2 : 1)
-                Behavior on scale {
-                    NumberAnimation {
-                        duration: 150
-                        easing.type: Easing.OutBack
-                    }
-                }
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 16
-                    height: 16
-                    radius: 8
-                    color: minButton.pressed ? Qt.rgba(1, 1, 1, 0.42) : (minButton.hovered ? Qt.rgba(1, 1, 1, 0.28) : "transparent")
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 140
-                            easing.type: Easing.OutCubic
-                        }
-                    }
-                    border.width: 1
-                    border.color: minButton.hovered || minButton.pressed ? Qt.rgba(1, 1, 1, 0.95) : root.glyph
-                }
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 8
-                    height: 1.2
-                    color: "#ffffff"
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    acceptedButtons: Qt.LeftButton
-                    onEntered: minButton.hovered = true
-                    onExited: minButton.hovered = false
-                    onPressed: minButton.pressed = true
-                    onReleased: minButton.pressed = false
-                    onClicked: {
-                            decoration.requestMinimize();
-                    }
-                }
-            }
-
-            Item {
-                id: maxButton
-                width: 22
-                height: 22
-                property bool hovered: false
-                property bool pressed: false
-                scale: maxButton.pressed ? 0.86 : (maxButton.hovered ? 1.2 : 1)
-                Behavior on scale {
-                    NumberAnimation {
-                        duration: 150
-                        easing.type: Easing.OutBack
-                    }
-                }
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 16
-                    height: 16
-                    radius: 8
-                    color: maxButton.pressed ? Qt.rgba(1, 1, 1, 0.42) : (maxButton.hovered ? Qt.rgba(1, 1, 1, 0.28) : (root.maximized ? Qt.rgba(0.16, 0.43, 0.87, 0.30) : "transparent"))
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 140
-                            easing.type: Easing.OutCubic
-                        }
-                    }
-                    border.width: 1
-                    border.color: maxButton.hovered || maxButton.pressed ? Qt.rgba(1, 1, 1, 0.95) : (root.maximized ? "#2a6ddf" : root.glyph)
-                    Behavior on border.color {
-                        ColorAnimation {
-                            duration: 140
-                            easing.type: Easing.OutCubic
-                        }
-                    }
-                }
-                // The maximize mark: a hollow square, or the restore pair
-                // when the window is maximized - drawn in the accent.
-                Canvas {
-                    id: maxGlyph
-                    anchors.centerIn: parent
-                    width: 10
-                    height: 10
-                    onPaint: {
-                        const ctx = getContext("2d");
-                        const lit = root.maximized;
-                        ctx.strokeStyle = lit ? "#2a6ddf" : "#ffffff";
-                        ctx.lineWidth = 1.2;
+                    } else if (code === "I") {
+                        ctx.beginPath();
+                        ctx.moveTo(1, 5);
+                        ctx.lineTo(9, 5);
+                        ctx.stroke();
+                    } else if (code === "A") {
                         if (lit) {
                             ctx.strokeRect(1.2, 3.2, 5.6, 5.6);
                             ctx.strokeRect(3.2, 1.2, 5.6, 5.6);
                         } else {
                             ctx.strokeRect(1.5, 1.5, 7, 7);
                         }
-                    }
-                    Connections {
-                        target: root
-                        function onMaximizedChanged() {
-                            maxGlyph.requestPaint();
-                        }
-                    }
-                }
-                MouseArea {
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    acceptedButtons: Qt.LeftButton
-                    onEntered: maxButton.hovered = true
-                    onExited: maxButton.hovered = false
-                    onPressed: maxButton.pressed = true
-                    onReleased: maxButton.pressed = false
-                    onClicked: {
-                            decoration.requestToggleMaximization(Qt.LeftButton);
-                    }
-                }
-            }
-
-            Item {
-                id: floatButton
-                width: 22
-                height: 22
-                property bool hovered: false
-                property bool pressed: false
-                scale: floatButton.pressed ? 0.86 : (floatButton.hovered ? 1.2 : 1)
-                Behavior on scale {
-                    NumberAnimation {
-                        duration: 150
-                        easing.type: Easing.OutBack
-                    }
-                }
-
-                Rectangle {
-                    anchors.centerIn: parent
-                    width: 16
-                    height: 16
-                    radius: 8
-                    color: floatButton.pressed ? Qt.rgba(1, 1, 1, 0.42) : (floatButton.hovered ? Qt.rgba(1, 1, 1, 0.28) : (root.floating ? Qt.rgba(0.16, 0.43, 0.87, 0.30) : "transparent"))
-                    Behavior on color {
-                        ColorAnimation {
-                            duration: 140
-                            easing.type: Easing.OutCubic
-                        }
-                    }
-                    border.width: 1
-                    border.color: floatButton.hovered || floatButton.pressed ? Qt.rgba(1, 1, 1, 0.95) : (root.floating ? "#2a6ddf" : root.glyph)
-                    Behavior on border.color {
-                        ColorAnimation {
-                            duration: 140
-                            easing.type: Easing.OutCubic
-                        }
-                    }
-                }
-                // The float mark: an up arrow - filled in the canvas's
-                // accent when the window floats, hollow when it does not.
-                Canvas {
-                    id: floatGlyph
-                    anchors.centerIn: parent
-                    width: 10
-                    height: 10
-                    onPaint: {
-                        const ctx = getContext("2d");
-                        const lit = root.floating;
-                        ctx.strokeStyle = lit ? "#2a6ddf" : "#ffffff";
-                        ctx.fillStyle = lit ? "#2a6ddf" : "transparent";
-                        ctx.lineWidth = 1.3;
+                    } else if (code === "F") {
                         ctx.beginPath();
                         ctx.moveTo(1.5, 7);
                         ctx.lineTo(5, 2.5);
@@ -332,24 +217,31 @@ Decoration {
                         ctx.lineTo(5, 8);
                         ctx.stroke();
                     }
-                    Connections {
-                        target: root
-                        function onFloatingChanged() {
-                            floatGlyph.requestPaint();
-                        }
+                }
+                Connections {
+                    target: root
+                    function onFloatingChanged() {
+                        mark.requestPaint();
+                    }
+                    function onMaximizedChanged() {
+                        mark.requestPaint();
                     }
                 }
-                MouseArea {
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    acceptedButtons: Qt.LeftButton
-                    onEntered: floatButton.hovered = true
-                    onExited: floatButton.hovered = false
-                    onPressed: floatButton.pressed = true
-                    onReleased: floatButton.pressed = false
-                    onClicked: {
-                            decoration.requestToggleKeepAbove();
-                    }
+            }
+
+            MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                acceptedButtons: Qt.LeftButton
+                onEntered: parent.hovered = true
+                onExited: parent.hovered = false
+                onPressed: parent.pressed = true
+                onReleased: parent.pressed = false
+                onClicked: {
+                    if (parent.modelData === "X") decoration.requestClose();
+                    else if (parent.modelData === "I") decoration.requestMinimize();
+                    else if (parent.modelData === "A") decoration.requestToggleMaximization(Qt.LeftButton);
+                    else if (parent.modelData === "F") decoration.requestToggleKeepAbove();
                 }
             }
         }
