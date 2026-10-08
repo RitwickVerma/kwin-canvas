@@ -398,3 +398,31 @@ function tidyRows(list, opts) {
     }
     return out;
 }
+
+// The trail's anti-scribble: the Ramer-Douglas-Peucker simplification keeps
+// only the points that change the path's direction (beyond tol canvas
+// pixels), so the camera's jitter collapses into a clean ribbon through the
+// real turns. The {x,y,t} points keep their timestamps for the age fade.
+function simplifyPath(pts, tol) {
+    if (!pts || pts.length <= 2) return pts || [];
+    const keep = new Array(pts.length).fill(false);
+    keep[0] = keep[pts.length - 1] = true;
+    const stack = [[0, pts.length - 1]];
+    while (stack.length) {
+        const pair = stack.pop();
+        const a = pair[0], b = pair[1];
+        const dx = pts[b].x - pts[a].x, dy = pts[b].y - pts[a].y;
+        const len = Math.hypot(dx, dy) || 1;
+        let maxD = -1, maxI = -1;
+        for (let i = a + 1; i < b; i++) {
+            const d = Math.abs(dy * (pts[i].x - pts[a].x) - dx * (pts[i].y - pts[a].y)) / len;
+            if (d > maxD) { maxD = d; maxI = i; }
+        }
+        if (maxD > tol) {
+            keep[maxI] = true;
+            stack.push([a, maxI]);
+            stack.push([maxI, b]);
+        }
+    }
+    return pts.filter(function (_, i) { return keep[i]; });
+}

@@ -946,7 +946,7 @@ KWin.SceneEffect {
         let cut = 0;
         while (cut < pathPts.length && now - pathPts[cut].t > 600000) cut++;
         if (cut > 0) pathPts.splice(0, cut);
-        const pts = pathPts;
+        const pts = Logic.simplifyPath(pathPts, 40);
         const n = pts.length;
         pathSvg = "";
         pathChunks = [];
@@ -991,7 +991,7 @@ KWin.SceneEffect {
         const cx = viewX + vs.width / (2 * zoom);
         const cy = viewY + vs.height / (2 * zoom);
         const last = pathPts.length ? pathPts[pathPts.length - 1] : null;
-        if (last && Math.hypot(cx - last.x, cy - last.y) < 60) return;
+        if (last && Math.hypot(cx - last.x, cy - last.y) < 90) return;
         pathPts.push({ x: cx, y: cy, t: now });
         if (pathPts.length > 500) pathPts.shift();
         pathPrune();

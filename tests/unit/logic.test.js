@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, floatStep, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows };")();
+const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, floatStep, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -333,6 +333,15 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
         return near(d.dx, 2564) && near(d.dy, 0);
     })());
 }
+
+// ---- the trail's simplification ----
+ok("a straight line collapses to its ends", L.simplifyPath([{ x: 0, y: 0, t: 1 }, { x: 10, y: 0, t: 2 }, { x: 20, y: 0, t: 3 }], 40).length === 2);
+const corner = L.simplifyPath([{ x: 0, y: 0, t: 1 }, { x: 100, y: 0, t: 2 }, { x: 100, y: 100, t: 3 }], 40);
+ok("a real corner survives", corner.length === 3);
+const jitter = L.simplifyPath([{ x: 0, y: 0, t: 1 }, { x: 50, y: 5, t: 2 }, { x: 100, y: 0, t: 3 }], 40);
+ok("the jitter on a straight run collapses", jitter.length === 2 && jitter[1].t === 3);
+const keepT = L.simplifyPath([{ x: 0, y: 0, t: 1 }, { x: 50, y: 0, t: 2 }, { x: 0, y: 90, t: 3 }], 40);
+ok("the timestamps ride the kept points", keepT.length === 3 && keepT[2].t === 3);
 
 console.log("== unit pass " + pass + "  fail " + fail);
 process.exit(fail === 0 ? 0 : 1);

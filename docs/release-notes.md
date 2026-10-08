@@ -1,5 +1,11 @@
 Unreleased:
 
+- The trail is a ribbon, not a scribble. The camera's path used to
+  keep every wiggle the hand made; it now keeps only the real turns -
+  the jitter on a straight run collapses away - and the samples land a
+  little further apart, so the day's path reads as a clean line through
+  the places you actually went.
+
 - The scene tree hot-reloads. The canvas's look - everything the eye
   sees - now lives in its own file, ui.qml, loaded through a
   version-stamped URL: `make hot` bumps the revision and the running
