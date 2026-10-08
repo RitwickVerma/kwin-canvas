@@ -1,37 +1,28 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
-scenario_desc="the canvas decoration: the glass pill rides the focused window's top edge, follows the focus, and disappears from every other window - the close glyph's proof belongs to the live session (the nest's KWin cannot close a window at all)"
+scenario_desc="the canvas decoration is the invisible frame: the window wears nothing above its client - no title bar, no pill - the band over the top edge stays the desktop; the pill belongs to the effect (scenario 136)"
 
-glass_count() {
-    # The pill's glass over the wallpaper: the dark pixels in a crop, the
-    # same crop compared across the focus switch - only the pill's presence
-    # changes them, so the delta is the pill.
-    magick "$1" -crop "$2" +repage -depth 8 txt: \
-        | awk -F'[(),]' 'NR>1 { if ($3 < 120 && $4 < 110 && $5 < 160) n++ } END { print n + 0 }'
+region_rmse() {
+    magick "$1" -crop "$3" +repage "$OUT/135-a.png"
+    magick "$2" -crop "$3" +repage "$OUT/135-b.png"
+    { magick compare -metric RMSE "$OUT/135-a.png" "$OUT/135-b.png" null: 2>&1 || true; } \
+        | sed -n 's/.*(\([0-9.e-]*\)).*/\1/p'
+}
+
+changed() {
+    awk -v m="$1" 'BEGIN{print (m > 0.005)}'
 }
 
 run_scenario() {
     source tests/lib.sh
+    # The bare desktop first, then the arranged fixtures: the band above
+    # each window's client must stay the desktop - the decoration draws
+    # nothing there, so the pre/post pictures agree in that strip.
+    shot "$OUT/135-pre.png"
     arrange >/dev/null
     sleep 1.5
-    # The arrange's activation chain ends at KCalc: the active window wears
-    # the pill, the Konsole does not.
-    shot "$OUT/135-a.png"
-    a1=$(glass_count "$OUT/135-a.png" "480x32+100+120")   # KCalc's band
-    a2=$(glass_count "$OUT/135-a.png" "620x32+100+600")   # Konsole's band
-    c "activate Konsole"
-    sleep 1.2
-    shot "$OUT/135-b.png"
-    b1=$(glass_count "$OUT/135-b.png" "480x32+100+120")
-    b2=$(glass_count "$OUT/135-b.png" "620x32+100+600")
-    assert_eq "the pill left KCalc's edge" \
-        "$(awk -v a="$a1" -v b="$b1" 'BEGIN{print (a - b > 1200)}')" 1
-    assert_eq "and arrived on Konsole's" \
-        "$(awk -v a="$a2" -v b="$b2" 'BEGIN{print (b - a > 1200)}')" 1
-    # The close glyph (the pill's leftmost button) kills the window. The
-    # click lands and the requestClose() fires, but the nest's KWin cannot
-    # close a window at all - even its own killWindow D-Bus is a no-op
-    # there - so the glyph's proof belongs to the live session.
-    skip "the nest's KWin cannot close a window; the glyphs get their proof on the live session"
+    shot "$OUT/135-post.png"
+    m=$(region_rmse "$OUT/135-pre.png" "$OUT/135-post.png" "80x24+300+120")
+    assert_eq "the window wears nothing above its client" "$(changed "$m")" 0
     arrange >/dev/null
 }

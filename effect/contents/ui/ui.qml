@@ -1773,6 +1773,7 @@ Item {
         // on the real frame's edge), and the glyphs ask the plugin for the
         // real actions. One pill, wherever the pointer rides an edge.
         Item {
+            id: pill
             z: 100002
             visible: { effect.pillTarget; return effect.pillTarget !== ""; }
             // The pill is a control: its hover must count, or the
@@ -1787,6 +1788,12 @@ Item {
             readonly property string edge: p.length > 1 ? p[1] : "top"
             readonly property real fx: p.length > 2 ? Number(p[2]) : 0
             readonly property real fy: p.length > 3 ? Number(p[3]) : 0
+            // The window the pill rides: its real states light the
+            // glyphs - a floated window wears the accent ring and the
+            // filled arrow, a maximized one the restore pair.
+            readonly property var pw: { effect.pillTarget; effect.revision; const id = p.length ? p[0] : ""; return effect.entries.find(function (e) { return String(e.window.internalId) === id; }) || null; }
+            readonly property bool pwFloat: pw !== null && pw.window.keepAbove
+            readonly property bool pwMax: pw !== null && pw.window.maximized
             // The pill hugs whichever edge the pointer is riding: the
             // top and bottom keep it horizontal, the sides rotate it so
             // the capsule stands along the frame's edge. The target
@@ -1951,18 +1958,35 @@ Item {
                         width: 16
                         height: 16
                         radius: 8
-                        color: pillMax.pressed ? Qt.rgba(1, 1, 1, 0.42) : (pillMax.hovered ? Qt.rgba(1, 1, 1, 0.28) : "transparent")
+                        color: pillMax.pressed ? Qt.rgba(1, 1, 1, 0.42) : (pillMax.hovered ? Qt.rgba(1, 1, 1, 0.28) : (pill.pwMax ? Qt.rgba(0.16, 0.43, 0.87, 0.30) : "transparent"))
                         Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
                         border.width: 1
-                        border.color: pillMax.hovered || pillMax.pressed ? Qt.rgba(1, 1, 1, 0.95) : Qt.rgba(1, 1, 1, 0.45)
+                        border.color: pillMax.hovered || pillMax.pressed ? Qt.rgba(1, 1, 1, 0.95) : (pill.pwMax ? "#2a6ddf" : Qt.rgba(1, 1, 1, 0.45))
+                        Behavior on border.color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
                     }
-                    Rectangle {
+                    // The maximize mark: the single hollow square, or the
+                    // restore pair in the house accent once maximized.
+                    Canvas {
+                        id: maxGlyph
                         anchors.centerIn: parent
-                        width: 9
-                        height: 9
-                        color: "transparent"
-                        border.width: 1.2
-                        border.color: "#ffffff"
+                        width: 10
+                        height: 10
+                        onPaint: {
+                            const ctx = getContext("2d");
+                            ctx.lineWidth = 1.2;
+                            if (pill.pwMax) {
+                                ctx.strokeStyle = "#2a6ddf";
+                                ctx.strokeRect(1.2, 3.2, 5.6, 5.6);
+                                ctx.strokeRect(3.2, 1.2, 5.6, 5.6);
+                            } else {
+                                ctx.strokeStyle = "#ffffff";
+                                ctx.strokeRect(1.5, 1.5, 7, 7);
+                            }
+                        }
+                    }
+                    Connections {
+                        target: pill
+                        function onPwMaxChanged() { maxGlyph.requestPaint(); }
                     }
                     MouseArea {
                         anchors.fill: parent
@@ -1988,29 +2012,42 @@ Item {
                         width: 16
                         height: 16
                         radius: 8
-                        color: pillFloat.pressed ? Qt.rgba(1, 1, 1, 0.42) : (pillFloat.hovered ? Qt.rgba(1, 1, 1, 0.28) : "transparent")
+                        color: pillFloat.pressed ? Qt.rgba(1, 1, 1, 0.42) : (pillFloat.hovered ? Qt.rgba(1, 1, 1, 0.28) : (pill.pwFloat ? Qt.rgba(0.16, 0.43, 0.87, 0.30) : "transparent"))
                         Behavior on color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
                         border.width: 1
-                        border.color: pillFloat.hovered || pillFloat.pressed ? Qt.rgba(1, 1, 1, 0.95) : Qt.rgba(1, 1, 1, 0.45)
+                        border.color: pillFloat.hovered || pillFloat.pressed ? Qt.rgba(1, 1, 1, 0.95) : (pill.pwFloat ? "#2a6ddf" : Qt.rgba(1, 1, 1, 0.45))
+                        Behavior on border.color { ColorAnimation { duration: 140; easing.type: Easing.OutCubic } }
                     }
+                    // The float mark: the hollow up arrow, or the filled
+                    // arrow in the house accent once the window floats.
                     Canvas {
+                        id: floatGlyph
                         anchors.centerIn: parent
                         width: 10
                         height: 10
                         onPaint: {
                             const ctx = getContext("2d");
-                            ctx.strokeStyle = "#ffffff";
                             ctx.lineWidth = 1.3;
                             ctx.beginPath();
                             ctx.moveTo(1.5, 7);
                             ctx.lineTo(5, 2.5);
                             ctx.lineTo(8.5, 7);
-                            ctx.stroke();
-                            ctx.beginPath();
-                            ctx.moveTo(5, 2.5);
-                            ctx.lineTo(5, 8);
-                            ctx.stroke();
+                            ctx.lineTo(5, 7);
+                            ctx.closePath();
+                            if (pill.pwFloat) {
+                                ctx.strokeStyle = "#2a6ddf";
+                                ctx.fillStyle = "#2a6ddf";
+                                ctx.stroke();
+                                ctx.fill();
+                            } else {
+                                ctx.strokeStyle = "#ffffff";
+                                ctx.stroke();
+                            }
                         }
+                    }
+                    Connections {
+                        target: pill
+                        function onPwFloatChanged() { floatGlyph.requestPaint(); }
                     }
                     MouseArea {
                         anchors.fill: parent

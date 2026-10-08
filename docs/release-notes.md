@@ -1,5 +1,13 @@
 Unreleased:
 
+- One pill, once. The decoration and the effect were each drawing a
+  pill, so the focused window showed two. The decoration is now the
+  invisible frame only - the drag band and the resize grips, nothing
+  visible - and the pill is the effect's alone. The state accents the
+  decoration's pill wore moved onto the surviving one: a floated
+  window's glyph fills with the canvas blue and wears the accent ring,
+  and a maximized window's shows the restore pair.
+
 - The pill travels its edge, never covers a window, and the grab lets
   go. The one pill now rides its edge to stay nearest the pointer, so
   it is always where the hand is, and it glides there instead of

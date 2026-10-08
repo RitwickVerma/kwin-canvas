@@ -115,6 +115,20 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-16 — one pill, once
+
+The user saw two pills on the focused window: the decoration's
+(selected in the System Settings) and the effect's (the pointer-
+following one) had been coexisting since the "go big" round. The
+decoration is now the invisible frame only - the drag band and the
+resize grips, nothing visible - and the pill is the effect's alone;
+the decoration's state accents (the float's filled blue arrow + the
+accent ring, the maximize's restore pair) moved onto the effect's
+pill, which reads the target window's real keepAbove/maximized states
+through the pillTarget's internalId. Scenario 135 shrank to the
+invisible-frame proof (the band above the client stays the desktop);
+136's eleven asserts still green with the accents in.
+
 ### 2026-10-15 — the pill travels, and the seam stops churning
 
 The pill round's live reports, in order: it glitched on the unfocused
