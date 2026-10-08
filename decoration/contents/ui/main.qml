@@ -70,9 +70,9 @@ Decoration {
             }
         }
 
-        // The capsule's glass, with the refraction: a light streak
-        // bending down from the top-left corner, and a faint lift along
-        // the bottom edge - the glass reads as a lens, not a patch.
+        // The capsule's glass, with the refraction: the gradient's own
+        // top light reads as the lens; no extra streak, so nothing
+        // reads as a stray line.
         Rectangle {
             id: capsule
             anchors.fill: parent
@@ -85,18 +85,6 @@ Decoration {
                 GradientStop { position: 0.45; color: Qt.rgba(1, 1, 1, 0.02) }
                 GradientStop { position: 1.0; color: Qt.rgba(1, 1, 1, 0.06) }
             }
-        }
-        // The specular streak across the top of the capsule.
-        Rectangle {
-            anchors {
-                top: capsule.top
-                left: capsule.left
-                margins: 2
-            }
-            width: capsule.width * 0.45
-            height: 2
-            radius: 1
-            color: Qt.rgba(1, 1, 1, 0.16)
         }
 
         Row {
