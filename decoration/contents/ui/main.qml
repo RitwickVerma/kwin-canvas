@@ -26,7 +26,7 @@ Decoration {
     readonly property bool activeWindow: decoration.client.active
     readonly property color glyph: activeWindow ? Qt.rgba(1, 1, 1, 0.88) : Qt.rgba(1, 1, 1, 0.45)
     readonly property color glass: Qt.rgba(0.05, 0.05, 0.08, 0.62)
-    readonly property bool pillShown: stripHover.hovered || closeButton.hovered || minButton.hovered || maxButton.hovered || closeButton.pressed || minButton.pressed || maxButton.pressed
+    readonly property bool pillShown: stripHover.hovered || closeButton.hovered || minButton.hovered || maxButton.hovered || floatButton.hovered || closeButton.pressed || minButton.pressed || maxButton.pressed || floatButton.pressed
 
     // The drag band: the whole top edge drags the window. Invisible by
     // design; the pill floats on it.
@@ -40,9 +40,10 @@ Decoration {
         height: 24
     }
 
-    // The pill: one glass capsule with the three glyphs inside. It pops
+    // The pill: one glass capsule with the four glyphs inside. It pops
     // out of the edge - a springy rise from a small crouch, half in and
-    // half out of the window.
+    // half out of the window. Each glyph swells when the pointer comes
+    // near it, and sinks a touch when pressed.
     Item {
         id: pill
         anchors {
@@ -50,8 +51,8 @@ Decoration {
             bottomMargin: 1
             horizontalCenter: parent.horizontalCenter
         }
-        width: 76
-        height: 26
+        width: 112
+        height: 30
         scale: root.pillShown ? 1 : 0.9
         transformOrigin: Item.Bottom
         opacity: root.pillShown ? 1 : 0
@@ -74,7 +75,7 @@ Decoration {
         Rectangle {
             id: capsule
             anchors.fill: parent
-            radius: 13
+            radius: 15
             color: root.glass
             border.width: 1
             border.color: Qt.rgba(1, 1, 1, 0.24)
@@ -99,20 +100,27 @@ Decoration {
 
         Row {
             anchors.centerIn: parent
-            spacing: 6
+            spacing: 8
 
             Item {
                 id: closeButton
-                width: 20
-                height: 20
+                width: 22
+                height: 22
                 property bool hovered: false
                 property bool pressed: false
+                scale: closeButton.pressed ? 0.9 : (closeButton.hovered ? 1.18 : 1)
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: 120
+                        easing.type: Easing.OutCubic
+                    }
+                }
 
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 14
-                    height: 14
-                    radius: 7
+                    width: 16
+                    height: 16
+                    radius: 8
                     color: closeButton.hovered || closeButton.pressed ? Qt.rgba(1, 1, 1, 0.18) : "transparent"
                     border.width: 1
                     border.color: root.glyph
@@ -120,17 +128,17 @@ Decoration {
                 // The close mark: two crossed strokes.
                 Canvas {
                     anchors.centerIn: parent
-                    width: 9
-                    height: 9
+                    width: 10
+                    height: 10
                     onPaint: {
                         const ctx = getContext("2d");
                         ctx.strokeStyle = "#ffffff";
                         ctx.lineWidth = 1.2;
                         ctx.beginPath();
                         ctx.moveTo(1, 1);
-                        ctx.lineTo(7, 7);
-                        ctx.moveTo(7, 1);
-                        ctx.lineTo(1, 7);
+                        ctx.lineTo(8, 8);
+                        ctx.moveTo(8, 1);
+                        ctx.lineTo(1, 8);
                         ctx.stroke();
                     }
                 }
@@ -150,24 +158,31 @@ Decoration {
 
             Item {
                 id: minButton
-                width: 20
-                height: 20
+                width: 22
+                height: 22
                 property bool hovered: false
                 property bool pressed: false
+                scale: minButton.pressed ? 0.9 : (minButton.hovered ? 1.18 : 1)
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: 120
+                        easing.type: Easing.OutCubic
+                    }
+                }
 
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 14
-                    height: 14
-                    radius: 7
+                    width: 16
+                    height: 16
+                    radius: 8
                     color: minButton.hovered || minButton.pressed ? Qt.rgba(1, 1, 1, 0.18) : "transparent"
                     border.width: 1
                     border.color: root.glyph
                 }
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 8
-                    height: 1.2
+                    width: 9
+                    height: 1.4
                     color: "#ffffff"
                 }
                 MouseArea {
@@ -186,16 +201,23 @@ Decoration {
 
             Item {
                 id: maxButton
-                width: 20
-                height: 20
+                width: 22
+                height: 22
                 property bool hovered: false
                 property bool pressed: false
+                scale: maxButton.pressed ? 0.9 : (maxButton.hovered ? 1.18 : 1)
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: 120
+                        easing.type: Easing.OutCubic
+                    }
+                }
 
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 14
-                    height: 14
-                    radius: 7
+                    width: 16
+                    height: 16
+                    radius: 8
                     color: maxButton.hovered || maxButton.pressed ? Qt.rgba(1, 1, 1, 0.18) : "transparent"
                     border.width: 1
                     border.color: root.glyph
@@ -203,8 +225,8 @@ Decoration {
                 // The maximize mark: a hollow square.
                 Rectangle {
                     anchors.centerIn: parent
-                    width: 8
-                    height: 8
+                    width: 9
+                    height: 9
                     color: "transparent"
                     border.width: 1.2
                     border.color: "#ffffff"
@@ -219,6 +241,63 @@ Decoration {
                     onReleased: maxButton.pressed = false
                     onClicked: {
                             decoration.requestToggleMaximization(Qt.LeftButton);
+                    }
+                }
+            }
+
+            Item {
+                id: floatButton
+                width: 22
+                height: 22
+                property bool hovered: false
+                property bool pressed: false
+                scale: floatButton.pressed ? 0.9 : (floatButton.hovered ? 1.18 : 1)
+                Behavior on scale {
+                    NumberAnimation {
+                        duration: 120
+                        easing.type: Easing.OutCubic
+                    }
+                }
+
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 16
+                    height: 16
+                    radius: 8
+                    color: floatButton.hovered || floatButton.pressed ? Qt.rgba(1, 1, 1, 0.18) : "transparent"
+                    border.width: 1
+                    border.color: root.glyph
+                }
+                // The float mark: an up arrow - keep above others.
+                Canvas {
+                    anchors.centerIn: parent
+                    width: 10
+                    height: 10
+                    onPaint: {
+                        const ctx = getContext("2d");
+                        ctx.strokeStyle = "#ffffff";
+                        ctx.lineWidth = 1.3;
+                        ctx.beginPath();
+                        ctx.moveTo(1.5, 7);
+                        ctx.lineTo(5, 2.5);
+                        ctx.lineTo(8.5, 7);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(5, 2.5);
+                        ctx.lineTo(5, 8);
+                        ctx.stroke();
+                    }
+                }
+                MouseArea {
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    acceptedButtons: Qt.LeftButton
+                    onEntered: floatButton.hovered = true
+                    onExited: floatButton.hovered = false
+                    onPressed: floatButton.pressed = true
+                    onReleased: floatButton.pressed = false
+                    onClicked: {
+                            decoration.requestToggleKeepAbove();
                     }
                 }
             }
