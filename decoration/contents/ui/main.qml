@@ -41,20 +41,21 @@ Decoration {
     }
 
     // The pill: one glass capsule with the four glyphs inside. It pops
-    // out of the edge - a springy rise from a small crouch, half in and
-    // half out of the window. Each glyph swells when the pointer comes
-    // near it, and sinks a touch when pressed.
+    // out of the edge - a springy rise from a small crouch. The pill sits
+    // inside the window: its top at the window's own top edge, the
+    // capsule dipping into the window, never poking above the frame.
+    // Each glyph swells when the pointer comes near it, and sinks a
+    // touch when pressed.
     Item {
         id: pill
         anchors {
-            bottom: dragBand.bottom
-            bottomMargin: 1
+            top: dragBand.top
             horizontalCenter: parent.horizontalCenter
         }
         width: 112
         height: 30
         scale: root.pillShown ? 1 : 0.9
-        transformOrigin: Item.Bottom
+        transformOrigin: Item.Top
         opacity: root.pillShown ? 1 : 0
         Behavior on opacity {
             NumberAnimation {
