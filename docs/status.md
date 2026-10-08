@@ -115,6 +115,26 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-17 — the panel wears the pill: a decor applet in the canvas's own language
+
+The user wanted the window buttons in the panel ("same theming for both
+applet and window decor so it looks coherent") — the built-in applets
+draw the plasma theme's SVG symbols and can never match the pill's
+bespoke glyphs, so we built our own: the applet-decor package
+(org.kde.kwin.canvas.decor), the focused window's caption plus the four
+glyphs in the native button order, acting through the plugin's new
+windowAction channel (close/minimize/maximize/float on the active
+window via the in-process KWin::Window API) and reading the focused
+window from the state reply's trailing win= token. The channel is
+proven in the nest — the in-process calls work where the D-Bus
+killWindow never did — by scenario 137 (minimize hands the focus away
+and the window leaves the plane, the float toggles the keep-above
+flag, the close really closes; the tail restores the fixtures because
+the runner batches scenarios in one nest). Two goldens re-recorded
+(open-1to1 + after-commit-1to1): the machine's colour scheme drifted
+again, this time through Dolphin's own light-theme canvas — the
+effect's render path was untouched.
+
 ### 2026-10-16 — the pill wears the native buttons, on the left
 
 The user's complaint: the pill ignored System Settings' titlebar-buttons

@@ -1,0 +1,21 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "verma1997@gmail.com",
+                "Name": "Ritwick Verma"
+            }
+        ],
+        "Category": "Windows and Tasks",
+        "Description": "The focused window's caption and the canvas pill's glyphs: close, minimize, maximize and float, in the native titlebar-buttons order, drawn in the pill's own language",
+        "EnabledByDefault": true,
+        "Icon": "window-duplicate",
+        "Id": "org.kde.kwin.canvas.decor",
+        "License": "GPL-2.0-or-later",
+        "Name": "Canvas Window Decor",
+        "Version": "0.1.0",
+        "Website": "https://gitlab.com/ritwick7/kwin-canvas"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

@@ -119,6 +119,11 @@ public Q_SLOTS:
     // detection: the effect polls this while a chord-held switcher is up,
     // and reads the chord's end when its modifier clears.
     Q_SCRIPTABLE int modifiers() const;
+    // The panel applet's window decor: one of close, minimize, maximize,
+    // float, applied to the focused window through the real KWin::Window
+    // API - in-process, so it works with the canvas closed too, including
+    // on maximized windows where the decoration's pill stays tucked away.
+    Q_SCRIPTABLE void windowAction(const QString &action);
 
 public:
     bool pointerMotion(KWin::PointerMotionEvent *event) override;

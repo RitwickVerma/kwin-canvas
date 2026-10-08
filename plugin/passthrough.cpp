@@ -260,17 +260,51 @@ void CanvasPassthrough::replayClick()
 
 QString CanvasPassthrough::state() const
 {
+    // The panel applet's window decor rides the same reply: the trailing
+    // " win=" token names the focused window - internalId, caption,
+    // maximized and keep-above flags - so the panel can draw the decor
+    // for the window the user is actually on.
+    QString win;
+    if (KWin::Window *w = workspace()->activeWindow(); w) {
+        win = QStringLiteral(" win=%1|%2|%3|%4")
+                  .arg(w->internalId().toString())
+                  .arg(w->caption())
+                  .arg(w->maximizeMode() == KWin::MaximizeMode::MaximizeFull ? QStringLiteral("1") : QStringLiteral("0"))
+                  .arg(w->keepAbove() ? QStringLiteral("1") : QStringLiteral("0"));
+    }
     return QStringLiteral("active=%1 view=(%2,%3) zoom=%4 grab=%5 ground=%6 hover=%7 nav=%8 hold=%9 seam=%10")
-        .arg(m_active ? QStringLiteral("true") : QStringLiteral("false"))
-        .arg(m_viewX)
-        .arg(m_viewY)
-        .arg(m_zoom)
-        .arg(m_grab ? m_grab->caption() : QStringLiteral("-"))
-        .arg(m_grabGround ? QStringLiteral("true") : QStringLiteral("false"))
-        .arg(m_hover ? m_hover->caption() : QStringLiteral("-"))
-        .arg(m_nav)
-        .arg(m_hold)
-        .arg(atSeam(waylandServer()->seat()->pointerPos()) ? QStringLiteral("1") : QStringLiteral("0"));
+               .arg(m_active ? QStringLiteral("true") : QStringLiteral("false"))
+               .arg(m_viewX)
+               .arg(m_viewY)
+               .arg(m_zoom)
+               .arg(m_grab ? m_grab->caption() : QStringLiteral("-"))
+               .arg(m_grabGround ? QStringLiteral("true") : QStringLiteral("false"))
+               .arg(m_hover ? m_hover->caption() : QStringLiteral("-"))
+               .arg(m_nav)
+               .arg(m_hold)
+               .arg(atSeam(waylandServer()->seat()->pointerPos()) ? QStringLiteral("1") : QStringLiteral("0"))
+        + win;
+}
+
+// The panel applet's window decor: the four glyph actions, applied to the
+// focused window through the real KWin::Window API - in-process, so they
+// work in the nest too (unlike the D-Bus killWindow path).
+void CanvasPassthrough::windowAction(const QString &action)
+{
+    KWin::Window *w = workspace()->activeWindow();
+    if (!w) {
+        return;
+    }
+    if (action == QLatin1String("close")) {
+        w->closeWindow();
+    } else if (action == QLatin1String("minimize")) {
+        w->setMinimized(!w->isMinimized());
+    } else if (action == QLatin1String("maximize")) {
+        const bool full = w->maximizeMode() == KWin::MaximizeMode::MaximizeFull;
+        w->setMaximize(!full, !full);
+    } else if (action == QLatin1String("float")) {
+        w->setKeepAbove(!w->keepAbove());
+    }
 }
 
 // The GPU's busy share via NVML, loaded on demand with QLibrary so the

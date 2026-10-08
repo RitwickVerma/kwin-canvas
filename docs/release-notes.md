@@ -1,5 +1,16 @@
 Unreleased:
 
+- The panel wears the pill. A new applet, Canvas Window Decor
+  (org.kde.kwin.canvas.decor), sits in the panel and shows the focused
+  window's caption and the pill's own glyphs - close, minimize,
+  maximize, float - in the same native button order, with the same
+  hover and press pops and the same state accents. The glyphs act
+  through the pass-through plugin's new windowAction channel, so they
+  work with the canvas closed too - including on maximized windows,
+  where the decoration's pill stays tucked away. The plugin's state
+  names the focused window (its win= line), so the panel always
+  follows the window the user is on.
+
 - The pill wears the native buttons, and sits on the left. System
   Settings' titlebar-buttons configuration now decides which glyphs the
   pill shows and in what order - the left set first, then the right -
