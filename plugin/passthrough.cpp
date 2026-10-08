@@ -262,15 +262,17 @@ QString CanvasPassthrough::state() const
 {
     // The panel applet's window decor rides the same reply: the trailing
     // " win=" token names the focused window - internalId, caption,
-    // maximized and keep-above flags - so the panel can draw the decor
-    // for the window the user is actually on.
+    // maximized, keep-above and on-all-desktops (the float) flags - so
+    // the panel can draw the decor for the window the user is actually
+    // on.
     QString win;
     if (KWin::Window *w = workspace()->activeWindow(); w) {
-        win = QStringLiteral(" win=%1|%2|%3|%4")
+        win = QStringLiteral(" win=%1|%2|%3|%4|%5")
                   .arg(w->internalId().toString())
                   .arg(w->caption())
                   .arg(w->maximizeMode() == KWin::MaximizeMode::MaximizeFull ? QStringLiteral("1") : QStringLiteral("0"))
-                  .arg(w->keepAbove() ? QStringLiteral("1") : QStringLiteral("0"));
+                  .arg(w->keepAbove() ? QStringLiteral("1") : QStringLiteral("0"))
+                  .arg(w->isOnAllDesktops() ? QStringLiteral("1") : QStringLiteral("0"));
     }
     return QStringLiteral("active=%1 view=(%2,%3) zoom=%4 grab=%5 ground=%6 hover=%7 nav=%8 hold=%9 seam=%10")
                .arg(m_active ? QStringLiteral("true") : QStringLiteral("false"))
@@ -303,6 +305,10 @@ void CanvasPassthrough::windowAction(const QString &action)
         const bool full = w->maximizeMode() == KWin::MaximizeMode::MaximizeFull;
         w->setMaximize(!full, !full);
     } else if (action == QLatin1String("float")) {
+        // The canvas's float is the system's own "on all desktops" pin,
+        // not the keep-above: the plane model's flag is literally that.
+        w->setOnAllDesktops(!w->isOnAllDesktops());
+    } else if (action == QLatin1String("keepabove")) {
         w->setKeepAbove(!w->keepAbove());
     }
 }

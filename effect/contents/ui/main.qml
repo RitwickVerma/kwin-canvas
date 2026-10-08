@@ -564,8 +564,8 @@ KWin.SceneEffect {
     // screen's edge and, pushed there fast, bounces off the edge with real
     // physics before settling against it; move the camera back and the
     // picture is the window again, at its coordinates. The flag is KWin's
-    // own "keep above", repurposed - the title-bar menu's always-visible
-    // entry and the canvas agree on what floats - and the caption list
+    // own "on all desktops", repurposed - the title-bar menu's pin entry
+    // and the canvas agree on what floats - and the caption list
     // persists the choice.
     property var pinned: ({})          // caption -> true, the persisted flag
     property var floatOf: ({})         // window internalId -> { x, y, vx, vy, wasInX, wasInY }, screen px
@@ -573,7 +573,7 @@ KWin.SceneEffect {
     property real floatPrevViewX: 0
     property real lastFloatAt: 0
     property real floatPrevViewY: 0
-    function isPinnedEntry(e) { return e && e.window && !e.window.deleted && e.window.keepAbove; }
+    function isPinnedEntry(e) { return e && e.window && !e.window.deleted && e.window.onAllDesktops; }
     function loadPinned() {
         const list = configuration.PinnedWindows || [];
         const set = {};
@@ -581,7 +581,7 @@ KWin.SceneEffect {
         pinned = set;
         const all = KWin.Workspace.stackingOrder;
         for (let i = 0; i < all.length; ++i) {
-            if (pinned[all[i].caption] && !all[i].keepAbove) all[i].keepAbove = true;
+            if (pinned[all[i].caption] && !all[i].onAllDesktops) all[i].onAllDesktops = true;
         }
     }
     function savePinned() {
@@ -594,7 +594,7 @@ KWin.SceneEffect {
         for (let i = 0; i < list.length; ++i) {
             const e = list[i];
             if (!e || e.window.deleted) continue;
-            if (!e.window.keepAbove) e.window.keepAbove = true;
+            if (!e.window.onAllDesktops) e.window.onAllDesktops = true;
             pinned[e.window.caption] = true;
         }
         savePinned();
@@ -604,7 +604,7 @@ KWin.SceneEffect {
         for (let i = 0; i < list.length; ++i) {
             const e = list[i];
             if (!e || e.window.deleted) continue;
-            if (e.window.keepAbove) e.window.keepAbove = false;
+            if (e.window.onAllDesktops) e.window.onAllDesktops = false;
             if (delete pinned[e.window.caption]) any = true;
         }
         if (any) savePinned();

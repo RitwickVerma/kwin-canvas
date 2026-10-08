@@ -32,8 +32,8 @@ run_scenario() {
     assert_eq "and the minimized window leaves the plane" "$(sget entries)" 4
     c cancel
 
-    # The float toggles the keep-above flag, which the state's win= token
-    # reports as its last field.
+    # The float toggles the on-all-desktops pin, which the state's win=
+    # token reports as its last field.
     nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction float
     sleep 0.4
     assert_eq "the float lifts the window" "$(pt_state | grep -c ' win=.*|1$')" 1

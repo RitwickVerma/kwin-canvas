@@ -11,8 +11,8 @@ run_scenario() {
     c "pin $kx"
     sleep 0.3; c state
     assert_eq "the pin keeps the window at its coordinates" "$(eget KCalc x)" 100
-    js 'var ws = workspace.windowList(); for (var i = 0; i < ws.length; i++) if (ws[i].caption.indexOf("KCalc") >= 0) out("PINFLAG " + ws[i].keepAbove);'
-    assert_true "and the window is kept above" \
+    js 'var ws = workspace.windowList(); for (var i = 0; i < ws.length; i++) if (ws[i].caption.indexOf("KCalc") >= 0) out("PINFLAG " + ws[i].onAllDesktops);'
+    assert_true "and the window carries the on-all-desktops pin" \
         "$(grep -a 'PINFLAG true' "$STATE/kwin.log" | wc -l)" -ge 1
     # A pan pushes the window's coordinates off the screen: the coordinates
     # do not change, and the picture floats at the edge, inside the screen.
@@ -54,7 +54,7 @@ run_scenario() {
     # Unpin: the flag clears and the window is a plain window again.
     c "unpin $kx"
     sleep 0.3
-    js 'var ws = workspace.windowList(); for (var i = 0; i < ws.length; i++) if (ws[i].caption.indexOf("KCalc") >= 0) out("UNPINFLAG " + ws[i].keepAbove);'
+    js 'var ws = workspace.windowList(); for (var i = 0; i < ws.length; i++) if (ws[i].caption.indexOf("KCalc") >= 0) out("UNPINFLAG " + ws[i].onAllDesktops);'
     assert_true "unpinning clears the flag" \
         "$(grep -a 'UNPINFLAG false' "$STATE/kwin.log" | wc -l)" -ge 1
     c cancel
