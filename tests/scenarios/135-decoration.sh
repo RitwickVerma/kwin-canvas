@@ -33,7 +33,7 @@ run_scenario() {
     # the decoration's own log line), but the nest's KWin cannot close a
     # window at all - even its own killWindow D-Bus is a no-op there - so
     # the glyph's proof belongs to the live session, not the harness.
-    { printf 'move 316 132\nsleep 300\nclick\nsleep 300\n'; } | input
+    { printf 'move 295 143\nsleep 300\nclick\nsleep 300\n'; } | input
     sleep 1.0
     skip "the nest's KWin cannot close a window; the glyphs get their proof on the live session"
     arrange >/dev/null

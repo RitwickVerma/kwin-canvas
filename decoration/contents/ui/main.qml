@@ -49,10 +49,10 @@ Decoration {
     Item {
         id: pill
         anchors {
-            top: dragBand.top
+            top: dragBand.top + 8
             horizontalCenter: parent.horizontalCenter
         }
-        width: 112
+        width: 136
         height: 30
         scale: root.pillShown ? 1 : 0.9
         transformOrigin: Item.Top
@@ -183,7 +183,7 @@ Decoration {
                 Rectangle {
                     anchors.centerIn: parent
                     width: 9
-                    height: 1.4
+                    height: 1.2
                     color: "#ffffff"
                 }
                 MouseArea {
