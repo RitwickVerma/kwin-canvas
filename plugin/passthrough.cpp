@@ -119,6 +119,12 @@ CanvasPassthrough::CanvasPassthrough()
         if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
             canvas->setProperty("canvasHold", true);
         }
+        // The hold is the canvas's domain: the pill stands down, wherever
+        // the pointer rides during the grasp.
+        m_pillId.clear();
+        if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+            canvas->setProperty("pillTarget", QString());
+        }
     });
 }
 
@@ -486,6 +492,116 @@ void CanvasPassthrough::publishChrome(const QPointF &screen)
     }
 }
 
+Window *CanvasPassthrough::pillAt(const QPointF &screen) const
+{
+    // The pill rides whichever edge the pointer approaches: a band above
+    // and below the frame's top and bottom, and left and right of the
+    // frame's sides - high enough for the pill's own capsule plus the
+    // approach. The topmost window in the stacking order wins.
+    const QList<Window *> &stack = workspace()->stackingOrder();
+    for (auto it = stack.crbegin(); it != stack.crend(); ++it) {
+        Window *w = *it;
+        if (!w->isClient() || w->isDeleted()) {
+            continue;
+        }
+        if (w->isDesktop() || w->isDock() || w->isPopupWindow() || w->isSpecialWindow()) {
+            continue;
+        }
+        if (w->isMinimized() || w->isHidden() || !w->isOnCurrentDesktop()) {
+            continue;
+        }
+        const QRectF f = QRectF(w->frameGeometry());
+        const bool inX = screen.x() >= f.x() && screen.x() <= f.x() + f.width();
+        const bool inY = screen.y() >= f.y() && screen.y() <= f.y() + f.height();
+        if (inX && screen.y() >= f.y() - 36 && screen.y() <= f.y() + 14) {
+            m_pillEdge = QStringLiteral("top");
+            return w;
+        }
+        if (inX && screen.y() >= f.y() + f.height() - 14 && screen.y() <= f.y() + f.height() + 36) {
+            m_pillEdge = QStringLiteral("bottom");
+            return w;
+        }
+        if (inY && screen.x() >= f.x() - 36 && screen.x() <= f.x() + 14) {
+            m_pillEdge = QStringLiteral("left");
+            return w;
+        }
+        if (inY && screen.x() >= f.x() + f.width() - 14 && screen.x() <= f.x() + f.width() + 36) {
+            m_pillEdge = QStringLiteral("right");
+            return w;
+        }
+    }
+    m_pillEdge.clear();
+    return nullptr;
+}
+
+void CanvasPassthrough::publishPill(const QPointF &screen)
+{
+    const Window *w = pillAt(screen);
+    QString target;
+    if (w) {
+        const QRectF f = QRectF(w->frameGeometry());
+        // The whole picture the effect needs: the window's id for the
+        // actions, the edge the pointer is riding, and the frame itself
+        // for the pill's spot.
+        target = QStringLiteral("%1|%2|%3|%4|%5|%6").arg(w->internalId().toString()).arg(m_pillEdge).arg(f.x()).arg(f.y()).arg(f.width()).arg(f.height());
+    }
+    if (target == m_pillId) {
+        return;
+    }
+    m_pillId = target;
+    if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+        canvas->setProperty("pillTarget", target);
+    }
+}
+
+QRectF CanvasPassthrough::pillRect() const
+{
+    const QStringList p = m_pillId.split('|');
+    if (p.size() < 6) {
+        return QRectF();
+    }
+    const QRectF f(p[2].toDouble(), p[3].toDouble(), p[4].toDouble(), p[5].toDouble());
+    const QString edge = p[1];
+    if (edge == QLatin1String("left") || edge == QLatin1String("right")) {
+        const qreal x = edge == QLatin1String("left") ? f.x() - 30 : f.right();
+        return QRectF(x, f.center().y() - 92, 30, 184);
+    }
+    const qreal y = edge == QLatin1String("top") ? f.y() - 30 : f.bottom();
+    return QRectF(f.center().x() - 92, y, 184, 30);
+}
+
+void CanvasPassthrough::pillAction(const QString &action, const QString &id)
+{
+    const QUuid uuid(id);
+    for (Window *w : workspace()->stackingOrder()) {
+        if (!w || w->internalId() != uuid) {
+            continue;
+        }
+        if (action == QLatin1String("close")) {
+            w->closeWindow();
+        } else if (action == QLatin1String("minimize")) {
+            w->setMinimized(!w->isMinimized());
+        } else if (action == QLatin1String("maximize")) {
+            const bool full = w->maximizeMode() == MaximizeMode::MaximizeFull;
+            w->setMaximize(!full, !full);
+        } else if (action == QLatin1String("float")) {
+            w->setKeepAbove(!w->keepAbove());
+        } else if (action == QLatin1String("grabstart")) {
+            // The pill's empty stretch is the grab: the window rides the
+            // pointer until the grab ends, the real frame moving with it.
+            // The start is the last pointer position the closed branches
+            // saw - the seat's own pointerPos lags behind the events the
+            // filter is processing.
+            m_pillGrab = w;
+            m_pillStart = m_lastPosition;
+            m_pillOrigin = w->frameGeometry().topLeft();
+        } else if (action == QLatin1String("grabend")) {
+            m_pillGrab = nullptr;
+        }
+        break;
+    }
+}
+
 Window *CanvasPassthrough::windowAt(const QPointF &canvas) const
 {
     const QList<Window *> &stack = workspace()->stackingOrder();
@@ -636,6 +752,23 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
     }
     m_idleTimer.start();
     if (!m_active) {
+        // The pill's grab rides the window with the pointer: the frame
+        // follows the hand until the grab ends.
+        if (m_pillGrab) {
+            const QPointF d = event->position - m_pillStart;
+            qCDebug(KWIN_CANVAS) << "canvas-passthrough: pill grab-move ev=" << event->position << "start=" << m_pillStart << "d=" << d << "origin=" << m_pillOrigin;
+            m_pillGrab->move(m_pillOrigin + d);
+        }
+        // The closed desktop's pill: the pointer riding a window's edge
+        // publishes the target so the effect can show its pill there
+        // through the quiet seam. The canvas is closed, so no window takes
+        // the motion; the effect owns it. The hold stands it down: a glide
+        // can ride past a window's edge mid-grasp, and a pill popping up
+        // there would swallow the release that ends the drag (the 103
+        // class) - during the hold every press and motion is the canvas's.
+        if (!m_holdDown) {
+            publishPill(event->position);
+        }
         return false;
     }
     // The first motion is the user aiming at the canvas: from here the
@@ -788,6 +921,19 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
         m_clickWindow = nullptr;
     }
     if (!m_active) {
+        // The pill owns its pixels: a press inside the pill's rect belongs
+        // to the effect - the glyph actions and the grab's start and end -
+        // never to the window stack under it. The quiet seam's scene takes
+        // no input of its own, so the plugin publishes the press (the empty
+        // string = the release) and consumes it; the effect reads it and
+        // answers through pillAction.
+        if (!m_holdDown && !m_pillId.isEmpty() && pillRect().contains(event->position)) {
+            m_lastPosition = event->position;
+            if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+                canvas->setProperty("pillPress", event->state == PointerButtonState::Pressed ? QStringLiteral("%1|%2").arg(event->position.x()).arg(event->position.y()) : QString());
+            }
+            return true;
+        }
         return false;
     }
     // The system's own chrome - a dock, a panel, an applet's dropdown -

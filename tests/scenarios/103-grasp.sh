@@ -34,6 +34,8 @@ run_scenario() {
     assert_near "and y" "$(eget KCalc fy)" 60 2
     assert_near "and the camera is back on the viewport" "$(sget viewx)" "$(tget 0 x)" 1
     wait
+    c state
+    sleep 0.4
 
     # A middle drag grabs and pans, from anywhere, in the same hold.
     printf 'move 1700 900\nsleep 60\ndown back\nsleep 900\nmove 1700 900\nsleep 60\ndown middle\nsleep 60\nglide 1500 800 20 10\nsleep 60\nup middle\nsleep 900\nup back\n' | input &
@@ -42,13 +44,15 @@ run_scenario() {
     sleep 0.7; c state
     assert_near "a middle drag pans, x" "$(sget viewx)" 200 3
     assert_near "and y" "$(sget viewy)" 100 3
-    sleep 0.9; c state
+    for i in $(seq 1 15); do c state; [ "$(sget visible)" = false ] && break; sleep 0.3; done
     assert_eq "and the release closes again" "$(sget visible)" false
     # The pan is the release: the location opens at the panned viewport, not
     # back where the hold began.
     assert_near "the viewport became the panned view, x" "$(tget 0 x)" 200 1
     assert_near "and y" "$(tget 0 y)" 100 1
     wait
+    c state
+    sleep 0.4
 
     # MB5 during the hold tours the clusters - the plane's desktops: the
     # camera hops to the next cluster's last-focused window at 1:1, and the
@@ -73,6 +77,8 @@ run_scenario() {
     assert_near "at the cluster's last-focused window, x" "$(sget viewx)" 2564 60
     assert_near "and y" "$(sget viewy)" 100 60
     wait
+    c state
+    sleep 0.4
 
     # A double-click during the hold animates like any step in: with the
     # smooth camera on, zoomed out, the step springs to 1:1 before it

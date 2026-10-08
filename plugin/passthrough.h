@@ -106,6 +106,14 @@ public Q_SLOTS:
      * plugin's halves of a gesture can be read side by side in KWin's log.
      */
     Q_SCRIPTABLE void setVerbose(bool verbose);
+    /**
+     * The effect's pill asks for a real window action: "close",
+     * "minimize", "maximize" or "float", and the window's internalId. The
+     * decoration's request* bridge proved unreachable from the canvas, so
+     * the pill's glyphs travel through here - the one place with both the
+     * real window and the real input.
+     */
+    Q_SCRIPTABLE void pillAction(const QString &action, const QString &id);
     /** One line of state for the nest harness: active, camera, grab, hover. */
     Q_SCRIPTABLE QString state() const;
     /**
@@ -145,6 +153,17 @@ private:
     void publishChrome(const QPointF &screen);
     void publishRest(KWin::Window *w);
     void publishHover(KWin::Window *w);
+    /**
+     * The window whose top edge the pointer is riding, or nullptr: the
+     * effect's pill pops there. Scanned while the canvas is CLOSED - the
+     * plugin sees the pointer before any window does, so the closed
+     * desktop's pill is the effect's own, the one place it can live.
+     */
+    KWin::Window *pillAt(const QPointF &screen) const;
+    /** Publish the pill target (the internalId, empty when none) on every change. */
+    void publishPill(const QPointF &screen);
+    /** The pill's own screen rect, from the published target. */
+    QRectF pillRect() const;
     /** The seam: within the margin of the desk's outer border, where a shared mouse parks its pointer. */
     bool atSeam(const QPointF &screen) const;
     /** Enter (or stay on) the input surface of @p window under @p canvas. False if no surface takes input there. */
@@ -212,6 +231,15 @@ private:
      * popup): published to the effect so its scene stands back and the
      * chrome gets the click natively. */
     bool m_chromeHover = false;
+    /** The pill target published to the effect (the internalId, empty when none). */
+    QString m_pillId;
+    /** The edge the pointer is riding (top/bottom/left/right), for the pill's spot. */
+    mutable QString m_pillEdge;
+    /** The pill's grab: the window riding the pointer until the grab ends. */
+    QPointer<KWin::Window> m_pillGrab;
+    /** The grab's press position and the frame's top-left at the press. */
+    QPointF m_pillStart;
+    QPointF m_pillOrigin;
     /** The /proc/stat jiffies at the previous load() call, for the busy delta. */
     mutable qulonglong m_prevTotal = 0;
     mutable qulonglong m_prevIdle = 0;

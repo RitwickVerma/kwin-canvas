@@ -1,5 +1,16 @@
 Unreleased:
 
+- The canvas has its own window chrome: one pill, wherever the pointer
+  rides. Approach any edge of any window - top, bottom, left or right,
+  over the closed desktop too - and the pill appears there, one glass
+  capsule hugging that edge: an empty stretch with three grip dots
+  that drags the window with the hand, then close, minimize, maximize
+  and float, each a real window action. The pill stands down during
+  the hold, so the grasp's drags and pans always get their releases,
+  and it leaves the desktop clean when the pointer is elsewhere. The
+  decoration's per-window pill stays for the edge cases the effect
+  cannot see; this one is the canvas's.
+
 - The window wears nothing but the pill. The Canvas decoration is now
   a window with no frame at all - no border, no shadow - and one glass
   pill (close, minimize, maximize, float) sitting on the top edge,

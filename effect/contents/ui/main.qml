@@ -490,8 +490,9 @@ KWin.SceneEffect {
         enterHere();
     }
 
+    // The debug channel's own replay sequence: the last DebugSeq seen, so
+    // each reconfigure replays its command exactly once.
     property int lastDebugSeq: 0
-
     // The float: the windows hover in Z as the camera steps out of the
     // location, so the overworld feels alive - a gentle per-window bob,
     // each at its own phase, ramping in with the zoom-out.
@@ -1877,6 +1878,82 @@ KWin.SceneEffect {
         if (d > 0) return; // the zoom-in while closed is the desktop's own
         open();
         camZoomTo(zoom / zoomStep, cursorScreen().x, cursorScreen().y);
+    }
+    // The effect's one pill: the plugin publishes the window whose top
+    // edge the pointer rides (the closed desktop - "id|x|y|width") and the
+    // scene draws the pill there through the quiet seam. The closed
+    // desktop's pill is the canvas's own chrome, one pill wherever the
+    // pointer goes, never a copy per window.
+    property string pillTarget: ""
+    // The seam was opened by the pill itself: when the target clears, the
+    // pill closes its own quiet open - a user's open (the grasp, the
+    // chord) is left alone.
+    property bool pillSeam: false
+    onPillTargetChanged: {
+        if (pillTarget !== "") {
+            if (!visible) {
+                pillSeam = true;
+                open(true);
+            }
+        } else if (pillSeam && visible && quiet) {
+            pillSeam = false;
+            visible = false;
+            quiet = false;
+        }
+    }
+    function pillClick(action) {
+        if (pillTarget === "") return;
+        pillActionCall.arguments = [action, pillTarget.split("|")[0]];
+        pillActionCall.call();
+    }
+    // The pill's grab stretch: the press started it, the release ends it.
+    property bool pillGrabDown: false
+    // The plugin publishes the pill's own presses (the quiet seam's scene
+    // takes no input of its own): "x|y" for the press, "" for the release.
+    // The press point maps to the pill's cells - the grab stretch starts
+    // the drag, a glyph fires its action.
+    property string pillPress: ""
+    onPillPressChanged: {
+        if (pillPress === "") {
+            if (pillGrabDown) {
+                pillGrabDown = false;
+                pillClick("grabend");
+            }
+            return;
+        }
+        const parts = pillPress.split("|");
+        const px = Number(parts[0]);
+        const py = Number(parts[1]);
+        pillPress = "";
+        const p = pillTarget.split("|");
+        if (p.length < 6) return;
+        const edge = p[1];
+        const fx = Number(p[2]);
+        const fy = Number(p[3]);
+        const fw = Number(p[4]);
+        const fh = Number(p[5]);
+        // The cell's local x along the pill's row axis - the same geometry
+        // the item uses, so the press lands on the cell it is drawn under.
+        let lx;
+        if (edge === "left") {
+            lx = 92 - (py - (fy + fh / 2)) - 12;
+        } else if (edge === "right") {
+            lx = (py - (fy + fh / 2)) + 92 - 12;
+        } else {
+            lx = px - (fx + fw / 2 - 92 + 12);
+        }
+        if (lx >= 0 && lx < 40) {
+            pillGrabDown = true;
+            pillClick("grabstart");
+            return;
+        }
+        const cells = [["close", 48], ["minimize", 78], ["maximize", 108], ["float", 138]];
+        for (const cell of cells) {
+            if (lx >= cell[1] && lx < cell[1] + 22) {
+                pillClick(cell[0]);
+                return;
+            }
+        }
     }
     // The pass-through has let go after the idle: the canvas owns the
     // input again, until the pointer's next touch.
@@ -3585,6 +3662,16 @@ KWin.SceneEffect {
             effect.handOnWindow = h !== "-" || gr !== "-";
         }
     }
+    // The pill's actions travel to the real windows through the plugin -
+    // the one place with both the window and the input. "close",
+    // "minimize", "maximize" or "float", and the target's internalId.
+    KWin.DBusCall {
+        id: pillActionCall
+        service: "org.kde.KWin"
+        path: "/KWinCanvas"
+        dbusInterface: "org.kde.kwin.canvas.Passthrough"
+        method: "pillAction"
+    }
     // The pulse that keeps the dot honest while the overworld is open.
     Timer {
         interval: 400
@@ -4532,6 +4619,7 @@ KWin.SceneEffect {
             + " graspTarget=" + (graspTarget ? entries.indexOf(graspTarget) : "-")
             + " outcome=" + (grasp ? (zoom < 0.72 ? "world" : "land") : "-")
             + " rest=" + (restStart ? "1" : "0")
+            + " pill=" + (pillTarget !== "" ? "1" : "0")
             + " map=" + (mapMinimap ? "minimap" : "-")
             + " verb=" + (verb ? "1" : "0")
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)

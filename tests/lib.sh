@@ -63,6 +63,7 @@ sget() {
         lean)     sed -n 's/.* lean=\([-0-9.]*\).*/\1/p' <<<"$line" ;;
         seam)     sed -n 's/.* seam=\([0-9]*\).*/\1/p' <<<"$line" ;;
         map)      sed -n 's/.* map=\([a-z-]*\).*/\1/p' <<<"$line" ;;
+        pill)     sed -n 's/.* pill=\([0-9]*\).*/\1/p' <<<"$line" ;;
         verb)     sed -n 's/.* verb=\([0-9]*\).*/\1/p' <<<"$line" ;;
         ql)       sed -n 's/.* ql=\([0-9]*\).*/\1/p' <<<"$line" ;;
         trail)    sed -n 's/.* trail=\([0-9]*\).*/\1/p' <<<"$line" ;;
@@ -175,7 +176,11 @@ assert_differs() {
 }
 
 # Open and put the camera at 1:1 on the current activity's frames, whatever OpenZoom is.
-open_1to1() { c open; c home; }
+open_1to1() { c open; c home; c state >/dev/null; sleep 0.3; }
+# The trailing c state is the drain: the debug channel replays through the
+# config watcher, whose delivery can lag under load - the last command must
+# be a harmless state read, so a late replay can never fire a stale "home"
+# into the middle of a hold (the 103 class).
 
 # ---- screen borders ---------------------------------------------------------
 # Which borders the effect reserves, the key the Screen Edges settings page

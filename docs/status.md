@@ -115,6 +115,31 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-14 — the canvas's one pill: any edge, a grab, the real actions
+
+The decoration's per-window pill grew a canvas-wide twin. The plugin
+watches the pointer everywhere - the closed desktop included - and
+detects whichever edge of whichever window it approaches (the four
+bands around the frames; the topmost window wins), publishes the target
+through the effect's property channel, and the effect draws ONE pill
+hugging that edge (horizontal on the top and bottom, rotated on the
+sides) through the quiet seam - pixel-identical at 1:1, so the pill
+floats over the real desktop. The empty stretch is the grab: the
+window's real frame rides the pointer (the KWin::Window API, not the
+decoration's dead request bridge), and the four glyphs are the real
+actions - closeWindow, setMinimized, setMaximize, setKeepAbove.
+
+The debugging worth writing down: the quiet seam's scene takes NO
+input of its own, so the plugin owns the pill's pixels and publishes
+the presses (the pillPress property); the seat's pointerPos LAGS the
+filter's events, so the grab's start reads the last event position;
+and the round's one regression - 103-grasp's middle drag never
+committed (the hold's release found the pan gesture still open and
+deferred the commit forever) - was the pill swallowing a drag's
+release: a glide riding past a window's edge re-published the pill
+mid-hold and the pill branch consumed the up-middle. The pill now
+stands down while the hold is down.
+
 ### 2026-10-13 — the pill settles on the edge, always on
 
 The pill's final seat: the user's "the pill cut off at the top and its
