@@ -26,14 +26,14 @@ run_scenario() {
     { printf 'move 340 128\nsleep 400\n'; } | input
     sleep 1.2
     shot "$OUT/135-pill.png"
-    m=$(region_rmse "$OUT/135-post.png" "$OUT/135-pill.png" "80x28+300+110")
+    m=$(region_rmse "$OUT/135-post.png" "$OUT/135-pill.png" "80x28+300+116")
     assert_eq "the pill fades in over the top edge" "$(changed "$m")" 1
     # the close glyph (the pill's leftmost button) kills the window. The
     # click lands on the button and the requestClose() fires (proven by
     # the decoration's own log line), but the nest's KWin cannot close a
     # window at all - even its own killWindow D-Bus is a no-op there - so
     # the glyph's proof belongs to the live session, not the harness.
-    { printf 'move 295 143\nsleep 300\nclick\nsleep 300\n'; } | input
+    { printf 'move 295 131\nsleep 300\nclick\nsleep 300\n'; } | input
     sleep 1.0
     skip "the nest's KWin cannot close a window; the glyphs get their proof on the live session"
     arrange >/dev/null
