@@ -115,6 +115,25 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-13 — the pill settles on the edge, always on
+
+The pill's final seat: the user's "the pill cut off at the top and its
+not over and inside the window" plus "maybe it should always be
+visible. its minimal enough". Two fixes: the invisible title band grew
+from 24 to 30 px - the pill's own height - so the capsule never clips
+at the top; and the hide-until-hover opacity is gone, the pill stays
+on the edge permanently (the scale still breathes with the pointer's
+approach). The glyphs now answer the hand: each swells on the hover,
+sinks on the press, and its glass fills as the pointer lands (the
+animated colour + the OutBack pops). The honest limit stated again:
+the QML decoration cannot paint over the window's content - the
+compositor draws the client over the frame - so the pill rides the
+edge above it; the true over-the-window pill is the effect-side one
+(the seam trick), the next increment. The corners: the ShapeCorners
+effect skips shaped windows, so the Klassy session kept its own
+corners; with the Canvas decoration selected and a re-login the plain
+rects take the rounding.
+
 ### 2026-10-12 — the window wears nothing but the pill
 
 The decoration's second act: the user saw the shadow as "a dark

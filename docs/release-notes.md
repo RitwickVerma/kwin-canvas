@@ -2,14 +2,15 @@ Unreleased:
 
 - The window wears nothing but the pill. The Canvas decoration is now
   a window with no frame at all - no border, no shadow - and one glass
-  pill (close, minimize, maximize) that stays hidden until the pointer
-  comes near the top edge, then pops up half in and half out of the
-  window with a springy rise. The whole top edge remains the invisible
-  drag handle, and the resize edges stay invisible too, so a window is
-  exactly its content. The pill wears the canvas's glass with a drawn
-  refraction: the QML decoration API has no real backdrop blur, so the
-  lens is painted. The close and minimize glyphs use the standard
-  decoration requests - the compositor's own way.
+  pill (close, minimize, maximize, float) sitting on the top edge,
+  always visible. Each glyph answers the pointer: it swells on the
+  hover and sinks on the press, and its glass fills in as the pointer
+  lands. The whole top edge remains the invisible drag handle, and the
+  resize edges stay invisible too, so a window is exactly its content.
+  The pill wears the canvas's glass with a drawn refraction: the QML
+  decoration API has no real backdrop blur, so the lens is painted.
+  The glyphs use the standard decoration requests - the compositor's
+  own way.
 
 - The trail is a ribbon, not a scribble. The camera's path used to
   keep every wiggle the hand made; it now keeps only the real turns -

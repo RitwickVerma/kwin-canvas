@@ -37,7 +37,7 @@ Decoration {
             right: parent.right
             top: parent.top
         }
-        height: 24
+        height: 30
     }
 
     // The pill: one glass capsule with the four glyphs inside. It pops
@@ -58,13 +58,9 @@ Decoration {
         height: 30
         scale: root.pillShown ? 1 : 0.9
         transformOrigin: Item.Bottom
-        opacity: root.pillShown ? 1 : 0
-        Behavior on opacity {
-            NumberAnimation {
-                duration: 200
-                easing.type: Easing.OutCubic
-            }
-        }
+        // Always visible: the pill never hides. The scale still
+        // breathes with the pointer's approach, but the capsule is
+        // part of the window's edge at all times.
         Behavior on scale {
             NumberAnimation {
                 duration: 260
@@ -99,11 +95,11 @@ Decoration {
                 height: 22
                 property bool hovered: false
                 property bool pressed: false
-                scale: closeButton.pressed ? 0.9 : (closeButton.hovered ? 1.18 : 1)
+                scale: closeButton.pressed ? 0.86 : (closeButton.hovered ? 1.2 : 1)
                 Behavior on scale {
                     NumberAnimation {
-                        duration: 120
-                        easing.type: Easing.OutCubic
+                        duration: 150
+                        easing.type: Easing.OutBack
                     }
                 }
 
@@ -112,9 +108,15 @@ Decoration {
                     width: 16
                     height: 16
                     radius: 8
-                    color: closeButton.hovered || closeButton.pressed ? Qt.rgba(1, 1, 1, 0.18) : "transparent"
+                    color: closeButton.pressed ? Qt.rgba(1, 1, 1, 0.42) : (closeButton.hovered ? Qt.rgba(1, 1, 1, 0.28) : "transparent")
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 140
+                            easing.type: Easing.OutCubic
+                        }
+                    }
                     border.width: 1
-                    border.color: root.glyph
+                    border.color: closeButton.hovered || closeButton.pressed ? Qt.rgba(1, 1, 1, 0.95) : root.glyph
                 }
                 // The close mark: two crossed strokes.
                 Canvas {
@@ -153,11 +155,11 @@ Decoration {
                 height: 22
                 property bool hovered: false
                 property bool pressed: false
-                scale: minButton.pressed ? 0.9 : (minButton.hovered ? 1.18 : 1)
+                scale: minButton.pressed ? 0.86 : (minButton.hovered ? 1.2 : 1)
                 Behavior on scale {
                     NumberAnimation {
-                        duration: 120
-                        easing.type: Easing.OutCubic
+                        duration: 150
+                        easing.type: Easing.OutBack
                     }
                 }
 
@@ -166,9 +168,15 @@ Decoration {
                     width: 16
                     height: 16
                     radius: 8
-                    color: minButton.hovered || minButton.pressed ? Qt.rgba(1, 1, 1, 0.18) : "transparent"
+                    color: minButton.pressed ? Qt.rgba(1, 1, 1, 0.42) : (minButton.hovered ? Qt.rgba(1, 1, 1, 0.28) : "transparent")
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 140
+                            easing.type: Easing.OutCubic
+                        }
+                    }
                     border.width: 1
-                    border.color: root.glyph
+                    border.color: minButton.hovered || minButton.pressed ? Qt.rgba(1, 1, 1, 0.95) : root.glyph
                 }
                 Rectangle {
                     anchors.centerIn: parent
@@ -196,11 +204,11 @@ Decoration {
                 height: 22
                 property bool hovered: false
                 property bool pressed: false
-                scale: maxButton.pressed ? 0.9 : (maxButton.hovered ? 1.18 : 1)
+                scale: maxButton.pressed ? 0.86 : (maxButton.hovered ? 1.2 : 1)
                 Behavior on scale {
                     NumberAnimation {
-                        duration: 120
-                        easing.type: Easing.OutCubic
+                        duration: 150
+                        easing.type: Easing.OutBack
                     }
                 }
 
@@ -209,9 +217,15 @@ Decoration {
                     width: 16
                     height: 16
                     radius: 8
-                    color: maxButton.hovered || maxButton.pressed ? Qt.rgba(1, 1, 1, 0.18) : "transparent"
+                    color: maxButton.pressed ? Qt.rgba(1, 1, 1, 0.42) : (maxButton.hovered ? Qt.rgba(1, 1, 1, 0.28) : "transparent")
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 140
+                            easing.type: Easing.OutCubic
+                        }
+                    }
                     border.width: 1
-                    border.color: root.glyph
+                    border.color: maxButton.hovered || maxButton.pressed ? Qt.rgba(1, 1, 1, 0.95) : root.glyph
                 }
                 // The maximize mark: a hollow square.
                 Rectangle {
@@ -242,11 +256,11 @@ Decoration {
                 height: 22
                 property bool hovered: false
                 property bool pressed: false
-                scale: floatButton.pressed ? 0.9 : (floatButton.hovered ? 1.18 : 1)
+                scale: floatButton.pressed ? 0.86 : (floatButton.hovered ? 1.2 : 1)
                 Behavior on scale {
                     NumberAnimation {
-                        duration: 120
-                        easing.type: Easing.OutCubic
+                        duration: 150
+                        easing.type: Easing.OutBack
                     }
                 }
 
@@ -255,9 +269,15 @@ Decoration {
                     width: 16
                     height: 16
                     radius: 8
-                    color: floatButton.hovered || floatButton.pressed ? Qt.rgba(1, 1, 1, 0.18) : "transparent"
+                    color: floatButton.pressed ? Qt.rgba(1, 1, 1, 0.42) : (floatButton.hovered ? Qt.rgba(1, 1, 1, 0.28) : "transparent")
+                    Behavior on color {
+                        ColorAnimation {
+                            duration: 140
+                            easing.type: Easing.OutCubic
+                        }
+                    }
                     border.width: 1
-                    border.color: root.glyph
+                    border.color: floatButton.hovered || floatButton.pressed ? Qt.rgba(1, 1, 1, 0.95) : root.glyph
                 }
                 // The float mark: an up arrow - keep above others.
                 Canvas {
@@ -310,8 +330,8 @@ Decoration {
         // the window wears nothing while the pill floats exactly on the
         // edge.
         borders.setBorders(6);
-        borders.setTitle(24);
-        maximizedBorders.setTitle(24);
+        borders.setTitle(30);
+        maximizedBorders.setTitle(30);
         extendedBorders.setAllBorders(30);
         decoration.installTitleItem(dragBand);
     }

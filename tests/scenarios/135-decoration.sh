@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
-scenario_desc="the canvas decoration: no title bar (the band above a window stays the desktop), and the glass pill fades in over the top edge - the glyphs' close and minimize ship, their proof belongs to the live session (the nest's KWin cannot close a window at all)"
+scenario_desc="the canvas decoration: no title bar (the band above a window stays the desktop), and the glass pill sits on the top edge - the glyphs' close and minimize ship, their proof belongs to the live session (the nest's KWin cannot close a window at all)"
 
 region_rmse() {
     magick "$1" -crop "$3" +repage "$OUT/135-a.png"
@@ -22,18 +22,18 @@ run_scenario() {
     # frame draws no bar there.
     m=$(region_rmse "$OUT/135-pre.png" "$OUT/135-post.png" "80x4+300+116")
     assert_eq "no title bar above the client" "$(changed "$m")" 0
-    # the glass pill fades in over the top edge
+    # the glass pill sits on the top edge
     { printf 'move 340 128\nsleep 400\n'; } | input
     sleep 1.2
     shot "$OUT/135-pill.png"
-    m=$(region_rmse "$OUT/135-post.png" "$OUT/135-pill.png" "80x28+300+116")
+    m=$(region_rmse "$OUT/135-post.png" "$OUT/135-pill.png" "80x30+300+120")
     assert_eq "the pill fades in over the top edge" "$(changed "$m")" 1
     # the close glyph (the pill's leftmost button) kills the window. The
     # click lands on the button and the requestClose() fires (proven by
     # the decoration's own log line), but the nest's KWin cannot close a
     # window at all - even its own killWindow D-Bus is a no-op there - so
     # the glyph's proof belongs to the live session, not the harness.
-    { printf 'move 295 131\nsleep 300\nclick\nsleep 300\n'; } | input
+    { printf 'move 295 135\nsleep 300\nclick\nsleep 300\n'; } | input
     sleep 1.0
     skip "the nest's KWin cannot close a window; the glyphs get their proof on the live session"
     arrange >/dev/null
