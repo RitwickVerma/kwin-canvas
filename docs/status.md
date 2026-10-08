@@ -115,6 +115,37 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-11 — the canvas decoration: a hairline frame and a glass pill
+
+The user asked to lose the title bars ("maybe all windows should lose
+their title bars. would look so clean af") and answered their own
+architecture question ("maybe we just need our own custom window
+decorations"). Built: a new KWin/Decoration package - the Canvas
+decoration - a one-pixel hairline frame, an invisible drag band along
+the top edge, and a 66x22 glass pill (close, minimize, maximize)
+fading in on the hover, centred and bottom-flush on the top edge (the
+user's "half way in and half way out"). The pill's refraction is drawn
+(the QML decoration module exposes no blur region or rounded-corner
+API - that is Klassy's C++ path). The glyphs' close and minimize are
+wired the standard way (decoration.requestClose() and friends), but
+the nest cannot prove them: its KWin cannot close a window at all -
+even the compositor's own killWindow D-Bus is a no-op there, measured
+- so scenario 135 proves the frame and the pill and the glyphs' proof
+belongs to the live session.
+
+The traps this round: the kpackagetool6 validator rejects the
+KWin/Decoration type entirely on this machine (even the stock plastik
+copy), so the install is a plain directory copy into
+~/.local/share/kwin/decorations/; the nest's decoration seed is the
+aurorae engine (library=org.kde.kwin.aurorae + theme=<id> in both
+[kdecoration2] and [aurorae] groups); and the load-bearing discovery:
+with the title at 0 the client covers the decoration's whole interior,
+so the pill can never be hovered - the title is an invisible 24 px
+band, the hover surface for the drag and the pill, and the look stays
+borderless. Scenario 135 proves the frame and the pill (the close is an
+honest skip: the nest's KWin cannot close a window - its own killWindow
+D-Bus is a no-op - so the glyphs' proof is the live session's).
+
 ### 2026-10-09 — the scene tree hot-reloads: make hot replaces the re-login
 
 The user asked for a better way than re-logging in after every QML

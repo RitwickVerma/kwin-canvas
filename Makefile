@@ -7,6 +7,8 @@
 EFFECT_ID   := kwin-canvas
 WALL_ID     := kwin-canvas-ground
 APPLET_ID   := org.kde.kwin.canvas.toggle
+DECOR_ID    := kwin-canvas-decoration
+DECOR_DIR   := $(HOME)/.local/share/kwin/decorations
 CLI         := tools/kwin-canvas
 BIN_DIR     := $(HOME)/.local/bin
 PLUGIN_ID   := kwin_canvas_passthrough
@@ -75,11 +77,12 @@ lint-python: ## vulture over the Python: no dead functions, imports or variables
 
 # ---- packages ---------------------------------------------------------------
 stage:
-	rm -rf $(BUILD)/effect $(BUILD)/wallpaper $(BUILD)/applet
+	rm -rf $(BUILD)/effect $(BUILD)/wallpaper $(BUILD)/applet $(BUILD)/decoration
 	mkdir -p $(BUILD)
 	cp -r effect $(BUILD)/effect
 	cp -r wallpaper $(BUILD)/wallpaper
 	cp -r applet $(BUILD)/applet
+	cp -r decoration $(BUILD)/decoration
 	cp shared/Ground.qml $(BUILD)/effect/contents/ui/Ground.qml
 	cp shared/Ground.qml $(BUILD)/wallpaper/contents/ui/Ground.qml
 
@@ -87,8 +90,9 @@ install: stage ## Install the effect, the ground wallpaper and the applet as use
 	@$(KPT) --type KWin/Effect --upgrade $(BUILD)/effect >/dev/null 2>&1 || $(KPT) --type KWin/Effect --install $(BUILD)/effect >/dev/null
 	@$(KPT) --type Plasma/Wallpaper --upgrade $(BUILD)/wallpaper >/dev/null 2>&1 || $(KPT) --type Plasma/Wallpaper --install $(BUILD)/wallpaper >/dev/null
 	@$(KPT) --type Plasma/Applet --upgrade $(BUILD)/applet >/dev/null 2>&1 || $(KPT) --type Plasma/Applet --install $(BUILD)/applet >/dev/null
+	@mkdir -p $(DECOR_DIR) && rm -rf $(DECOR_DIR)/$(DECOR_ID) && cp -r $(BUILD)/decoration $(DECOR_DIR)/$(DECOR_ID)
 	@mkdir -p $(BIN_DIR) && install -m 755 $(CLI) $(BIN_DIR)/kwin-canvas
-	@echo "installed for $$USER: $(EFFECT_ID), $(WALL_ID), $(APPLET_ID), $(BIN_DIR)/kwin-canvas"
+	@echo "installed for $$USER: $(EFFECT_ID), $(WALL_ID), $(APPLET_ID), $(DECOR_ID), $(BIN_DIR)/kwin-canvas"
 
 uninstall: disable ## Turn the effect off and remove the user packages and the CLI
 	@$(KPT) --type KWin/Effect --remove $(EFFECT_ID) >/dev/null 2>&1 && echo "removed: $(EFFECT_ID)" || echo "not installed: $(EFFECT_ID)"
@@ -232,6 +236,9 @@ test: install fixtures tools plugin-try ## Run the scenarios against a dedicated
 test-panel: install fixtures tools plugin-try ## Run the dock/panel scenarios against a nest that seeds the default Plasma panel (NEST_PANEL=1)
 	NEST_PANEL=1 tests/run.sh $(if $(ARGS),$(ARGS),86)
 	NEST_PANEL=1 tests/run.sh $(if $(ARGS),$(ARGS),117)
+
+test-decor: install fixtures tools plugin-try ## Run the decoration scenario against a nest that wears the canvas decoration (NEST_DECOR=canvas)
+	NEST_DECOR=canvas tests/run.sh $(if $(ARGS),$(ARGS),135)
 
 test-two-outputs: install fixtures tools plugin-try ## Run the two-output scenarios against a two-output nest (NEST_OUTPUTS=2). ARGS= re-records 91's golden
 	NEST_OUTPUTS=2 tests/run.sh $(if $(ARGS),$(ARGS),91)

@@ -1,0 +1,16 @@
+{
+    "KPackageStructure": "KWin/Decoration",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "verma1997@gmail.com",
+                "Name": "Ritwick Verma"
+            }
+        ],
+        "Description": "The canvas's frame: no title bar, a hairline border, and a small glass pill with the close, minimize and maximize glyphs fading in on the top edge",
+        "Id": "kwin-canvas-decoration",
+        "License": "GPL",
+        "Name": "Canvas"
+    },
+    "X-KWin-Config-TranslationDomain": "kwin-canvas-decoration"
+}

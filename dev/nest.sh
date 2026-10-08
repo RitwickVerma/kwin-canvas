@@ -161,6 +161,15 @@ theme=Breeze
 Number=2
 Rows=1
 CFG
+    # The canvas decoration is a QML theme: the aurorae engine must be
+    # asked for it by name (the library + the theme), and the nest only
+    # wears it when 135 asks (NEST_DECOR=canvas) - every other scenario
+    # keeps Breeze so no golden's frame pixels move.
+    if [ "${NEST_DECOR:-}" = canvas ]; then
+        kwriteconfig6 --file "$CONF/kwinrc" --group org.kde.kdecoration2 --key library org.kde.kwin.aurorae
+        kwriteconfig6 --file "$CONF/kwinrc" --group org.kde.kdecoration2 --key theme kwin-canvas-decoration
+        kwriteconfig6 --file "$CONF/kwinrc" --group org.kde.kwin.aurorae --key theme kwin-canvas-decoration
+    fi
     # kded's GTK module writes $HOME/.gtkrc-2.0 whatever XDG_CONFIG_HOME
     # says, and the live session's kded reloads its xsettings on that.
     cat > "$CONF/kded5rc" <<CFG
