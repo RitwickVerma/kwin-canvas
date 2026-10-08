@@ -37,7 +37,7 @@ Decoration {
             right: parent.right
             top: parent.top
         }
-        height: 30
+        height: 32
     }
 
     // The pill: one glass capsule with the four glyphs inside. It pops
@@ -56,17 +56,9 @@ Decoration {
         }
         width: 136
         height: 30
-        scale: root.pillShown ? 1 : 0.9
-        transformOrigin: Item.Bottom
-        // Always visible: the pill never hides. The scale still
-        // breathes with the pointer's approach, but the capsule is
-        // part of the window's edge at all times.
-        Behavior on scale {
-            NumberAnimation {
-                duration: 260
-                easing.type: Easing.OutBack
-            }
-        }
+        // Always visible, always the same size: the pill never hides and
+        // never grows - it is part of the window's edge; the per-glyph
+        // pops carry the life.
 
         // The capsule's glass, with the refraction: the gradient's own
         // top light reads as the lens; no extra streak, so nothing
@@ -330,8 +322,8 @@ Decoration {
         // the window wears nothing while the pill floats exactly on the
         // edge.
         borders.setBorders(6);
-        borders.setTitle(30);
-        maximizedBorders.setTitle(30);
+        borders.setTitle(32);
+        maximizedBorders.setTitle(32);
         extendedBorders.setAllBorders(30);
         decoration.installTitleItem(dragBand);
     }

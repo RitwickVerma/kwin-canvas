@@ -3,9 +3,9 @@ Unreleased:
 - The window wears nothing but the pill. The Canvas decoration is now
   a window with no frame at all - no border, no shadow - and one glass
   pill (close, minimize, maximize, float) sitting on the top edge,
-  always visible. Each glyph answers the pointer: it swells on the
-  hover and sinks on the press, and its glass fills in as the pointer
-  lands. The whole top edge remains the invisible drag handle, and the
+  always visible and always the same size. Each glyph answers the
+  pointer: it swells on the hover and sinks on the press, and its
+  glass fills in as the pointer lands. The whole top edge remains the invisible drag handle, and the
   resize edges stay invisible too, so a window is exactly its content.
   The pill wears the canvas's glass with a drawn refraction: the QML
   decoration API has no real backdrop blur, so the lens is painted.
