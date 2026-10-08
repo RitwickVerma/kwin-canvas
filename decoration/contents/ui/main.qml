@@ -41,24 +41,27 @@ Decoration {
     }
 
     // The pill: one glass capsule with the four glyphs inside. It pops
-    // out of the edge - a springy rise from a small crouch. The pill
-    // rides the window's top edge half in, half out: its bottom sits on
-    // the client's top edge and the capsule pokes out above the window
-    // (the extended borders give it the headroom), never dipping into
-    // the content.
+    // Only the focused window wears its pill. The unfocused pill waits
+    // behind the window's top edge, invisible under the client; the
+    // moment the window takes the focus, the pill slides out from
+    // behind the edge and settles on top of it, a springy rise with a
+    // hint of overshoot. When the focus leaves, it slides back behind.
     // Each glyph swells when the pointer comes near it, and sinks a
     // touch when pressed.
     Item {
         id: pill
-        anchors {
-            bottom: dragBand.bottom
-            horizontalCenter: parent.horizontalCenter
+        x: root.width / 2 - pill.width / 2
+        // The pill rests with its bottom on the drag band's floor (the
+        // client's top edge); one pill height lower it is entirely
+        // behind the client and invisible. The activeWindow switch is
+        // the whole show: the slide out and the slide back are the same
+        // spring.
+        y: dragBand.bottom - pill.height + (root.activeWindow ? 0 : pill.height)
+        Behavior on y {
+            SpringAnimation { spring: 2.6; damping: 0.8; epsilon: 0.01 }
         }
         width: 136
         height: 30
-        // Always visible, always the same size: the pill never hides and
-        // never grows - it is part of the window's edge; the per-glyph
-        // pops carry the life.
 
         // The capsule's glass, with the refraction: the gradient's own
         // top light reads as the lens; no extra streak, so nothing
