@@ -169,6 +169,13 @@ CFG
         kwriteconfig6 --file "$CONF/kwinrc" --group org.kde.kdecoration2 --key library org.kde.kwin.aurorae
         kwriteconfig6 --file "$CONF/kwinrc" --group org.kde.kdecoration2 --key theme kwin-canvas-decoration
         kwriteconfig6 --file "$CONF/kwinrc" --group org.kde.kwin.aurorae --key theme kwin-canvas-decoration
+        # The nest's XDG_DATA_HOME is its own, so the decoration must be
+        # copied into it: the nest's kwin scans $STATE/data/kwin/decorations,
+        # never the user's ~/.local/share.
+        if [ -d "$HOME/.local/share/kwin/decorations/kwin-canvas-decoration" ]; then
+            mkdir -p "$STATE/data/kwin/decorations"
+            cp -r "$HOME/.local/share/kwin/decorations/kwin-canvas-decoration" "$STATE/data/kwin/decorations/"
+        fi
     fi
     # kded's GTK module writes $HOME/.gtkrc-2.0 whatever XDG_CONFIG_HOME
     # says, and the live session's kded reloads its xsettings on that.
@@ -278,7 +285,7 @@ up_once() {
     # none of them connects to the live session's compositor or Xwayland;
     # kwin_wayland alone gets the caller's displays back, which a windowed
     # nest needs.
-    local kwin=kwin_wayland plugins="$HERE/build/plugin/bin${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
+    local kwin=kwin_wayland plugins="$HERE/build/plugin/bin${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}:/usr/lib/qt6/plugins"
     if [ -n "${NEST_PRELOAD:-}" ]; then
         kwin=${NEST_KWIN:?NEST_PRELOAD needs NEST_KWIN, a capability-free kwin_wayland}
         plugins=${QT_PLUGIN_PATH:-}

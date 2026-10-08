@@ -50,13 +50,13 @@ Decoration {
     // touch when pressed.
     Item {
         id: pill
-        x: root.width / 2 - pill.width / 2
+        anchors.horizontalCenter: parent.horizontalCenter
         // The pill rests with its bottom on the drag band's floor (the
         // client's top edge); one pill height lower it is entirely
         // behind the client and invisible. The activeWindow switch is
         // the whole show: the slide out and the slide back are the same
         // spring.
-        y: dragBand.bottom - pill.height + (root.activeWindow ? 0 : pill.height)
+        y: dragBand.y + dragBand.height - pill.height + (root.activeWindow ? 0 : pill.height)
         Behavior on y {
             SpringAnimation { spring: 2.6; damping: 0.8; epsilon: 0.01 }
         }
@@ -73,11 +73,9 @@ Decoration {
             color: root.glass
             border.width: 1
             border.color: Qt.rgba(1, 1, 1, 0.24)
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.12) }
-                GradientStop { position: 0.45; color: Qt.rgba(1, 1, 1, 0.02) }
-                GradientStop { position: 1.0; color: Qt.rgba(1, 1, 1, 0.06) }
-            }
+            // The glass is the capsule, flat: the QML gradient would REPLACE
+            // the color (the refraction wash made the pill nearly invisible
+            // against the wallpaper - measured in the nest).
         }
 
         Row {
