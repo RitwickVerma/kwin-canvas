@@ -371,7 +371,10 @@ Decoration {
         // edge.
         borders.setBorders(6);
         borders.setTitle(32);
-        maximizedBorders.setTitle(32);
+        // A maximized window is full-bleed: no band, so the client runs
+        // to the screen's top edge and no transparent strip shows above
+        // it. The pill is already tucked away when maximized.
+        maximizedBorders.setTitle(0);
         // No shadow: the extended borders only exist to give the
         // aurorae engine a region for its own dark shadow, and that
         // shadow read as a black line above the window. The pill fits

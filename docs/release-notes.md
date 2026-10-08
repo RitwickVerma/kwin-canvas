@@ -1,8 +1,10 @@
 Unreleased:
 
-- The pill tucks away for maximized windows. A full-bleed window is its
-  own chrome, so the glyphs stay hidden while it is maximized, and the
-  invisible band above it still drags - the drag un-maximizes.
+- The pill tucks away for maximized windows, and a maximized window is
+  full-bleed: no band, no reserved strip - the client runs to the
+  screen's top edge, so nothing transparent shows above it. The normal
+  window keeps its invisible band (the drag handle and the pill's
+  hover surface).
 
 - The effect's pill is gone; the decoration's pill is the chrome
   again. The effect-side window decor - the pointer-following pill
