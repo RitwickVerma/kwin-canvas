@@ -1,5 +1,11 @@
 # kwin-canvas
 
+[![pipeline](https://gitlab.com/ritwick7/kwin-canvas/badges/main/pipeline.svg)](https://gitlab.com/ritwick7/kwin-canvas/-/pipelines)
+[![license: GPL-2.0-or-later](https://img.shields.io/badge/license-GPL--2.0--or--later-0a7aca)](LICENSES/)
+[![REUSE compliant](https://api.reuse.software/badge/gitlab.com/ritwick7/kwin-canvas)](https://api.reuse.software/info/gitlab.com/ritwick7/kwin-canvas)
+[![site](https://img.shields.io/badge/site-ritwickverma.dev-ff6f00)](https://www.ritwickverma.dev/)
+[![tip](https://img.shields.io/badge/tip-buy_covfefe_for_Ritwick-e91e63)](https://buycovfefefor.ritwickverma.dev/)
+
 ![kwin-canvas: the demo - the step out, the hover's glow, the double-click's flight, the clusters' web, the switcher's fit, the grasp's keyhole, and the step back in](docs/images/demo.gif)
 
 > **A fork, written by an agent under human direction.** This repository is a
