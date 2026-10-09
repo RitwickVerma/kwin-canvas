@@ -1,5 +1,16 @@
 Unreleased:
 
+- The canvas floor is a star system. The rooms are the suns - each
+  cluster a warm star with its windows as the worlds orbiting it, every
+  room breathing on its own beat - and the day-trail is the comet's
+  path across the dark, a head of gold trailing a blue wake. Around
+  them: a deep star field in three parallax layers that shift with the
+  pointer, the nebulae drifting underneath, the real windows as pale
+  lights at the glass's edge, and the pointer itself as a lens that
+  bends the starlight. The state's coordinates are scaled from the
+  logical plane to the physical screen and flipped to the shader's
+  space, so every light lands where its window is.
+
 - The canvas floor is an aurora. Three curtains of light flow across
   the closed desktop on their own slow beats - the canvas's blue, a
   violet crest, a teal undercurrent - with a fine star-dust settling
