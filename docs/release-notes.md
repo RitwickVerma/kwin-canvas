@@ -1,5 +1,10 @@
 Unreleased:
 
+- The valley's windows are its houses. Each real window is a lit
+  rectangle now - the glass glows softly, the light spills down the
+  wall from its sill, and a warm pool gathers where it lands - the
+  shape is the window's own, not a dot at its centre.
+
 - The canvas floor is a mountain valley at dusk. The scenery stands on
   its own: the ridges fold into the haze, the sun goes down behind
   them, the valley floor breathes its mist, and the camera's view

@@ -7,9 +7,11 @@
 // goes down behind them, and the valley floor breathes its mist. The
 // canvas is the weather. The rooms are the villages - warm clusters of
 // light on the slopes; the day-trail is the winding path a traveller
-// walked; the windows are the lanterns left along it; the camera's view
-// drifts the ridges, so the desktop carries the memory of where the
-// plane has been; and the pointer is a torch in the dusk.
+// walked; the windows are the houses - each a lit rectangle whose glass
+// glows, whose light spills down the wall, and whose warm pool gathers
+// where it lands; the camera's view drifts the ridges, so the desktop
+// carries the memory of where the plane has been; and the pointer is a
+// torch in the dusk.
 //
 // The fork's engine uploads the iCanvas* uniforms from
 // kwin-canvas-state.txt (see docs/shader-integration.md); without it
@@ -143,14 +145,31 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         col += vec3(0.85, 0.65, 0.40) * exp(-(d * d) / 9.0) * (0.05 + 0.25 * age);
     }
 
-    // The lanterns: the windows. A light left in each.
+    // The houses: the windows. Each window is a lit rectangle in the
+    // dusk - its glass glows, its light spills down the wall, and a
+    // warm pool gathers where it lands. The shape is the window's own.
     for (int w = 0; w < 16; w++) {
         if (w >= iWindowCount) break;
         vec4 wr = iWindowRects[w];
-        vec2 wc = vec2((wr.x + wr.z * 0.5) * cs.x, (iCanvasSize.y - (wr.y + wr.w * 0.5)) * cs.y);
-        wc = clamp(wc, vec2(60.0), res - vec2(60.0));
-        float d = length(uv * res - wc);
-        col += vec3(1.0, 0.55, 0.30) * exp(-(d * d) / 16.0) * 0.5;
+        vec2 o = vec2(wr.x * cs.x, (iCanvasSize.y - (wr.y + wr.w)) * cs.y);
+        vec2 sz = vec2(wr.z * cs.x, wr.w * cs.y);
+        o = clamp(o, vec2(20.0), res - vec2(20.0));
+        vec2 p = uv * res - o;
+        vec2 b = smoothstep(vec2(0.0), vec2(4.0), p) *
+                 smoothstep(vec2(0.0), vec2(4.0), sz - p);
+        float inW = b.x * b.y;
+        // The lit glass, breathing slowly.
+        col += vec3(1.0, 0.78, 0.50) * inW * (0.30 + 0.08 * sin(t * 0.8 + float(w) * 1.7));
+        // The spill: the light falls from the sill down the wall.
+        float below = smoothstep(sz.y + 150.0, sz.y, p.y);
+        float spread = exp(-pow((p.x - sz.x * 0.5) / max(sz.x * 0.8, 30.0), 2.0));
+        col += vec3(1.0, 0.62, 0.34) * below * spread * 0.20;
+        // The warm pool where it lands.
+        col += vec3(1.0, 0.70, 0.40) * exp(-pow((p.x - sz.x * 0.5) / max(sz.x * 1.6, 60.0), 2.0)) *
+               exp(-pow((p.y - sz.y - 90.0) / 60.0, 2.0)) * 0.10;
+        // The sill's own halo.
+        float d = length((p - sz * 0.5) / vec2(max(sz.x, 40.0), max(sz.y, 40.0)));
+        col += vec3(1.0, 0.72, 0.42) * exp(-d * d * 2.2) * 0.14;
     }
 
     // The torch: the pointer.
