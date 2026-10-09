@@ -1,192 +1,168 @@
 // SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 // SPDX-License-Identifier: GPL-2.0-or-later
-
-// The plane at night.
 //
-// Seen from above, the plane is a night sea of windows, and every
-// window is a light afloat in the dark. The sea exists on its own: a
-// field of soft distant lights drifting and twinkling in the deep
-// blue, with nothing to prove. The canvas's state is its weather:
+// The plane at dusk: a mountain valley.
 //
-//   - the rooms are the harbours: where a cluster of windows gathers,
-//     the lights crowd into a warm pool that breathes on the room's
-//     own beat;
-//   - the windows are the lanterns: the sharp cool sparks of the
-//     boats afloat on the dark;
-//   - the day-trail is the wake: a faint smear of light where the
-//     camera travelled, bright at the head and fading behind it;
-//   - the pointer is the eye: the lights beneath it sharpen into
-//     focus and glow brighter while the rest of the sea falls away
-//     into the soft out-of-focus haze, as if the finger chooses what
-//     to see;
-//   - and the camera's position is the tide: the whole light field
-//     drifts slowly with the plane's view, so the desktop at rest
-//     carries the memory of where the canvas has been.
+// The scenery stands on its own: the ridges fold into the haze, the sun
+// goes down behind them, and the valley floor breathes its mist. The
+// canvas is the weather. The rooms are the villages - warm clusters of
+// light on the slopes; the day-trail is the winding path a traveller
+// walked; the windows are the lanterns left along it; the camera's view
+// drifts the ridges, so the desktop carries the memory of where the
+// plane has been; and the pointer is a torch in the dusk.
 //
-// The state arrives in the canvas's logical top-down coordinates; the
-// shader lives in the engine's physical bottom-up pixels. The cs
-// factor scales the one into the other, and every y flips on entry -
-// the two fixes that keep each glow where its window really is.
-//
-// For the kde-shader-wallpaper engine (docs/shader-integration.md).
-// The iCanvas* uniforms are declared here - the engine's fork uploads
-// them; without the fork they read zero and the sea is simply the
-// procedural night.
-
+// The fork's engine uploads the iCanvas* uniforms from
+// kwin-canvas-state.txt (see docs/shader-integration.md); without it
+// every reading is zero and the valley is simply empty of people. The
+// shader declares them itself - the engine's header must NOT declare
+// them too, or the duplicate declarations fail the compile.
 // @channels none
 
 uniform int iCanvasClusterCount;
-uniform vec4 iCanvasClusters[16]; // x,y = the screen centre, z = the member count
+uniform vec4 iCanvasClusters[16]; // x,y = the room's centre, z = the member count
 uniform int iCanvasTrailCount;
-uniform vec2 iCanvasTrail[64];   // the day-trail, projected
-uniform vec3 iCanvasBackground;  // the canvas's own ground colour
-uniform vec2 iCanvasSize;        // the logical virtual desktop
-uniform vec2 iCanvasView;        // the camera's position on the plane
+uniform vec2 iCanvasTrail[64];
+uniform vec3 iCanvasBackground;
+uniform vec2 iCanvasSize;
+uniform vec2 iCanvasView;
 
 float hash(vec2 p) {
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+    p = fract(p * vec2(123.34, 456.21));
+    p += dot(p, p + 45.32);
+    return fract(p.x * p.y);
 }
 
 float noise(vec2 p) {
     vec2 i = floor(p);
     vec2 f = fract(p);
-    vec2 u = f * f * (3.0 - 2.0 * f);
-    return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
-               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
+    f = f * f * (3.0 - 2.0 * f);
+    float a = hash(i);
+    float b = hash(i + vec2(1.0, 0.0));
+    float c = hash(i + vec2(0.0, 1.0));
+    float d = hash(i + vec2(1.0, 1.0));
+    return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
 }
 
-// The slow breathing of the deep: a domain-warped field of the blue
-// night, the haze the lights float in.
-float nightHaze(vec2 p, float t) {
-    vec2 q = vec2(0.0);
-    q.x = noise(p + vec2(0.0, t * 0.016));
-    q.y = noise(p + vec2(5.2, 1.3) - vec2(0.0, t * 0.012));
-    return noise(p + q * 0.55);
+float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 5; i++) {
+        v += a * noise(p);
+        p = p * 2.03 + vec2(11.7, 5.3);
+        a *= 0.5;
+    }
+    return v;
 }
 
-// One cell of the light field. p and c are in the cell grid's space
-// (the scaled pixels); sc converts back to pixels. The pointer's
-// focus shrinks and brightens the lights beneath it.
-vec3 cellLight(vec2 p, vec2 c, float sc, vec2 focus, float focusR) {
-    vec2 h1 = vec2(hash(c + vec2(13.1, 7.7)), hash(c + vec2(4.3, 11.9)));
-    vec2 h2 = vec2(hash(c + vec2(1.7, 9.9)), hash(c + vec2(5.3, 2.9)));
-    float orb = hash(c + vec2(8.7, 1.3)) * 6.2831;
-    float sp = 0.04 + 0.10 * hash(c + vec2(4.1, 6.7));
-    vec2 lp = c + h1 + vec2(cos(iTime * sp + orb), sin(iTime * sp * 0.83 + orb * 1.71)) * 0.30;
-    vec2 d = (p - lp) * sc;
-    float dd = dot(d, d);
-    float sz = (2.2 + 3.4 * h2.x) * sc / 44.0;
-    float focusAmt = exp(-dot(focus - lp * sc, focus - lp * sc) / (focusR * focusR));
-    sz *= mix(1.0, 0.32, focusAmt);
-    float tw = 0.72 + 0.28 * sin(iTime * (0.3 + 0.6 * h2.y) + h1.x * 6.2831);
-    float disc = exp(-dd / (sz * sz));
-    float rim = exp(-pow(sqrt(dd) - sz * 0.72, 2.0) * (3.2 / (sz * sz)));
-    float b = (disc * 0.45 + rim * 0.55) * tw;
-    b *= mix(1.0, 1.7, focusAmt);
-    vec3 warm = vec3(1.0, 0.62, 0.28);
-    vec3 cool = vec3(0.55, 0.78, 1.0);
-    vec3 tint = mix(cool, warm, h1.y);
-    return tint * b;
+float ridge(vec2 p) {
+    float v = 0.0;
+    float a = 0.55;
+    for (int i = 0; i < 4; i++) {
+        v += a * (1.0 - abs(noise(p) * 2.0 - 1.0));
+        p = p * 2.13 + vec2(7.1, 3.7);
+        a *= 0.5;
+    }
+    return v;
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 res = iResolution.xy;
+    vec2 uv = fragCoord / res;
+    float t = iTime;
+
     vec2 cs = (iCanvasSize.x > 1.0) ? res / iCanvasSize : vec2(1.0);
-    vec2 uv = fragCoord;
 
-    // The night itself: the canvas's ground colour under a slow blue
-    // haze, deeper toward the corners of the plane.
-    vec3 bg = (iCanvasBackground == vec3(0.0)) ? vec3(0.012, 0.020, 0.045) : iCanvasBackground;
-    vec3 col = bg;
-    float hz = nightHaze(uv * 0.0016, iTime);
-    col += vec3(0.010, 0.024, 0.052) * hz;
+    // The dusk sky: the deep blue above, the warm band where the sun
+    // is going down.
+    vec3 skyTop = vec3(0.05, 0.09, 0.21);
+    vec3 skyHorizon = vec3(0.88, 0.44, 0.30);
+    vec3 col = mix(skyHorizon, skyTop, smoothstep(0.46, 0.80, uv.y));
 
-    // The pointer is the eye: the focus point, in the field's own
-    // space per layer.
-    vec2 m = iMouse.xy;
-    float focusR = 240.0;
+    // The sun, half-set behind the far ridge.
+    vec2 sunPos = vec2(0.62, 0.50);
+    float sunD = length(uv - sunPos);
+    col += vec3(1.0, 0.70, 0.40) * exp(-sunD * 22.0) * 0.8;
+    col += vec3(1.0, 0.55, 0.30) * exp(-sunD * 130.0) * 0.45;
+    col += vec3(1.0, 0.92, 0.75) * smoothstep(0.016, 0.0, sunD);
 
-    // The light sea: three parallax layers, each drifting with the
-    // camera's view so the desktop remembers where the plane has been.
-    for (int layer = 0; layer < 3; layer++) {
-        float sc = 44.0 + 44.0 * float(layer);
-        vec2 drift = iCanvasView * (0.004 + 0.003 * float(layer));
-        vec2 p = uv / sc + drift;
-        p += vec2(iTime * (0.004 + 0.003 * float(layer)), -iTime * 0.002);
-        vec2 cell = floor(p);
-        vec2 focus = m / sc;
-        for (int dy = -2; dy <= 2; dy++) {
-            for (int dx = -2; dx <= 2; dx++) {
-                vec2 c = mod(cell + vec2(float(dx), float(dy)), 512.0);
-                col += cellLight(p, c, sc, focus, focusR / sc);
-            }
-        }
-    }
+    // The ridges drift with the camera's view: the desktop carries the
+    // memory of where the plane has been.
+    vec2 drift = iCanvasView * 0.00014;
 
-    // The rooms are the harbours: the warm pools where the lights
-    // crowd together, breathing on each room's beat.
-    for (int i = 0; i < iCanvasClusterCount; i++) {
+    float horizon = 0.55;
+
+    // The far ridge, pale in the haze.
+    float mf = ridge(vec2(uv.x * 3.1, 1.0) + drift * 0.6 + vec2(0.0, 3.3));
+    float farH = horizon + (mf - 0.55) * 0.34;
+    float inFar = step(uv.y, farH);
+    vec3 farCol = mix(skyHorizon * 1.05, vec3(0.17, 0.19, 0.30), mf);
+    col = mix(col, farCol, inFar * 0.94);
+
+    // The near ridge, dark and taller.
+    float mn = ridge(vec2(uv.x * 2.2, 1.0) + drift * 1.1 + vec2(0.0, 9.1));
+    float nearH = horizon + 0.05 + (mn - 0.55) * 0.44;
+    float inNear = step(uv.y, nearH);
+    vec3 nearCol = mix(vec3(0.09, 0.11, 0.19), vec3(0.030, 0.045, 0.10), mn);
+    col = mix(col, nearCol, inNear);
+
+    // The valley floor below, breathing its mist.
+    float inFloor = step(uv.y, horizon - 0.02);
+    vec3 floorCol = mix(vec3(0.030, 0.045, 0.085), vec3(0.014, 0.022, 0.045), smoothstep(horizon - 0.02, 0.0, uv.y));
+    float mist = fbm(vec2(uv.x * 5.0, 1.0) + t * 0.045 + drift * 2.2);
+    floorCol += vec3(0.05, 0.07, 0.10) * mist * smoothstep(horizon - 0.02, horizon - 0.18, uv.y);
+    col = mix(col, floorCol, inFloor);
+
+    // The villages: the rooms. Each cluster is a warm gathering of
+    // lights on the slopes, breathing on its own beat.
+    for (int i = 0; i < 16; i++) {
+        if (i >= iCanvasClusterCount) break;
         vec4 cl = iCanvasClusters[i];
         vec2 c = vec2(cl.x * cs.x, (iCanvasSize.y - cl.y) * cs.y);
-        c = clamp(c, vec2(80.0), res - vec2(80.0));
-        float n = cl.z;
-        float beat = 0.5 + 0.5 * sin(iTime * 0.32 + float(i) * 2.399);
-        float R = 130.0 + n * 30.0;
-        float d = length(uv - c);
-        float edge = 0.62 + 0.38 * noise(uv * 0.016 + vec2(float(i) * 7.3, beat));
-        vec3 amber = vec3(1.0, 0.62, 0.28);
-        col += amber * exp(-d * d / (R * R)) * (0.10 + 0.14 * beat) * edge;
-        col += vec3(1.0, 0.82, 0.55) * exp(-d * d / (R * R * 0.12)) * (0.05 + 0.07 * beat);
+        c = clamp(c, vec2(60.0), res - vec2(60.0));
+        float n = clamp(cl.z, 1.0, 9.0);
+        float R = 24.0 + n * 8.0;
+        float d = length(uv * res - c);
+        float beat = 0.5 + 0.5 * sin(t * 0.32 + float(i) * 2.399);
+        float edge = 0.75 + 0.25 * noise(uv * res * 0.03 + float(i) * 7.3);
+        vec3 warm = vec3(1.0, 0.72, 0.42);
+        col += warm * exp(-(d * d) / (R * R)) * (0.10 + 0.15 * beat) * edge;
+        col += vec3(1.0, 0.92, 0.75) * exp(-(d * d) / (R * R * 0.16)) * (0.05 + 0.07 * beat);
     }
 
-    // The windows are the lanterns: the sharp cool sparks.
-    for (int i = 0; i < iWindowCount && i < 16; i++) {
-        vec4 w = iWindowRects[i];
-        vec2 c = vec2((w.x + w.z * 0.5) * cs.x, (iCanvasSize.y - (w.y + w.w * 0.5)) * cs.y);
-        c = clamp(c, vec2(80.0), res - vec2(80.0));
-        float side = max(w.z * cs.x, w.w * cs.y) * 0.30;
-        vec2 d = uv - c;
-        float dd = dot(d, d);
-        vec3 cool = vec3(0.55, 0.78, 1.0);
-        col += cool * exp(-dd / (side * side * 4.0)) * 0.10;
-        col += vec3(0.85, 0.94, 1.0) * exp(-dd / (side * side * 0.35)) * 0.14;
+    // The path: the trail. The winding way a traveller walked, still
+    // glowing where the newest steps are.
+    for (int k = 0; k < 63; k++) {
+        if (k >= iCanvasTrailCount - 1) break;
+        vec2 a = vec2(iCanvasTrail[k].x * cs.x, (iCanvasSize.y - iCanvasTrail[k].y) * cs.y);
+        vec2 b2 = vec2(iCanvasTrail[k + 1].x * cs.x, (iCanvasSize.y - iCanvasTrail[k + 1].y) * cs.y);
+        vec2 pa = uv * res - a;
+        vec2 ba = b2 - a;
+        float h = clamp(dot(pa, ba) / max(dot(ba, ba), 0.001), 0.0, 1.0);
+        float d = length(pa - ba * h);
+        float age = float(k + 1) / float(max(iCanvasTrailCount - 1, 1));
+        col += vec3(0.85, 0.65, 0.40) * exp(-(d * d) / 9.0) * (0.05 + 0.25 * age);
     }
 
-    // The day-trail is the wake: the faint smear of light where the
-    // camera travelled, bright at the head and fading behind it.
-    if (iCanvasTrailCount > 1) {
-        float total = float(max(iCanvasTrailCount - 1, 1));
-        for (int k = 0; k < iCanvasTrailCount - 1 && k < 63; k++) {
-            vec2 a = vec2(iCanvasTrail[k].x * cs.x, (iCanvasSize.y - iCanvasTrail[k].y) * cs.y);
-            vec2 b = vec2(iCanvasTrail[k + 1].x * cs.x, (iCanvasSize.y - iCanvasTrail[k + 1].y) * cs.y);
-            vec2 ab = b - a;
-            float abLen = length(ab);
-            if (abLen < 0.5) {
-                continue;
-            }
-            float t = clamp(dot(uv - a, ab) / (abLen * abLen), 0.0, 1.0);
-            vec2 q = a + ab * t;
-            float d = length(uv - q);
-            float age = float(k + 1) / total;
-            float wdt = 3.0 + 5.0 * age;
-            float pulse = (k >= iCanvasTrailCount - 2) ? (0.75 + 0.25 * sin(iTime * 2.2)) : 1.0;
-            vec3 amber = vec3(1.0, 0.62, 0.28);
-            col += amber * exp(-d * d / (wdt * wdt)) * (0.04 + 0.16 * age) * pulse;
-        }
+    // The lanterns: the windows. A light left in each.
+    for (int w = 0; w < 16; w++) {
+        if (w >= iWindowCount) break;
+        vec4 wr = iWindowRects[w];
+        vec2 wc = vec2((wr.x + wr.z * 0.5) * cs.x, (iCanvasSize.y - (wr.y + wr.w * 0.5)) * cs.y);
+        wc = clamp(wc, vec2(60.0), res - vec2(60.0));
+        float d = length(uv * res - wc);
+        col += vec3(1.0, 0.55, 0.30) * exp(-(d * d) / 16.0) * 0.5;
     }
 
-    // The pointer is the eye: a soft bloom under the finger.
+    // The torch: the pointer.
     if (iMouse.z > 0.0) {
-        vec2 d = uv - m;
-        float md = dot(d, d);
-        col += vec3(0.9, 0.75, 0.5) * exp(-md / (240.0 * 240.0)) * 0.05;
+        vec2 m = iMouse.xy - iScreenOffset;
+        float md = length(uv * res - m);
+        col += vec3(1.0, 0.62, 0.35) * exp(-(md * md) / 1600.0) * 0.30;
     }
 
-    // The night breathes, and the corners fall away.
-    col *= 0.96 + 0.04 * sin(iTime * 0.26);
-    vec2 vig = uv / res;
-    float v = smoothstep(0.75, 0.35, length(vig - 0.5) * 1.5);
-    col *= mix(0.55, 1.0, v);
-
+    // The breathing, the vignette, the gamma.
+    col *= 0.96 + 0.04 * sin(t * 0.26);
+    vec2 vig = uv * (1.0 - uv);
+    col *= 1.0 - 0.35 * pow(16.0 * vig.x * vig.y, 1.4);
     fragColor = vec4(pow(clamp(col, 0.0, 1.0), vec3(0.92)), 1.0);
 }
