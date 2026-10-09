@@ -21,6 +21,12 @@ Unreleased:
   sun sits high, its path of light rides the crests, and the islands
   break the swell and shadow the water away from it.
 
+- The night sea's rooms always show. The saved view can sit far from
+  the clusters - the plane's truth - and the shoals used to sit off
+  the screen with it, leaving the desktop empty but for the wake.
+  Now an off-screen shoal pulls itself to the nearest edge, so the
+  desktop always shows where the rooms are.
+
 - The canvas floor is a night sea, and everything in it glows with one
   light: the bioluminescence. The water is a near-black blue-green, and
   the whole image answers one question - what glows in the dark. The
