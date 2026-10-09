@@ -27,7 +27,7 @@ QMLLINT     := /usr/lib/qt6/bin/qmllint
 
 .DEFAULT_GOAL := help
 .PHONY: help deps deps-install install uninstall install-system uninstall-system reload enable disable status \
-        lint lint-reuse lint-qml lint-shell \
+        lint lint-reuse lint-qml lint-shell lint-shader \
         tools fixtures play nest nest-down nest-clients nest-fixtures nest-reload nest-shot nest-log nest-clean nest-cmd \
         test test-shim test-two-outputs golden demo video clean stage dist pkgbuild aur aur-passthrough release tour \
         plugin plugin-try plugin-install-system plugin-status
@@ -52,7 +52,7 @@ deps-install: ## Install missing dependencies with pacman (asks for sudo)
 # `make lint` is what the CI jobs run, so a pipeline failure can be reproduced
 # here. Both tools are in dev/deps.sh; the Qt6 qmllint is asked for by path
 # because the Qt5 build in /usr/bin answers to the same name.
-lint: lint-reuse lint-qml lint-shell lint-deadcode lint-python ## Run the checks the CI jobs run
+lint: lint-reuse lint-qml lint-shell lint-shader lint-deadcode lint-python ## Run the checks the CI jobs run
 
 lint-reuse: ## Check the copyright and licence metadata (REUSE 3.3)
 	@command -v reuse >/dev/null 2>&1 || { echo "reuse is not installed: sudo pacman -S reuse"; exit 1; }
@@ -72,6 +72,10 @@ lint-shell: ## Parse every script with bash -n, then shellcheck at error severit
 
 lint-deadcode: ## The dead-code census: nothing declared may be referenced only at its declaration
 	@bash tools/deadcode.sh
+
+lint-shader: ## Compile every shaders/*.frag in the shader wallpaper engine's context (header + shader + wrapper)
+	@command -v glslangValidator >/dev/null 2>&1 || { echo "glslangValidator is not installed: sudo pacman -S shaderc"; exit 1; }
+	@bash tools/lint-shader.sh
 
 lint-python: ## vulture over the Python: no dead functions, imports or variables
 	@command -v vulture >/dev/null 2>&1 || { echo "vulture is not installed: sudo pacman -S vulture"; exit 1; }

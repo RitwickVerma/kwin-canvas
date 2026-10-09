@@ -1,5 +1,15 @@
 Unreleased:
 
+- The shader contract is compiled, not trusted. make lint-shader
+  concatenates the shader wallpaper engine's header with every
+  shaders/*.frag and compiles the result with glslangValidator, so a
+  uniform declared twice (the fork's header and the shader's own) or any
+  GLSL break fails the lint - and a CI job - instead of a user's
+  desktop. The fork's rules (the header never declares the canvas
+  uniforms, the engine only uploads them, and System Settings must be
+  relaunched after an engine reinstall) are written down in
+  docs/shader-integration.md.
+
 - The canvas feeds the shader wallpaper. Every commit writes the plane's
   remembered state - the saved view, the ground's own knobs (the grid
   spacing, the octaves, the line and background colours), the clusters

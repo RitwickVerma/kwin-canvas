@@ -63,6 +63,28 @@ uniform vec2 iCanvasView;          // the plane coordinate of the screen's top-l
 project or an upstream pull request - the contract above is all the canvas
 promises.)
 
+### The fork's rules (what the compile check enforces)
+
+- **The engine's header must NOT declare the iCanvas uniforms.** The engine
+  concatenates its shared header + the shader + the `mainImage` wrapper; if
+  a fork adds the uniform block to the header, every canvas shader that also
+  declares its own fails to compile with the duplicate-declaration error.
+  The shaders declare their own uniforms; the engine only uploads them.
+- **The engine uploads the uniforms** (the `setUniformValue` family) at the
+  render; a fork that adds the uploads must mirror them from the engine to
+  the renderer thread (the `synchronize` step), the window-tracking pattern.
+- **After reinstalling the engine, relaunch System Settings** (and the
+  plasmashell): the running processes hold the old plugin in memory.
+- The engine's wallpaper has a boot quirk (the `devicePixelRatio` of an
+  undefined screen in its first frames); it is the engine's, not the
+  channel's.
+
+The tree carries the contract as a compile check: `make lint-shader`
+concatenates `tests/shaders/engine-header.inc` (the engine's header, without
+the iCanvas block) with each `shaders/*.frag` and the wrapper, and compiles
+the result with `glslangValidator` - a uniform declared twice, or any GLSL
+break, fails the lint instead of a user's desktop.
+
 ## The state itself
 
 The channel carries what the plane remembers at rest: the saved view (where
