@@ -21,16 +21,18 @@ Unreleased:
   sun sits high, its path of light rides the crests, and the islands
   break the swell and shadow the water away from it.
 
-- The canvas floor is an aurora. Three curtains of light flow across
-  the closed desktop on their own slow beats - the canvas's blue, a
-  violet crest, a teal undercurrent - with a fine star-dust settling
-  everywhere. The plane's remembered state is the light IN the field:
-  the rooms glow as warm pools where the clusters sit (each breathing
-  on its own rhythm), the day-trail runs through as a river of moving
-  light, the real windows cast their faint reflections, and the
-  pointer is a torch that parts the curtains. The state's coordinates
-  are now flipped to the shader's space, so every light lands where
-  its window actually is.
+- The canvas floor is a night sea, and everything in it glows with one
+  light: the bioluminescence. The water is a near-black blue-green, and
+  the whole image answers one question - what glows in the dark. The
+  rooms are the shoals: where a cluster sits, the plankton have
+  gathered in a wide soft bloom that breathes on the room's own beat.
+  The windows are the lanterns of the boats, each spilling its light
+  down the water. The day-trail is the wake - a single luminous ribbon,
+  bright at the head and fading along the path it took. The pointer is
+  the thing that falls in: its press sends the ripple and lights the
+  plankton around it. And everywhere, a few scattered sparks drift and
+  twinkle. The state's coordinates are flipped to the shader's space,
+  so every glow lands where its window really is.
 
 - The canvas floor is a place of light. The starter's grid and trail
   read as graph paper, so they are gone: the floor is a deep flowing
