@@ -4,14 +4,13 @@
 // The plane at dusk: a mountain valley.
 //
 // The scenery stands on its own: the ridges fold into the haze, the sun
-// goes down behind them, and the valley floor breathes its mist. The
-// canvas is the weather. The rooms are the villages - warm clusters of
-// light on the slopes; the day-trail is the winding path a traveller
-// walked; the windows are the houses - each a lit rectangle whose glass
-// glows, whose light spills down the wall, and whose warm pool gathers
-// where it lands; the camera's view drifts the ridges, so the desktop
-// carries the memory of where the plane has been; and the pointer is a
-// torch in the dusk.
+// goes down behind them, and the valley floor breathes its mist. Far
+// back in the sky hangs the plane itself, compressed to a band: the
+// windows are its sheets, outlined and faint, and the rooms are the
+// glow-gatherings among them. Everything sits at its true place - the
+// geography is the canvas's own, and it drifts with the camera, so the
+// desktop carries the memory of where the plane has been; the pointer
+// is a torch in the dusk.
 //
 // The fork's engine uploads the iCanvas* uniforms from
 // kwin-canvas-state.txt (see docs/shader-integration.md); without it
@@ -114,62 +113,43 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     floorCol += vec3(0.05, 0.07, 0.10) * mist * smoothstep(horizon - 0.02, horizon - 0.18, uv.y);
     col = mix(col, floorCol, inFloor);
 
-    // The villages: the rooms. Each cluster is a warm gathering of
-    // lights on the slopes, breathing on its own beat.
-    for (int i = 0; i < 16; i++) {
-        if (i >= iCanvasClusterCount) break;
-        vec4 cl = iCanvasClusters[i];
-        vec2 c = vec2(cl.x * cs.x, (iCanvasSize.y - cl.y) * cs.y);
-        c = clamp(c, vec2(60.0), res - vec2(60.0));
-        float n = clamp(cl.z, 1.0, 9.0);
-        float R = 24.0 + n * 8.0;
-        float d = length(uv * res - c);
-        float beat = 0.5 + 0.5 * sin(t * 0.32 + float(i) * 2.399);
-        float edge = 0.75 + 0.25 * noise(uv * res * 0.03 + float(i) * 7.3);
-        vec3 warm = vec3(1.0, 0.72, 0.42);
-        col += warm * exp(-(d * d) / (R * R)) * (0.10 + 0.15 * beat) * edge;
-        col += vec3(1.0, 0.92, 0.75) * exp(-(d * d) / (R * R * 0.16)) * (0.05 + 0.07 * beat);
-    }
+    // The distant plane: the whole canvas far back in the sky, compressed
+    // to a band. The windows are its sheets - outlined, faint - and the
+    // rooms are the glow-gatherings among them. The positions are the
+    // true ones, scaled down: the geography is the canvas's own, and it
+    // drifts with the camera.
+    float k = 0.055;
+    vec2 vc = vec2(res.x * 0.5, res.y * 0.24);
+    vc += iCanvasView * 0.0003 * cs;
 
-    // The path: the trail. The winding way a traveller walked, still
-    // glowing where the newest steps are.
-    for (int k = 0; k < 63; k++) {
-        if (k >= iCanvasTrailCount - 1) break;
-        vec2 a = vec2(iCanvasTrail[k].x * cs.x, (iCanvasSize.y - iCanvasTrail[k].y) * cs.y);
-        vec2 b2 = vec2(iCanvasTrail[k + 1].x * cs.x, (iCanvasSize.y - iCanvasTrail[k + 1].y) * cs.y);
-        vec2 pa = uv * res - a;
-        vec2 ba = b2 - a;
-        float h = clamp(dot(pa, ba) / max(dot(ba, ba), 0.001), 0.0, 1.0);
-        float d = length(pa - ba * h);
-        float age = float(k + 1) / float(max(iCanvasTrailCount - 1, 1));
-        col += vec3(0.85, 0.65, 0.40) * exp(-(d * d) / 9.0) * (0.05 + 0.25 * age);
-    }
-
-    // The houses: the windows. Each window is a lit rectangle in the
-    // dusk - its glass glows, its light spills down the wall, and a
-    // warm pool gathers where it lands. The shape is the window's own.
+    // The sheets: the windows, outlined.
     for (int w = 0; w < 16; w++) {
         if (w >= iWindowCount) break;
         vec4 wr = iWindowRects[w];
-        vec2 o = vec2(wr.x * cs.x, (iCanvasSize.y - (wr.y + wr.w)) * cs.y);
-        vec2 sz = vec2(wr.z * cs.x, wr.w * cs.y);
-        o = clamp(o, vec2(20.0), res - vec2(20.0));
-        vec2 p = uv * res - o;
-        vec2 b = smoothstep(vec2(0.0), vec2(4.0), p) *
-                 smoothstep(vec2(0.0), vec2(4.0), sz - p);
-        float inW = b.x * b.y;
-        // The lit glass, breathing slowly.
-        col += vec3(1.0, 0.78, 0.50) * inW * (0.30 + 0.08 * sin(t * 0.8 + float(w) * 1.7));
-        // The spill: the light falls from the sill down the wall.
-        float below = smoothstep(sz.y + 150.0, sz.y, p.y);
-        float spread = exp(-pow((p.x - sz.x * 0.5) / max(sz.x * 0.8, 30.0), 2.0));
-        col += vec3(1.0, 0.62, 0.34) * below * spread * 0.20;
-        // The warm pool where it lands.
-        col += vec3(1.0, 0.70, 0.40) * exp(-pow((p.x - sz.x * 0.5) / max(sz.x * 1.6, 60.0), 2.0)) *
-               exp(-pow((p.y - sz.y - 90.0) / 60.0, 2.0)) * 0.10;
-        // The sill's own halo.
-        float d = length((p - sz * 0.5) / vec2(max(sz.x, 40.0), max(sz.y, 40.0)));
-        col += vec3(1.0, 0.72, 0.42) * exp(-d * d * 2.2) * 0.14;
+        vec2 sc = vc + vec2(wr.x + wr.z * 0.5 - iCanvasSize.x * 0.5,
+                            iCanvasSize.y * 0.5 - (wr.y + wr.w * 0.5)) * k * cs;
+        vec2 sz = vec2(wr.z, wr.w) * k * cs;
+        vec2 p = uv * res - sc;
+        vec2 q = abs(p) - sz * 0.5;
+        float edge = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+        float line = 1.0 - smoothstep(0.8, 2.0, abs(edge));
+        col += vec3(1.0, 0.78, 0.50) * line * 0.30;
+        col += vec3(1.0, 0.85, 0.60) * (1.0 - smoothstep(0.0, max(sz.x, sz.y) * 0.5, length(p))) * 0.05;
+    }
+
+    // The rooms: the clusters, glowing far back, breathing on their own
+    // beats.
+    for (int i = 0; i < 16; i++) {
+        if (i >= iCanvasClusterCount) break;
+        vec4 cl = iCanvasClusters[i];
+        vec2 cp = vc + vec2(cl.x - iCanvasSize.x * 0.5,
+                            iCanvasSize.y * 0.5 - cl.y) * k * cs;
+        float n = clamp(cl.z, 1.0, 9.0);
+        float R = 3.0 + n * 1.6;
+        float d = length(uv * res - cp);
+        float beat = 0.5 + 0.5 * sin(t * 0.32 + float(i) * 2.399);
+        col += vec3(1.0, 0.72, 0.42) * exp(-(d * d) / (R * R)) * (0.20 + 0.28 * beat);
+        col += vec3(1.0, 0.92, 0.75) * exp(-(d * d) / (R * R * 0.10)) * (0.08 + 0.12 * beat);
     }
 
     // The torch: the pointer.

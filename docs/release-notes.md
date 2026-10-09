@@ -1,9 +1,10 @@
 Unreleased:
 
-- The valley's windows are its houses. Each real window is a lit
-  rectangle now - the glass glows softly, the light spills down the
-  wall from its sill, and a warm pool gathers where it lands - the
-  shape is the window's own, not a dot at its centre.
+- The plane hangs in the valley's sky. Far back above the ridges, the
+  whole canvas is compressed into a band: the windows are its outlined
+  sheets, the rooms are the glow-gatherings among them, and every one
+  of them sits at its true place - the geography is the canvas's own,
+  drifting with the camera.
 
 - The canvas floor is a mountain valley at dusk. The scenery stands on
   its own: the ridges fold into the haze, the sun goes down behind
