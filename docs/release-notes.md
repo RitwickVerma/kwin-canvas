@@ -2,11 +2,10 @@ Unreleased:
 
 - The float is the system's own pin. The canvas's float was living on
   KWin's "keep above" flag; it now lives on "on all desktops" - the
-  pin's true home - and the pill and the panel applet wear both: the
-  up-arrow glyph is the float (lit when the window floats), the new pin
-  glyph is the keep-above, each drawn only when the native titlebar
-  buttons ask for it, each lit by its own state. The title-bar menu's
-  pin entry, the canvas's pin and the glyphs now agree on one flag.
+  pin's true home - and the pill and the panel applet wear it as the
+  up-arrow glyph, drawn only when the native titlebar buttons ask for
+  it and lit when the window floats. The title-bar menu's pin entry,
+  the canvas's pin and the glyphs now agree on one flag.
 
 - The panel wears the pill. A new applet, Canvas Window Decor
   (org.kde.kwin.canvas.decor), sits in the panel and shows the focused

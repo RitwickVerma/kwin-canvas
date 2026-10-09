@@ -34,7 +34,6 @@ Decoration {
     // The states the pill shows: a floated window wears the accent ring
     // and the filled arrow; a maximized one shows the restore glyph.
     readonly property bool floating: decoration.client.onAllDesktops
-    readonly property bool above: decoration.client.keepAbove
     readonly property bool maximized: decoration.client.maximized
     readonly property color glyph: activeWindow ? Qt.rgba(1, 1, 1, 0.88) : Qt.rgba(1, 1, 1, 0.45)
     readonly property color glass: Qt.rgba(0.05, 0.05, 0.08, 0.62)
@@ -44,7 +43,7 @@ Decoration {
     // right - so the pill is the system's buttons, just drawn in the
     // canvas's glass. Only the codes the pill can draw survive: X the
     // close, I the minimize, A the maximize, S the float (the system's
-    // "on all desktops" pin), F the keep-above.
+    // "on all desktops" pin).
     DecorationOptions {
         id: options
         deco: decoration
@@ -57,7 +56,6 @@ Decoration {
             if (t === DecorationOptions.DecorationButtonClose) out.push("X");
             else if (t === DecorationOptions.DecorationButtonMinimize) out.push("I");
             else if (t === DecorationOptions.DecorationButtonMaximizeRestore) out.push("A");
-            else if (t === DecorationOptions.DecorationButtonKeepAbove) out.push("F");
             else if (t === DecorationOptions.DecorationButtonOnAllDesktops) out.push("S");
         }
         return out;
@@ -140,7 +138,7 @@ Decoration {
             required property string modelData
             property bool hovered: false
             property bool pressed: false
-            readonly property bool lit: (modelData === "S" && root.floating) || (modelData === "F" && root.above) || (modelData === "A" && root.maximized)
+            readonly property bool lit: (modelData === "S" && root.floating) || (modelData === "A" && root.maximized)
             scale: pressed ? 0.86 : (hovered ? 1.2 : 1)
             width: 22
             height: 22
@@ -176,8 +174,7 @@ Decoration {
             // The marks: X the crossed strokes, I the bar, A the hollow
             // square (the restore pair when maximized, in the accent),
             // S the up arrow (filled in the accent when floating - the
-            // "on all desktops" pin), F the pin head (the keep-above,
-            // lit in the accent when above).
+            // "on all desktops" pin).
             Canvas {
                 id: mark
                 anchors.centerIn: parent
@@ -221,23 +218,11 @@ Decoration {
                         ctx.moveTo(5, 2.5);
                         ctx.lineTo(5, 8);
                         ctx.stroke();
-                    } else if (code === "F") {
-                        ctx.beginPath();
-                        ctx.arc(5, 3.2, 1.9, 0, Math.PI * 2);
-                        if (lit) ctx.fill();
-                        ctx.stroke();
-                        ctx.beginPath();
-                        ctx.moveTo(5, 5.1);
-                        ctx.lineTo(5, 8.5);
-                        ctx.stroke();
                     }
                 }
                 Connections {
                     target: root
                     function onFloatingChanged() {
-                        mark.requestPaint();
-                    }
-                    function onAboveChanged() {
                         mark.requestPaint();
                     }
                     function onMaximizedChanged() {
@@ -259,7 +244,6 @@ Decoration {
                     else if (parent.modelData === "I") decoration.requestMinimize();
                     else if (parent.modelData === "A") decoration.requestToggleMaximization(Qt.LeftButton);
                     else if (parent.modelData === "S") decoration.requestToggleOnAllDesktops();
-                    else if (parent.modelData === "F") decoration.requestToggleKeepAbove();
                 }
             }
         }

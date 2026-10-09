@@ -28,11 +28,10 @@ PlasmoidItem {
     Plasmoid.status: PlasmaCore.Types.ActiveStatus
 
     // The plugin's state reply carries the focused window as a trailing
-    // " win=internalId|caption|max|keep|all" token - the keep-above and
-    // the on-all-desktops (the float) flags last.
+    // " win=internalId|caption|max|all" token - the on-all-desktops (the
+    // float) flag last.
     property string winCaption: ""
     property bool winMax: false
-    property bool winAbove: false
     property bool winFloat: false
 
     // The native titlebar-buttons configuration, the same source the
@@ -45,7 +44,7 @@ PlasmoidItem {
         const out = [];
         for (let i = 0; i < s.length; i++) {
             const c = s.charAt(i);
-            if (c === "X" || c === "I" || c === "A" || c === "S" || c === "F") out.push(c);
+            if (c === "X" || c === "I" || c === "A" || c === "S") out.push(c);
         }
         return out;
     }
@@ -68,8 +67,7 @@ PlasmoidItem {
                 const p = out.slice(i + 5).trim().split("|");
                 root.winCaption = p.length > 1 ? p[1] : "";
                 root.winMax = p.length > 2 && p[2] === "1";
-                root.winAbove = p.length > 3 && p[3] === "1";
-                root.winFloat = p.length > 4 && p[4] === "1";
+                root.winFloat = p.length > 3 && p[3] === "1";
             } else if (sourceName.indexOf("ButtonsOnLeft") >= 0) {
                 root.buttonsLeft = out.trim();
             } else if (sourceName.indexOf("ButtonsOnRight") >= 0) {
@@ -143,7 +141,7 @@ PlasmoidItem {
             required property string modelData
             property bool hovered: false
             property bool pressed: false
-            readonly property bool lit: (modelData === "S" && root.winFloat) || (modelData === "F" && root.winAbove) || (modelData === "A" && root.winMax)
+            readonly property bool lit: (modelData === "S" && root.winFloat) || (modelData === "A" && root.winMax)
             scale: pressed ? 0.86 : (hovered ? 1.2 : 1)
             width: 22
             height: 22
@@ -179,7 +177,7 @@ PlasmoidItem {
             // The marks: X the crossed strokes, I the bar, A the hollow
             // square (the restore pair when maximized, in the accent),
             // S the up arrow (filled in the accent when floating - the
-            // "on all desktops" pin), F the pin head (the keep-above).
+            // "on all desktops" pin).
             Canvas {
                 id: mark
                 anchors.centerIn: parent
@@ -223,23 +221,11 @@ PlasmoidItem {
                         ctx.moveTo(5, 2.5);
                         ctx.lineTo(5, 8);
                         ctx.stroke();
-                    } else if (code === "F") {
-                        ctx.beginPath();
-                        ctx.arc(5, 3.2, 1.9, 0, Math.PI * 2);
-                        if (lit) ctx.fill();
-                        ctx.stroke();
-                        ctx.beginPath();
-                        ctx.moveTo(5, 5.1);
-                        ctx.lineTo(5, 8.5);
-                        ctx.stroke();
                     }
                 }
                 Connections {
                     target: root
                     function onWinFloatChanged() {
-                        mark.requestPaint();
-                    }
-                    function onWinAboveChanged() {
                         mark.requestPaint();
                     }
                     function onWinMaxChanged() {
@@ -252,8 +238,7 @@ PlasmoidItem {
                 if (parent.modelData === "X") return i18n("Close the window");
                 if (parent.modelData === "I") return i18n("Minimize the window");
                 if (parent.modelData === "A") return i18n("Maximize or restore the window");
-                if (parent.modelData === "S") return i18n("Float the window: pin it to all desktops");
-                return i18n("Keep the window above the others");
+                return i18n("Float the window: pin it to all desktops");
             }
             PlasmaComponents3.ToolTip.visible: hovered
             PlasmaComponents3.ToolTip.delay: Qt.styleHints.mousePressAndHoldInterval
@@ -271,7 +256,6 @@ PlasmoidItem {
                     else if (parent.modelData === "I") executable.action("minimize");
                     else if (parent.modelData === "A") executable.action("maximize");
                     else if (parent.modelData === "S") executable.action("float");
-                    else if (parent.modelData === "F") executable.action("keepabove");
                 }
             }
         }
