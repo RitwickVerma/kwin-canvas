@@ -8,6 +8,7 @@ EFFECT_ID   := kwin-canvas
 WALL_ID     := kwin-canvas-ground
 APPLET_ID   := org.kde.kwin.canvas.toggle
 APPLET_DECOR_ID := org.kde.kwin.canvas.decor
+APPLET_DIR  := $(HOME)/.local/share/plasma/plasmoids
 DECOR_ID    := kwin-canvas-decoration
 DECOR_DIR   := $(HOME)/.local/share/kwin/decorations
 CLI         := tools/kwin-canvas
@@ -91,8 +92,8 @@ stage:
 install: stage ## Install the effect, the ground wallpaper and the applet as user packages, and the CLI into ~/.local/bin
 	@$(KPT) --type KWin/Effect --upgrade $(BUILD)/effect >/dev/null 2>&1 || $(KPT) --type KWin/Effect --install $(BUILD)/effect >/dev/null
 	@$(KPT) --type Plasma/Wallpaper --upgrade $(BUILD)/wallpaper >/dev/null 2>&1 || $(KPT) --type Plasma/Wallpaper --install $(BUILD)/wallpaper >/dev/null
-	@$(KPT) --type Plasma/Applet --upgrade $(BUILD)/applet >/dev/null 2>&1 || $(KPT) --type Plasma/Applet --install $(BUILD)/applet >/dev/null
-	@$(KPT) --type Plasma/Applet --upgrade $(BUILD)/applet-decor >/dev/null 2>&1 || $(KPT) --type Plasma/Applet --install $(BUILD)/applet-decor >/dev/null
+	@mkdir -p $(APPLET_DIR) && rm -rf $(APPLET_DIR)/$(APPLET_ID) && cp -r $(BUILD)/applet $(APPLET_DIR)/$(APPLET_ID)
+	@mkdir -p $(APPLET_DIR) && rm -rf $(APPLET_DIR)/$(APPLET_DECOR_ID) && cp -r $(BUILD)/applet-decor $(APPLET_DIR)/$(APPLET_DECOR_ID)
 	@mkdir -p $(DECOR_DIR) && rm -rf $(DECOR_DIR)/$(DECOR_ID) && cp -r $(BUILD)/decoration $(DECOR_DIR)/$(DECOR_ID)
 	@mkdir -p $(BIN_DIR) && install -m 755 $(CLI) $(BIN_DIR)/kwin-canvas
 	@echo "installed for $$USER: $(EFFECT_ID), $(WALL_ID), $(APPLET_ID), $(APPLET_DECOR_ID), $(DECOR_ID), $(BIN_DIR)/kwin-canvas"
@@ -100,8 +101,8 @@ install: stage ## Install the effect, the ground wallpaper and the applet as use
 uninstall: disable ## Turn the effect off and remove the user packages and the CLI
 	@$(KPT) --type KWin/Effect --remove $(EFFECT_ID) >/dev/null 2>&1 && echo "removed: $(EFFECT_ID)" || echo "not installed: $(EFFECT_ID)"
 	@$(KPT) --type Plasma/Wallpaper --remove $(WALL_ID) >/dev/null 2>&1 && echo "removed: $(WALL_ID)" || echo "not installed: $(WALL_ID)"
-	@$(KPT) --type Plasma/Applet --remove $(APPLET_ID) >/dev/null 2>&1 && echo "removed: $(APPLET_ID)" || echo "not installed: $(APPLET_ID)"
-	@$(KPT) --type Plasma/Applet --remove $(APPLET_DECOR_ID) >/dev/null 2>&1 && echo "removed: $(APPLET_DECOR_ID)" || echo "not installed: $(APPLET_DECOR_ID)"
+	@rm -rf $(APPLET_DIR)/$(APPLET_ID) && echo "removed: $(APPLET_ID)" || echo "not installed: $(APPLET_ID)"
+	@rm -rf $(APPLET_DIR)/$(APPLET_DECOR_ID) && echo "removed: $(APPLET_DECOR_ID)" || echo "not installed: $(APPLET_DECOR_ID)"
 	@rm -f $(BIN_DIR)/kwin-canvas
 
 # System-wide layout, the same paths kpackagetool6 --global uses; KPackage
