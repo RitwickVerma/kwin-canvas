@@ -24,6 +24,7 @@
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QTimer>
+#include <cmath>
 
 Q_LOGGING_CATEGORY(KWIN_CANVAS, "kwin_canvas_passthrough", QtDebugMsg)
 
@@ -170,9 +171,10 @@ void CanvasPassthrough::setCanvasState(const QString &state)
 {
     // The shader channel: the effect pushes the plane's remembered state at
     // each commit (view=, grid=, cluster=, trail= lines in plane coordinates);
-    // the clusters and the trail land here screen-projected, so a fragment
-    // shader works in pixels with no camera math of its own; the grid passes
-    // through raw and scrolls with the view on the shader side.
+    // the clusters and the trail land here screen-projected (scaled by the
+    // zoom the effect publishes), so a fragment shader works in pixels with
+    // no camera math of its own; the grid passes through raw and scrolls
+    // with the view on the shader side.
     QFile f(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + QStringLiteral("/kwin-canvas-state.txt"));
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         return;
@@ -183,7 +185,7 @@ void CanvasPassthrough::setCanvasState(const QString &state)
     // logical size rides along so the shader can scale the state to its own
     // space - at 100% scale the factor is one and nothing moves.
     out << "size=" << workspace()->geometry().width() << ',' << workspace()->geometry().height() << QLatin1Char('\n');
-    double viewX = 0.0, viewY = 0.0;
+    double viewX = 0.0, viewY = 0.0, zoomV = 1.0;
     const QStringList lines = state.split(QLatin1Char('\n'));
     for (const QString &line : lines) {
         if (line.startsWith(QLatin1String("view="))) {
@@ -193,6 +195,12 @@ void CanvasPassthrough::setCanvasState(const QString &state)
                 viewY = p[1].toDouble();
             }
             out << line << QLatin1Char('\n');
+        } else if (line.startsWith(QLatin1String("zoom="))) {
+            const double z = line.mid(5).toDouble();
+            if (z > 0.0 && std::isfinite(z)) {
+                zoomV = z;
+            }
+            out << line << QLatin1Char('\n');
         } else if (line.startsWith(QLatin1String("grid="))) {
             // The ground's own knobs pass through raw: the shader draws the
             // same grid, scrolling with the view it reads from the view line.
@@ -200,14 +208,14 @@ void CanvasPassthrough::setCanvasState(const QString &state)
         } else if (line.startsWith(QLatin1String("cluster="))) {
             const QStringList p = line.mid(8).split(QLatin1Char(','));
             if (p.size() == 3) {
-                out << "cluster=" << int(p[0].toDouble() - viewX) << ',' << int(p[1].toDouble() - viewY) << ',' << p[2] << QLatin1Char('\n');
+                out << "cluster=" << int((p[0].toDouble() - viewX) * zoomV) << ',' << int((p[1].toDouble() - viewY) * zoomV) << ',' << p[2] << QLatin1Char('\n');
             }
         } else if (line.startsWith(QLatin1String("trail="))) {
             const QStringList p = line.mid(6).split(QLatin1Char(','));
             if (p.size() >= 2) {
                 out << "trail=";
                 for (int i = 0; i + 1 < p.size(); i += 2) {
-                    out << int(p[i].toDouble() - viewX) << ',' << int(p[i + 1].toDouble() - viewY);
+                    out << int((p[i].toDouble() - viewX) * zoomV) << ',' << int((p[i + 1].toDouble() - viewY) * zoomV);
                     if (i + 2 < p.size()) {
                         out << ',';
                     }

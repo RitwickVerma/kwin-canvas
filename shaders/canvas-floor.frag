@@ -113,12 +113,15 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     for (int j = 0; j < iWindowCount && j < 16; j++) {
         vec4 w = iWindowRects[j];
         vec2 c = vec2((w.x + w.z * 0.5) * cs.x, (iCanvasSize.y - (w.y + w.w * 0.5)) * cs.y);
+        // a boat far from the saved view pulls to the nearest edge, like the
+        // shoals - the desktop always shows the lights, never empty water.
+        c = clamp(c, vec2(80.0), res - vec2(80.0));
         float side = max(w.z * cs.x, w.w * cs.y) * 0.30;
         float d = length(uv - c);
         col += glowBright * exp(-d * d / (6.0 * 6.0)) * 1.1;
         col += glow * exp(-d * d / (side * side)) * 0.22;
         float streak = exp(-pow((uv.x - c.x) / (side * 0.5), 2.0))
-                     * smoothstep(c.y + side * 6.0, c.y, uv.y);
+                     * smoothstep(c.y, c.y - side * 6.0, uv.y);
         col += glow * streak * 0.14;
     }
 

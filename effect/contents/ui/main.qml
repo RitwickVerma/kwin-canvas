@@ -3954,6 +3954,10 @@ KWin.SceneEffect {
     // fragment shader works in pixels with no camera math of its own.
     function canvasStateString() {
         let s = "view=" + Math.round(viewX) + "," + Math.round(viewY) + "\n";
+        // The projection scales by the zoom: a publish mid-overworld (the live
+        // tick) must land the features where the eye sees them, not where a
+        // 1:1 projection would put them. The commit publishes at zoom 1.
+        s += "zoom=" + zoom.toFixed(3) + "\n";
         // The ground itself: the shader wallpaper draws the plane's own grid,
         // so the closed desktop is the plane at rest.
         const lc = configuration.LineColor;
