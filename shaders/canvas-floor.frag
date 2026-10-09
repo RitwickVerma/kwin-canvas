@@ -79,8 +79,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 cs = (iCanvasSize.x > 1.0) ? res / iCanvasSize : vec2(1.0);
 
     // The sky: the plane's own background, deep, a little lighter below
-    // so the windows and the pools read on top of it.
-    vec3 col = mix(iCanvasBackground * 0.30, iCanvasBackground * 1.35, uv.y);
+    // so the windows and the pools read on top of it. Absent the fork's
+    // upload the uniform reads zero; the same calm dark stands in, so the
+    // floor never goes black.
+    vec3 bg = (iCanvasBackground == vec3(0.0)) ? vec3(0.11, 0.12, 0.15) : iCanvasBackground;
+    vec3 col = mix(bg * 0.30, bg * 1.35, uv.y);
 
     // The aurora: three curtains at the different scales, speeds and
     // hues. The crests carry the colour; the curtains fade toward the

@@ -3943,6 +3943,7 @@ KWin.SceneEffect {
                 s += Math.round(pathPts[i].x) + "," + Math.round(pathPts[i].y);
                 if (i < pathPts.length - 1) s += ",";
             }
+            s += "\n";
         }
         return s;
     }

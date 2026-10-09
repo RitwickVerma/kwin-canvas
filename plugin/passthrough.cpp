@@ -193,8 +193,6 @@ void CanvasPassthrough::setCanvasState(const QString &state)
                 viewY = p[1].toDouble();
             }
             out << line << QLatin1Char('\n');
-        } else if (line.startsWith(QLatin1String("size="))) {
-            out << line << QLatin1Char('\n');
         } else if (line.startsWith(QLatin1String("grid="))) {
             // The ground's own knobs pass through raw: the shader draws the
             // same grid, scrolling with the view it reads from the view line.
