@@ -29,6 +29,7 @@ uniform vec4 iCanvasClusters[16];  // x,y = the room centre (top-down), z = the 
 uniform int iCanvasTrailCount;     // up to 64, the day-trail's samples
 uniform vec2 iCanvasTrail[64];     // the path points (top-down), oldest first
 uniform vec3 iCanvasBackground;    // the plane's ground, 0..1
+uniform vec2 iCanvasSize;         // the LOGICAL virtual desktop (the state's space)
 
 vec2 hash2(vec2 p) {
     p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
@@ -69,6 +70,14 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = fragCoord / res;
     float t = iTime;
 
+    // The state arrives in LOGICAL pixels (the KWin geometry); this shader
+    // renders in PHYSICAL pixels (the output's size, the dpr included). One
+    // factor maps the state onto the screen - at 100% scale it is one.
+    // Absent the fork's size upload the uniform reads zero: fall back to
+    // the identity, so the features land where the logical state puts them
+    // rather than nowhere.
+    vec2 cs = (iCanvasSize.x > 1.0) ? res / iCanvasSize : vec2(1.0);
+
     // The sky: the plane's own background, deep, a little lighter below
     // so the windows and the pools read on top of it.
     vec3 col = mix(iCanvasBackground * 0.30, iCanvasBackground * 1.35, uv.y);
@@ -97,8 +106,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     // The rooms: the warm pools where the clusters sit, each on its own
     // beat; the aurora brightens as it passes them.
     for (int i = 0; i < iCanvasClusterCount && i < 16; i++) {
-        vec2 c = iCanvasClusters[i].xy;
-        c.y = res.y - c.y;  // the state's top-down -> the GL's bottom-up
+        vec2 c = iCanvasClusters[i].xy * cs;
+        c.y = res.y - c.y;  // the logical top-down -> the physical bottom-up
         float n = max(iCanvasClusters[i].z, 1.0);
         float beat = sin(t * 0.6 + float(i) * 2.399) * 0.5 + 0.5;
         float r = (70.0 + 26.0 * n) * (0.9 + 0.25 * beat);
@@ -113,8 +122,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
     // The trail: the day's path as a river of moving light.
     for (int i = 0; i < iCanvasTrailCount - 1 && i < 63; i++) {
-        vec2 a = iCanvasTrail[i];
-        vec2 b = iCanvasTrail[i + 1];
+        vec2 a = iCanvasTrail[i] * cs;
+        vec2 b = iCanvasTrail[i + 1] * cs;
         a.y = res.y - a.y;
         b.y = res.y - b.y;
         vec2 pa = fragCoord - a;
@@ -129,9 +138,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     // The windows: the real windows cast their faint reflections.
     for (int i = 0; i < iWindowCount && i < 16; i++) {
         vec4 w = iWindowRects[i];
-        vec2 c = vec2(w.x + w.z * 0.5, res.y - (w.y + w.w * 0.5));
+        vec2 c = vec2((w.x + w.z * 0.5) * cs.x, res.y - (w.y + w.w * 0.5) * cs.y);
         float md = length(fragCoord - c);
-        float rr = max(w.z, w.w) * 0.7;
+        float rr = max(w.z, w.w) * cs.x * 0.7;
         col += vec3(0.35, 0.55, 1.0) * exp(-md * md / (2.0 * rr * rr)) * 0.05;
     }
 

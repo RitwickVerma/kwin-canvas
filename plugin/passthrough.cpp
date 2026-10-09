@@ -178,6 +178,11 @@ void CanvasPassthrough::setCanvasState(const QString &state)
         return;
     }
     QTextStream out(&f);
+    // The shader renders in PHYSICAL pixels (the output's pixel size, dpr
+    // included) while the plane's state is LOGICAL (the KWin geometry). The
+    // logical size rides along so the shader can scale the state to its own
+    // space - at 100% scale the factor is one and nothing moves.
+    out << "size=" << workspace()->geometry().width() << ',' << workspace()->geometry().height() << QLatin1Char('\n');
     double viewX = 0.0, viewY = 0.0;
     const QStringList lines = state.split(QLatin1Char('\n'));
     for (const QString &line : lines) {
@@ -187,6 +192,8 @@ void CanvasPassthrough::setCanvasState(const QString &state)
                 viewX = p[0].toDouble();
                 viewY = p[1].toDouble();
             }
+            out << line << QLatin1Char('\n');
+        } else if (line.startsWith(QLatin1String("size="))) {
             out << line << QLatin1Char('\n');
         } else if (line.startsWith(QLatin1String("grid="))) {
             // The ground's own knobs pass through raw: the shader draws the
