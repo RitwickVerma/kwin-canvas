@@ -30,28 +30,22 @@ import org.kde.plasma.plasma5support as Plasma5Support
 PlasmoidItem {
     id: root
 
-    preferredRepresentation: compactRepresentation
     Plasmoid.status: PlasmaCore.Types.ActiveStatus
 
     // The panel sizes the applet from the Layout attachments on the root,
-    // not from the representation's implicit width - the same pattern the
-    // window-buttons applet uses. The slot is pinned to the true content
-    // width (below), and clip keeps the paint inside it whatever the
-    // panel does, so the applet can never draw over its neighbours.
+    // reading the row below directly - the exact pattern the
+    // window-buttons applet uses (no compactRepresentation wrapper, the
+    // content as the root's direct children). clip keeps the paint
+    // inside the slot whatever the panel does.
     clip: true
     Layout.fillHeight: plasmoid.formFactor === PlasmaCore.Types.Horizontal
     Layout.fillWidth: plasmoid.formFactor === PlasmaCore.Types.Vertical
-    Layout.minimumWidth: plasmoid.formFactor === PlasmaCore.Types.Horizontal ? root.appletWidth : -1
+    Layout.minimumWidth: plasmoid.formFactor === PlasmaCore.Types.Horizontal ? row.width : -1
     Layout.minimumHeight: -1
     Layout.preferredWidth: Layout.minimumWidth
     Layout.preferredHeight: Layout.minimumHeight
     Layout.maximumWidth: Layout.minimumWidth
     Layout.maximumHeight: Layout.minimumHeight
-
-    // The true content width, mirrored out of the compact representation
-    // (the representation's items are a separate component scope, so the
-    // root cannot read them directly).
-    property int appletWidth: 0
 
     // The plugin's state reply carries the focused window as a trailing
     // " win=internalId|caption|max|all|above|below|capture" token - the
@@ -145,43 +139,38 @@ PlasmoidItem {
         executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnRight");
     }
 
-    compactRepresentation: Item {
-        // The width is a function of the state, not of the row's layout:
-        // a glyph occupies 22 px plus the 6 px spacing (28 per glyph, the
-        // trailing spacing dropped), the caption its bounded text width,
-        // and the 4 px side margins close the sum - so the applet reports
-        // its true width even before the first poll lands.
-        implicitWidth: 8 + (root.winCaption !== "" ? Math.min(220, caption.implicitWidth) + 6 : 0) + (root.glyphs.length * 28 - (root.glyphs.length > 0 ? 6 : 0))
-        implicitHeight: 30
-        onImplicitWidthChanged: root.appletWidth = implicitWidth
-        Component.onCompleted: root.appletWidth = implicitWidth
+    // The width is a function of the state, not of the row's own layout:
+    // a glyph occupies 22 px plus the 6 px spacing (28 per glyph, the
+    // trailing spacing dropped), the caption its bounded text width, and
+    // the 4 px side margins close the sum - so the slot is correct from
+    // the first layout, before either poll has landed.
+    Row {
+        id: row
+        spacing: 6
+        anchors {
+            verticalCenter: parent.verticalCenter
+            left: parent.left
+            leftMargin: 4
+        }
+        width: 8 + (root.winCaption !== "" ? Math.min(220, caption.implicitWidth) + 6 : 0) + (root.glyphs.length * 28 - (root.glyphs.length > 0 ? 6 : 0))
+        height: 30
 
-        Row {
-            id: row
-            spacing: 6
-            anchors {
-                verticalCenter: parent.verticalCenter
-                left: parent.left
-                leftMargin: 4
-            }
+        Text {
+            id: caption
+            anchors.verticalCenter: parent.verticalCenter
+            visible: root.winCaption !== ""
+            text: root.winCaption
+            elide: Text.ElideRight
+            width: Math.min(220, implicitWidth)
+            color: PlasmaCore.Theme.textColor
+            opacity: 0.75
+            font.pixelSize: 11
+            renderType: Text.NativeRendering
+        }
 
-            Text {
-                id: caption
-                anchors.verticalCenter: parent.verticalCenter
-                visible: root.winCaption !== ""
-                text: root.winCaption
-                elide: Text.ElideRight
-                width: Math.min(220, implicitWidth)
-                color: PlasmaCore.Theme.textColor
-                opacity: 0.75
-                font.pixelSize: 11
-                renderType: Text.NativeRendering
-            }
-
-            Repeater {
-                model: root.glyphs
-                delegate: glyphDelegate
-            }
+        Repeater {
+            model: root.glyphs
+            delegate: glyphDelegate
         }
     }
 
@@ -371,5 +360,6 @@ PlasmoidItem {
         }
     }
 
-    fullRepresentation: compactRepresentation
+    // The single representation is the content itself: the row of the
+    // caption and the glyphs, sized by the Layout attachments above.
 }
