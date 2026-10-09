@@ -114,9 +114,23 @@ PlasmoidItem {
             executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnRight");
         }
     }
+    // The first layout happens before either timer fires: the panel sizes
+    // the applet from its implicit width at creation, so the state and
+    // the button order must be fetched immediately - otherwise the width
+    // computes zero and the applet paints over its neighbours.
+    Component.onCompleted: {
+        executable.run("qdbus6 org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.state");
+        executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnLeft");
+        executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnRight");
+    }
 
     compactRepresentation: Item {
-        implicitWidth: row.implicitWidth
+        // The width is a function of the state, not of the row's layout:
+        // a glyph occupies 22 px plus the 6 px spacing (28 per glyph, the
+        // trailing spacing dropped), the caption its bounded text width,
+        // and the 4 px side margins close the sum - so the applet reports
+        // its true width even before the first poll lands.
+        implicitWidth: 8 + (root.winCaption !== "" ? Math.min(220, caption.implicitWidth) + 6 : 0) + (root.glyphs.length * 28 - (root.glyphs.length > 0 ? 6 : 0))
         implicitHeight: 30
 
         Row {
@@ -129,6 +143,7 @@ PlasmoidItem {
             }
 
             Text {
+                id: caption
                 anchors.verticalCenter: parent.verticalCenter
                 visible: root.winCaption !== ""
                 text: root.winCaption
