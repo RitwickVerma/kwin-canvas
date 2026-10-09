@@ -3926,6 +3926,13 @@ KWin.SceneEffect {
     // fragment shader works in pixels with no camera math of its own.
     function canvasStateString() {
         let s = "view=" + Math.round(viewX) + "," + Math.round(viewY) + "\n";
+        // The ground itself: the shader wallpaper draws the plane's own grid,
+        // so the closed desktop is the plane at rest.
+        const lc = configuration.LineColor;
+        const bg = configuration.Background;
+        s += "grid=" + (Number(configuration.GridBase) || 64) + "," + (Number(configuration.GridOctaveFactor) || 8) + "," + (Number(configuration.GridOctaves) || 4)
+            + "," + Math.round((lc ? lc.r : 0.5) * 255) + "," + Math.round((lc ? lc.g : 0.56) * 255) + "," + Math.round((lc ? lc.b : 0.69) * 255)
+            + "," + Math.round((bg ? bg.r : 0.11) * 255) + "," + Math.round((bg ? bg.g : 0.12) * 255) + "," + Math.round((bg ? bg.b : 0.15) * 255) + "\n";
         for (let i = 0; i < clusters.length && i < 16; i++) {
             s += "cluster=" + Math.round(clusters[i].cx) + "," + Math.round(clusters[i].cy) + "," + clusters[i].n + "\n";
         }

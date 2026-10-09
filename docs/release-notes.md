@@ -1,15 +1,17 @@
 Unreleased:
 
 - The canvas feeds the shader wallpaper. Every commit writes the plane's
-  remembered state - the saved view, the clusters (the rooms' centres and
-  sizes) and the day-trail's last points - to kwin-canvas-state.txt,
-  screen-projected, as plain lines a shader wallpaper's engine can hand
-  to a fragment shader as uniforms. The starter shader ships at
-  shaders/canvas-floor.frag: a calm breathing floor that lights each
-  cluster and draws the trail. The contract between the file and the
-  shader is documented in docs/shader-integration.md; the engine fork
-  (reading the file into the uniforms) is the one piece that lives
-  outside this tree.
+  remembered state - the saved view, the ground's own knobs (the grid
+  spacing, the octaves, the line and background colours), the clusters
+  and the day-trail's last points - to kwin-canvas-state.txt, with the
+  clusters and the trail screen-projected, as plain lines a shader
+  wallpaper's engine can hand to a fragment shader as uniforms. The
+  starter shader ships at shaders/canvas-floor.frag: it draws the
+  plane's own ground - the background and the multi-octave grid,
+  scrolling with the saved view - then lights each cluster and draws the
+  trail. The contract between the file and the shader is documented in
+  docs/shader-integration.md; the engine fork (reading the file into the
+  uniforms) is the one piece that lives outside this tree.
 
 - Every move plays. The tidy, the arrange, the send-to and the undo
   glide the windows to their new spots instead of teleporting them, and

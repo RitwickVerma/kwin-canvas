@@ -130,6 +130,12 @@ screen-projected, one line per fact. The starter shader
 the trail points) and lights the floor from them; the fork that feeds
 the uniforms lives with the engine, outside this tree, with the
 contract in docs/shader-integration.md. Scenario 138 proves the file
+(6/0 — the view line, the ground's own knobs line, one cluster line per
+room at the right spot, the trail line after a pan). The first shader
+look read as ambient lighting to the user, so the floor became the
+plane's own ground: the state carries the grid knobs and the shader
+draws the same background and multi-octave grid, scrolling with the
+saved view, under the blooms and the trail.
 (5/0 — the view line, one cluster line per room at the right spot, the
 trail line after a pan).
 

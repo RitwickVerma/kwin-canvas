@@ -169,9 +169,10 @@ void CanvasPassthrough::setCamera(double viewX, double viewY, double zoom, const
 void CanvasPassthrough::setCanvasState(const QString &state)
 {
     // The shader channel: the effect pushes the plane's remembered state at
-    // each commit (view=, cluster=, trail= lines in plane coordinates); the
-    // clusters and the trail land here screen-projected, so a fragment
-    // shader works in pixels with no camera math of its own.
+    // each commit (view=, grid=, cluster=, trail= lines in plane coordinates);
+    // the clusters and the trail land here screen-projected, so a fragment
+    // shader works in pixels with no camera math of its own; the grid passes
+    // through raw and scrolls with the view on the shader side.
     QFile f(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + QStringLiteral("/kwin-canvas-state.txt"));
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         return;
@@ -186,6 +187,10 @@ void CanvasPassthrough::setCanvasState(const QString &state)
                 viewX = p[0].toDouble();
                 viewY = p[1].toDouble();
             }
+            out << line << QLatin1Char('\n');
+        } else if (line.startsWith(QLatin1String("grid="))) {
+            // The ground's own knobs pass through raw: the shader draws the
+            // same grid, scrolling with the view it reads from the view line.
             out << line << QLatin1Char('\n');
         } else if (line.startsWith(QLatin1String("cluster="))) {
             const QStringList p = line.mid(8).split(QLatin1Char(','));

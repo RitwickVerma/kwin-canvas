@@ -19,6 +19,7 @@ run_scenario() {
     statefile="$CONF/kwin-canvas-state.txt"
     assert_true "the shader state lands on disk" -f "$statefile"
     assert_eq "with the saved view" "$(grep -c '^view=' "$statefile")" 1
+    assert_eq "with the ground's own knobs" "$(grep -c '^grid=' "$statefile")" 1
     assert_eq "and one line per cluster" "$(grep -c '^cluster=' "$statefile")" "$(sget clusters)"
     clusterx=$(grep '^cluster=' "$statefile" | head -1 | cut -d= -f2 | cut -d, -f1)
     assert_near "with the light where the room sits" "$clusterx" 900 60
