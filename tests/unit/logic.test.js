@@ -91,23 +91,6 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
     ok("the thread order does not re-route", second.clusters[0].ids.join(",") === order1);
 }
 
-// ---- islands never cluster across desktops ----
-{
-    const cross = [
-        Object.assign(rect("a", 0, 0, 100, 100), { desktop: 1 }),
-        Object.assign(rect("b", 110, 0, 100, 100), { desktop: 2 })
-    ];
-    const r = L.recluster(cross, {}, {}, 0);
-    ok("windows on different desktops never join a cluster", r.clusters.length === 2);
-    const same = [
-        Object.assign(rect("a", 0, 0, 100, 100), { desktop: 2 }),
-        Object.assign(rect("b", 110, 0, 100, 100), { desktop: 2 })
-    ];
-    ok("windows on the same island still cluster", L.recluster(same, {}, {}, 0).clusters.length === 1);
-    const unmarked = [rect("a", 0, 0, 100, 100), rect("b", 110, 0, 100, 100)];
-    ok("rects without a desktop keep the old behaviour", L.recluster(unmarked, {}, {}, 0).clusters.length === 1);
-}
-
 // ---- the float rests while inside ----
 {
     const f = { x: 500, y: 300, vx: 0, vy: 0, wasInX: true, wasInY: true };

@@ -109,10 +109,11 @@ public Q_SLOTS:
     Q_SCRIPTABLE QString state() const;
     /**
      * The machine's load, for the fidelity ladder: "cpu=N load=NN.NN
-     * mem=MMMM". cpu is the busy percentage since the previous call (0 on
-     * the first), load is the one-minute average, mem is the available
-     * memory in kB. Cheap: three /proc reads, polled every couple of
-     * seconds while the overworld is open.
+     * mem=MMMM gpu=GGG". cpu is the busy percentage since the previous
+     * call (0 on the first), load is the one-minute average, mem is the
+     * memory's used share as a percentage, gpu is the GPU's busy share
+     * via NVML or -1 where the driver is absent. Cheap: three /proc
+     * reads, polled every couple of seconds while the overworld is open.
      */
     Q_SCRIPTABLE QString load() const;
     // The live keyboard modifier mask, for the switcher's release

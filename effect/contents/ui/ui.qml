@@ -203,13 +203,12 @@ Item {
         id: view
         readonly property var screen: KWin.SceneView.screen
         readonly property rect sg: KWin.SceneView.screen.geometry
-        // The whole scene fades against the real desktop at every seam: the
-        // canvas and the desktop differ where the eye catches the cut - every
-        // inactive window's thumbnail wears its active decoration and no
-        // shadow, and the panel is covered - so a transition that only fades
-        // the windows dissolves them into the wallpaper and then pops the
-        // real ones in. Fading the scene itself crossfades the two, because
-        // the real windows sit at exactly the same place underneath it.
+        // The whole scene fades against the real desktop at every seam, but
+        // only as a fade through black: KWin composites the canvas's
+        // framebuffer over black, not over the desktop, so this fade masks
+        // the zoom jump of a close from a zoomed-out overworld and nothing
+        // else. The 1:1 seams never fade - the canvas and the desktop are
+        // the same picture there, and an instant swap is invisible.
         opacity: effect.sceneFade
         property bool spaceHeld: false
         // Number of grips and buttons under the pointer. The pan handler
@@ -1026,7 +1025,7 @@ Item {
                             if (west) rw = startW - t.x / effect.zoom;
                             if (south) rh = startH + t.y / effect.zoom;
                             if (north) rh = startH - t.y / effect.zoom;
-                            effect.requestSize(thumb.heldIndex, rw, rh, west, north);
+                            effect.requestSize(effect.entries.indexOf(thumb.held), rw, rh, west, north);
                         }
                     }
                 }
@@ -1660,13 +1659,11 @@ Item {
             // waits a human beat first, so the pick settles under the eye
             // instead of jumping in at the tab keyup (a re-tap mid-hold
             // carries the modifiers, so its keyup is neither a modifier
-            // The release. The scene cannot always see the release of a
-            // key the global shortcut consumed, so this is only the fast
-            // path - the modifier key-up arms the settle through the
-            // shared handler (the plugin's live modifier poll is the
-            // slow, always-works path). A re-tap's Tab key-up arrives
-            // with the modifiers still held and must NOT arm the settle,
-            // so only a bare modifier key-up qualifies.
+            // nor a bare Tab, and can never arm it). The scene cannot
+            // always see the release of a key the global shortcut consumed,
+            // so this is only the fast path: the modifier key-up arms the
+            // settle through the shared handler, and the plugin's live
+            // modifier poll is the slow, always-works path.
             if (effect.switcherActive && effect.switcherFromChord && !event.isAutoRepeat) {
                 const mod = event.key === Qt.Key_Alt || event.key === Qt.Key_Control
                         || event.key === Qt.Key_Meta || event.key === Qt.Key_Shift;
@@ -1766,9 +1763,10 @@ Item {
             }
         }
 
-        // its live picture and the cluster it belongs to. It rides the
-        // switcher's z-rise, so the card and the pile settle together, and
-        // each step swaps the content in place.
+        // The switcher's pick: the chosen window's name, its live picture
+        // and the cluster it belongs to. It rides the switcher's z-rise, so
+        // the card and the pile settle together, and each step swaps the
+        // content in place.
         Rectangle {
             z: 100002
             visible: { effect.switcherActive; return view.screen === effect.primaryScreen && effect.switcherActive; }

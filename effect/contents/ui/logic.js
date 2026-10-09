@@ -36,10 +36,6 @@ function recluster(rects, prevOf, ranks, gapCfg) {
     const edges = [];
     for (let i = 0; i < list.length; ++i) {
         for (let j = i + 1; j < list.length; ++j) {
-            // Windows on different desktops never cluster: islands are
-            // their own neighbourhoods, however close their offsets lay
-            // them on the plane.
-            if (list[i].desktop !== undefined && list[j].desktop !== undefined && list[i].desktop !== list[j].desktop) continue;
             const d = clusterDist(list[i], list[j]);
             const gap = clusterGapFor(list[i], list[j], gapCfg);
             const samePrev = prevOf[list[i].id] !== undefined && prevOf[list[i].id] === prevOf[list[j].id];

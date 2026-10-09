@@ -3,11 +3,11 @@
 
     SPDX-License-Identifier: GPL-2.0-or-later
 
-    The panel twin of the window decoration's pill. It shows the focused
-    window's caption and the same glyphs the pill draws - the same marks,
-    the same circles, the same hover and press pops, the same accents -
-    in the same order the native titlebar buttons give them, so the panel
-    and the window speak one language. Every configured button gets a
+    The panel twin of the window decoration's pill. It shows the same
+    glyphs the pill draws - the same marks, the same circles, the same
+    hover and press pops, the same accents - in the same order the native
+    titlebar buttons give them, so the panel and the window speak one
+    language. Every configured button gets a
     glyph: X the close, I the minimize, A the maximize, S the float, F
     the keep-above, B the keep-below, E the exclude-from-capture, and a
     spacer becomes a gap. The menu and the help codes are left out
@@ -54,7 +54,6 @@ PlasmoidItem {
     // " win=internalId|caption|max|all|above|below|capture" token - the
     // on-all-desktops (the float), the keep-above, the keep-below and
     // the exclude-from-capture flags last.
-    property string winCaption: ""
     property bool winMax: false
     property bool winFloat: false
     property bool winAbove: false
@@ -88,13 +87,11 @@ PlasmoidItem {
             if (sourceName.indexOf("Passthrough.state") >= 0) {
                 const i = out.indexOf(" win=");
                 if (i < 0) {
-                    root.winCaption = "";
                     root.winMax = false;
                     root.winFloat = false;
                     return;
                 }
                 const p = out.slice(i + 5).trim().split("|");
-                root.winCaption = p.length > 1 ? p[1] : "";
                 root.winMax = p.length > 2 && p[2] === "1";
                 root.winFloat = p.length > 3 && p[3] === "1";
                 root.winAbove = p.length > 4 && p[4] === "1";

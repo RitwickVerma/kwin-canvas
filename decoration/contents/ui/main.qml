@@ -5,9 +5,10 @@
 */
 /*
     The canvas's window frame is no frame at all. The window wears
-    nothing - no border, no shadow - just a glass pill that pops up at
-    the top edge's left end, half in and half out of the window, when
-    the pointer comes near. The whole top edge drags the window. This is
+    nothing - no border, no shadow - just a glass pill at the top edge's
+    left end, half in and half out of the window, that slides out of the
+    edge when the window takes the focus and back behind it when the
+    focus leaves. The whole top edge drags the window. This is
     the decoration, so it is the window's frame in the normal desktop
     too, not only on the plane; the canvas keeps its own semantics
     untouched.
@@ -324,11 +325,6 @@ Decoration {
                 }
             }
         }
-    }
-
-    HoverHandler {
-        id: stripHover
-        target: dragBand
     }
 
     Component.onCompleted: {

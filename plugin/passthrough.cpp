@@ -683,11 +683,11 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
     m_idleTimer.start();
     // passthrough is live and the window under the pointer takes input.
     m_settled = true;
-    // The grasp's overlay owns the pointer outright: once the hold zooms
-    // out past the overlay's threshold, the map under the pointer takes
-    // every motion - no window under it may hover, or the pointer's rest
-    // would hand the input to the real window drawn under a sheet and the
-    // sheet's click or drag would never reach the canvas.
+    // The grasp's zoomed-out world owns the pointer outright: once the hold
+    // zooms out past the threshold, the map under the pointer takes every
+    // motion - no window under it may hover, or the pointer's rest would
+    // hand the input to the real window drawn under a sheet and the sheet's
+    // click or drag would never reach the canvas.
     if (m_holdDown && m_zoom < 0.85) {
         if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: overlay owns the pointer, motion stays in the canvas";
         leave();
@@ -829,6 +829,7 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
         }
         m_clickWindow = nullptr;
     }
+    // The system's own chrome - a dock, a panel, an applet's dropdown -
     // owns its pixels. A press over it never enters or activates the
     // window drawn underneath; the scene's handlers stand back too (the
     // chromeHover gate), so the chrome gets the click natively.
@@ -838,9 +839,9 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
         m_grabGround = false;
         return false;
     }
-    // The grasp's overlay owns the pointer outright (see pointerMotion):
-    // a press over a sheet is the sheet's, never the real window drawn
-    // under the map.
+    // The grasp's zoomed-out world owns the pointer outright (see
+    // pointerMotion): a press over a sheet is the sheet's, never the real
+    // window drawn under the map.
     if (m_holdDown && m_zoom < 0.85) {
         leave();
         m_grab = nullptr;
@@ -905,8 +906,9 @@ bool CanvasPassthrough::keyboardKey(KeyboardKeyEvent *event)
 {
     if (m_verbose) qCDebug(KWIN_CANVAS) << "keyboardKey" << event->key;
     // The idle's keys are the canvas's - the Esc the user reaches for is
-    // the canvas's cancel, not the window's - and typing does not wake the
-    // passthrough; the pointer's touch does.
+    // the canvas's cancel, not the window's. Typing restarts the idle
+    // clock but hands no key over; the key itself stays the canvas's
+    // while the passthrough is idle.
     if (m_idle) {
         return false;
     }

@@ -168,7 +168,7 @@ KWin.SceneEffect {
         } else if (target < ql) {
             quietSamples++;
             hotSamples = 0;
-            if (quietSamples >= 2) { ql = target; quietSamples = 0; toast("The canvas is back to full"); }
+            if (quietSamples >= 2) { ql = target; quietSamples = 0; if (ql === 0) toast("The canvas is back to full"); }
         } else {
             quietSamples = 0;
             hotSamples = 0;
@@ -198,8 +198,9 @@ KWin.SceneEffect {
     // (edgePanStep). It is the same mask the pan handlers already take, so
     // there is one answer to "which buttons navigate the canvas".
     readonly property int planeNavButtons: (bindings.panHold || 0) | Qt.MiddleButton | (bindings.swap || 0)
-    // The swap buttons: while the canvas modifier is held, a press flies
-    // between the two most recent windows.
+    // The swap buttons: while the canvas modifier is held, a press tours
+    // the clusters - the camera hops to the next one, the plane's own
+    // desktops.
     readonly property int swapButtons: bindings.swap || 0
     // The buttons a drag on a control takes: the left button, and the PanHold
     // buttons. That is the set the pan handler acts on over the ground, so a
@@ -331,9 +332,10 @@ KWin.SceneEffect {
         grasp = false;
         chipCount = 0;
         dbg("graspEnd", "release, quiet at zoom " + zoom.toFixed(3));
-        // The swap moved the focus: the location opens where the swapped-to
-        // window is, focused on it, as a pick would place it - the frames,
-        // their windows and the wallpaper slide to it and nothing else moves.
+        // The active window changed during the hold (a taskbar click, an
+        // activation): the location opens where that window is, focused on
+        // it, as a pick would place it - the frames, their windows and the
+        // wallpaper slide to it and nothing else moves.
         const aw = KWin.Workspace.activeWindow;
         if (aw && !aw.deleted && aw !== graspStartActive) {
             const e = entryFor(aw);
@@ -362,9 +364,10 @@ KWin.SceneEffect {
         // The zoom decides where the release leaves you. Zoomed out, the
         // camera has stepped out of the location: the release keeps the
         // overworld - the keyhole widens into the whole canvas, the chrome
-        // fades in, and the map morphs from the full sheet into the corner
-        // lens. Zoomed in, the release commits the location, as it always
-        // has - a pan during the hold is the location's new viewport.
+        // fades in, and the world itself is the map - the windows shrink
+        // live into its sheets. Zoomed in, the release commits the
+        // location, as it always has - a pan during the hold is the
+        // location's new viewport.
         if (zoom < 0.72 && !graspJumped) {
             dbg("graspEnd", "widening into the overworld");
             quiet = false;
@@ -1063,8 +1066,13 @@ KWin.SceneEffect {
             const f = floatOf[e.window.internalId];
             const bob = Math.sin(floatRev * 0.035 + k * 137.508) * 2.4 * floatAmt;
             rects.push({
-                x: f ? f.x : e.x,
-                y: (f ? f.y : e.y) + bob,
+                // The float's picture is stored in screen coordinates, so it
+                // is translated back onto the plane before it occludes: a
+                // window clamped at the screen's edge must cut the threads
+                // where the eye sees its picture, not where its old canvas
+                // spot was.
+                x: f ? viewX + f.x / zoom : e.x,
+                y: (f ? viewY + f.y / zoom : e.y) + bob,
                 w: e.width,
                 h: e.height
             });
@@ -1228,6 +1236,8 @@ KWin.SceneEffect {
     // of Qt key names without the Key_ prefix ("Return,Enter").
     property var bindings: ({})
 
+    // "Meta+Tab" -> "Tab": the key whose release ends a chord hold, so the
+    // release-enter's bound() lookup names the tail key, not the chord.
     function chordTail(spec) {
         const parts = String(spec || "").split("+");
         return parts[parts.length - 1].trim();
@@ -1311,8 +1321,6 @@ KWin.SceneEffect {
             swap: buttonsFor(configuration.SwapButton),
         };
     }
-
-    // "Meta+Tab" -> "Tab": the key whose release ends a chord hold.
 
     function bound(action, key) {
         const list = bindings[action];
@@ -1879,7 +1887,8 @@ KWin.SceneEffect {
         open();
         camZoomTo(zoom / zoomStep, cursorScreen().x, cursorScreen().y);
     }
-    // input again, until the pointer's next touch.
+    // The passthrough has let go: after a while with no input the canvas
+    // has the input again, until the pointer's next touch.
     property bool passthroughIdle: false
     // The pointer sits over the system's own chrome - a dock, a panel, a
     // popup, an applet's dropdown. Published by the pass-through on every
@@ -2051,9 +2060,9 @@ KWin.SceneEffect {
             else effect.switcherSettle.restart();
         }
     }
-    // The switcher: the hold's map as a toggle. The chord opens the canvas
-    // quietly with the map up; Tab and Shift+Tab step the selection - the
-    // camera and the map's highlight follow - Enter enters the chosen
+    // The switcher: the whole plane fitted to the screen. The chord opens
+    // the canvas fitted to the world; Tab and Shift+Tab step the selection
+    // - the camera and the map's highlight follow - Enter enters the chosen
     // window, Esc or the chord again steps back out.
     property bool switcherActive: false
     function switcherToggle() {
