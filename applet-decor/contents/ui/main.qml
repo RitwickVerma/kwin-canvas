@@ -144,12 +144,12 @@ PlasmoidItem {
 
     // The width is a function of the state, not of the row's own layout:
     // a glyph occupies 22 px plus the 6 px spacing (28 per glyph, the
-    // trailing spacing dropped), the caption its bounded text width, and
-    // the 4 px side margins close the sum - so the slot is correct from
-    // the first layout, before either poll has landed.
+    // trailing spacing dropped) and the 4 px side margins close the sum -
+    // so the slot is correct from the first layout, before either poll
+    // has landed.
     fullRepresentation: Item {
         id: content
-        implicitWidth: 8 + (root.winCaption !== "" ? Math.min(220, caption.implicitWidth) + 6 : 0) + (root.glyphs.length * 28 - (root.glyphs.length > 0 ? 6 : 0))
+        implicitWidth: 8 + (root.glyphs.length * 28 - (root.glyphs.length > 0 ? 6 : 0))
         implicitHeight: 30
         onImplicitWidthChanged: root.appletWidth = implicitWidth
         Component.onCompleted: root.appletWidth = implicitWidth
@@ -161,19 +161,6 @@ PlasmoidItem {
                 verticalCenter: parent.verticalCenter
                 left: parent.left
                 leftMargin: 4
-            }
-
-            Text {
-                id: caption
-                anchors.verticalCenter: parent.verticalCenter
-                visible: root.winCaption !== ""
-                text: root.winCaption
-                elide: Text.ElideRight
-                width: Math.min(220, implicitWidth)
-                color: PlasmaCore.Theme.textColor
-                opacity: 0.75
-                font.pixelSize: 11
-                renderType: Text.NativeRendering
             }
 
             Repeater {
