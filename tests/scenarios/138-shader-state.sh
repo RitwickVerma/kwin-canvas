@@ -28,6 +28,16 @@ run_scenario() {
     setcfg DayTrail true
     c open
     c "pan 600 0"
+    # The live feed: while the canvas runs, the state file follows the
+    # camera without a commit. The tick publishes every second, so a beat
+    # and a half catches it.
+    sleep 1.5
+    liveview=$(grep '^view=' "$statefile" | cut -d= -f2)
+    if awk -v v="${liveview%,*}" 'BEGIN { exit !(v != -0.0 && v < 0) }'; then
+        ok "and the state feeds live while the canvas runs"
+    else
+        fail "and the state feeds live while the canvas runs (got $liveview)"
+    fi
     c commit
     sleep 0.5
     assert_eq "and the trail rides the same file" "$(grep -c '^trail=' "$statefile")" 1

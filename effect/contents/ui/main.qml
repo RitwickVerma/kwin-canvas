@@ -909,14 +909,21 @@ KWin.SceneEffect {
     // instead of teleporting it. Each anim is a straight 220 ms glide in
     // the physics tick; the commit finishes them instantly so a geometry
     // write never catches a window mid-flight.
+    // The moves are physical. A window that the hand drops keeps the throw's
+    // momentum and coasts to a stop; a batch move (the arrange, the tidy,
+    // the undo, the commit) cascades through its windows with a springy
+    // landing; and while a window travels it leaves a fading afterimage at
+    // the spot it left - the move is visible, not a cut.
     property var entryAnims: ({})
+    property var entryGhosts: ({})
     property int moveRev: 0
-    function animateEntry(e, tx, ty) {
+    function animateEntry(e, tx, ty, delay, vx, vy) {
         if (!e || !e.window) return;
         if (configuration.MovesGlide === false) { e.x = tx; e.y = ty; return; } // the knob: the instant writes
         const id = e.window.internalId;
         if (dragRaw && dragRaw[id] !== undefined) return; // the hand moves its own
-        entryAnims[id] = { sx: e.x, sy: e.y, tx: tx, ty: ty, t0: Date.now() };
+        entryAnims[id] = { sx: e.x, sy: e.y, tx: tx, ty: ty, t0: Date.now() + (delay || 0), vx: vx || 0, vy: vy || 0 };
+        entryGhosts[id] = { x: e.x, y: e.y, w: e.width, h: e.height, born: Date.now() };
         moveRev++;
     }
     function stepEntryAnims() {
@@ -925,16 +932,23 @@ KWin.SceneEffect {
         for (const id in entryAnims) {
             const a = entryAnims[id];
             const e = entries.find(function (en) { return String(en.window.internalId) === id; });
-            if (!e) { delete entryAnims[id]; any = true; continue; }
-            const p = Math.min(1, (now - a.t0) / 220);
+            if (!e) { delete entryAnims[id]; delete entryGhosts[id]; any = true; continue; }
+            const p = Math.min(1, (now - a.t0) / 240);
             if (p >= 1) {
                 e.x = a.tx;
                 e.y = a.ty;
                 delete entryAnims[id];
+                delete entryGhosts[id];
+            } else if (p <= 0) {
+                e.x = a.sx;
+                e.y = a.sy;
             } else {
-                const q = 1 - Math.pow(1 - p, 3); // the OutCubic glide
-                e.x = a.sx + (a.tx - a.sx) * q;
-                e.y = a.sy + (a.ty - a.sy) * q;
+                const out = 1 + 2.4 * Math.pow(p - 1, 3) + 1.2 * Math.pow(p - 1, 2); // the OutBack: the springy landing with the little overshoot
+                const h3 = p * p * (3 - 2 * p); // the Hermite for the throw: the velocity eases to rest
+                const qx = a.vx ? h3 + a.vx * 240 / Math.max(1, Math.abs(a.tx - a.sx)) * (p - 2 * p * p + p * p * p) : out;
+                const qy = a.vy ? h3 + a.vy * 240 / Math.max(1, Math.abs(a.ty - a.sy)) * (p - 2 * p * p + p * p * p) : out;
+                e.x = a.sx + (a.tx - a.sx) * Math.max(0, Math.min(2, qx));
+                e.y = a.sy + (a.ty - a.sy) * Math.max(0, Math.min(2, qy));
             }
             any = true;
         }
@@ -951,6 +965,7 @@ KWin.SceneEffect {
             }
         }
         entryAnims = {};
+        entryGhosts = {};
         if (keys.length) moveRev++;
     }
     // The plane remembers the day. Every movement of the camera leaves a
@@ -3675,6 +3690,19 @@ KWin.SceneEffect {
             if (String(effect.configuration.QualityMode) !== "Auto") effect.qualityApply(0, 0, 0);
             else loadCall.call();
         }
+    }
+    // The shader wallpaper's feed. The commit writes the authoritative state
+    // for the closed desktop; this tick keeps it fed while the canvas runs,
+    // so the wallpaper's engine (its own 1s poll) sees the live camera, the
+    // clusters and the trail mid-flight instead of the last landing. The
+    // overworld's scene covers the wallpaper while the canvas is open, but
+    // the data is live for the engine's preview and any surface that reads
+    // the file.
+    Timer {
+        interval: 1000
+        repeat: true
+        running: effect.visible
+        onTriggered: effect.publishCanvasState()
     }
     // The plugin answered: if the canvas is still open, switch it on and give it the camera.
     function passthroughProbed() {
