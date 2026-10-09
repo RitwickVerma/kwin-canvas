@@ -2748,6 +2748,7 @@ KWin.SceneEffect {
         configuration.ViewY = Math.round(viewY);
         configuration.writeConfig();
         publishGround();
+        publishCanvasState();
         settled = false;
         swiping = false;
         farewellHide(function () {
@@ -3604,6 +3605,13 @@ KWin.SceneEffect {
         method: "setHoverDelay"
     }
     KWin.DBusCall {
+        id: canvasStateCall
+        service: "org.kde.KWin"
+        path: "/KWinCanvas"
+        dbusInterface: "org.kde.kwin.canvas.Passthrough"
+        method: "setCanvasState"
+    }
+    KWin.DBusCall {
         id: verboseCall
         service: "org.kde.KWin"
         path: "/KWinCanvas"
@@ -3909,6 +3917,31 @@ KWin.SceneEffect {
             "}";
         groundCall.arguments = [script];
         groundCall.call();
+    }
+
+    // ---- the shader channel ------------------------------------------------
+    // The plane's remembered state, pushed at each commit for the shader
+    // wallpaper's engine: the saved view, the clusters and the day-trail,
+    // all in plane coordinates - the plugin screen-projects them, so a
+    // fragment shader works in pixels with no camera math of its own.
+    function canvasStateString() {
+        let s = "view=" + Math.round(viewX) + "," + Math.round(viewY) + "\n";
+        for (let i = 0; i < clusters.length && i < 16; i++) {
+            s += "cluster=" + Math.round(clusters[i].cx) + "," + Math.round(clusters[i].cy) + "," + clusters[i].n + "\n";
+        }
+        if (pathPts.length > 0) {
+            s += "trail=";
+            const start = Math.max(0, pathPts.length - 64);
+            for (let i = start; i < pathPts.length; i++) {
+                s += Math.round(pathPts[i].x) + "," + Math.round(pathPts[i].y);
+                if (i < pathPts.length - 1) s += ",";
+            }
+        }
+        return s;
+    }
+    function publishCanvasState() {
+        canvasStateCall.arguments = [canvasStateString()];
+        canvasStateCall.call();
     }
 
     // ---- backdrop: the desktop's own wallpaper on the plane ------------------

@@ -21,6 +21,8 @@
 #include <QJsonObject>
 #include <QLibrary>
 #include <QLoggingCategory>
+#include <QStandardPaths>
+#include <QTextStream>
 #include <QTimer>
 
 Q_LOGGING_CATEGORY(KWIN_CANVAS, "kwin_canvas_passthrough", QtDebugMsg)
@@ -161,6 +163,48 @@ void CanvasPassthrough::setCamera(double viewX, double viewY, double zoom, const
     for (auto it = all.begin(); it != all.end(); ++it) {
         const QJsonObject t = it->toObject();
         m_targets.insert(it.key(), QPointF(t.value(QStringLiteral("x")).toDouble(), t.value(QStringLiteral("y")).toDouble()));
+    }
+}
+
+void CanvasPassthrough::setCanvasState(const QString &state)
+{
+    // The shader channel: the effect pushes the plane's remembered state at
+    // each commit (view=, cluster=, trail= lines in plane coordinates); the
+    // clusters and the trail land here screen-projected, so a fragment
+    // shader works in pixels with no camera math of its own.
+    QFile f(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + QStringLiteral("/kwin-canvas-state.txt"));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        return;
+    }
+    QTextStream out(&f);
+    double viewX = 0.0, viewY = 0.0;
+    const QStringList lines = state.split(QLatin1Char('\n'));
+    for (const QString &line : lines) {
+        if (line.startsWith(QLatin1String("view="))) {
+            const QStringList p = line.mid(5).split(QLatin1Char(','));
+            if (p.size() == 2) {
+                viewX = p[0].toDouble();
+                viewY = p[1].toDouble();
+            }
+            out << line << QLatin1Char('\n');
+        } else if (line.startsWith(QLatin1String("cluster="))) {
+            const QStringList p = line.mid(8).split(QLatin1Char(','));
+            if (p.size() == 3) {
+                out << "cluster=" << int(p[0].toDouble() - viewX) << ',' << int(p[1].toDouble() - viewY) << ',' << p[2] << QLatin1Char('\n');
+            }
+        } else if (line.startsWith(QLatin1String("trail="))) {
+            const QStringList p = line.mid(6).split(QLatin1Char(','));
+            if (p.size() >= 2) {
+                out << "trail=";
+                for (int i = 0; i + 1 < p.size(); i += 2) {
+                    out << int(p[i].toDouble() - viewX) << ',' << int(p[i + 1].toDouble() - viewY);
+                    if (i + 2 < p.size()) {
+                        out << ',';
+                    }
+                }
+                out << QLatin1Char('\n');
+            }
+        }
     }
 }
 

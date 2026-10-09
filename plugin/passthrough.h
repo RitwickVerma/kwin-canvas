@@ -125,6 +125,11 @@ public Q_SLOTS:
     // API - in-process, so it works with the canvas closed too, including
     // on maximized windows where the decoration's pill stays tucked away.
     Q_SCRIPTABLE void windowAction(const QString &action);
+    // The shader channel: the effect pushes the plane's remembered state
+    // (the view, the clusters, the day-trail) at each commit; the plugin
+    // writes it as a plain text file the shader wallpaper's engine can
+    // hand to a fragment shader as uniforms, screen-projected here.
+    Q_SCRIPTABLE void setCanvasState(const QString &state);
 
 public:
     bool pointerMotion(KWin::PointerMotionEvent *event) override;

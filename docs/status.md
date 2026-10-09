@@ -115,6 +115,24 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-20 — the canvas feeds the shader wallpaper
+
+The user runs the wallpaper-engine video wallpaper and asked for a
+shader scene that integrates with the canvas; they were wary of a
+hand-rolled runtime ("i dont want to reinvent wheel youll rite bugged
+code"), so the round rides the mature wheel: kde-shader-wallpaper (the
+Plasma 6 shader engine, 200+ shaders, Shadertoy import) is the runtime,
+and this tree only publishes the state. Every commit writes the plane's
+remembered state — the saved view, the clusters and the day-trail — to
+kwin-canvas-state.txt through the plugin's setCanvasState channel,
+screen-projected, one line per fact. The starter shader
+(shaders/canvas-floor.frag) reads three uniforms (the cluster array,
+the trail points) and lights the floor from them; the fork that feeds
+the uniforms lives with the engine, outside this tree, with the
+contract in docs/shader-integration.md. Scenario 138 proves the file
+(5/0 — the view line, one cluster line per room at the right spot, the
+trail line after a pan).
+
 ### 2026-10-19 — every move plays, and the pin's clamp is back
 
 The user said "do it" to the every-move-plays glide. The tidy's own

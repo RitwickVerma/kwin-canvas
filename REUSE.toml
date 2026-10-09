@@ -15,6 +15,7 @@ path = [
     "docs/install.md",
     "docs/release-notes.md",
     "docs/tour.md",
+    "docs/shader-integration.md",
     "docs/images/**",
     "effect/metadata.json",
     "effect/contents/config/main.xml",
