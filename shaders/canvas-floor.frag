@@ -1,20 +1,21 @@
 // SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 // SPDX-License-Identifier: GPL-2.0-or-later
 //
-// The canvas floor: the starter shader for the shader wallpaper's engine
-// (kde-shader-wallpaper, Shadertoy conventions). The plane's remembered
-// state - the ground's own knobs, the clusters and the day-trail -
-// arrives through the uniforms below, fed from the kwin-canvas
-// passthrough plugin's state file (kwin-canvas-state.txt) by the
-// engine's fork; see docs/shader-integration.md for the channel and the
-// fork contract.
+// The canvas floor: the plane at rest, alive. The ground is the
+// canvas's own - the background and the multi-octave grid, scrolling
+// with the saved view - and the canvas's remembered state lives on it:
+// the rooms breathe where the clusters sit, the day-trail runs through
+// it as a ribbon of flowing light, the pointer's own light follows the
+// hand and lingers, and the real windows cast their faint glow where
+// they stand. Layered slow motion everywhere - the drift, the pulse,
+// the march - so the floor is never a picture, always a place.
 //
-// The closed desktop is the plane at rest: the shader draws the same
-// ground the canvas draws - the background colour and the multi-octave
-// grid, scrolling with the saved view - then lights the clusters where
-// the rooms sit and runs the day-trail through it as a faint ribbon.
-// With the fork absent the uniforms read zero and the floor is simply
-// the grid on the background.
+// The uniforms below are fed from the kwin-canvas passthrough plugin's
+// state file (kwin-canvas-state.txt) by the engine's fork; the engine's
+// own iMouse, iWindowCount and iWindowRects cover the hand and the
+// windows. See docs/shader-integration.md for the channel and the fork
+// contract. Absent the fork the canvas uniforms read zero and the floor
+// is simply the calm grid on the background.
 //
 // @channels none
 
@@ -29,61 +30,109 @@ uniform vec3 iCanvasGridColor;     // the line colour, 0..1
 uniform vec3 iCanvasBackground;    // the plane's ground, 0..1
 uniform vec2 iCanvasView;          // the plane coordinate of the screen's top-left
 
-float glow(vec2 p, vec2 c, float r) {
-    return exp(-dot(p - c, p - c) / (r * r));
+vec2 hash2(vec2 p) {
+    p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
+    return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
+}
+
+float noise(vec2 p) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    vec2 u = f * f * (3.0 - 2.0 * f);
+    return mix(mix(dot(hash2(i), f),
+                   dot(hash2(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0)), u.x),
+               mix(dot(hash2(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0)),
+                   dot(hash2(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0)), u.x), u.y);
+}
+
+float fbm(vec2 p) {
+    float v = 0.0;
+    float a = 0.5;
+    for (int i = 0; i < 4; i++) {
+        v += a * noise(p);
+        p = p * 2.03 + vec2(7.1, 3.7);
+        a *= 0.5;
+    }
+    return v;
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
-    vec2 uv = fragCoord / iResolution.xy;
-
+    vec2 res = iResolution.xy;
+    vec2 uv = fragCoord / res;
     // The plane coordinate under this pixel: the screen is the plane
     // minus the view, so the plane is the screen plus the view.
     vec2 plane = fragCoord + iCanvasView;
+    float t = iTime;
 
-    // The ground: the plane's own background, a little lighter above.
-    vec3 col = mix(iCanvasBackground * 0.55, iCanvasBackground * 1.15, uv.y);
+    // The ground: the canvas's own background, slowly living. A gentle
+    // fbm drift warps the floor's light, so the dark never sits still.
+    float drift = fbm(plane * 0.0015 + vec2(t * 0.02, -t * 0.015)) * 0.14;
+    float breathe = 0.97 + 0.03 * sin(t * 0.4);
+    vec3 col = mix(iCanvasBackground * 0.5, iCanvasBackground * 1.2, uv.y);
+    col += vec3(0.05, 0.07, 0.11) * drift;
+    col *= breathe;
 
-    // The grid: the same octaves the canvas draws, scrolling with the
-    // view. The coarser an octave, the stronger its lines. Absent the
-    // fork the base reads zero and the grid stays out of the way.
+    // The grid: the plane's own lines, scrolling with the view. Each
+    // octave breathes a little, so the grid feels alive, not printed.
     float spacing = max(iCanvasGridBase, 1.0);
     if (iCanvasGridBase > 4.0) {
         for (int o = 0; o < 4; o++) {
             if (float(o) >= iCanvasGridOctaves) break;
             vec2 m = mod(plane, spacing);
             vec2 d = min(m, spacing - m);
-            float g = 1.0 - smoothstep(0.0, 1.4 + 0.5 * float(o), min(d.x, d.y));
+            float pulse = 0.9 + 0.1 * sin(t * 0.5 + float(o) * 1.7);
+            float g = 1.0 - smoothstep(0.0, 1.3 + 0.5 * float(o), min(d.x, d.y));
             float w = 0.10 + 0.22 * float(o);
-            col = mix(col, iCanvasGridColor, g * w);
+            col = mix(col, iCanvasGridColor, g * w * pulse);
             spacing *= max(iCanvasGridFactor, 2.0);
         }
     }
 
-    // The clusters light the floor where the plane's rooms sit.
+    // The rooms: each cluster breathes where it sits - the cool halo and
+    // the warm heart trade places on the room's own beat.
     for (int i = 0; i < iCanvasClusterCount && i < 16; i++) {
         vec2 c = iCanvasClusters[i].xy;
         float n = max(iCanvasClusters[i].z, 1.0);
-        float r = 60.0 + 22.0 * n;
-        float bloom = glow(fragCoord, c, r) * 0.45;
-        float core = glow(fragCoord, c, r * 0.35) * 0.22;
-        col += vec3(0.35, 0.55, 1.0) * bloom + vec3(1.0, 0.95, 0.9) * core;
+        float beat = sin(t * 0.7 + float(i) * 1.618) * 0.5 + 0.5;
+        float r = (60.0 + 22.0 * n) * (0.85 + 0.3 * beat);
+        float dist = length(fragCoord - c);
+        float bloom = exp(-(dist * dist) / (2.0 * r * r));
+        float core = exp(-(dist * dist) / (2.0 * r * r * 0.10));
+        col += vec3(0.30, 0.50, 0.95) * bloom * (0.30 + 0.25 * beat);
+        col += vec3(1.0, 0.93, 0.82) * core * (0.22 + 0.18 * beat);
     }
 
-    // The day-trail: a faint ribbon of light along the path.
-    float tglow = 0.0;
+    // The trail: the day's path, with light flowing along it - a pulse
+    // marches the whole ribbon, segment by segment.
     for (int i = 0; i < iCanvasTrailCount - 1 && i < 63; i++) {
         vec2 a = iCanvasTrail[i];
         vec2 b = iCanvasTrail[i + 1];
         vec2 pa = fragCoord - a;
         vec2 ba = b - a;
-        float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1.0), 0.0, 1.0);
+        float seg = length(ba);
+        float h = clamp(dot(pa, ba) / max(seg * seg, 1.0), 0.0, 1.0);
         float d = length(pa - ba * h);
-        tglow += exp(-d * d / (7.0 * 7.0)) * 0.30;
+        float flow = 0.55 + 0.45 * sin(t * 1.3 - float(i) * 0.35 + h * 3.0);
+        float ribbon = exp(-d * d / (2.0 * 8.0 * 8.0));
+        col += iCanvasGridColor * 1.6 * ribbon * flow * 0.22;
     }
-    col += iCanvasGridColor * 1.4 * tglow;
 
-    // A slow breathing light, so the floor lives even at rest.
-    col *= 0.97 + 0.03 * sin(iTime * 0.4);
+    // The pointer: the hand's light follows the mouse and lingers.
+    vec2 m = iMouse.xy;
+    if (m.x > 0.5 || m.y > 0.5) {
+        float md = length(fragCoord - m);
+        col += vec3(0.9, 0.85, 0.7) * exp(-md * md / (2.0 * 110.0 * 110.0)) * 0.10;
+        col += vec3(1.0, 0.98, 0.9) * exp(-md * md / (2.0 * 26.0 * 26.0)) * 0.05;
+    }
+
+    // The windows: the real windows cast their faint light on the plane.
+    for (int i = 0; i < iWindowCount && i < 16; i++) {
+        vec4 w = iWindowRects[i];
+        vec2 c = w.xy + w.zw * 0.5;
+        float md = length(fragCoord - c);
+        float rr = max(w.z, w.w) * 0.75;
+        col += vec3(0.45, 0.6, 0.95) * exp(-md * md / (2.0 * rr * rr)) * 0.045;
+    }
 
     fragColor = vec4(col, 1.0);
 }
