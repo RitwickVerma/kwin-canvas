@@ -1,5 +1,16 @@
 Unreleased:
 
+- The canvas floor is an aurora. Three curtains of light flow across
+  the closed desktop on their own slow beats - the canvas's blue, a
+  violet crest, a teal undercurrent - with a fine star-dust settling
+  everywhere. The plane's remembered state is the light IN the field:
+  the rooms glow as warm pools where the clusters sit (each breathing
+  on its own rhythm), the day-trail runs through as a river of moving
+  light, the real windows cast their faint reflections, and the
+  pointer is a torch that parts the curtains. The state's coordinates
+  are now flipped to the shader's space, so every light lands where
+  its window actually is.
+
 - The canvas floor is a place of light. The starter's grid and trail
   read as graph paper, so they are gone: the floor is a deep flowing
   field - the domain-warped fbm breathing in the canvas's own blues -
