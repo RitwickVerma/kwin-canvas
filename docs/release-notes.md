@@ -1,5 +1,18 @@
 Unreleased:
 
+- The pill wears every button the system gives it. The decoration's
+  pill and the panel applet now draw the whole native titlebar
+  configuration: the close, the minimize, the maximize, the float, the
+  window menu, the keep-above and the keep-below (each lit by the
+  window's real state), the help, and a configured spacer as a gap.
+  The panel applet also draws the exclude-from-capture glyph and acts
+  through the plugin's new keep-above, keep-below and capture
+  actions. One honest gap stays: the decoration cannot draw the
+  capture glyph because this KWin's decoration bridge predates that
+  button and drops it, and the panel cannot act on the menu or the
+  help because the window API has no such call - the decoration's own
+  pill does both natively.
+
 - The float is the system's own pin. The canvas's float was living on
   KWin's "keep above" flag; it now lives on "on all desktops" - the
   pin's true home - and the pill and the panel applet wear it as the

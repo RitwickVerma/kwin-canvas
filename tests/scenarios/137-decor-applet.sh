@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
-scenario_desc="the decor applet's channel: the plugin's state names the focused window, and its windowAction minimizes, floats and closes it for real"
+scenario_desc="the decor applet's channel: the plugin's state names the focused window and its windowAction minimizes, floats, stacks and closes it for real"
 
 run_scenario() {
     source tests/lib.sh
@@ -33,13 +33,33 @@ run_scenario() {
     c cancel
 
     # The float toggles the on-all-desktops pin, which the state's win=
-    # token reports as its last field.
+    # token reports as its fourth field (the trailing fields are the
+    # keep-above, keep-below and capture flags).
     nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction float
     sleep 0.4
-    assert_eq "the float lifts the window" "$(pt_state | grep -c ' win=.*|1$')" 1
+    assert_eq "the float lifts the window" "$(pt_state | grep -c ' win=[^|]*|[^|]*|[^|]*|1|')" 1
     nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction float
     sleep 0.4
-    assert_eq "and the same action sets it down" "$(pt_state | grep -c ' win=.*|0$')" 1
+    assert_eq "and the same action sets it down" "$(pt_state | grep -c ' win=[^|]*|[^|]*|[^|]*|0|')" 1
+
+    # The keep-above, keep-below and the capture exclusion each flip
+    # their own trailing flag and back.
+    nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction keepabove
+    sleep 0.4
+    assert_eq "the keep-above lifts the window above" "$(pt_state | grep -c ' win=[^|]*|[^|]*|[^|]*|[^|]*|1|0|0$')" 1
+    nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction keepabove
+    sleep 0.4
+    assert_eq "and back down" "$(pt_state | grep -c ' win=[^|]*|[^|]*|[^|]*|[^|]*|0|0|0$')" 1
+    nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction keepbelow
+    sleep 0.4
+    assert_eq "the keep-below sinks the window" "$(pt_state | grep -c ' win=[^|]*|[^|]*|[^|]*|[^|]*|0|1|0$')" 1
+    nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction keepbelow
+    sleep 0.4
+    nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction capture
+    sleep 0.4
+    assert_eq "the capture exclusion hides the window from capture" "$(pt_state | grep -c ' win=[^|]*|[^|]*|[^|]*|[^|]*|0|0|1$')" 1
+    nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction capture
+    sleep 0.4
 
     # The close really closes: the process-side call reaches the window.
     nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction close

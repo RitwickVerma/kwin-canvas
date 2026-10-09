@@ -115,6 +115,27 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-18 — the pill wears every button the system gives it
+
+The user's "look at system settings. look at your window decor glyphs"
+turned out to be a real gap, not staleness: the pill drew only four
+glyphs, so the configured menu, keep-above, keep-below, help and
+capture buttons never appeared. The research fixed the facts first:
+the KWin letter map (M menu, N app-menu, S on-all-desktops, H help, I
+minimize, A maximize, X close, F keep-above, B keep-below, E
+exclude-from-capture, _ spacer) was pulled from the kwin source, and
+the QML bridge's enum proved STALE - it predates the capture button,
+so the decoration can never see the E. The fix draws the full
+QML-visible set in both surfaces: the decoration's pill gains the
+menu, keep-above, keep-below and help glyphs (each with its real state
+accent) plus the spacer gap, and the panel applet gains the
+keep-above, keep-below and the capture glyph (it reads the kwinrc
+letters directly, so it sees the E the bridge drops), acting through
+the plugin's three new windowAction calls. The panel's honest skip:
+the menu and the help, because the window API has no such call. The
+plugin's win= token grew to seven fields (max, all, above, below,
+capture) and scenario 137 now proves all six actions.
+
 ### 2026-10-17 — the panel wears the pill: a decor applet in the canvas's own language
 
 The user wanted the window buttons in the panel ("same theming for both

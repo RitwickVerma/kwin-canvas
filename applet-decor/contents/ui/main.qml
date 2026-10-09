@@ -5,10 +5,15 @@
 
     The panel twin of the window decoration's pill. It shows the focused
     window's caption and the same glyphs the pill draws - the same marks,
-    the same circles, the same hover and press pops, the same accent for
-    the float (the on-all-desktops pin) and the maximize - in the same
-    order the native titlebar buttons give them, so the panel and the
-    window speak one language.
+    the same circles, the same hover and press pops, the same accents -
+    in the same order the native titlebar buttons give them, so the panel
+    and the window speak one language. Every configured button gets a
+    glyph: X the close, I the minimize, A the maximize, S the float, F
+    the keep-above, B the keep-below, E the exclude-from-capture, and a
+    spacer becomes a gap. The menu and the help codes are left out
+    honestly: the in-process window API has no menu or help call, so the
+    panel cannot act on them (the decoration's own pill can, through the
+    decoration's request methods).
     The glyphs act on the focused window through the pass-through
     plugin's windowAction channel, which works with the canvas closed
     too, including on maximized windows where the pill stays tucked
@@ -28,15 +33,21 @@ PlasmoidItem {
     Plasmoid.status: PlasmaCore.Types.ActiveStatus
 
     // The plugin's state reply carries the focused window as a trailing
-    // " win=internalId|caption|max|all" token - the on-all-desktops (the
-    // float) flag last.
+    // " win=internalId|caption|max|all|above|below|capture" token - the
+    // on-all-desktops (the float), the keep-above, the keep-below and
+    // the exclude-from-capture flags last.
     property string winCaption: ""
     property bool winMax: false
     property bool winFloat: false
+    property bool winAbove: false
+    property bool winBelow: false
+    property bool winCapture: false
 
     // The native titlebar-buttons configuration, the same source the
     // pill reads - the left set first, then the right - so the applet's
-    // glyph order is the pill's glyph order.
+    // glyph order is the pill's glyph order. The menu, the app-menu and
+    // the help letters are skipped: the panel's channel cannot act on
+    // them (see the header).
     property string buttonsLeft: ""
     property string buttonsRight: ""
     readonly property var glyphs: {
@@ -44,7 +55,7 @@ PlasmoidItem {
         const out = [];
         for (let i = 0; i < s.length; i++) {
             const c = s.charAt(i);
-            if (c === "X" || c === "I" || c === "A" || c === "S") out.push(c);
+            if (c === "X" || c === "I" || c === "A" || c === "S" || c === "F" || c === "B" || c === "E" || c === "_") out.push(c);
         }
         return out;
     }
@@ -68,6 +79,9 @@ PlasmoidItem {
                 root.winCaption = p.length > 1 ? p[1] : "";
                 root.winMax = p.length > 2 && p[2] === "1";
                 root.winFloat = p.length > 3 && p[3] === "1";
+                root.winAbove = p.length > 4 && p[4] === "1";
+                root.winBelow = p.length > 5 && p[5] === "1";
+                root.winCapture = p.length > 6 && p[6] === "1";
             } else if (sourceName.indexOf("ButtonsOnLeft") >= 0) {
                 root.buttonsLeft = out.trim();
             } else if (sourceName.indexOf("ButtonsOnRight") >= 0) {
@@ -134,14 +148,15 @@ PlasmoidItem {
     }
 
     // One glyph, drawn by its letter: the same circle, the same marks,
-    // the same pops, the same accents as the decoration's pill.
+    // the same pops, the same accents as the decoration's pill. A
+    // spacer renders as an empty gap.
     Component {
         id: glyphDelegate
         Item {
             required property string modelData
             property bool hovered: false
             property bool pressed: false
-            readonly property bool lit: (modelData === "S" && root.winFloat) || (modelData === "A" && root.winMax)
+            readonly property bool lit: (modelData === "S" && root.winFloat) || (modelData === "A" && root.winMax) || (modelData === "F" && root.winAbove) || (modelData === "B" && root.winBelow) || (modelData === "E" && root.winCapture)
             scale: pressed ? 0.86 : (hovered ? 1.2 : 1)
             width: 22
             height: 22
@@ -157,6 +172,7 @@ PlasmoidItem {
                 width: 16
                 height: 16
                 radius: 8
+                visible: parent.modelData !== "_"
                 color: parent.pressed ? Qt.rgba(1, 1, 1, 0.42) : (parent.hovered ? Qt.rgba(1, 1, 1, 0.28) : (parent.lit ? Qt.rgba(0.16, 0.43, 0.87, 0.30) : "transparent"))
                 Behavior on color {
                     ColorAnimation {
@@ -177,19 +193,22 @@ PlasmoidItem {
             // The marks: X the crossed strokes, I the bar, A the hollow
             // square (the restore pair when maximized, in the accent),
             // S the up arrow (filled in the accent when floating - the
-            // "on all desktops" pin).
+            // "on all desktops" pin), F the chevron pushing up over its
+            // base, B the mirrored push down, E the screen with the
+            // capture crossed out.
             Canvas {
                 id: mark
                 anchors.centerIn: parent
                 width: 10
                 height: 10
+                visible: parent.modelData !== "_"
                 onPaint: {
                     const ctx = getContext("2d");
                     const code = parent.modelData;
                     const lit = parent.lit;
                     ctx.strokeStyle = lit ? "#2a6ddf" : "#ffffff";
-                    ctx.fillStyle = lit ? "#2a6ddf" : "transparent";
-                    ctx.lineWidth = code === "S" ? 1.3 : 1.2;
+                    ctx.fillStyle = lit ? "#2a6ddf" : "#ffffff";
+                    ctx.lineWidth = (code === "S" || code === "F" || code === "B") ? 1.3 : 1.2;
                     if (code === "X") {
                         ctx.beginPath();
                         ctx.moveTo(1.5, 1.5);
@@ -221,6 +240,43 @@ PlasmoidItem {
                         ctx.moveTo(5, 2.5);
                         ctx.lineTo(5, 8);
                         ctx.stroke();
+                    } else if (code === "F") {
+                        ctx.beginPath();
+                        ctx.moveTo(1.5, 8.5);
+                        ctx.lineTo(8.5, 8.5);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(2, 6.5);
+                        ctx.lineTo(5, 1.5);
+                        ctx.lineTo(8, 6.5);
+                        if (lit) {
+                            ctx.closePath();
+                            ctx.fill();
+                        }
+                        ctx.stroke();
+                    } else if (code === "B") {
+                        ctx.beginPath();
+                        ctx.moveTo(1.5, 1.5);
+                        ctx.lineTo(8.5, 1.5);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(2, 3.5);
+                        ctx.lineTo(5, 8.5);
+                        ctx.lineTo(8, 3.5);
+                        if (lit) {
+                            ctx.closePath();
+                            ctx.fill();
+                        }
+                        ctx.stroke();
+                    } else if (code === "E") {
+                        // The screen with the capture crossed out: the
+                        // exclusion reads as the diagonal slash over the
+                        // window's picture.
+                        ctx.strokeRect(1.5, 2, 7, 5.5);
+                        ctx.beginPath();
+                        ctx.moveTo(1.6, 7.2);
+                        ctx.lineTo(8.4, 2.2);
+                        ctx.stroke();
                     }
                 }
                 Connections {
@@ -231,6 +287,15 @@ PlasmoidItem {
                     function onWinMaxChanged() {
                         mark.requestPaint();
                     }
+                    function onWinAboveChanged() {
+                        mark.requestPaint();
+                    }
+                    function onWinBelowChanged() {
+                        mark.requestPaint();
+                    }
+                    function onWinCaptureChanged() {
+                        mark.requestPaint();
+                    }
                 }
             }
 
@@ -238,15 +303,19 @@ PlasmoidItem {
                 if (parent.modelData === "X") return i18n("Close the window");
                 if (parent.modelData === "I") return i18n("Minimize the window");
                 if (parent.modelData === "A") return i18n("Maximize or restore the window");
-                return i18n("Float the window: pin it to all desktops");
+                if (parent.modelData === "S") return i18n("Float the window: pin it to all desktops");
+                if (parent.modelData === "F") return i18n("Keep the window above the others");
+                if (parent.modelData === "B") return i18n("Keep the window below the others");
+                return i18n("Hide the window from screen capture");
             }
-            PlasmaComponents3.ToolTip.visible: hovered
+            PlasmaComponents3.ToolTip.visible: hovered && parent.modelData !== "_"
             PlasmaComponents3.ToolTip.delay: Qt.styleHints.mousePressAndHoldInterval
 
             MouseArea {
                 anchors.fill: parent
                 hoverEnabled: true
                 acceptedButtons: Qt.LeftButton
+                enabled: parent.modelData !== "_"
                 onEntered: parent.hovered = true
                 onExited: parent.hovered = false
                 onPressed: parent.pressed = true
@@ -256,6 +325,9 @@ PlasmoidItem {
                     else if (parent.modelData === "I") executable.action("minimize");
                     else if (parent.modelData === "A") executable.action("maximize");
                     else if (parent.modelData === "S") executable.action("float");
+                    else if (parent.modelData === "F") executable.action("keepabove");
+                    else if (parent.modelData === "B") executable.action("keepbelow");
+                    else if (parent.modelData === "E") executable.action("capture");
                 }
             }
         }
