@@ -30,22 +30,25 @@ import org.kde.plasma.plasma5support as Plasma5Support
 PlasmoidItem {
     id: root
 
+    preferredRepresentation: fullRepresentation
     Plasmoid.status: PlasmaCore.Types.ActiveStatus
 
-    // The panel sizes the applet from the Layout attachments on the root,
-    // reading the row below directly - the exact pattern the
-    // window-buttons applet uses (no compactRepresentation wrapper, the
-    // content as the root's direct children). clip keeps the paint
-    // inside the slot whatever the panel does.
+    // The panel sizes the applet from the Layout attachments on the root.
+    // The width is mirrored out of the representation below (a root
+    // property cannot fail the load by naming a lazy representation's
+    // id), and it starts at a sane pill width so the very first layout
+    // pass already has a real slot - the mirror refines it once the
+    // button order arrives.
     clip: true
     Layout.fillHeight: plasmoid.formFactor === PlasmaCore.Types.Horizontal
     Layout.fillWidth: plasmoid.formFactor === PlasmaCore.Types.Vertical
-    Layout.minimumWidth: plasmoid.formFactor === PlasmaCore.Types.Horizontal ? row.width : -1
+    Layout.minimumWidth: plasmoid.formFactor === PlasmaCore.Types.Horizontal ? appletWidth : -1
     Layout.minimumHeight: -1
     Layout.preferredWidth: Layout.minimumWidth
     Layout.preferredHeight: Layout.minimumHeight
     Layout.maximumWidth: Layout.minimumWidth
     Layout.maximumHeight: Layout.minimumHeight
+    property int appletWidth: 200
 
     // The plugin's state reply carries the focused window as a trailing
     // " win=internalId|caption|max|all|above|below|capture" token - the
@@ -144,35 +147,42 @@ PlasmoidItem {
     // trailing spacing dropped), the caption its bounded text width, and
     // the 4 px side margins close the sum - so the slot is correct from
     // the first layout, before either poll has landed.
-    Row {
-        id: row
-        spacing: 6
-        anchors {
-            verticalCenter: parent.verticalCenter
-            left: parent.left
-            leftMargin: 4
-        }
-        width: 8 + (root.winCaption !== "" ? Math.min(220, caption.implicitWidth) + 6 : 0) + (root.glyphs.length * 28 - (root.glyphs.length > 0 ? 6 : 0))
-        height: 30
+    fullRepresentation: Item {
+        id: content
+        implicitWidth: 8 + (root.winCaption !== "" ? Math.min(220, caption.implicitWidth) + 6 : 0) + (root.glyphs.length * 28 - (root.glyphs.length > 0 ? 6 : 0))
+        implicitHeight: 30
+        onImplicitWidthChanged: root.appletWidth = implicitWidth
+        Component.onCompleted: root.appletWidth = implicitWidth
 
-        Text {
-            id: caption
-            anchors.verticalCenter: parent.verticalCenter
-            visible: root.winCaption !== ""
-            text: root.winCaption
-            elide: Text.ElideRight
-            width: Math.min(220, implicitWidth)
-            color: PlasmaCore.Theme.textColor
-            opacity: 0.75
-            font.pixelSize: 11
-            renderType: Text.NativeRendering
-        }
+        Row {
+            id: row
+            spacing: 6
+            anchors {
+                verticalCenter: parent.verticalCenter
+                left: parent.left
+                leftMargin: 4
+            }
 
-        Repeater {
-            model: root.glyphs
-            delegate: glyphDelegate
+            Text {
+                id: caption
+                anchors.verticalCenter: parent.verticalCenter
+                visible: root.winCaption !== ""
+                text: root.winCaption
+                elide: Text.ElideRight
+                width: Math.min(220, implicitWidth)
+                color: PlasmaCore.Theme.textColor
+                opacity: 0.75
+                font.pixelSize: 11
+                renderType: Text.NativeRendering
+            }
+
+            Repeater {
+                model: root.glyphs
+                delegate: glyphDelegate
+            }
         }
     }
+    compactRepresentation: fullRepresentation
 
     // One glyph, drawn by its letter: the same circle, the same marks,
     // the same pops, the same accents as the decoration's pill. A
