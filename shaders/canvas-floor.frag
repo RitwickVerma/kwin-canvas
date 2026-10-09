@@ -92,6 +92,10 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     for (int i = 0; i < iCanvasClusterCount && i < 16; i++) {
         vec4 cl = iCanvasClusters[i];
         vec2 c = vec2(cl.x * cs.x, (iCanvasSize.y - cl.y) * cs.y);
+        // The saved view can sit far from the rooms (the plane's truth):
+        // an off-screen shoal pulls itself to the nearest edge, so the
+        // desktop always shows where the rooms are instead of empty water.
+        c = clamp(c, vec2(80.0), res - vec2(80.0));
         float members = cl.z;
         float beat = 0.5 + 0.5 * sin(t * 0.32 + float(i) * 2.399);
         float R = 110.0 + members * 26.0;             // the shoal's reach
