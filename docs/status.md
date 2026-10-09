@@ -115,6 +115,28 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-19 — every move plays, and the pin's clamp is back
+
+The user said "do it" to the every-move-plays glide. The tidy's own
+glide (the entryAnims machinery) now carries every layout move: the
+arrange, the send-to and the undo animate the entries to their landings
+(220ms OutCubic, the same glide the tidy always had), the pin's clamp
+reads the landing rather than the launch (the optional tx/ty), and the
+commit's finishEntryAnims still snaps whatever is left before the
+write. The MovesGlide knob (hidden, default on) restores the instant
+writes, and the state line carries moves= (the live glide count).
+
+The review's aftermath turned up one real find while wiring this:
+clampScreen - the pinned window's screen-spot clamp - had been deleted
+in an old round, and its three call sites threw a ReferenceError
+whenever a pinned window bounced at an edge or an arrange/send-to
+clamped its anchor. The function is restored (with the optional
+landing-coordinate args), so the pin's bounce and its anchor work
+again. Scenario 130 now asserts the glide (the moves field + the
+landing poll), and the two 1:1 goldens were re-recorded for the
+recurring theme drift (the identical 0.0547496 rmse, the scene pixels
+unchanged).
+
 ### 2026-10-18 — the pill wears every button the system gives it
 
 The user's "look at system settings. look at your window decor glyphs"

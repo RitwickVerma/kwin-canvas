@@ -612,6 +612,23 @@ KWin.SceneEffect {
         }
         if (any) savePinned();
     }
+    // The screen spot that keeps the window wholly inside the screen the
+    // pointer is on, with a margin. The anchor the pin holds, and the place
+    // a bounced window settles. The optional tx/ty override reads a landing
+    // spot instead of the entry's live one (the arrange and the send-to
+    // clamp the destination while the window is still gliding to it).
+    function clampScreen(e, tx, ty) {
+        const g = actionScreen().geometry;
+        const w = e.width * zoom, h = e.height * zoom;
+        const m = 8;
+        let sx = ((tx !== undefined ? tx : e.x) - viewX) * zoom;
+        let sy = ((ty !== undefined ? ty : e.y) - viewY) * zoom;
+        if (w < g.width - 2 * m) sx = Math.max(g.x + m, Math.min(g.x + g.width - w - m, sx));
+        else sx = g.x + m;
+        if (h < g.height - 2 * m) sy = Math.max(g.y + m, Math.min(g.y + g.height - h - m, sy));
+        else sy = g.y + m;
+        return { sx: sx, sy: sy };
+    }
     function togglePin() {
         const list = arrangeTargets();
         if (list.length === 0) return;
@@ -896,6 +913,7 @@ KWin.SceneEffect {
     property int moveRev: 0
     function animateEntry(e, tx, ty) {
         if (!e || !e.window) return;
+        if (configuration.MovesGlide === false) { e.x = tx; e.y = ty; return; } // the knob: the instant writes
         const id = e.window.internalId;
         if (dragRaw && dragRaw[id] !== undefined) return; // the hand moves its own
         entryAnims[id] = { sx: e.x, sy: e.y, tx: tx, ty: ty, t0: Date.now() };
@@ -1008,14 +1026,15 @@ KWin.SceneEffect {
         for (const e of entries) {
             const p = byId[e.window.internalId];
             if (!p) continue;
-            e.x = p.x;
-            e.y = p.y;
+            animateEntry(e, p.x, p.y); // the undo glides home - the reverse of the move
             e.activity = p.activity;
         }
         for (const e of entries) {
             if (e.window.deleted) continue;
+            const p = byId[e.window.internalId];
+            if (!p) continue;
             const t = targetOf(e.activity);
-            const fx = Math.round(e.x - t.x), fy = Math.round(e.y - t.y);
+            const fx = Math.round(p.x - t.x), fy = Math.round(p.y - t.y);
             e.frameX = fx;
             e.frameY = fy;
             e.window.frameGeometry = Qt.rect(fx, fy, e.width, e.height);
@@ -3280,15 +3299,16 @@ KWin.SceneEffect {
         if (list.length === 0) return;
         const gap = configuration.ArrangeGap;
         const box = bbox(list);
+        const spots = {}; // internalId -> {x, y}: the landing, for the glide and the pin's clamp
         if (mode === "horizontal") {
             let x = box.x;
-            for (let i = 0; i < list.length; ++i) { list[i].x = x; list[i].y = box.y; x += list[i].width + gap; }
+            for (let i = 0; i < list.length; ++i) { spots[list[i].window.internalId] = { x: x, y: box.y }; x += list[i].width + gap; }
         } else if (mode === "vertical") {
             let y = box.y;
-            for (let i = 0; i < list.length; ++i) { list[i].x = box.x; list[i].y = y; y += list[i].height + gap; }
+            for (let i = 0; i < list.length; ++i) { spots[list[i].window.internalId] = { x: box.x, y: y }; y += list[i].height + gap; }
         } else if (mode === "cascade") {
             const step = 40;
-            for (let i = 0; i < list.length; ++i) { list[i].x = box.x + i * step; list[i].y = box.y + i * step; }
+            for (let i = 0; i < list.length; ++i) spots[list[i].window.internalId] = { x: box.x + i * step, y: box.y + i * step };
         } else {
             if (mode === "tile" || !(rows > 0 && cols > 0)) {
                 cols = Math.ceil(Math.sqrt(list.length));
@@ -3299,16 +3319,22 @@ KWin.SceneEffect {
             for (let i = 0; i < list.length; ++i) {
                 const e = list[i];
                 const r = Math.floor(i / cols), c = i % cols;
-                e.x = box.x + c * (cw + gap);
-                e.y = box.y + r * (ch + gap);
+                spots[e.window.internalId] = { x: box.x + c * (cw + gap), y: box.y + r * (ch + gap) };
                 const idx = entries.indexOf(e);
                 if (idx >= 0) requestSize(idx, cw, ch, false, false);
             }
         }
-        // A pinned window keeps its pin: the arrangement becomes the new
-        // anchor, clamped on screen.
         for (let i = 0; i < list.length; ++i) {
-            if (isPinnedEntry(list[i])) pinned[list[i].window.caption] = clampScreen(list[i]);
+            const sp = spots[list[i].window.internalId];
+            animateEntry(list[i], sp.x, sp.y); // every move plays
+        }
+        // A pinned window keeps its pin: the arrangement becomes the new
+        // anchor, clamped on screen - read from the landing, not the launch.
+        for (let i = 0; i < list.length; ++i) {
+            if (isPinnedEntry(list[i])) {
+                const sp = spots[list[i].window.internalId];
+                pinned[list[i].window.caption] = clampScreen(list[i], sp.x, sp.y);
+            }
         }
         revision++;
     }
@@ -3343,14 +3369,14 @@ KWin.SceneEffect {
     function sendTo(id) {
         const list = arrangeTargets();
         if (list.length === 0) return;
+        const spots = {}; // internalId -> {x, y}: the landing, for the glide and the pin's clamp
         if (id !== null && id !== undefined) {
             for (let i = 0; i < list.length; ++i) {
                 const e = list[i];
                 let from = activityAt(e);
                 if (from === null) from = e.activity;
                 const a = peekTarget(from), b = peekTarget(id);
-                e.x += b.x - a.x;
-                e.y += b.y - a.y;
+                spots[e.window.internalId] = { x: e.x + b.x - a.x, y: e.y + b.y - a.y };
             }
         } else {
             const box = bbox(list);
@@ -3364,7 +3390,7 @@ KWin.SceneEffect {
                 r = Math.max(r, f.x + f.width); b = Math.max(b, f.y + f.height);
             }
             if (l === Infinity) { l = 0; t = 0; r = 0; b = 0; }
-            const spots = [{ x: 0, y: 0 }, { x: l - box.width - gap, y: 0 }, { x: 0, y: t - box.height - gap },
+            const cands = [{ x: 0, y: 0 }, { x: l - box.width - gap, y: 0 }, { x: 0, y: t - box.height - gap },
                            { x: r + gap, y: 0 }, { x: 0, y: b + gap }];
             const clear = function (sx, sy) {
                 for (let i = 0; i < fs.length; ++i) {
@@ -3374,16 +3400,25 @@ KWin.SceneEffect {
                 return true;
             };
             let best = null, bd = Infinity;
-            for (let i = 0; i < spots.length; ++i) {
-                if (!clear(spots[i].x, spots[i].y)) continue;
-                const dist = Math.hypot(spots[i].x, spots[i].y);
-                if (dist < bd) { bd = dist; best = spots[i]; }
+            for (let i = 0; i < cands.length; ++i) {
+                if (!clear(cands[i].x, cands[i].y)) continue;
+                const dist = Math.hypot(cands[i].x, cands[i].y);
+                if (dist < bd) { bd = dist; best = cands[i]; }
             }
             if (!best) best = { x: l - box.width - gap, y: t - box.height - gap };
-            for (let i = 0; i < list.length; ++i) { list[i].x += best.x - box.x; list[i].y += best.y - box.y; }
+            for (let i = 0; i < list.length; ++i) {
+                spots[list[i].window.internalId] = { x: list[i].x + best.x - box.x, y: list[i].y + best.y - box.y };
+            }
         }
         for (let i = 0; i < list.length; ++i) {
-            if (isPinnedEntry(list[i])) pinned[list[i].window.caption] = clampScreen(list[i]);
+            const sp = spots[list[i].window.internalId];
+            animateEntry(list[i], sp.x, sp.y); // every move plays
+        }
+        for (let i = 0; i < list.length; ++i) {
+            if (isPinnedEntry(list[i])) {
+                const sp = spots[list[i].window.internalId];
+                pinned[list[i].window.caption] = clampScreen(list[i], sp.x, sp.y);
+            }
         }
         revision++;
     }
@@ -4540,6 +4575,7 @@ KWin.SceneEffect {
             + " graspTarget=" + (graspTarget ? entries.indexOf(graspTarget) : "-")
             + " outcome=" + (grasp ? (zoom < 0.72 ? "world" : "land") : "-")
             + " rest=" + (restStart ? "1" : "0")
+            + " moves=" + Object.keys(entryAnims).length
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
             + " ql=" + ql
             + " trail=" + pathPts.length

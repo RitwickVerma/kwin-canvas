@@ -1,5 +1,13 @@
 Unreleased:
 
+- Every move plays. The tidy, the arrange, the send-to and the undo
+  glide the windows to their new spots instead of teleporting them, and
+  the commit hands the landed layout to the desktop - so a layout change
+  reads as the windows walking themselves, and Ctrl+Z plays the move in
+  reverse. The MovesGlide knob turns the glide off for the
+  physics-averse, and the state line carries the live glide count as
+  moves=.
+
 - The pill wears every button the system gives it. The decoration's
   pill and the panel applet now draw the whole native titlebar
   configuration: the close, the minimize, the maximize, the float, the
