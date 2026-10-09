@@ -1,5 +1,13 @@
 Unreleased:
 
+- The canvas floor is a place of light. The starter's grid and trail
+  read as graph paper, so they are gone: the floor is a deep flowing
+  field - the domain-warped fbm breathing in the canvas's own blues -
+  and the canvas's state is the light in it: the rooms glow where the
+  clusters sit, each on its own slow beat, the real windows cast their
+  faint light where they stand, and the pointer's light follows the
+  hand, aligned to the screen it is on.
+
 - The shader contract is compiled, not trusted. make lint-shader
   concatenates the shader wallpaper engine's header with every
   shaders/*.frag and compiles the result with glslangValidator, so a
