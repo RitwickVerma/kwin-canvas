@@ -1,18 +1,14 @@
 # kwin-canvas
 
-![kwin-canvas: the demo - the step out into the haze, the hover's glow, the double-click's flight, the clusters' web, the map's morph, and the step back in](docs/images/demo.gif)
+![kwin-canvas: the demo - the step out, the hover's glow, the double-click's flight, the clusters' web, the switcher's fit, the grasp's keyhole, and the step back in](docs/images/demo.gif)
 
 > **A fork, written by an agent under human direction.** This repository is a
 > fork of [`aaronsb/kwin-canvas`](https://github.com/aaronsb/kwin-canvas),
 > ahead of upstream. Every line of the fork's own work is AI-generated,
-> directed by a human: the switcher, a pass-through that waits for the aim
-> and lets go when idle, clusters and their web, the float, one morphing
-> map, the smart flights, the micro-feel, the tests, the docs and the
-> commits themselves. Upstream's code is upstream's. The work is proposed
-> upstream in stages; where it stands, and what is deliberately different,
-> is [docs/status.md](docs/status.md). Install this fork's work from the
-> checkout below; the AUR package is upstream's release until the stages
-> land.
+> directed by a human; upstream's code is upstream's. The work is proposed
+> upstream in stages, and where it stands is [docs/status.md](docs/status.md).
+> Install this fork's work from the checkout below; the AUR package is
+> upstream's release until the stages land.
 
 An infinite canvas for KDE Plasma, built on KWin's public scripting API. No
 patches, no forked compositor, no plugin against private headers.
@@ -55,8 +51,9 @@ desktop window itself, live - a slideshow or a picture of the day keeps going
 in it - and it costs nothing while the camera sits at 1:1 on the desk, where
 it would be invisible anyway. `Backdrop=grid` is the old plane.
 
-> Alpha. Tested in a nested KWin 6.7.5 session and on one live Plasma 6.7
-> desktop.
+> Proven in a nested KWin 6.7.5 session and on a live Plasma 6.7 desktop,
+> with thirty-odd scenarios and golden screenshots - but still a fork's
+> work in flight, not an upstream release.
 
 ## Parts
 
@@ -68,6 +65,8 @@ it would be invisible anyway. `Backdrop=grid` is the old plane.
 | `plugin/` | KWin plugin (C++, optional) | Pass-through: while the canvas is open, clicks, drags, the wheel and keys reach the real windows |
 | `tools/kwin-canvas` | CLI (bash) | Step in, cancel, open or toggle from a terminal or a VT; status |
 | `applet/` | Plasma/Applet | A panel button that fires the Toggle Canvas chord |
+| `applet-decor/` | Plasma/Applet | The decor applet: the focused window's glyphs in the panel, in the pill's language |
+| `decoration/` | KWin/Decoration | The Canvas window frame: no title bar, the glass pill on the focused window's edge |
 | `dev/nest.sh` | harness | Nested KWin with its own D-Bus and config, driven from the shell |
 
 ## Install
@@ -146,10 +145,10 @@ disable the stock **Zoom** effect if it owns Meta+wheel.
 | Tab / Shift+Tab | | step the selection through the windows, wrapping; the camera follows to keep the chosen window in view |
 | WASD | | pan the camera one step |
 | click a window, or rest the pointer on one | | the camera pans the least that brings it wholly into view |
-| hold MB4 and tap MB5 (`SwapButton`) | on the desktop: the location becomes the canvas | fly between the two most recent windows; release opens the location there, focused; in the open overworld it tours the clusters |
-| hold MB4, wheel out, release | on the desktop: the location becomes the canvas | the keyhole widens into the overworld - the map morphs from the full sheet into the corner lens; zoomed in, the release commits the location instead |
+| hold MB4 and tap MB5 (`SwapButton`) | on the desktop: the location becomes the canvas | tour the clusters: the camera and the focus land on the next cluster's most-recently-focused window, smart-placed so the windows around it come into view; release opens the location there |
+| hold MB4, wheel out, release | on the desktop: the location becomes the canvas | the grasp's keyhole: the world itself is the map as the camera zooms out - the windows shrink live into its sheets, the cluster chips float on the plane, a click on a window flies it to 1:1, and the hint strip names the release; zoomed in, the release commits the location instead |
 | [ / ] | | fly the camera to the next / previous cluster of nearby windows, in reading order on the plane |
-| the switcher chord (`SwitcherShortcut`, Meta+Tab - bind it over KWin's Tabbox) | | the hold's map as a toggle: Tab and Shift+Tab step the highlighted window, Enter enters it, Esc steps back out |
+| the switcher chord (`SwitcherShortcut`, Meta+Tab, and `SwitcherAltShortcut`, Alt+Tab - bind them over KWin's Tabbox) | | Meta+Tab fits the whole plane, Alt+Tab the cluster the eye is on; Tab and Shift+Tab step the highlighted window, the release or Enter enters it, Esc steps back out |
 | Float (a window's arrange menu) | | the window keeps its coordinates on the plane - only the hand moves them - and when the camera pushes it partly off the screen its picture floats at the edge, bouncing off it with real physics; move the camera back and the picture is the window again. The same flag as "on all desktops", so it follows you across virtual desktops too |
 
 Activating a window from the task manager - or anything else that focuses it,
