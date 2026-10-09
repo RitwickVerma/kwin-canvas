@@ -1,187 +1,180 @@
 // SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-// The plane is a star system.
+// The plane is an open ocean.
 //
-// The canvas's clusters are the suns, each with its windows as the
-// worlds orbiting it on the room's own beat; the day-trail is the
-// comet's path across the dark; the real windows are the pale lights
-// at the glass's edge; the pointer is a lens that bends the starlight.
+// The canvas's own state is the ocean's life. The clusters are the
+// islands: each room is a landmass ringed in sand and breaking foam,
+// with a lighthouse at its heart whose beam sweeps on the room's own
+// beat. The windows are the boats - little hulls with lanterns whose
+// light spills down the water. The day-trail is the passage the camera
+// left: a phosphorescent wake across the deep. And the pointer is the
+// one thing that falls in - its ripple spreads, and the glitter around
+// it brightens. The waves flow toward the sun; the sun's path of light
+// rides the crests; the islands break the swell and shadow the water
+// away from it.
 //
-// The engine (kde-shader-wallpaper) supplies the standard i* uniforms;
-// the iCanvas* set comes from the kwin-canvas state file through the
-// engine fork documented in docs/shader-integration.md. The state's
-// coordinates arrive in KWin's LOGICAL top-down pixels: the cs factor
-// maps them onto the physical screen and the y is flipped to the
-// shader's bottom-up, so every light lands where its window is.
+// The state arrives in the canvas's logical top-down coordinates; the
+// shader lives in the engine's physical bottom-up pixels. The cs factor
+// scales the one into the other, and every y flips on entry - the two
+// fixes that keep each island, boat and wake where its window really is.
+//
+// For the kde-shader-wallpaper engine (docs/shader-integration.md).
+// The iCanvas* uniforms are declared here - the engine's fork uploads
+// them; without the fork they read zero and the ocean is simply empty.
 
 // @channels none
 
-uniform int iCanvasClusterCount;   // the rooms
-uniform vec4 iCanvasClusters[16];  // x,y = the centre (logical), z = the member count
-uniform int iCanvasTrailCount;     // the day-trail's points (logical)
-uniform vec2 iCanvasTrail[64];
-uniform vec3 iCanvasBackground;    // the canvas's own ground colour
-uniform vec2 iCanvasSize;          // the logical virtual desktop
+uniform int iCanvasClusterCount;
+uniform vec4 iCanvasClusters[16]; // x,y = the screen centre, z = the member count
+uniform int iCanvasTrailCount;
+uniform vec2 iCanvasTrail[64];   // the day-trail, projected
+uniform vec3 iCanvasBackground;  // the canvas's own ground colour
+uniform vec2 iCanvasSize;        // the logical virtual desktop
 
-float hash(vec2 p)
-{
-    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+float hash(vec2 p) {
+    return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
 }
 
-float noise(vec2 p)
-{
+float noise(vec2 p) {
     vec2 i = floor(p);
     vec2 f = fract(p);
     vec2 u = f * f * (3.0 - 2.0 * f);
-    float a = hash(i);
-    float b = hash(i + vec2(1.0, 0.0));
-    float c = hash(i + vec2(0.0, 1.0));
-    float d = hash(i + vec2(1.0, 1.0));
-    return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+    return mix(mix(hash(i + vec2(0.0, 0.0)), hash(i + vec2(1.0, 0.0)), u.x),
+               mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), u.x), u.y);
 }
 
-float fbm(vec2 p)
-{
-    float v = 0.0;
-    float a = 0.5;
-    for (int i = 0; i < 4; i++) {
-        v += a * noise(p);
-        p = p * 2.03 + vec2(7.1, 3.7);
-        a *= 0.5;
-    }
-    return v;
+// Two octaves of the flowing swell - the deep roll and the chop on top.
+float swell(vec2 p, float t) {
+    float h = 0.0;
+    h += 0.62 * noise(p * 1.0 + vec2(t * 0.045, t * 0.028));
+    h += 0.26 * noise(p * 2.3 - vec2(t * 0.031, t * 0.052));
+    h += 0.12 * noise(p * 5.1 + vec2(t * 0.060, t * 0.017));
+    return h;
 }
 
-// The nebulae: three drifting fields of the domain-warped fbm.
-vec3 nebula(vec2 uv, float t)
-{
-    vec2 q = uv * 1.4;
-    float w1 = fbm(q + vec2(t * 0.014, t * 0.007));
-    q += vec2(w1) * 0.55;
-    float n1 = fbm(q * 1.7 - vec2(t * 0.009, 0.0));
-    float n2 = fbm(uv * 0.9 + vec2(-t * 0.005, t * 0.011));
-    float n3 = fbm(uv * 2.4 + vec2(t * 0.018, -t * 0.016));
-    vec3 c = vec3(0.0);
-    c += vec3(0.32, 0.14, 0.55) * pow(max(n1, 0.0), 2.0) * 0.9;
-    c += vec3(0.06, 0.26, 0.60) * pow(max(n2, 0.0), 2.0) * 0.5;
-    c += vec3(0.03, 0.52, 0.52) * pow(max(n3, 0.0), 2.4) * 0.4;
-    return c;
+// The surface normal from the swell's slope - the light to the sun.
+vec2 swellNormal(vec2 p, float t) {
+    float e = 1.8;
+    return vec2(swell(p, t) - swell(p + vec2(e, 0.0), t),
+                swell(p, t) - swell(p + vec2(0.0, e), t));
 }
 
-// One parallax layer of the star field.
-vec3 starLayer(vec2 uv, float density, float speed, float t)
-{
-    vec2 g = floor(uv);
-    vec2 f = fract(uv) - 0.5;
-    float h = hash(g);
-    float star = step(1.0 - density, h);
-    if (star < 0.5)
-        return vec3(0.0);
-    float tw = 0.55 + 0.45 * sin(t * speed + h * 6.2831);
-    float d = length(f);
-    float body = smoothstep(0.055, 0.0, d) * tw;
-    float bright = step(0.993, h);
-    float flare = smoothstep(0.012, 0.0, abs(f.x)) * smoothstep(0.06, 0.0, abs(f.y))
-                + smoothstep(0.012, 0.0, abs(f.y)) * smoothstep(0.06, 0.0, abs(f.x));
-    return vec3(body) + vec3(bright * flare * 0.9);
-}
-
-// A cluster: the sun with its windows as the orbiting worlds.
-vec3 solarSystem(vec2 uv, vec2 c, float members, float beat, float t)
-{
-    vec3 col = vec3(0.0);
-    float d = length(uv - c);
-    col += vec3(1.0, 0.62, 0.25) * 0.5 * exp(-d / 95.0) * (0.75 + 0.25 * beat);
-    col += vec3(1.0, 0.88, 0.62) * smoothstep(9.0, 8.0, d);
-    col += vec3(1.0, 0.80, 0.55) * exp(-d * d / (20.0 * 20.0));
-    int n = int(clamp(members, 1.0, 9.0));
-    for (int i = 0; i < 9; i++) {
-        if (i >= n)
-            break;
-        float radius = 36.0 + float(i) * 26.0;
-        float ang = t * (0.30 + 0.08 * float(i)) + float(i) * 2.094 + beat * 0.6;
-        vec2 pos = c + vec2(cos(ang), sin(ang) * 0.55) * radius;
-        float rr = length((uv - c) / vec2(radius, radius * 0.55));
-        col += vec3(0.5, 0.7, 1.0) * smoothstep(0.035, 0.0, abs(rr - 1.0)) * 0.5 / (radius * 0.09 + 1.0);
-        float pd = length(uv - pos);
-        col += vec3(0.45, 0.65, 1.0) * exp(-pd * pd / (7.0 * 7.0)) * 0.6;
-        col += vec3(0.9, 0.95, 1.0) * smoothstep(2.2, 1.8, pd);
-    }
-    return col;
-}
-
-// The comet riding the day-trail.
-vec3 comet(vec2 uv, float t)
-{
-    if (iCanvasTrailCount < 2)
-        return vec3(0.0);
-    float total = float(iCanvasTrailCount - 1);
-    float ft = fract(t * 0.09) * total;
-    int i0 = int(floor(ft));
-    int i1 = min(i0 + 1, iCanvasTrailCount - 1);
-    vec2 head = mix(iCanvasTrail[i0], iCanvasTrail[i1], fract(ft));
-    float d = length(uv - head);
-    vec3 col = vec3(1.0, 0.72, 0.38) * exp(-d * d / (14.0 * 14.0)) * 0.9;
-    for (int k = 1; k <= 7; k++) {
-        int idx = i0 - k;
-        if (idx < 0)
-            break;
-        float fade = 1.0 - float(k) / 8.0;
-        float td = length(uv - iCanvasTrail[idx]);
-        col += vec3(0.4, 0.7, 1.0) * exp(-td * td / (15.0 * 15.0)) * 0.3 * fade;
-    }
-    return col;
-}
-
-// The real windows: the pale lights at the glass's edge.
-vec3 windowLights(vec2 uv, vec2 cs)
-{
-    vec3 col = vec3(0.0);
-    for (int i = 0; i < iWindowCount && i < 16; i++) {
-        vec4 w = iWindowRects[i];
-        vec2 c = vec2((w.x + w.z * 0.5) * cs.x, (iCanvasSize.y - (w.y + w.w * 0.5)) * cs.y);
-        float side = max(w.z, w.w);
-        float d = length(uv - c);
-        col += vec3(0.30, 0.45, 0.75) * exp(-d * d / (side * side * 0.16)) * 0.28;
-    }
-    return col;
-}
-
-void mainImage(out vec4 fragColor, in vec2 fragCoord)
-{
+void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 res = iResolution.xy;
-    vec2 uv = fragCoord;
-    vec2 m = iMouse.xy;
     vec2 cs = (iCanvasSize.x > 1.0) ? res / iCanvasSize : vec2(1.0);
     float t = iTime;
+    vec2 uv = fragCoord;
 
-    vec3 bg = (iCanvasBackground == vec3(0.0)) ? vec3(0.028, 0.033, 0.06) : iCanvasBackground;
-    vec3 col = bg * 0.5;
+    // The sun, high on the right; the light flows from it.
+    vec2 sun = res * vec2(0.74, 0.16);
+    vec2 lightDir = normalize(vec2(-0.45, -0.89));
+    float sunGlow = exp(-pow(length(uv - sun) / (res.y * 0.30), 2.0));
 
-    col += nebula(uv * 0.8, t) * 1.1;
+    // The deep - the canvas's own ground water-coloured, darkening away
+    // from the sun and with the distance from the top.
+    vec3 water = vec3(0.016, 0.10, 0.19);
+    vec3 shore = vec3(0.05, 0.30, 0.40);
+    vec3 bg = mix(shore, water, clamp((uv.y / res.y) * 0.85 + sunGlow * 0.5, 0.0, 1.0));
+    if (iCanvasBackground != vec3(0.0)) bg = mix(bg, iCanvasBackground, 0.30);
 
-    vec2 pm = (m - res * 0.5) * 0.03;
-    col += starLayer(uv + pm * 0.4, 0.4, 0.8, t);
-    col += starLayer(uv * 0.6 + pm, 0.6, 0.5, t);
-    col += starLayer(uv * 1.7 - pm * 0.5, 0.13, 1.9, t);
+    // The swell's own shading - the wave faces toward the sun catch it.
+    vec2 sw = swellNormal(uv * 0.0045, t);
+    float waveShade = 0.52 + 0.48 * clamp(dot(normalize(sw + vec2(1e-4)), lightDir), -1.0, 1.0);
+    vec3 col = bg * (0.45 + 0.75 * waveShade);
 
-    for (int i = 0; i < 16; i++) {
-        if (i >= iCanvasClusterCount)
-            break;
+    // The sun's path of light down the water - the glitter band.
+    float band = exp(-pow((uv.x - sun.x) * 0.0038, 2.0)) * smoothstep(sun.y + res.y * 0.75, sun.y, uv.y);
+    col += vec3(1.0, 0.82, 0.48) * band * 0.22;
+    // The sparkles that ride the crests inside the band.
+    float crest = pow(max(0.0, sw.x + sw.y), 2.0);
+    float glint = smoothstep(0.55, 1.0, noise(uv * 0.23 + vec2(t * 0.11, -t * 0.07)));
+    col += vec3(1.0, 0.90, 0.70) * crest * glint * band * 0.55;
+    // The sun's own disc, softened.
+    col += vec3(1.0, 0.88, 0.60) * exp(-pow(length(uv - sun) / (res.y * 0.06), 2.0)) * 0.9;
+
+    // The islands: the rooms of the plane.
+    for (int i = 0; i < iCanvasClusterCount && i < 16; i++) {
         vec4 cl = iCanvasClusters[i];
         vec2 c = vec2(cl.x * cs.x, (iCanvasSize.y - cl.y) * cs.y);
-        float beat = 0.55 + 0.45 * sin(t * 0.5 + float(i) * 2.399);
-        col += solarSystem(uv, c, cl.z, beat, t);
+        float members = cl.z;
+        float beat = 0.5 + 0.5 * sin(t * 0.45 + float(i) * 2.399);
+        float R = 30.0 + members * 17.0;              // the room's size = its land
+        float d = length(uv - c);
+
+        // The shadow the island casts away from the sun.
+        vec2 sh = c + vec2(R * 1.15, R * 0.55);
+        float sdist = length(uv - sh);
+        float shadow = smoothstep(R * 1.25, R * 0.55, sdist);
+        col *= 1.0 - shadow * 0.32;
+
+        // The breaking foam ring - alive, ragged, breathing with the room.
+        float foam = smoothstep(R + 12.0, R + 5.0, d) * (1.0 - smoothstep(R + 4.0, R - 4.0, d));
+        foam *= 0.55 + 0.45 * noise(uv * 0.16 + vec2(t * 0.07, beat * 2.0) + float(i) * 13.7);
+
+        // The sand rim, then the grass, then the hill - the land itself.
+        float sand = smoothstep(R + 2.0, R - 5.0, d) * (1.0 - smoothstep(R - 6.0, R - 13.0, d));
+        float grass = smoothstep(R - 12.0, R - 18.0, d) * (1.0 - smoothstep(R - 18.0, R * 0.30, d));
+        float hill = smoothstep(R * 0.32, R * 0.10, d);
+        float hillShade = 0.55 + 0.45 * noise(c * 0.05 + float(i) * 3.1);
+
+        col = mix(col, vec3(0.88, 0.82, 0.62), sand);
+        col = mix(col, vec3(0.05, 0.26, 0.13) * (0.75 + 0.35 * hillShade), grass);
+        col = mix(col, vec3(0.14, 0.34, 0.16) * hillShade, hill);
+        col = mix(col, vec3(0.96, 0.98, 1.0), foam * 0.75);
+
+        // The lighthouse at the heart - a white point, and its beam
+        // sweeping the water on the room's own beat.
+        vec2 lt = c + vec2(R * 0.10, -R * 0.10);
+        float ld = length(uv - lt);
+        col += vec3(1.0, 0.97, 0.88) * exp(-ld * ld / (2.5 * 2.5)) * 1.4;
+        float beamAng = t * 0.22 + float(i) * 1.7;
+        vec2 beamDir = vec2(cos(beamAng), sin(beamAng));
+        float beam = pow(max(0.0, dot(normalize(uv - lt), beamDir)), 40.0) * smoothstep(R * 5.0, R * 0.8, ld);
+        col += vec3(1.0, 0.92, 0.65) * beam * (0.55 + 0.45 * beat);
     }
 
-    col += comet(uv, t);
+    // The boats: the real windows, afloat on the water.
+    for (int j = 0; j < iWindowCount && j < 16; j++) {
+        vec4 w = iWindowRects[j];
+        vec2 c = vec2((w.x + w.z * 0.5) * cs.x, (iCanvasSize.y - (w.y + w.w * 0.5)) * cs.y);
+        float side = max(w.z * cs.x, w.w * cs.y) * 0.28;
+        float d = length(uv - c);
+        // The hull.
+        col += vec3(0.03, 0.05, 0.07) * smoothstep(side, side * 0.35, d);
+        // The lantern's glow on the boat.
+        col += vec3(1.0, 0.72, 0.38) * exp(-d * d / (side * side * 2.5)) * 0.9;
+        // The lantern's light spilled down the water - the column.
+        float streak = exp(-pow((uv.x - c.x) / (side * 0.6), 2.0)) * smoothstep(c.y + side * 4.0, c.y, uv.y);
+        col += vec3(1.0, 0.80, 0.45) * streak * 0.30;
+    }
 
-    col += windowLights(uv, cs);
+    // The passage: the day-trail as the phosphorescent wake.
+    for (int k = 0; k < iCanvasTrailCount - 1 && k < 63; k++) {
+        vec2 a = vec2(iCanvasTrail[k].x * cs.x, (iCanvasSize.y - iCanvasTrail[k].y) * cs.y);
+        vec2 b = vec2(iCanvasTrail[k + 1].x * cs.x, (iCanvasSize.y - iCanvasTrail[k + 1].y) * cs.y);
+        vec2 pa = uv - a;
+        vec2 ba = b - a;
+        float h = clamp(dot(pa, ba) / max(dot(ba, ba), 1.0), 0.0, 1.0);
+        float d = length(pa - ba * h);
+        float flow = 0.5 + 0.5 * sin(t * 0.85 - float(k) * 0.40 + h * 5.5);
+        float width = 2.0 + 2.5 * flow;
+        col += vec3(0.45, 0.80, 1.0) * exp(-d * d / (width * width)) * 0.20;
+    }
 
-    col += vec3(0.35, 0.55, 1.0) * exp(-dot(uv - m, uv - m) / (32.0 * 32.0)) * 0.30;
+    // The one thing that fell in: the pointer's ripple.
+    if (iMouse.z > 0.5) {
+        vec2 m = iMouse.xy;
+        float md = length(uv - m);
+        float ripple = sin(md * 0.11 - t * 2.6) * exp(-md * 0.007) * 0.30;
+        col += vec3(0.80, 0.95, 1.0) * ripple * smoothstep(260.0, 0.0, md);
+        col += vec3(0.90, 1.0, 1.0) * exp(-md * md / (70.0 * 70.0)) * 0.14;
+    }
 
-    col *= 0.96 + 0.04 * sin(t * 0.35);
+    // The breathing of the whole, and the soft edge.
+    col *= 0.96 + 0.04 * sin(t * 0.30);
+    vec2 vig = uv / res;
+    col *= 1.0 - 0.28 * pow(16.0 * (vig.x - 0.5) * (vig.x - 0.5) * (vig.y - 0.5) * (vig.y - 0.5), 1.4);
 
-    fragColor = vec4(col, 1.0);
+    fragColor = vec4(pow(clamp(col, 0.0, 1.0), vec3(0.92)), 1.0);
 }

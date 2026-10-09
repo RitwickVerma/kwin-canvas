@@ -11,6 +11,16 @@ Unreleased:
   logical plane to the physical screen and flipped to the shader's
   space, so every light lands where its window is.
 
+- The canvas floor is an open ocean. The whole scene is alive, and
+  every part of it is the canvas: the clusters are the islands - each
+  room a sand-ringed landmass with breaking foam and a lighthouse whose
+  beam sweeps on the room's own beat - the windows are the boats with
+  their lanterns spilling light down the water, the day-trail is a
+  phosphorescent wake across the deep, and the pointer is the one thing
+  that falls in, spreading its ripple and brightening the glitter. The
+  sun sits high, its path of light rides the crests, and the islands
+  break the swell and shadow the water away from it.
+
 - The canvas floor is an aurora. Three curtains of light flow across
   the closed desktop on their own slow beats - the canvas's blue, a
   violet crest, a teal undercurrent - with a fine star-dust settling
