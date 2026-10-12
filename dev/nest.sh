@@ -88,7 +88,7 @@ nest_env() {
 # The nest's bus address, or a loud failure: an empty DBUS_SESSION_BUS_ADDRESS
 # makes D-Bus fall back to the live session's bus.
 nestbus() {
-    local b; b=$(bus)
+    local b; b=$(bus) || true
     [ -n "$b" ] || { echo "nest $NEST_NAME has no bus ($STATE/bus); not falling back to the session bus" >&2; return 1; }
     echo "$b"
 }
@@ -138,9 +138,6 @@ GpuBare=100
 MemReduced=100
 MemMinimal=100
 MemBare=100
-# The trail would grow in every scenario's pans and shift every zoomed
-# golden; 134-day-trail sets it on and deletes it itself.
-DayTrail=false
 DebugSeq=0
 ToggleShortcut=Ctrl+Alt+Space
 HomeShortcut=Ctrl+Alt+Home
@@ -377,7 +374,7 @@ pids_on_bus() {   # pids_on_bus BUS_ADDRESS
 }
 
 down() {
-    local addr; addr=$(bus)
+    local addr; addr=$(bus) || true
     if [ -f "$STATE/pid" ]; then
         pkill -P "$(cat "$STATE/pid")" 2>/dev/null || true
         kill "$(cat "$STATE/pid")" 2>/dev/null || true
@@ -491,7 +488,7 @@ reload() {
 
 clients() {
     local n; n=$(nwindows)
-    for c in ${NEST_CLIENTS:-kcalc konsole kwrite}; do run "$c" >/dev/null; n=$((n + 1)); mapped "$n"; done
+    for c in ${NEST_CLIENTS:-kcalc konsole kwrite}; do run "$c" >/dev/null; n=$((n + 1)); mapped "$n" || echo "fixtures: $c did not map in time" >&2; done
     sleep 1
     echo "clients: ${NEST_CLIENTS:-kcalc konsole kwrite}"
 }
@@ -509,11 +506,11 @@ fixtures() {
     rm -f "$CONF"/dolphinrc "$CONF"/gwenviewrc "$CONF"/konsolerc "$CONF"/katevirc "$CONF"/kwriterc "$CONF"/kcalcrc
     # One at a time: each launch waits for its window before the next.
     local n; n=$(nwindows)
-    run kcalc >/dev/null; mapped $((n + 1))
-    run kwrite "$FIXTURES/sample.txt" >/dev/null; mapped $((n + 2))
-    run konsole -e sh -c "cat '$FIXTURES/konsole.txt'; exec sleep 1d" >/dev/null; mapped $((n + 3))
-    run dolphin "$FIXTURES" >/dev/null; mapped $((n + 4))
-    run gwenview "$FIXTURES/wallpaper.png" >/dev/null; mapped $((n + 5))
+    run kcalc >/dev/null; mapped $((n + 1)) || echo "fixtures: kcalc did not map in time" >&2
+    run kwrite "$FIXTURES/sample.txt" >/dev/null; mapped $((n + 2)) || echo "fixtures: kwrite did not map in time" >&2
+    run konsole -e sh -c "cat '$FIXTURES/konsole.txt'; exec sleep 1d" >/dev/null; mapped $((n + 3)) || echo "fixtures: konsole did not map in time" >&2
+    run dolphin "$FIXTURES" >/dev/null; mapped $((n + 4)) || echo "fixtures: dolphin did not map in time" >&2
+    run gwenview "$FIXTURES/wallpaper.png" >/dev/null; mapped $((n + 5)) || echo "fixtures: gwenview did not map in time" >&2
     sleep 1
     echo "fixtures: kcalc kwrite konsole dolphin gwenview"
 }
@@ -525,6 +522,7 @@ mapped() {
         [ "$(nwindows)" -ge "$1" ] 2>/dev/null && return 0
         sleep 0.5
     done
+    return 1
 }
 
 # A KWin script run through org.kde.kwin.Scripting; its out() lines land in

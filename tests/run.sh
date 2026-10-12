@@ -31,24 +31,36 @@ if [ "${NEST_OUTPUTS:-1}" != 1 ] && [ -z "$PATTERN" ]; then
     PATTERN=91
     echo "   $NEST_OUTPUTS outputs: running the 91 scenarios (pass a pattern to widen)"
 fi
-(cd "$HERE" && make -s install >/dev/null)
+(cd "$HERE" && make -s install >/dev/null) || { echo "make install failed"; exit 1; }
 down >/dev/null 2>&1 || true
 up
 fixtures
 arrange >/dev/null
 echo "   fixtures arranged: $(sget entries) windows"
 
+matched=0
 for f in "$HERE"/${SCENARIOS:-tests/scenarios}/*.sh; do
     name=$(basename "$f" .sh)
     [ -n "$PATTERN" ] && [[ "$name" != *$PATTERN* ]] && continue
+    matched=$((matched + 1))
     unset -f run_scenario; scenario_desc=""
     # shellcheck source=/dev/null
     source "$f"
     echo "-- $name: $scenario_desc"
+    if ! declare -F run_scenario >/dev/null; then
+        fail "$name: scenario did not load (no run_scenario)"
+        continue
+    fi
     run_scenario
     c cancel >/dev/null 2>&1 || true
 done
 
+if [ "$matched" = 0 ]; then
+    echo "== no scenario matches '${PATTERN}'"
+    [ "$KEEP" = 1 ] || down >/dev/null || echo "warning: nest-down failed" >&2
+    exit 1
+fi
+
 echo "== pass $PASS  fail $FAIL  skip $SKIP"
-[ "$KEEP" = 1 ] || down >/dev/null
+[ "$KEEP" = 1 ] || down >/dev/null || echo "warning: nest-down failed" >&2
 [ "$FAIL" = 0 ]

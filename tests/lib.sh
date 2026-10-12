@@ -143,7 +143,7 @@ snap() {
     shot "$file" >/dev/null
     [ -s "$file" ] || { fail "snap $name: screenshot failed"; return; }
     if [ "$UPDATE_GOLDEN" = 1 ]; then
-        mkdir -p "$GOLDEN_DIR"; cp "$file" "$golden"; ok "golden $name updated"; return
+        mkdir -p "$GOLDEN_DIR"; cp "$file" "$golden" || { fail "snap $name: cannot write $golden"; return; }; ok "golden $name updated"; return
     fi
     [ -f "$golden" ] || { skip "snap $name: no golden (make golden)"; return; }
     local metric

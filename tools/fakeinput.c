@@ -280,6 +280,9 @@ static bool run_command(int argc, char **argv)
         if (argc != 3 || !parse_double(argv[1], &dx) || !parse_double(argv[2], &dy))
             goto usage;
         ptr_rel(dx, dy);
+        // A relative move drags the anchor with it: a later glide must
+        // start from where the pointer actually is.
+        if (have_cur) { cur_x += dx; cur_y += dy; }
     } else if (strcmp(cmd, "down") == 0 || strcmp(cmd, "up") == 0) {
         uint32_t btn;
         if (argc > 2 || !parse_button(ARG(1), &btn))
