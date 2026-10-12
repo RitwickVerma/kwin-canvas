@@ -923,7 +923,13 @@ KWin.SceneEffect {
         if (configuration.MovesGlide === false) { e.x = tx; e.y = ty; return; } // the knob: the instant writes
         const id = e.window.internalId;
         if (dragRaw && dragRaw[id] !== undefined) return; // the hand moves its own
-        entryAnims[id] = { sx: e.x, sy: e.y, tx: tx, ty: ty, t0: Date.now() + (delay || 0), vx: vx || 0, vy: vy || 0 };
+        // The glide's pace and bounce follow the move itself: a far throw
+        // flies longer and overshoots harder, a nudge settles quick with
+        // barely a bounce. The batch waves keep the small overshoot.
+        const dist = Math.hypot(tx - e.x, ty - e.y) / Math.max(0.25, zoom);
+        const spd = Math.hypot(vx || 0, vy || 0) / Math.max(0.25, zoom);
+        entryAnims[id] = { sx: e.x, sy: e.y, tx: tx, ty: ty, t0: Date.now() + (delay || 0), vx: vx || 0, vy: vy || 0,
+            dur: Math.min(320, Math.max(150, 150 + dist * 0.28)), amp: Math.min(3.4, 2.2 + spd * 0.0006) };
         entryGhosts[id] = { x: e.x, y: e.y, w: e.width, h: e.height, born: Date.now() };
         moveRev++;
     }
@@ -934,7 +940,8 @@ KWin.SceneEffect {
             const a = entryAnims[id];
             const e = entries.find(function (en) { return String(en.window.internalId) === id; });
             if (!e) { delete entryAnims[id]; delete entryGhosts[id]; any = true; continue; }
-            const p = Math.min(1, (now - a.t0) / 240);
+            const dur = a.dur || 240;
+            const p = Math.min(1, (now - a.t0) / dur);
             if (p >= 1) {
                 e.x = a.tx;
                 e.y = a.ty;
@@ -944,10 +951,11 @@ KWin.SceneEffect {
                 e.x = a.sx;
                 e.y = a.sy;
             } else {
-                const out = 1 + 2.4 * Math.pow(p - 1, 3) + 1.2 * Math.pow(p - 1, 2); // the OutBack: the springy landing with the little overshoot
+                const amp = a.amp || 2.4; // the overshoot: the harder the throw, the deeper the bounce
+                const out = 1 + amp * Math.pow(p - 1, 3) + amp * 0.5 * Math.pow(p - 1, 2); // the OutBack: the springy landing with the little overshoot
                 const h3 = p * p * (3 - 2 * p); // the Hermite for the throw: the velocity eases to rest
-                const qx = a.vx ? h3 + a.vx * 240 / Math.max(1, Math.abs(a.tx - a.sx)) * (p - 2 * p * p + p * p * p) : out;
-                const qy = a.vy ? h3 + a.vy * 240 / Math.max(1, Math.abs(a.ty - a.sy)) * (p - 2 * p * p + p * p * p) : out;
+                const qx = a.vx ? h3 + a.vx * dur / Math.max(1, Math.abs(a.tx - a.sx)) * (p - 2 * p * p + p * p * p) : out;
+                const qy = a.vy ? h3 + a.vy * dur / Math.max(1, Math.abs(a.ty - a.sy)) * (p - 2 * p * p + p * p * p) : out;
                 e.x = a.sx + (a.tx - a.sx) * Math.max(0, Math.min(2, qx));
                 e.y = a.sy + (a.ty - a.sy) * Math.max(0, Math.min(2, qy));
             }
@@ -2306,7 +2314,16 @@ KWin.SceneEffect {
         z = clampZoom(z);
         const pinned = gx !== undefined && gx !== null;
         camStop();
-        camRate = rate === undefined ? 1.0 : Math.max(0.25, Number(rate));
+        // The spring's rate follows the jump: a small correction glides at
+        // the casual pace, a far flight (the home, the activity step) runs
+        // a stiffer spring so it settles as promptly - the snappy big
+        // moves never feel like waiting.
+        if (rate === undefined) {
+            const jump = Math.hypot(goalX - viewX, goalY - viewY) / Math.max(0.25, zoom) + Math.abs(z - zoom) * 4000;
+            camRate = Math.max(1.0, Math.min(2.4, 0.9 + jump / 5000));
+        } else {
+            camRate = Math.max(0.25, Number(rate));
+        }
         if (!smoothZoom) {
             if (pinned) setZoom(z, Qt.point(gx, gy));
             else { zoom = z; viewX = goalX; viewY = goalY; }
@@ -3355,7 +3372,7 @@ KWin.SceneEffect {
         }
         for (let i = 0; i < list.length; ++i) {
             const sp = spots[list[i].window.internalId];
-            animateEntry(list[i], sp.x, sp.y); // every move plays
+            animateEntry(list[i], sp.x, sp.y, i * 35); // the wave: the batch lands in a cascade, not a lockstep
         }
         // A pinned window keeps its pin: the arrangement becomes the new
         // anchor, clamped on screen - read from the landing, not the launch.
@@ -3390,7 +3407,7 @@ KWin.SceneEffect {
         list.sort(function (a, b) { return (a.y - b.y) || (a.x - b.x); });
         const spots = Logic.tidyRows(list, { gap: gap, origin: { x: t.x + gap, y: t.y + gap }, maxWidth: vs.width - gap * 2 });
         for (let i = 0; i < list.length; ++i) {
-            animateEntry(list[i].e, spots[i].x, spots[i].y);
+            animateEntry(list[i].e, spots[i].x, spots[i].y, i * 35); // the wave: the tidy lands row by row
         }
         revision++;
     }
@@ -3441,7 +3458,7 @@ KWin.SceneEffect {
         }
         for (let i = 0; i < list.length; ++i) {
             const sp = spots[list[i].window.internalId];
-            animateEntry(list[i], sp.x, sp.y); // every move plays
+            animateEntry(list[i], sp.x, sp.y, i * 35); // the wave: the batch lands in a cascade, not a lockstep
         }
         for (let i = 0; i < list.length; ++i) {
             if (isPinnedEntry(list[i])) {

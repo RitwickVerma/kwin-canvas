@@ -288,8 +288,10 @@ Item {
             // costs nothing.
             // The quiet hold and slide are the desktop itself: the wallpaper
             // stays, sharp, wherever the frames fade - no grey base ever
-            // shows through a transient move.
-            readonly property bool wantShown: wallpaper && !covered && !effect.quiet
+            // shows through a transient move. The blur itself is overworld
+            // chrome: at 1:1 the real desktop behind the view is already the
+            // sharp picture, so the quiet slide skips the haze entirely.
+            readonly property bool wantShown: wallpaper && (!covered || effect.quiet)
             property real blurAlpha: wantShown ? 1 : 0
             Behavior on blurAlpha { NumberAnimation { duration: 280; easing.type: Easing.InOutCubic } }
             visible: wallpaper && (wantShown || blurAlpha > 0.004)
@@ -1226,7 +1228,7 @@ Item {
                     // fly slides across - is the desktop alone. Full strength by
                     // zoom 0.75, gone at 1:1; the unlit constellation dissolves
                     // between 0.45 and 0.5 instead of cutting out at half zoom.
-                    readonly property real want: (modelData.lit ? Math.max(0.3, 0.55 * modelData.co) : (effect.ql >= 2 ? 0 : 0.22 * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20)) * modelData.co)) * effect.skinReveal
+                    readonly property real want: ((modelData.lit ? Math.max(0.3, 0.55 * modelData.co) : (effect.ql >= 2 ? 0 : 0.22 * modelData.co)) * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20))) * effect.skinReveal
                     property real show: 0
                     opacity: show
                     Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }

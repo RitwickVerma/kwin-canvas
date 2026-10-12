@@ -1,5 +1,16 @@
 Unreleased:
 
+- The camera and the moves feel the work they do. A far flight runs a
+  stiffer spring and settles as promptly as a nudge, so big jumps never
+  feel like waiting; a thrown window glides longer and lands with a
+  deeper bounce while a short move settles quietly; and the arrange,
+  tidy and send-to land their windows in a wave instead of a lockstep.
+
+- The cluster web stays in the overworld. The threads of the cluster
+  under the pointer no longer light at 1:1 - the web fades with the
+  zoom like the rest of the overworld's chrome, so a normal pan over
+  the desktop is the desktop alone.
+
 - The plane hangs in the valley's sky. Far back above the ridges, the
   whole canvas is compressed into a band: the windows are its outlined
   sheets, the rooms are the glow-gatherings among them, and every one
