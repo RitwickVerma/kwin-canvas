@@ -339,6 +339,20 @@ Item {
             }
         }
 
+        // The plane's bend, once, over everything that sits on it: the
+        // ground, the frame bands, the windows, the tags, the web and the
+        // chips are warped together at zoom-out, so nothing floats off the
+        // ground. The shader pass below grabs this whole item and resamples
+        // it; at 1:1 the item draws itself and no offscreen pass happens.
+        // The warp is a picture effect: the input keeps its unwarped
+        // geometry, so at deep zoom-out the eye and the hand disagree by
+        // the bend's own few pixels. (The plane's items keep their
+        // indentation across the wrapper: it is a render scope, not a
+        // lexical one.)
+        Item {
+            id: worldLayer
+            anchors.fill: parent
+
         Ground {
             anchors.fill: parent
             originX: -effect.viewX * effect.zoom - view.sg.x
@@ -350,10 +364,10 @@ Item {
             background: effect.configuration.Background
             lineColor: effect.configuration.LineColor
             tileImage: effect.configuration.TileImage
+            showLabels: effect.configuration.ShowLabels !== false
             // With the wallpaper behind it the base rect above is the ground's
             // background, and the grid draws over the wallpaper.
             drawBackground: effect.backdropMode() !== "wallpaper"
-        curvature: effect.sphereWarp * 0.12
         }
 
 
@@ -373,21 +387,6 @@ Item {
         // (pass-through hands them to the windows), and the hover events the
         // scene synthesizes between frames carry none, but every real pointer
         // event has the modifier state.
-        Rectangle {
-            id: marqueeBox
-            property real x0: 0
-            property real y0: 0
-            property real x1: 0
-            property real y1: 0
-            readonly property rect rect: Qt.rect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0))
-            visible: panDrag.active && panDrag.marquee
-            z: 90000
-            x: rect.x; y: rect.y; width: rect.width; height: rect.height
-            color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.15)
-            border.width: 1
-            border.color: Kirigami.Theme.highlightColor
-        }
-
         // The hold itself, on the button alone: no motion is needed for the
         // canvas to be navigated, so a pointer parked in an edge band pans
         // while the button is down. The middle button navigates with nothing
@@ -616,7 +615,7 @@ Item {
                             cursor: Qt.SizeAllCursor
                             holdOff: true
                             x: index === 1 ? frame.width - band : 0
-                            y: index === 3 ? frame.height - band : 0
+                            y: index === 2 ? frame.height - band : 0
                             width: (index === 0 || index === 2) ? frame.width : band
                             height: (index === 1 || index === 3) ? frame.height : band
                             onDragStarted: effect.targetRaw = null
@@ -650,7 +649,7 @@ Item {
                 onEntryChanged: {
                     if (thumb.entry !== thumb.seen) {
                         thumb.seen = thumb.entry;
-                        if (thumb.entry.born && !effect.quiet && Date.now() - thumb.entry.born < 500) {
+                        if (thumb.entry && thumb.entry.born && !effect.quiet && Date.now() - thumb.entry.born < 500) {
                             thumb.enterFade = 0;
                             enterFadeAnim.restart();
                         }
@@ -1264,8 +1263,54 @@ Item {
                 HoverHandler {
                     enabled: { effect.clusterRev; effect.skinReveal; effect.grasp; effect.chromeHover; return !effect.chromeHover && effect.grasp && effect.skinReveal > 0.02 && index < effect.clusters.length && effect.clusters[index].n > 1; }
                     onHoveredChanged: view.hoverCount += hovered ? 1 : -1
+                    Component.onDestruction: if (hovered) view.hoverCount -= 1
                 }
             }
+        }
+        } // worldLayer
+
+        // The sphere pass: the plane, grabbed as one picture and bent. The
+        // mechanism is the ground's own proven one - a ShaderEffectSource
+        // grab - because layer.enabled inside the compositor's scene blurs
+        // the window textures the plane carries. live only while the bend
+        // is real; at 1:1 the plane draws itself and the pass is idle.
+        ShaderEffectSource {
+            id: worldSource
+            anchors.fill: parent
+            sourceItem: worldLayer
+            // All three switch together with the bend: when it is real the
+            // plane is hidden and this item's live texture is what the
+            // shader draws; when it is not, both are out of the scene and
+            // the plane draws itself (a live:false grab would otherwise
+            // paint a stale frame over it).
+            visible: effect.sphereWarp > 0.0001
+            hideSource: effect.sphereWarp > 0.0001
+            live: effect.sphereWarp > 0.0001
+        }
+        ShaderEffect {
+            anchors.fill: parent
+            visible: effect.sphereWarp > 0.0001
+            property var src: worldSource
+            property real bend: effect.sphereWarp * 0.12
+            fragmentShader: Qt.resolvedUrl("GroundBarrel.frag.qsb")
+            blending: true
+        }
+
+        // The marquee stays flat: a screen-space selection rectangle,
+        // outside the plane's warp.
+        Rectangle {
+            id: marqueeBox
+            property real x0: 0
+            property real y0: 0
+            property real x1: 0
+            property real y1: 0
+            readonly property rect rect: Qt.rect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0))
+            visible: panDrag.active && panDrag.marquee
+            z: 90000
+            x: rect.x; y: rect.y; width: rect.width; height: rect.height
+            color: Qt.rgba(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b, 0.15)
+            border.width: 1
+            border.color: Kirigami.Theme.highlightColor
         }
 
         // The corner lens: the world shrunk into a chip for a glance at
@@ -1349,10 +1394,10 @@ Item {
             }
 
             Repeater {
-                model: effect.frames().length
+                model: { effect.revision; effect.screensRev; return effect.frames().length; }
                 delegate: Rectangle {
                     required property int index
-                    readonly property var f: effect.frames()[index]
+                    readonly property var f: { effect.revision; effect.screensRev; return effect.frames()[index]; }
                     visible: planeMap.asMinimap
                     x: { effect.revision; effect.screensRev; planeMap.width; planeMap.height; return planeMap.mx(f.x); }
                     y: { effect.revision; effect.screensRev; planeMap.width; planeMap.height; return planeMap.my(f.y); }
@@ -1496,7 +1541,7 @@ Item {
             readonly property int mh: Math.round(view.sg.height * 0.2)
             // The grasp only: the quiet hold at 1:1 is when the torch's
             // reach matters, and the map sits over every window.
-            readonly property bool asSphere: effect.canvasOpen && effect.quiet && effect.grasp && view.screen === effect.primaryScreen
+            readonly property bool asSphere: effect.visible && effect.quiet && effect.grasp && view.screen === effect.primaryScreen
             onAsSphereChanged: effect.mapMinimap = asSphere
             readonly property rect home: Qt.rect(view.sg.width - mw - Kirigami.Units.largeSpacing * 2,
                 view.sg.height - mh - Kirigami.Units.largeSpacing * 2, mw, mh)
@@ -1514,8 +1559,8 @@ Item {
             // chip, the centre is the home view.
             readonly property real r: { effect.revision; return effect.panSphereRadius(); }
             readonly property real lim: 85 * Math.PI / 180
-            function ax(cx) { return 6 + (Math.atan(cx / sphereMap.R) / lim + 1) / 2 * (sphereMap.width - 12); }
-            function ay(cy) { return 6 + (Math.atan(cy / sphereMap.R) / lim + 1) / 2 * (sphereMap.height - 12); }
+            function ax(cx) { return 6 + (Math.atan(cx / sphereMap.r) / lim + 1) / 2 * (sphereMap.width - 12); }
+            function ay(cy) { return 6 + (Math.atan(cy / sphereMap.r) / lim + 1) / 2 * (sphereMap.height - 12); }
             Rectangle {
                 anchors.fill: parent
                 radius: 16

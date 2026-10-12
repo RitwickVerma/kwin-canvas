@@ -31,12 +31,6 @@ Item {
     // the opaque base itself. The wallpaper plugin always draws it.
     property bool drawBackground: true
 
-    // The sphere's bend: 0 at 1:1 (the flat plane), growing as the camera
-    // zooms out. The ShaderEffect below resamples the flat ground through
-    // the barrel, so the grid curves toward the horizon like the sphere
-    // the torch pans over.
-    property real curvature: 0
-
     // Screen spacing below which an octave is invisible, and above which it is fully drawn.
     readonly property real fadeIn: 14
     readonly property real fadeFull: 72
@@ -44,13 +38,15 @@ Item {
     function mod(a, b) { return ((a % b) + b) % b; }
     function fade(s) { return Math.max(0, Math.min(1, (s - fadeIn) / (fadeFull - fadeIn))); }
 
-    // The flat ground, rendered offscreen so the shader can bend it.
-    ShaderEffectSource {
-        id: flatSource
-        anchors.fill: parent
-        sourceItem: flatGround
-        hideSource: true
-    }
+    // A raster ground counts only once it is actually ready: until then the
+    // procedural ground draws, so a missing or broken tile image can never
+    // leave the plane blank.
+    readonly property bool tiled: tileImage !== "" && tile.status === Image.Ready
+
+    // The ground itself: background, tile, octaves and axes, drawn flat. The
+    // bend belongs to the caller - the effect's world layer warps the whole
+    // plane at zoom-out - and the wallpaper never warps, so the ground is
+    // pixel-true wherever it is drawn alone.
     Item {
         id: flatGround
         anchors.fill: parent
@@ -64,7 +60,7 @@ Item {
     // Optional raster ground: one image tiled across the canvas at 1:1, scaled with the view.
     Image {
         id: tile
-        visible: ground.tileImage !== "" && status === Image.Ready
+        visible: ground.tiled
         source: ground.tileImage
         fillMode: Image.Tile
         smooth: true
@@ -81,7 +77,7 @@ Item {
     // Procedural ground: grid octaves that fade in as their screen spacing grows,
     // so there is always a legible spacing at any zoom.
     Repeater {
-        model: ground.tileImage === "" ? ground.octaves : 0
+        model: ground.tiled ? 0 : ground.octaves
         delegate: Item {
             id: octave
             required property int index
@@ -148,7 +144,7 @@ Item {
         height: ground.height
         color: ground.lineColor
         opacity: 0.9
-        visible: ground.tileImage === ""
+        visible: !ground.tiled
     }
     Rectangle {
         x: 0
@@ -157,17 +153,7 @@ Item {
         height: 2
         color: ground.lineColor
         opacity: 0.9
-        visible: ground.tileImage === ""
+        visible: !ground.tiled
     }
-    }
-
-    // The sphere pass: the barrel bend grows with the curvature (the
-    // zoom-out), the flat ground stays pixel-true at 1:1.
-    ShaderEffect {
-        anchors.fill: parent
-        property var src: flatSource
-        property real bend: ground.curvature
-        fragmentShader: Qt.resolvedUrl("GroundBarrel.frag.qsb") // precompiled: Qt 6 shaders are .qsb, never inline GLSL
-        blending: true
     }
 }

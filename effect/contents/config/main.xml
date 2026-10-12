@@ -35,6 +35,10 @@
             <label>Optional image tiled across the canvas at 1:1. Empty draws the grid.</label>
             <default></default>
         </entry>
+        <entry name="ShowLabels" type="Bool">
+            <label>Draw the canvas coordinates on the ground.</label>
+            <default>true</default>
+        </entry>
         <entry name="Backdrop" type="String">
             <label>What the plane draws beyond the monitor frames: "wallpaper" (the default) puts the desktop's own wallpaper on the plane - exactly on the desks, and as a blurred, dimmed continuation of it across the rest of the view, so the plane reads as the desktop dissolving into a haze rather than repeating - with the ground grid over it; "grid" is the plain grid on Background, with no wallpaper at all.</label>
             <default>wallpaper</default>

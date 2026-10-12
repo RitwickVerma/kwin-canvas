@@ -41,7 +41,7 @@ run_scenario() {
     # region in the closed shot must be the same picture - the grid's
     # phase, spacing and labels all hand in hand with the wallpaper's.
     c open
-    c "pan -80 -60"
+    c "panpx -80 -60"
     sleep 0.8
     c state
     shot "$OUT/wb.png" >/dev/null 2>&1
@@ -57,7 +57,7 @@ run_scenario() {
 
     # And the continuity still holds at the new spacing.
     c open
-    c "pan -80 -60"
+    c "panpx -80 -60"
     sleep 0.8
     c state
     shot "$OUT/wd.png" >/dev/null 2>&1

@@ -990,6 +990,8 @@ KWin.SceneEffect {
             if (!p) continue;
             animateEntry(e, p.x, p.y); // the undo glides home - the reverse of the move
             e.activity = p.activity;
+            if (p.activity && e.window.activities.length > 0 && e.window.activities.indexOf(p.activity) === -1)
+                e.window.activities = [p.activity];
         }
         for (const e of entries) {
             if (e.window.deleted) continue;
@@ -1173,14 +1175,14 @@ KWin.SceneEffect {
         // with that cue, so the two never overlap.
         // A parked close that has waited out its welcome is forced: a stuck gesture loses to the user's intent.
         if (deferredClose !== null && Date.now() - deferredAt > 5000) {
-            sceneGestures = 0;
             const fn = deferredClose;
             deferredClose = null;
             deferredAt = 0;
+            sceneGestures = 0;
             fn();
             return;
         }
-        if (navHeld || quiet || pointerButtons !== Qt.NoButton || restStart !== "") return;
+        if (navHeld || quiet || pointerButtons !== Qt.NoButton || (restStart !== "" && passthroughLive)) return;
         const c = globalToCanvas(p.x, p.y);
         let e = null;
         for (let i = entries.length - 1; i >= 0; --i) {
@@ -2815,6 +2817,7 @@ KWin.SceneEffect {
             deferredAt = Date.now();
             return;
         }
+        slideAnim.stop();
         unsettle();
         targets = copyTargets(entryTargets);
         viewX = entryViewX;
@@ -3274,20 +3277,16 @@ KWin.SceneEffect {
 
     // The drag is over: the grip's release, or anything that ends a gesture.
     function endDrag() {
-        // A pinned window dropped outside the screen bounces back in: the
-        // anchor springs from where the hand let go to the nearest spot
-        // wholly on screen, overshooting and settling - the physics of the
-        // edges.
+        // A pinned window's anchor is remembered where the hand let it go:
+        // the float tick reads the entry itself and clamps the picture on
+        // screen, so a drop outside is carried, not snapped.
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
             if (!isPinnedEntry(e) || !dragRaw[e.window.internalId]) continue;
             const sx0 = (e.x - viewX) * zoom, sy0 = (e.y - viewY) * zoom;
             const cl = clampScreen(e);
-            if (Math.abs(sx0 - cl.sx) < 0.5 && Math.abs(sy0 - cl.sy) < 0.5) {
+            if (Math.abs(sx0 - cl.sx) < 0.5 && Math.abs(sy0 - cl.sy) < 0.5)
                 pinned[e.window.caption] = { sx: sx0, sy: sy0 };
-            } else {
-                bounce = { caption: e.window.caption, sx: sx0, sy: sy0, vx: 0, vy: 0, tx: cl.sx, ty: cl.sy };
-            }
         }
         dragIndex = -1;
         endWindowDrag();
@@ -3708,8 +3707,8 @@ KWin.SceneEffect {
     }
     // The shader wallpaper's feed. The commit writes the authoritative state
     // for the closed desktop; this tick keeps it fed while the canvas runs,
-    // so the wallpaper's engine (its own 1s poll) sees the live camera, the
-    // clusters and the trail mid-flight instead of the last landing. The
+    // so the wallpaper's engine (its own 1s poll) sees the live camera and
+    // the clusters mid-flight instead of the last landing. The
     // overworld's scene covers the wallpaper while the canvas is open, but
     // the data is live for the engine's preview and any surface that reads
     // the file.
@@ -3964,7 +3963,7 @@ KWin.SceneEffect {
 
     // ---- the shader channel ------------------------------------------------
     // The plane's remembered state, pushed at each commit for the shader
-    // wallpaper's engine: the saved view, the clusters and the day-trail,
+    // wallpaper's engine: the saved view, the clusters and the ground,
     // all in plane coordinates - the plugin screen-projects them, so a
     // fragment shader works in pixels with no camera math of its own.
     function canvasStateString() {
@@ -4352,13 +4351,18 @@ KWin.SceneEffect {
         // Switching activities at 1:1 switches viewport: the ground follows.
         function onCurrentActivityChanged(id) {
             if (effect.refreshActivities()) effect.ensureTargets();
-            if (effect.visible) return;
-            const t = effect.targetOf(KWin.Workspace.currentActivity || "");
-            effect.viewX = t.x;
-            effect.viewY = t.y;
-            effect.publishGround();
+            // A focus fly that crossed activities waits for this signal, and
+            // the canvas may still be visible (a smooth close is mid-flight):
+            // take the window before any early return, or the focus waits for
+            // the next activity switch.
             const w = effect.pendingFocus;
             effect.pendingFocus = null;
+            if (!effect.visible) {
+                const t = effect.targetOf(KWin.Workspace.currentActivity || "");
+                effect.viewX = t.x;
+                effect.viewY = t.y;
+                effect.publishGround();
+            }
             if (w && !w.deleted) KWin.Workspace.activeWindow = w;
         }
         // Another desktop's windows are a different set on the same plane.
@@ -4468,6 +4472,7 @@ KWin.SceneEffect {
         case "origin": origin(); break;
         case "extents": zoomExtents(); break;
         case "pan": if (numok(1) && numok(2)) panBy(Number(a[1]), Number(a[2])); break;
+        case "panpx": if (numok(1) && numok(2)) { viewX -= Number(a[1]) / zoom; viewY -= Number(a[2]) / zoom; } break; // screen pixels at the current zoom, no torch: the tests' exact pan
         case "zoom": {
             if (!numok(1)) break;
             const p = a.length >= 4 && numok(2) && numok(3) ? Qt.point(Number(a[2]), Number(a[3])) : cursorScreen();
@@ -4663,6 +4668,7 @@ KWin.SceneEffect {
             + " rest=" + (restStart ? "1" : "0")
             + " moves=" + Object.keys(entryAnims).length
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
+            + " map=" + (mapMinimap ? "minimap" : "-")
             + " ql=" + ql
            
             + " cpu=" + Math.round(cpuBusy)

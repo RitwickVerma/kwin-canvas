@@ -271,6 +271,10 @@ void CanvasPassthrough::setVerbose(bool verbose)
 
 void CanvasPassthrough::publishRest(KWin::Window *w)
 {
+    // No passthrough, no cue: the handoff the cue anticipates exists only
+    // while the plugin owns the canvas's input. A deactivation clears the
+    // property through leave().
+    if (!m_active) w = nullptr;
     if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
         if (w) {
             // The window and the delay the hover clock is waiting out, so

@@ -12,10 +12,10 @@
      <item row="0" column="1"><widget class="QComboBox" name="kcfg_OpenZoom"><property name="editable"><bool>true</bool></property><item><property name="text"><string>1</string></property></item><item><property name="text"><string>fit</string></property></item><item><property name="text"><string>0.5</string></property></item></widget></item>
      <item row="1" column="0"><widget class="QLabel" name="label_FullscreenZoom"><property name="text"><string>View when the canvas opens over a fullscreen app (1 keeps the ordinary opening)</string></property><property name="buddy"><cstring>kcfg_FullscreenZoom</cstring></property></widget></item>
      <item row="1" column="1"><widget class="QComboBox" name="kcfg_FullscreenZoom"><property name="editable"><bool>true</bool></property><item><property name="text"><string>0.85</string></property></item><item><property name="text"><string>1</string></property></item><item><property name="text"><string>fit</string></property></item></widget></item>
-     <item row="1" column="0"><widget class="QLabel" name="label_BorderZoom"><property name="text"><string>View when a screen edge or corner opens it</string></property><property name="buddy"><cstring>kcfg_BorderZoom</cstring></property></widget></item>
-     <item row="1" column="1"><widget class="QComboBox" name="kcfg_BorderZoom"><property name="editable"><bool>true</bool></property><item><property name="text"><string>0.8</string></property></item><item><property name="text"><string>1</string></property></item><item><property name="text"><string>fit</string></property></item></widget></item>
-     <item row="2" column="1"><widget class="QCheckBox" name="kcfg_BorderSlide"><property name="text"><string>A screen edge push pans the plane one step toward it instead of opening the canvas (the edges are a route, not a door)</string></property></widget></item>
-     <item row="3" column="1"><widget class="QCheckBox" name="kcfg_AutoActivate"><property name="text"><string>Open the canvas as soon as the effect loads, at login</string></property></widget></item>
+     <item row="2" column="0"><widget class="QLabel" name="label_BorderZoom"><property name="text"><string>View when a screen edge or corner opens it</string></property><property name="buddy"><cstring>kcfg_BorderZoom</cstring></property></widget></item>
+     <item row="2" column="1"><widget class="QComboBox" name="kcfg_BorderZoom"><property name="editable"><bool>true</bool></property><item><property name="text"><string>0.8</string></property></item><item><property name="text"><string>1</string></property></item><item><property name="text"><string>fit</string></property></item></widget></item>
+     <item row="3" column="1"><widget class="QCheckBox" name="kcfg_BorderSlide"><property name="text"><string>A screen edge push pans the plane one step toward it instead of opening the canvas (the edges are a route, not a door)</string></property></widget></item>
+     <item row="4" column="1"><widget class="QCheckBox" name="kcfg_AutoActivate"><property name="text"><string>Open the canvas as soon as the effect loads, at login</string></property></widget></item>
     </layout></widget></item>
    <item><widget class="QGroupBox" name="groupHold"><property name="title"><string>The canvas modifier - hold a button on the normal desktop</string></property>
     <layout class="QVBoxLayout" name="formHoldV">
@@ -25,8 +25,8 @@
       <item row="0" column="1"><widget class="QLineEdit" name="kcfg_CanvasHold"/></item>
       <item row="1" column="0"><widget class="QLabel" name="label_HoldDelay"><property name="text"><string>Hold for this long before it opens the canvas (ms; quicker presses pass through as clicks)</string></property><property name="buddy"><cstring>kcfg_HoldDelay</cstring></property></widget></item>
       <item row="1" column="1"><widget class="QSpinBox" name="kcfg_HoldDelay"><property name="minimum"><number>100</number></property><property name="maximum"><number>1000</number></property></widget></item>
-      <item row="1" column="0"><widget class="QLabel" name="label_SwapButton"><property name="text"><string>Button that, while the modifier is held, flies between the two most recent windows (ForwardButton = MB5)</string></property><property name="buddy"><cstring>kcfg_SwapButton</cstring></property></widget></item>
-      <item row="1" column="1"><widget class="QLineEdit" name="kcfg_SwapButton"/></item>
+      <item row="2" column="0"><widget class="QLabel" name="label_SwapButton"><property name="text"><string>Button that, while the modifier is held, flies between the two most recent windows (ForwardButton = MB5)</string></property><property name="buddy"><cstring>kcfg_SwapButton</cstring></property></widget></item>
+      <item row="2" column="1"><widget class="QLineEdit" name="kcfg_SwapButton"/></item>
      </layout></item>
     </layout></widget></item>
    <item><widget class="QGroupBox" name="groupNav"><property name="title"><string>Navigating</string></property>
@@ -146,6 +146,7 @@
      <item row="7" column="1"><widget class="QSpinBox" name="kcfg_GridOctaves"><property name="minimum"><number>1</number></property><property name="maximum"><number>8</number></property></widget></item>
      <item row="8" column="0"><widget class="QLabel" name="label_TileImage"><property name="text"><string>Tile image instead of the grid (file URL, empty for the grid)</string></property><property name="buddy"><cstring>kcfg_TileImage</cstring></property></widget></item>
      <item row="8" column="1"><widget class="QLineEdit" name="kcfg_TileImage"/></item>
+    <item row="9" column="1"><widget class="QCheckBox" name="kcfg_ShowLabels"><property name="text"><string>Draw the canvas coordinates on the ground</string></property></widget></item>
     </layout></widget></item>
    <item><widget class="QGroupBox" name="groupActivity"><property name="title"><string>Activities and windows</string></property>
     <layout class="QFormLayout" name="formActivity">

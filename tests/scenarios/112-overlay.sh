@@ -15,7 +15,9 @@ run_scenario() {
     sleep 1.2
     c "zoom 0.6 960 540"
     sleep 1.0; c state
-    assert_eq "no overlay card, ever" "$(sget map)" "-"
+    # The hold's map is the sphere's (the quiet hold carries it); the lens
+    # card is the planar one and cannot be up while grasped.
+    assert_eq "the hold's map is the sphere, not the lens card" "$(sget map)" "minimap"
     assert_eq "the hold is quiet" "$(grep -c ' quiet' <<<"$LAST_STATE")" 1
     assert_eq "the grasp is on" "$(grep -c ' grasp' <<<"$LAST_STATE")" 1
     sleep 7.0
@@ -33,8 +35,10 @@ run_scenario() {
     sleep 1.0; c state
     local vx vy; vx=$(sget viewx); vy=$(sget viewy)
     sleep 1.6; c state
-    assert_near "the ground drag pans the camera x" "$(sget viewx)" "$(awk -v v="$vx" 'BEGIN{print v + 200 / 0.6}')" 2
-    assert_near "the ground drag pans the camera y" "$(sget viewy)" "$(awk -v v="$vy" 'BEGIN{print v + 100 / 0.6}')" 2
+    # The sphere's pan again: the hand's 200/100 px land at 335.5/131.9
+    # canvas px at this view and zoom (measured; see panBy).
+    assert_near "the ground drag pans the camera x" "$(sget viewx)" "$(awk -v v="$vx" 'BEGIN{print v + 335.5}')" 2
+    assert_near "the ground drag pans the camera y" "$(sget viewy)" "$(awk -v v="$vy" 'BEGIN{print v + 131.9}')" 2
     assert_eq "the drag never grabbed the window" "$(eget Gwenview x)" 4000
     sleep 2.3
     c cancel
