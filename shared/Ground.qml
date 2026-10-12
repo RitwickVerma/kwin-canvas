@@ -31,6 +31,12 @@ Item {
     // the opaque base itself. The wallpaper plugin always draws it.
     property bool drawBackground: true
 
+    // The sphere's bend: 0 at 1:1 (the flat plane), growing as the camera
+    // zooms out. The ShaderEffect below resamples the flat ground through
+    // the barrel, so the grid curves toward the horizon like the sphere
+    // the torch pans over.
+    property real curvature: 0
+
     // Screen spacing below which an octave is invisible, and above which it is fully drawn.
     readonly property real fadeIn: 14
     readonly property real fadeFull: 72
@@ -38,6 +44,17 @@ Item {
     function mod(a, b) { return ((a % b) + b) % b; }
     function fade(s) { return Math.max(0, Math.min(1, (s - fadeIn) / (fadeFull - fadeIn))); }
 
+    // The flat ground, rendered offscreen so the shader can bend it.
+    ShaderEffectSource {
+        id: flatSource
+        anchors.fill: parent
+        sourceItem: flatGround
+        hideSource: true
+    }
+    Item {
+        id: flatGround
+        anchors.fill: parent
+    
     Rectangle {
         anchors.fill: parent
         visible: ground.drawBackground
@@ -141,5 +158,25 @@ Item {
         color: ground.lineColor
         opacity: 0.9
         visible: ground.tileImage === ""
+    }
+    }
+
+    // The sphere pass: the barrel bend grows with the curvature (the
+    // zoom-out), the flat ground stays pixel-true at 1:1.
+    ShaderEffect {
+        anchors.fill: parent
+        property var src: flatSource
+        property real bend: ground.curvature
+        fragmentShader: "
+            uniform sampler2D src;
+            uniform highp float bend;
+            varying highp vec2 qt_TexCoord0;
+            void main() {
+                highp vec2 uv = qt_TexCoord0;
+                highp vec2 c = uv - vec2(0.5, 0.5);
+                uv.y += bend * (c.x * c.x - 0.0833);
+                uv = clamp(uv, vec2(0.0, 0.0), vec2(1.0, 1.0));
+                gl_FragColor = texture2D(src, uv);
+            }"
     }
 }
