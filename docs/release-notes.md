@@ -1,5 +1,11 @@
 Unreleased:
 
+- The pan is a torch: the camera sits at the centre of a sphere the plane
+  is projected on, so a hold-drag turns the view by an angle instead of
+  dragging it 1:1 - the same hand movement sweeps more plane the further
+  from home you are, and the sphere's radius follows the windows' own
+  spread so the plane always fits inside the torch's reach.
+
 - The camera and the moves feel the work they do. A far flight runs a
   stiffer spring and settles as promptly as a nudge, so big jumps never
   feel like waiting; a thrown window glides longer and lands with a

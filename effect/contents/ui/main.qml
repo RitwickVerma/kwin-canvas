@@ -2207,10 +2207,34 @@ KWin.SceneEffect {
         viewY = v.y;
     }
 
+    // The pan is the torch: the camera sits at the centre of a sphere and
+    // the plane is its inside surface. Dragging turns the torch by a fixed
+    // angle per pointer pixel, so the same hand movement sweeps more plane
+    // the further from home the view sits - the plane displacement is
+    // R * tan(theta): 1:1 near the home, accelerating toward the edges.
+    // The sphere's radius grows with the windows' spread (the furthest
+    // window must stay inside the torch's reach) plus a margin, so the
+    // plane can keep growing before the sphere follows it.
+    function panSphereRadius() {
+        let spread = 0;
+        for (let i = 0; i < entries.length; ++i) {
+            const e = entries[i];
+            spread = Math.max(spread, Math.hypot(e.x + e.width, e.y + e.height), Math.hypot(e.x, e.y));
+        }
+        const floor = 2 * actionScreen().geometry.height / Math.max(0.01, zoom);
+        return Math.max(spread, floor) * 1.6 / Math.tan(85 * Math.PI / 180);
+    }
     function panBy(dx, dy) {
         effect.dbg("pan", "panBy dx=" + dx + " dy=" + dy);
-        viewX -= dx / zoom;
-        viewY -= dy / zoom;
+        const R = panSphereRadius();
+        // The torch turns by dx/(R*zoom) radians: R times that angle is
+        // dx/zoom - the plain 1:1 pan at the home - and the tan accelerates
+        // the same hand movement toward the edges.
+        const tx = Math.atan(viewX / R) - dx / (R * zoom);
+        const ty = Math.atan(viewY / R) - dy / (R * zoom);
+        const lim = 85 * Math.PI / 180;
+        viewX = R * Math.tan(Math.max(-lim, Math.min(lim, tx)));
+        viewY = R * Math.tan(Math.max(-lim, Math.min(lim, ty)));
     }
 
     // ---- camera physics ------------------------------------------------------

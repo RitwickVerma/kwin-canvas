@@ -8,8 +8,10 @@ run_scenario() {
     assert_near "view x after zoom" "$(sget viewx)" -1440 1
     assert_near "view y after zoom" "$(sget viewy)" -810 1
     c "pan -300 -200"
-    assert_near "view x after pan" "$(sget viewx)" -690 1
-    assert_near "view y after pan" "$(sget viewy)" -310 1
+    # The pan is the torch now: the same drag sweeps more plane the
+    # further from home the view sits (the tan acceleration).
+    assert_near "view x after pan" "$(sget viewx)" -72.2 1
+    assert_near "view y after pan" "$(sget viewy)" -120.8 1
     snap zoom-pan
     c extents
     assert_true "fit zoom below 1" "$(awk -v z="$(sget zoom)" 'BEGIN{print (z<1)}')" = 1
