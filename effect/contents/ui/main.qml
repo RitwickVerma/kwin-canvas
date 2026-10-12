@@ -3503,6 +3503,19 @@ KWin.SceneEffect {
 
     // The modifier of the add gesture is also the marquee modifier on the ground.
     function marqueeModifiers() { return gestureFor(configuration.MouseSelectAdd).mods; }
+    // The point over a window's frame, in the same coordinates the thumbs
+    // are drawn in: the ground's tap drops the selection only on the frame's
+    // own ground, never on a window - a window's tap is the window's gesture.
+    function entryAtScreen(sx, sy) {
+        for (let i = entries.length - 1; i >= 0; --i) {
+            const e = entries[i];
+            const f = floatOf[e.window.internalId];
+            const x = f ? f.x : (e.x - viewX) * zoom;
+            const y = f ? f.y : (e.y - viewY) * zoom;
+            if (sx >= x && sx < x + e.width * zoom && sy >= y && sy < y + e.height * zoom) return e;
+        }
+        return null;
+    }
 
     function frameGesture(id, count, modifiers) {
         if (gestureMatches(configuration.MouseGotoActivity, count, modifiers)) gotoActivity(id);
@@ -3840,8 +3853,14 @@ KWin.SceneEffect {
         const vx = Math.sign(tx) * Math.pow(Math.abs(tx), 1.7) * edgePanSpeed * dt;
         const vy = Math.sign(ty) * Math.pow(Math.abs(ty), 1.7) * edgePanSpeed * dt;
         noteGesture();
+        const beforeX = viewX, beforeY = viewY;
         panBy(-vx, -vy);
-        edgeDrag(vx, vy);
+        // The window rides the camera's own move, not the raw step: the
+        // torch's tan can carry the camera much further than vx, and the
+        // window must keep its screen spot exactly - which is the same as
+        // moving with the camera across the plane. dragEntry's units are
+        // screen pixels, so the plane delta rides through the zoom.
+        edgeDrag((viewX - beforeX) * zoom, (viewY - beforeY) * zoom);
     }
 
     // An edge pan with a window in hand takes the window along: holding a

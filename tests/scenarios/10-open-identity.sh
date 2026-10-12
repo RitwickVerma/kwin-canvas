@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 scenario_desc="opening is 1:1 on the current viewport by default; fit is a key away; home is 1:1 with every window where it is"
 run_scenario() {
+    arrange >/dev/null
     c open
     assert_eq "visible" "$(sget visible)" true
     assert_eq "opens at 1:1 (OpenZoom=1)" "$(sget zoom)" 1.0000

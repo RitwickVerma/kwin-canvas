@@ -7,6 +7,7 @@ screen_of() {
 }
 selected() { grep -c "^  \[[0-9]*\] \*" <<<"$LAST_STATE"; }
 run_scenario() {
+    arrange >/dev/null
     open_1to1
     c "zoom 0.5 960 540"
     # Two windows selected through the channel, one dragged: both move by the same delta.

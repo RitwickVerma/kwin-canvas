@@ -378,7 +378,7 @@ Item {
         TapHandler {
             enabled: !view.spaceHeld && !view.overControl && !effect.chromeHover
             acceptedButtons: Qt.LeftButton
-            onTapped: (eventPoint, button) => { if ((point.modifiers & effect.marqueeModifiers()) === 0) effect.clearSelection(); }
+            onTapped: (eventPoint, button) => { if ((point.modifiers & effect.marqueeModifiers()) === 0 && !effect.entryAtScreen(eventPoint.position.x + view.sg.x, eventPoint.position.y + view.sg.y)) effect.clearSelection(); }
         }
 
         // A left drag on the ground pans, or, with the add gesture's modifier
@@ -924,7 +924,7 @@ Item {
                         // The world is the map: during the grasp a tap on a
                         // window is the release's destination - the hold
                         // jumps it to 1:1 and the release commits there.
-                        effect.dbg("tap", "body tap index=" + index + " grasp=" + effect.grasp + " spaceHeld=" + view.spaceHeld + " button=" + button);
+                        effect.dbg("tap", "body tap index=" + index + " count=" + count + " mods=" + modifiers + " grasp=" + effect.grasp + " spaceHeld=" + view.spaceHeld + " button=" + button);
                         if (effect.grasp) {
                             effect.graspJumpTo(index);
                             return;

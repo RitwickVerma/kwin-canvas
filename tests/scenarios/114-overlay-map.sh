@@ -46,7 +46,9 @@ run_scenario() {
     c state
     sleep 1.0
     c state
-    assert_eq "the world is the map - no card" "$(sget map)" "-"
+    # The quiet hold carries the sphere's map, not the lens card: the lens
+    # cannot be up while the hold is grasped.
+    assert_eq "the hold's map is the sphere, not the lens card" "$(sget map)" "minimap"
     shot "$OUT/om-map.png" >/dev/null
 
     local b1 b2

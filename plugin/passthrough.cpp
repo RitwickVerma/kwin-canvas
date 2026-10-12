@@ -1007,6 +1007,12 @@ bool CanvasPassthrough::pointerAxis(PointerAxisEvent *event)
     if (!m_active && m_door && !m_holdDown) {
         if (!windowUnder(event->position) && !chromeAt(event->position)) {
             if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+                // An open canvas owns its own wheel: its QML handler zooms
+                // at the pointer. Consuming the step here would eat it -
+                // the door only opens the closed world.
+                if (canvas->property("visible").toBool()) {
+                    return false;
+                }
                 // The raw delta is positive scrolling down (KWin maps the
                 // fake axis so), which is the zoom out - the door's step.
                 canvas->setProperty("doorStep", event->delta > 0 ? -1 : 1);
@@ -1033,8 +1039,9 @@ bool CanvasPassthrough::pointerAxis(PointerAxisEvent *event)
     // With a canvas button down the wheel is the canvas's too: a notch zooms
     // the canvas at the pointer instead of scrolling the window under it.
     // The hold counts: a wheel during the grasp zooms the keyhole into the
-    // map, wherever the pointer sits.
-    if ((event->buttons.toInt() & m_nav) || m_holdDown) {
+    // map, wherever the pointer sits. A fake axis event carries no held
+    // buttons, so the plugin's own mask decides as well.
+    if ((event->buttons.toInt() & m_nav) || (m_buttons.toInt() & m_nav) || m_holdDown) {
         return false;
     }
     const QPointF canvas = toCanvas(event->position);

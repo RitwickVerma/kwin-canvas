@@ -24,11 +24,13 @@ run_scenario() {
     c commit
     sleep 0.3
 
-    # One device holds for the whole part: the press on open ground, the
-    # zoom through the debug channel, and the pointer walked onto KCalc
-    # mid-hold. A separate device's fresh first event lands at its default
-    # (0,0) - the corner - and the hold's edge pan would ride it away.
-    { printf 'move 1700 900\nsleep 60\ndown back\nsleep 4000\nmove 544 756\nsleep 4000\nup back\n'; } | input >/dev/null 2>&1 &
+    # One device holds for the whole part: the press on open ground (the
+    # top strip: every placed window starts at y >= 600, so nothing sits
+    # over (1700,200)), the zoom through the debug channel, and the
+    # pointer walked onto KCalc mid-hold. A separate device's fresh first
+    # event lands at its default (0,0) - the corner - and the hold's edge
+    # pan would ride it away.
+    { printf 'move 1700 200\nsleep 60\ndown back\nsleep 4000\nmove 544 756\nsleep 4000\nup back\n'; } | input >/dev/null 2>&1 &
     holdpid=$!
     sleep 1.2
     c "zoom 0.8 960 540"

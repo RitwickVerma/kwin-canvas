@@ -190,11 +190,11 @@ function smartPanNeighbourhood(rect, others, g, viewX, viewY, zoom, pad) {
     }
     others = near;
     if (others.length === 0) return { dx: dx, dy: dy };
-    // Fully inside the screen counts; an edge just touching does not.
-    // (The old rule counted a window whose corner grazed the screen,
-    // which is how the camera kept parking the cluster just outside.)
-    function xIn(w, d) { return d > w.x - sl && d < w.x + w.width - sl - sw; }
-    function yIn(w, d) { return d > w.y - st && d < w.y + w.height - st - sh; }
+    // A neighbour counts once any part of it is on screen: partial
+    // visibility is the whole point of the pull, and an edge exactly
+    // grazing the screen counts for nothing.
+    function xIn(w, d) { return d > w.x - sl - sw && d < w.x + w.width - sl; }
+    function yIn(w, d) { return d > w.y - st - sh && d < w.y + w.height - st; }
     function count(dxx, dyy) {
         let n = 0;
         for (let i = 0; i < others.length; ++i) {

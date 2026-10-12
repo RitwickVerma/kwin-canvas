@@ -19,11 +19,11 @@ run_scenario() {
     done
     assert_true "KCalc on screen" "$(awk -v x="$fx" 'BEGIN{print (x>=0 && x<1920)}')" = 1
     assert_near "Dolphin kept its offset" "$(eget Dolphin fx)" "$(awk -v x="$fx" 'BEGIN{print x+680}')" 1
-    # A window hanging half off the screen is not visible: focusing it slides
-    # the least that brings it wholly on screen - its edge ends at the
-    # screen's margin - keeping the rest of the desk in view rather than
-    # centring it. The layout is restored first, and Dolphin is activated
-    # while fully visible, so the KCalc activation is the only fly.
+    # A window hanging half off the screen is not visible: focusing it
+    # lands it with its cluster - the fly pans past the strict least move
+    # so the windows around it come at least partially into view (6117723).
+    # The layout is restored first, and Dolphin is activated while fully
+    # visible, so the KCalc activation is the only fly.
     arrange >/dev/null
     c "activate Dolphin"
     sleep 0.3
@@ -37,8 +37,15 @@ run_scenario() {
     done
     assert_true "a half-off window is brought wholly on screen" \
         "$(awk -v x="$(eget KCalc fx)" 'BEGIN{print (x>=0 && x+480<=1920)}')" = 1
-    assert_true "with the least movement, its edge near the margin" \
-        "$(awk -v x="$(eget KCalc fx)" 'BEGIN{print (x + 480 > 1820 && x + 480 <= 1920)}')" = 1
+    local n=0 nc nx nw
+    for nc in "sample.txt" Konsole Dolphin "wallpaper.png"; do
+        nx=$(eget "$nc" x); nw=$(eget "$nc" w)
+        if awk -v x="$nx" -v w="$nw" -v vx="$(sget viewx)" -v z="$(sget zoom)" \
+            'BEGIN{exit !((x - vx) * z < 1920 && (x - vx + w) * z > 0)}'; then
+            n=$((n + 1))
+        fi
+    done
+    assert_true "and the neighbours came into view with it" "$n" -ge 3
     arrange >/dev/null
     assert_eq "layout restored" "$(eget KCalc fx)" 100
 }

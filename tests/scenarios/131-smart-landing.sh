@@ -22,7 +22,11 @@ run_scenario() {
     sleep 0.5
     c state
     assert_eq "the canvas is open at the first cluster" "$(sget visible)" true
-    { printf 'move 1700 900\nsleep 100\nclick forward\nsleep 700\n'; } | input
+    # The click must land on bare ground: at the first cluster's home view
+    # (1700,900) sits inside Gwenview, and with the pass-through live the
+    # window takes the click - the canvas never tours. (1800,540) is the
+    # clear strip between Dolphin's bottom edge and the lower windows.
+    { printf 'move 1800 540\nsleep 100\nclick forward\nsleep 700\n'; } | input
     for i in $(seq 1 12); do c state; [ "$(sget viewx)" != "0.0" ] && break; sleep 0.4; done
     c state
     assert_near "the focused window stays completely inside" "$(sget viewx)" 3278 60

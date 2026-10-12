@@ -121,10 +121,13 @@ PublishGround=true
 BorderActivate=${NEST_BORDERS:-7}
 # The motion knobs are off in the nest, so a scenario measures the canvas and
 # not the spring: every drag lands exactly where it was put and every camera
-# move arrives at once. 94-physics turns them on and measures them.
+# move arrives at once. 94-physics turns them on and measures them, and the
+# layout glides (MovesGlide) are the same story: a placed window is found at
+# its landing, not on its way there.
 PanInertia=false
 SmoothZoom=false
 WindowPhysics=false
+MovesGlide=false
 # The fidelity ladder reads the machine's real load, and the machine that
 # runs the suite IS busy with the suite: the thresholds are pinned at 100 so
 # a scenario's golden never depends on how hard the host is breathing.

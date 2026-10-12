@@ -13,6 +13,10 @@ glass_count() {
 
 run_scenario() {
     source tests/lib.sh
+    if [ "${NEST_DECOR:-}" != canvas ]; then
+        skip "the canvas decoration is not loaded (make test-decor / NEST_DECOR=canvas)"
+        return
+    fi
     arrange >/dev/null
     sleep 1.5
     # The arrange's activation chain ends at KCalc: the active window wears

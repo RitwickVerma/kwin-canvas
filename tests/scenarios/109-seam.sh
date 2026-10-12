@@ -42,4 +42,5 @@ run_scenario() {
     want=$(awk -v y="$(eget KCalc y)" 'BEGIN{print y - 24}')
     assert_near "and the smart pan brings it on screen" "$(sget viewy)" "$want" 4
     c cancel
+    arrange >/dev/null
 }
