@@ -115,7 +115,7 @@ those, from this side of the fork:
 
 ## Sessions
 
-### 2026-10-11 — the wallpaper crash loop leaves, and the bent ground's seam is red
+### 2026-10-11 — the wallpaper crash loop leaves, and the plane bends whole
 
 The session began outside the tree: plasmashell was in an endless
 crash-restart loop — every instance died SIGABRT after ~5 s, 89 restarts
@@ -150,17 +150,46 @@ and `make test ARGS=20-zoom` (8/0, the barrel's goldens exact), and live:
 the journal. The desktopWindow handle needs a KWin restart before it runs
 live; its console.log is the only line that left.
 
-What the round did not fix, and is a real decision: scenario 128 is red
-against 51532eb (seam rmse 0.0726, threshold 0.02) and an A/B with HEAD's
-Ground.qml reproduces it exactly — the bent ground is the cause, not the
-WIP. `c open` opens at OpenZoom 0.8, so the effect's ground draws with
-curvature 0.024 while the wallpaper's ground is still flat, and the seam
-cannot hold. Either the wallpaper receives the same curvature or 128 opens
-at 1:1; the call is open.
+The seam decision landed: the bend moved off the ground and onto the
+whole plane - ui.qml wraps the ground, the frame bands, the windows, the
+tags, the web and the chips in one item, and a ShaderEffectSource grab
+resamples it through the barrel at zoom-out (the layer.effect route was
+tried and blurs the window textures inside the compositor's scene). The
+grab carries visible/hideSource/live on one gate - a live:false grab
+otherwise paints a stale frame at 1:1, and that stale frame was the seam
+reading 0.0726. The wallpaper stays flat and the seam holds: 128 is 3/0
+through the new `panpx` verb (a screen-pixel pan with no torch, so the
+scenario's crops stay exact), 20-zoom is 8/0 and 10-open 11/0.
 
 The kde-material-you-colors TypeError spam that made the loop look worse is
 downstream of wallpaper-change events — a four-second burst at the switch,
 quiet since; nothing in this tree feeds it.
+
+The maintainer pass then closed the round's open ends, fixing four real
+bugs the review surfaced. The smart pan's neighbour pull had been
+mathematically dead since 6117723 swapped the visibility bounds - only a
+window wider than the screen could ever count - and `make unit` held two
+failing cases for it while scenario 131 had lost its pull; the bounds are
+restored (unit 92/0, 131 4/0) and the comment that described the dead rule
+is rewritten. The activation fly keeps that commit's deliberate cluster
+landing; scenario 70's old least-margin check now measures the intent
+instead (70 6/0). The plugin's wheel path read `event->buttons`, which a
+fake axis event does not carry, so a wheel with a canvas button held
+scrolled into the void - the plugin's own mask decides now - and the zoom
+door no longer eats a wheel while the canvas is open (132 5/0). The edge
+pan carried its raw step into an in-hand window while the camera rode the
+torch's tan, so the window drifted off the pointer; it carries the camera's
+own delta now (81 29/0). And the ground's own tap cleared a fresh
+ctrl+click selection the thumb had just set (96 10/0). Two harness
+lessons: the nest seeds MovesGlide off like the other motion knobs (a
+placed window is read at its landing, not mid-glide), and `make barrel`
+plus lint-shader's regeneration check keep shared/GroundBarrel.frag.qsb
+honest. Scenario 104's quick-press delivery check skips honestly - the
+nest's probe client logs its activation but not the press in this build,
+so that proof belongs to the live session. The full suite at the pass's
+end: 256 pass, 12 fail, 2 skip, and every one of the 12 is a suite-order
+artefact, green alone the same evening; docs/testing.md's "Things that
+cost time" lists them rather than letting them pass for green.
 
 ### 2026-10-20 — the canvas feeds the shader wallpaper
 
@@ -170,21 +199,19 @@ hand-rolled runtime ("i dont want to reinvent wheel youll rite bugged
 code"), so the round rides the mature wheel: kde-shader-wallpaper (the
 Plasma 6 shader engine, 200+ shaders, Shadertoy import) is the runtime,
 and this tree only publishes the state. Every commit writes the plane's
-remembered state — the saved view, the clusters and the day-trail — to
+remembered state — the saved view and the clusters — to
 kwin-canvas-state.txt through the plugin's setCanvasState channel,
 screen-projected, one line per fact. The starter shader
-(shaders/canvas-floor.frag) reads three uniforms (the cluster array,
-the trail points) and lights the floor from them; the fork that feeds
+(shaders/canvas-floor.frag) reads the cluster array and lights the floor
+from it; the fork that feeds
 the uniforms lives with the engine, outside this tree, with the
 contract in docs/shader-integration.md. Scenario 138 proves the file
 (6/0 — the view line, the ground's own knobs line, one cluster line per
-room at the right spot, the trail line after a pan). The first shader
+room at the right spot). The first shader
 look read as ambient lighting to the user, so the floor became the
 plane's own ground: the state carries the grid knobs and the shader
 draws the same background and multi-octave grid, scrolling with the
-saved view, under the blooms and the trail.
-(5/0 — the view line, one cluster line per room at the right spot, the
-trail line after a pan).
+saved view, under the blooms.
 
 ### 2026-10-19 — every move plays, and the pin's clamp is back
 
@@ -442,9 +469,10 @@ tick (a point every ~60 canvas px of the centre's travel, capped at
 500, pruned to the last ten minutes - the parked trail still ages
 away); the render is a camera-transform Shape like the threads, a
 #2a6ddf stroke at 2.5/zoom over the ground, fading with the head's age
-and the skin, gone at 1:1. The nest seeds DayTrail=false so no golden
-sees it; scenario 134 (3/0) proves the points, the line and the knob.
-The state line gained trail=.
+and the skin, gone at 1:1. The nest seeded DayTrail=false so no golden
+saw it; scenario 134 proved the points, the line and the knob. The state
+line gained trail=. The trail left in 250bda6: the state carries no
+trail, the shader reads none, and scenario 134 went with it.
 
 ### 2026-10-08 — the hover steps forward into the light
 

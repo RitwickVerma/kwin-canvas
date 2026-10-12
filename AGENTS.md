@@ -57,7 +57,7 @@ make nest-reload             # reinstall, restart the nest, relaunch clients
 make nest-down               # stop it
 make nest-clean              # kill leftovers of nests whose state is gone
 
-make test                    # all scenarios, ~10 min: expect "== pass 244  fail 0  skip 2"
+make test                    # all scenarios, ~10 min: expect "== pass 256  fail 12  skip 2" - the 12 are suite-order, each green alone (docs/testing.md)
 make test ARGS=60            # scenarios whose file name matches
 make test ARGS="--update-golden 93"   # re-record that scenario's golden shots
 make test-two-outputs        # NEST_OUTPUTS=2, the 91 scenarios
@@ -92,10 +92,12 @@ Cheapest first, and stop where the change warrants:
 3. **`make test ARGS=<name>`** — one or two scenarios in a nest, a minute or two:
    the right size for a change you can describe in one sentence.
 4. **`make test`** — the whole suite against a fresh nest, ten minutes or so,
-   `== pass 244  fail 0  skip 2` on a healthy tree. Both skips say what they cannot
-   check here: `85-passthrough`, because the plugin is not built, and
-   `91-two-outputs`, because it needs a two-output nest — which is what
-   `make test-two-outputs` gives it instead of a skip.
+   256 pass, 12 fail, 2 skip on the current tree: each fail is a suite-order
+   artefact, green alone the same evening (the list and the reasoning are in
+   `docs/testing.md`). The skips say what they cannot check here:
+   `91-two-outputs`, because it needs a two-output nest — `make
+   test-two-outputs` gives it that — and `135-decoration`, because the canvas
+   decoration loads only under `NEST_DECOR=canvas` (`make test-decor`).
 5. **Screenshots.** A change that shows on screen usually moves a golden: run the
    affected scenario, look at `build/test/NAME.diff.png`, and re-record with
    `make test ARGS="--update-golden NAME"` **only when the new picture is what
@@ -186,9 +188,9 @@ Cheapest first, and stop where the change warrants:
 - **Goldens and fixtures are committed**, and CI checks that `make fixtures`
   reproduces the fixtures byte for byte.
 - **The nest turns the motion knobs off** (`SmoothZoom`, `PanInertia`,
-  `WindowPhysics`) so a scenario measures the canvas and not the spring;
-  `94-physics` is the scenario that turns them on. A scenario expecting instant
-  motion is not wrong.
+  `WindowPhysics`, `MovesGlide`) so a scenario measures the canvas and not the
+  spring; `94-physics` is the scenario that turns them on. A scenario expecting
+  instant motion is not wrong.
 - **`qmllint` is called by absolute path** (`/usr/lib/qt6/bin/qmllint`) because
   the Qt5 build in `/usr/bin` answers to the same name.
 - **`make release`, `make aur` and `make aur-passthrough`** publish to the

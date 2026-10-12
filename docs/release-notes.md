@@ -1,5 +1,20 @@
 Unreleased:
 
+- The wheel behaves everywhere on the canvas now: a wheel with a canvas
+  button held zooms the canvas instead of nothing, and the zoom door no
+  longer eats a wheel over an already-open canvas.
+
+- The zoom-out bend now carries the whole plane: the window frames, the
+  tags and the web lean with the ground instead of floating flat over it.
+  At 1:1 everything is exactly flat again, and the wallpaper's ground
+  stays straight.
+
+- The settings gained **ShowLabels**: the ground's coordinate labels can
+  be turned off, and the same choice reaches the ground wallpaper.
+
+- A tiled ground whose image cannot be loaded now falls back to the grid
+  instead of leaving the plane blank.
+
 - The pan is a torch: the camera sits at the centre of a sphere the plane
   is projected on, so a hold-drag turns the view by an angle instead of
   dragging it 1:1 - the same hand movement sweeps more plane the further
@@ -29,9 +44,8 @@ Unreleased:
   drifts the ridges so the desktop carries the memory of where the
   plane has been. The canvas is the weather - the rooms are the
   villages, warm clusters of light on the slopes, each breathing on its
-  own beat; the day-trail is the winding path a traveller walked, still
-  glowing where the newest steps are; the windows are the lanterns left
-  along it; and the pointer is a torch in the dusk. The state's
+  own beat; the windows are the lanterns left along it; and the pointer
+  is a torch in the dusk. The state's
   coordinates are scaled from the logical plane to the physical screen
   and flipped to the shader's space, so every light lands where its
   window is.
@@ -40,15 +54,14 @@ Unreleased:
   every part of it is the canvas: the clusters are the islands - each
   room a sand-ringed landmass with breaking foam and a lighthouse whose
   beam sweeps on the room's own beat - the windows are the boats with
-  their lanterns spilling light down the water, the day-trail is a
-  phosphorescent wake across the deep, and the pointer is the one thing
-  that falls in, spreading its ripple and brightening the glitter. The
+  their lanterns spilling light down the water, and the pointer is the
+  one thing that falls in, spreading its ripple and brightening the glitter. The
   sun sits high, its path of light rides the crests, and the islands
   break the swell and shadow the water away from it.
 
 - The night sea's rooms always show. The saved view can sit far from
   the clusters - the plane's truth - and the shoals used to sit off
-  the screen with it, leaving the desktop empty but for the wake.
+  the screen with it, leaving the desktop empty.
   Now an off-screen shoal pulls itself to the nearest edge, so the
   desktop always shows where the rooms are.
 
@@ -58,15 +71,13 @@ Unreleased:
   rooms are the shoals: where a cluster sits, the plankton have
   gathered in a wide soft bloom that breathes on the room's own beat.
   The windows are the lanterns of the boats, each spilling its light
-  down the water. The day-trail is the wake - a single luminous ribbon,
-  bright at the head and fading along the path it took. The pointer is
-  the thing that falls in: its press sends the ripple and lights the
+  down the water. The pointer is the thing that falls in: its press sends the ripple and lights the
   plankton around it. And everywhere, a few scattered sparks drift and
   twinkle. The state's coordinates are flipped to the shader's space,
   so every glow lands where its window really is.
 
-- The canvas floor is a place of light. The starter's grid and trail
-  read as graph paper, so they are gone: the floor is a deep flowing
+- The canvas floor is a place of light. The starter's grid
+  read as graph paper, so it is gone: the floor is a deep flowing
   field - the domain-warped fbm breathing in the canvas's own blues -
   and the canvas's state is the light in it: the rooms glow where the
   clusters sit, each on its own slow beat, the real windows cast their
@@ -86,13 +97,13 @@ Unreleased:
 - The canvas feeds the shader wallpaper. Every commit writes the plane's
   remembered state - the saved view, the ground's own knobs (the grid
   spacing, the octaves, the line and background colours), the clusters
-  and the day-trail's last points - to kwin-canvas-state.txt, with the
-  clusters and the trail screen-projected, as plain lines a shader
+  - to kwin-canvas-state.txt, with the clusters screen-projected, as plain
+  lines a shader
   wallpaper's engine can hand to a fragment shader as uniforms. The
-  starter shader ships at shaders/canvas-floor.frag: it draws the
-  plane's own ground - the background and the multi-octave grid,
-  scrolling with the saved view - then lights each cluster and draws the
-  trail. The contract between the file and the shader is documented in
+  starter shader ships at shaders/canvas-floor.frag: the astronaut
+  scene - the deep dusk, the great planet overhead, the calm dark ocean -
+  where the saved view drifts the stars and the water and each cluster is
+  a faint warm light low in the sky. The contract between the file and the shader is documented in
   docs/shader-integration.md; the engine fork (reading the file into the
   uniforms) is the one piece that lives outside this tree.
 

@@ -10,8 +10,6 @@
 
 uniform int iCanvasClusterCount;
 uniform vec4 iCanvasClusters[16];
-uniform int iCanvasTrailCount;
-uniform vec2 iCanvasTrail[64];
 uniform vec3 iCanvasBackground;
 uniform vec2 iCanvasSize;
 uniform vec2 iCanvasView;

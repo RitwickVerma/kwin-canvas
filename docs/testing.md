@@ -28,10 +28,11 @@ screen border into the effect's `BorderActivate` instead of the default 7
 wallpaper haze layer each; `make test-two-outputs` runs the scenarios written for an
 arrangement against one.
 
-The nest seeds the motion knobs off - `SmoothZoom`, `PanInertia` and
-`WindowPhysics` - so a scenario measures the canvas and not the spring: every
-drag lands exactly where it was put and every camera move arrives at once.
-`94-physics` turns them on and measures them.
+The nest seeds the motion knobs off - `SmoothZoom`, `PanInertia`,
+`WindowPhysics` and `MovesGlide` - so a scenario measures the canvas and not
+the spring: every drag lands exactly where it was put, every camera move
+arrives at once, and every layout write is found at its landing. `94-physics`
+turns them on and measures them.
 
 ```bash
 make play                       # up, fixture apps arranged, canvas open and fitted
@@ -159,15 +160,18 @@ make test                 # all scenarios
 make test ARGS=60         # scenarios matching a pattern
 make test-two-outputs     # NEST_OUTPUTS=2, the 91 scenarios (91-two-outputs, 89)
 make test-two-outputs ARGS=--update-golden   # re-record 91's golden
-make test-panel           # NEST_PANEL=1, the panel scenario (86-panel-popup)
+make test-panel           # NEST_PANEL=1, the panel scenarios (86-panel-popup, 117-dock)
 make golden               # re-record the golden screenshots
 ```
 
-`make test-panel` runs its scenario alone against a nest whose plasmashell
-grows a bottom panel with the digital clock, the only place an applet's
-dropdown - a popup - is representable. The scenario's camera asserts are the
-regression; its popup-premise check skips when plasmashell's popup does not
-render in the virtual nest, and the skip says so rather than pretending.
+`make test-panel` runs the two panel scenarios (86-panel-popup, 117-dock)
+against a nest whose plasmashell grows a bottom panel with the digital
+clock, the only place an applet's dropdown - a popup - is representable.
+86's camera asserts are the regression; its popup-premise check skips when
+plasmashell's popup does not render in the virtual nest, and the skip says
+so rather than pretending. 117 is the dock's own proof: the dock and its
+applets keep their pixels, and no click, hover or rest on them may focus
+the window beneath or fly the canvas.
 
 `tests/run.sh` starts the `test` nest, launches the fixture apps, arranges
 them at fixed canvas positions with `placeby`, then sources each
@@ -313,6 +317,21 @@ recording, point OBS at the nest window while `DEMO_FRAMES=0 make demo` runs.
   nest-clean`, a reboot, and judging by the named scenario batches rather
   than a full-suite run are the workaround; a full-suite failure that does
   not reproduce as a named scenario or a pair is not a code regression.
+  Each scenario also leans on the desk it finds, so the order matters: a
+  stray window or a scrolled client fails the next checks - one full run's
+  golden diffs (30, 50, 60, 61, 93, 123) were window content and a panel
+  label while the frames and the ground matched. `make test ARGS=<name>`
+  is the arbiter: green alone means the desk, not the code. Never re-record
+  a golden from a suite shot. (The known polluters 109, 10-open and 96 now
+  restore or arrange before they end.)
+- **Never edit what the running suite reads.** `tests/run.sh` sources each
+  scenario as it reaches it, and bash reads a script lazily as it executes:
+  editing `run.sh`, `lib.sh` or a scenario while a run is in flight can shift
+  the byte offsets under the reader and abort the run with a bogus syntax
+  error ("syntax error near unexpected token") at an innocent line. The
+  effect's own files are safe - `make -s install` snapshots them once, before
+  the loop, so a mid-run edit never reaches the nest of that run - but a
+  script the runner is still reading is not.
 - **The ScreenCast portal on a virtual nest streams one stale frame.** KWin's
   `--virtual` output presents the scene on damage, and the pipewire stream a
   ScreenCast session hands out repeats its last buffer: a recorder that

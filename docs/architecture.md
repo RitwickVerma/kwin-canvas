@@ -847,8 +847,9 @@ the settings pages through `KCMLauncher.openSystemSettings`, as Overview does.
   KWin restarts. Window positions survive since they are real geometry, but
   the ground offset does not until the next commit.
 - **Stock Zoom effect** binds Meta+wheel. Disable it or rebind.
-- **Untested live.** The `evaluateScript` handoff and the wallpaper plugin have
-  been rendered in isolation but not yet run inside a live plasmashell.
+- **Untested live in part.** The `evaluateScript` handoff has been rendered in
+  isolation but not yet driven inside a live plasmashell; the ground wallpaper
+  has since run live (a live switch rendered its ground on the desktop).
 
 ## Next
 
@@ -858,8 +859,9 @@ the settings pages through `KCMLauncher.openSystemSettings`, as Overview does.
   it rather than a constant.
 - Auto-pan when dragging a window to the screen edge at 1:1. The move is
   KWin's; the effect can watch `Window.move` and shift the plane on a timer.
-- A minimap while the canvas is open.
-- Persist `view` in the effect's config on commit.
+- Restore the persisted `view` at startup: the config's `ViewX`/`ViewY` are
+  written on commit, but nothing reads them back, so a KWin restart resets
+  the camera.
 - Cluster gestures beyond the badge: dragging the web's lines to move the
   cluster conflicts with the windows' own drags in Qt's handler
   arbitration (the badge is the reliable handle), so the web drag stays
