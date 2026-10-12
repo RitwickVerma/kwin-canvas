@@ -24,12 +24,13 @@ QDBUS       := qdbus6
 NEST        := ./dev/nest.sh
 PYTHON      := python3
 QMLLINT     := /usr/lib/qt6/bin/qmllint
+QSB         := /usr/lib/qt6/bin/qsb
 
 .DEFAULT_GOAL := help
-.PHONY: help deps deps-install install uninstall install-system uninstall-system reload enable disable status \
-        lint lint-reuse lint-qml lint-shell lint-shader \
-        tools fixtures play nest nest-down nest-clients nest-fixtures nest-reload nest-shot nest-log nest-clean nest-cmd \
-        test test-shim test-two-outputs golden demo video clean stage dist pkgbuild aur aur-passthrough release tour \
+.PHONY: help deps deps-install install uninstall install-system uninstall-system reload enable disable status hot \
+        lint lint-reuse lint-qml lint-shell lint-shader lint-deadcode lint-python \
+        tools fixtures barrel play nest nest-down nest-clients nest-fixtures nest-reload nest-shot nest-log nest-clean nest-cmd \
+        test test-panel test-decor test-two-outputs test-shim golden unit demo video clean stage dist pkgbuild aur aur-passthrough release tour \
         plugin plugin-try plugin-install-system plugin-status
 
 help: ## Show this help
@@ -117,22 +118,24 @@ SYS_EFFECT  := $(DESTDIR)/usr/share/kwin/effects/$(EFFECT_ID)
 SYS_WALL    := $(DESTDIR)/usr/share/plasma/wallpapers/$(WALL_ID)
 SYS_APPLET  := $(DESTDIR)/usr/share/plasma/plasmoids/$(APPLET_ID)
 SYS_APPLET_DECOR := $(DESTDIR)/usr/share/plasma/plasmoids/$(APPLET_DECOR_ID)
+SYS_DECOR   := $(DESTDIR)/usr/share/kwin/decorations/$(DECOR_ID)
 SYS_BIN     := $(DESTDIR)/usr/bin/kwin-canvas
 
-install-system: stage ## Copy the three packages into DESTDIR/usr/share and the CLI into DESTDIR/usr/bin (for a PKGBUILD or a .deb rule)
-	rm -rf $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR)
-	mkdir -p $(dir $(SYS_EFFECT)) $(dir $(SYS_WALL)) $(dir $(SYS_APPLET)) $(dir $(SYS_APPLET_DECOR)) $(dir $(SYS_BIN))
+install-system: stage ## Copy the packages into DESTDIR/usr/share and the CLI into DESTDIR/usr/bin (for a PKGBUILD or a .deb rule)
+	rm -rf $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) $(SYS_DECOR)
+	mkdir -p $(dir $(SYS_EFFECT)) $(dir $(SYS_WALL)) $(dir $(SYS_APPLET)) $(dir $(SYS_APPLET_DECOR)) $(dir $(SYS_DECOR)) $(dir $(SYS_BIN))
 	cp -r $(BUILD)/effect $(SYS_EFFECT)
 	cp -r $(BUILD)/wallpaper $(SYS_WALL)
 	cp -r $(BUILD)/applet $(SYS_APPLET)
 	cp -r $(BUILD)/applet-decor $(SYS_APPLET_DECOR)
-	find $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) -type d -exec chmod 755 {} +
-	find $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) -type f -exec chmod 644 {} +
+	cp -r $(BUILD)/decoration $(SYS_DECOR)
+	find $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) $(SYS_DECOR) -type d -exec chmod 755 {} +
+	find $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) $(SYS_DECOR) -type f -exec chmod 644 {} +
 	install -m 755 $(CLI) $(SYS_BIN)
-	@echo "installed: $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) $(SYS_BIN)"
+	@echo "installed: $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) $(SYS_DECOR) $(SYS_BIN)"
 
 uninstall-system: ## Remove the system-wide copies
-	rm -rf $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) $(SYS_BIN)
+	rm -rf $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) $(SYS_DECOR) $(SYS_BIN)
 
 reload: install ## Reinstall and reload the effect in the live session (QML changes need a KWin restart)
 	-$(QDBUS) org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect $(EFFECT_ID)
@@ -178,7 +181,9 @@ status: ## Show whether the packages are installed, enabled and loaded
 # a broken canvas.
 plugin: ## Build the optional pass-through plugin against the installed KWin (build/plugin/bin/kwin/plugins)
 	cmake -S plugin -B $(PLUGIN_BUILD) -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr >/dev/null
-	cmake --build $(PLUGIN_BUILD) -j | grep -E "error|warning:|Built target $(PLUGIN_ID)$$" || true
+	@out=$$(cmake --build $(PLUGIN_BUILD) -j 2>&1); st=$$?; \
+	printf '%s\n' "$$out" | grep -E "error|warning:|Built target $(PLUGIN_ID)$$" || true; \
+	[ $$st -eq 0 ] || { echo "plugin build failed"; exit 1; }
 
 plugin-try: ## Build the plugin when KWin's headers, cmake and ECM are here; otherwise say so and carry on
 	@if [ -f /usr/include/kwin/plugin.h ] && command -v cmake >/dev/null 2>&1 \
@@ -204,6 +209,9 @@ tools: ## Build the fake-input client used by tests and demos (build/tools/fakei
 
 fixtures: ## Generate the test fixtures (wallpaper, tile, text files)
 	$(PYTHON) tests/fixtures/gen.py
+
+barrel: ## Rebuild the plane's precompiled shader from shared/GroundBarrel.frag (Qt 6 qsb)
+	$(QSB) --glsl "320 es,330,440" shared/GroundBarrel.frag -o shared/GroundBarrel.frag.qsb
 
 # ---- nested compositor ------------------------------------------------------
 nest: ## Start the nested KWin with the effect and plasmashell inside (own D-Bus bus and config)
@@ -247,18 +255,15 @@ unit: ## Run the pure-logic unit tests (node tests/unit) - the fast iteration lo
 test: install fixtures tools plugin-try ## Run the scenarios against a dedicated test nest (NEST_NAME=test)
 	tests/run.sh $(ARGS)
 
-test-panel: install fixtures tools plugin-try ## Run the dock/panel scenarios against a nest that seeds the default Plasma panel (NEST_PANEL=1)
+test-panel: install fixtures tools plugin-try ## Run the dock/panel scenarios against a nest that seeds the default Plasma panel (NEST_PANEL=1). ARGS= runs just that
 	NEST_PANEL=1 tests/run.sh $(if $(ARGS),$(ARGS),86)
-	NEST_PANEL=1 tests/run.sh $(if $(ARGS),$(ARGS),117)
+	@[ -n "$(ARGS)" ] || NEST_PANEL=1 tests/run.sh 117
 
 test-decor: install fixtures tools plugin-try ## Run the decoration scenario against a nest that wears the canvas decoration (NEST_DECOR=canvas)
 	NEST_DECOR=canvas tests/run.sh $(if $(ARGS),$(ARGS),135)
 
 test-two-outputs: install fixtures tools plugin-try ## Run the two-output scenarios against a two-output nest (NEST_OUTPUTS=2). ARGS= re-records 91's golden
 	NEST_OUTPUTS=2 tests/run.sh $(if $(ARGS),$(ARGS),91)
-
-test-panel: install fixtures tools plugin-try ## Run the panel scenario against a nest that has a panel (NEST_PANEL=1). ARGS= widens it
-	NEST_PANEL=1 tests/run.sh $(if $(ARGS),$(ARGS),86)
 
 test-shim: install fixtures tools ## Run the plane-input scenarios (tests/shim) under the preload shim; skips when the shim cannot build for this KWin
 	tests/run-shim.sh $(ARGS)
