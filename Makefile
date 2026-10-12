@@ -255,6 +255,9 @@ test-decor: install fixtures tools plugin-try ## Run the decoration scenario aga
 test-two-outputs: install fixtures tools plugin-try ## Run the two-output scenarios against a two-output nest (NEST_OUTPUTS=2). ARGS= re-records 91's golden
 	NEST_OUTPUTS=2 tests/run.sh $(if $(ARGS),$(ARGS),91)
 
+test-panel: install fixtures tools plugin-try ## Run the panel scenario against a nest that has a panel (NEST_PANEL=1). ARGS= widens it
+	NEST_PANEL=1 tests/run.sh $(if $(ARGS),$(ARGS),86)
+
 test-shim: install fixtures tools ## Run the plane-input scenarios (tests/shim) under the preload shim; skips when the shim cannot build for this KWin
 	tests/run-shim.sh $(ARGS)
 

@@ -641,7 +641,7 @@ KWin.SceneEffect {
     // The screen bounds a floating window's picture is kept inside, with a
     // margin, on the screen the pointer is on.
     function floatBounds(e) {
-        const sg = screenAt((e.x - viewX) * zoom, (e.y - viewY) * zoom) || actionScreen();
+        const sg = (e.window && !e.window.deleted && e.window.screen) || actionScreen();
         const g = sg.geometry;
         const m = 8;
         const w = e.width * zoom, h = e.height * zoom;
@@ -3810,7 +3810,7 @@ KWin.SceneEffect {
     // is that window's screen, which on a two-monitor desktop is wrong half the
     // time; everything the pointer starts asks here instead.
     function actionScreen() {
-        const p = KWin.Workspace.cursorPos;
+        const p = cursorScreen();
         return screenAt(p.x, p.y) || KWin.Workspace.activeScreen;
     }
 

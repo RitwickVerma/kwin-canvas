@@ -289,7 +289,7 @@ Item {
             // The quiet hold and slide are the desktop itself: the wallpaper
             // stays, sharp, wherever the frames fade - no grey base ever
             // shows through a transient move.
-            readonly property bool wantShown: wallpaper && (!covered || effect.quiet)
+            readonly property bool wantShown: wallpaper && !covered && !effect.quiet
             property real blurAlpha: wantShown ? 1 : 0
             Behavior on blurAlpha { NumberAnimation { duration: 280; easing.type: Easing.InOutCubic } }
             visible: wallpaper && (wantShown || blurAlpha > 0.004)

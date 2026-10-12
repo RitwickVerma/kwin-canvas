@@ -193,6 +193,9 @@ private:
     QTimer m_idleTimer;
     /** A hold button is currently down (one of m_hold). */
     bool m_holdDown = false;
+    /** Hold buttons whose press was passed through to the window under the
+     * pointer, so their release goes with it and never gets eaten. */
+    uint m_holdPassed = 0;
     /** The hold button that is down, for the mask-change check in setHoldButtons. */
     Qt::MouseButton m_heldButton = Qt::NoButton;
     /** A hold button is down but the threshold has not passed: it may still be a click. */

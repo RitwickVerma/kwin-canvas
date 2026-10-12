@@ -157,10 +157,17 @@ in your home directory.
 ```bash
 make test                 # all scenarios
 make test ARGS=60         # scenarios matching a pattern
-make test-two-outputs     # NEST_OUTPUTS=2, the 91 scenarios (91-two-outputs)
+make test-two-outputs     # NEST_OUTPUTS=2, the 91 scenarios (91-two-outputs, 89)
 make test-two-outputs ARGS=--update-golden   # re-record 91's golden
+make test-panel           # NEST_PANEL=1, the panel scenario (86-panel-popup)
 make golden               # re-record the golden screenshots
 ```
+
+`make test-panel` runs its scenario alone against a nest whose plasmashell
+grows a bottom panel with the digital clock, the only place an applet's
+dropdown - a popup - is representable. The scenario's camera asserts are the
+regression; its popup-premise check skips when plasmashell's popup does not
+render in the virtual nest, and the skip says so rather than pretending.
 
 `tests/run.sh` starts the `test` nest, launches the fixture apps, arranges
 them at fixed canvas positions with `placeby`, then sources each
