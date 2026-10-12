@@ -71,9 +71,8 @@ run_scenario() {
     printf 'move 1700 900\nsleep 60\ndown left\nsleep 60\nglide 1600 900 8 4\nsleep 400\nup left\n' | input
     sleep 0.2; c state
     assert_eq "a paused drag does not glide" "$(sget cam)" -
-    # The sphere's pan: the release rides the arc, so the same 100 px drag
-    # lands at 66.0 here (measured; see panBy).
-    assert_near "and the view is where the drag left it" "$(sget viewx)" 66.0 3
+    # The 1:1 pan is exact: the same 100 px drag leaves the view at 100.
+    assert_near "and the view is where the drag left it" "$(sget viewx)" 100 3
 
     # A dragged window carries weight. The weight is drawn, not measured: the
     # same drag with the physics off and on leaves the entry - and so the

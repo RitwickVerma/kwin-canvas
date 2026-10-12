@@ -43,10 +43,8 @@ Item {
     // leave the plane blank.
     readonly property bool tiled: tileImage !== "" && tile.status === Image.Ready
 
-    // The ground itself: background, tile, octaves and axes, drawn flat. The
-    // bend belongs to the caller - the effect's world layer warps the whole
-    // plane at zoom-out - and the wallpaper never warps, so the ground is
-    // pixel-true wherever it is drawn alone.
+    // The ground itself: background, tile, octaves and axes, drawn flat and
+    // pixel-true at every zoom, in the effect and in the wallpaper alike.
     Item {
         id: flatGround
         anchors.fill: parent

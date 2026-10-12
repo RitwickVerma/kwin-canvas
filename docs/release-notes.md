@@ -1,18 +1,11 @@
 Unreleased:
 
-- The zoom-out bend is a true sphere now: the plane is read as the surface
-  of a sphere the screen slices, so it curves away in every direction -
-  vertically and horizontally alike - instead of the old one-axis smile.
-  At 1:1 the pass is off and the plane is exactly flat.
+- A drag at 1:1 moves the plane exactly with the hand - no acceleration,
+  no drift from the pointer; the torch's arc belongs to the zoom-out.
 
 - The wheel behaves everywhere on the canvas now: a wheel with a canvas
   button held zooms the canvas instead of nothing, and the zoom door no
   longer eats a wheel over an already-open canvas.
-
-- The zoom-out bend now carries the whole plane: the window frames, the
-  tags and the web lean with the ground instead of floating flat over it.
-  At 1:1 everything is exactly flat again, and the wallpaper's ground
-  stays straight.
 
 - The settings gained **ShowLabels**: the ground's coordinate labels can
   be turned off, and the same choice reaches the ground wallpaper.

@@ -115,23 +115,30 @@ those, from this side of the fork:
 
 ## Sessions
 
-### 2026-10-12 — the plane is a true sphere, not a smile
+### 2026-10-12 — the sphere leaves, and 1:1 becomes exact
 
-The user asked why the bend "does not work that well vertically" and then
-asked for the real thing: a curved slice out of a true sphere. The old
-warp moved only y, and only with x - a one-axis smile that left every
-vertical line straight. The world pass now reads the plane as the surface
-of a sphere: each pixel at radius rp on screen samples the surface at the
-arc distance R * asin(rp / R), aspect-corrected, so the picture curves
-away in every direction and minifies toward the rim. R rides the zoom
-(sphereRadiusPx: the screen half-diagonal times 2.6 over sphereWarp), and
-the pass stays off at 1:1, so the flat contract holds. Verified: make lint
-green; make test ARGS=20-zoom 8/0 with both committed goldens holding
-(extents rmse 0.00901796 - the new look stays inside the old smile's own
-tolerances at 0.4 zoom, so nothing was re-recorded); 128-wallpaper-ground
-3/0 (the seam at 1:1 is untouched); a 0.2-zoom nest shot shows a gentle
-bow with a clean rim and no clamp smearing. The torch pan's sphere radius
-and the quiet hold's sphere map remain their own, separate things.
+The user asked why the bend "does not work that well vertically", then
+asked for the real thing - a curved slice out of a true sphere - and the
+true sphere was built: orthographic arc sampling, aspect-correct, the
+silhouette radius riding the zoom. Then the verdict to keep: "i take it
+back. remove everything related to sphere. we need new vision." The whole
+look stack is gone - shared/GroundBarrel.frag and its .qsb deleted, the
+worldSource grab and its ShaderEffect removed from ui.qml (the plane
+wrapper is a plain Item again), sphereWarp and sphereRadiusPx gone from
+main.qml, and the build rail with them (the `make barrel` target,
+lint-shader's regeneration check, the qsb check in dev/deps.sh and
+qt6-shadertools in CI). The plane is flat at every zoom - which is what
+the goldens always held: 20-zoom is 8/0 with both snaps untouched
+(extents rmse 0.00120189; the snap pair predates the bend, so the flat
+render simply lands on it), and 128 stays 3/0.
+
+The same round honored the earlier verdict on the feel: at 1:1 the hand
+moves the plane exactly - panBy gained an exact branch and the torch's
+arc stays for the zoom-out alone - and the scenarios that carry 1:1 hand
+values moved back off the torch's numbers (94's 100; 103's and 85's
+200/100; 81's 200/100 and 140/60). The quiet hold's sphere map and the
+torch's arc are still there: older, separate, and awaiting their own
+verdict.
 
 ### 2026-10-11 — the wallpaper crash loop leaves, and the plane bends whole
 
@@ -159,25 +166,21 @@ The tree's uncommitted round was broken in the live install and is now
 fixed: `shared/Ground.qml` carried `transparent: true` on the
 ShaderEffectSource (invalid in Qt 6.12 — the install logged `Type Ground
 unavailable` because of it), and `main.qml`'s refreshDesktopWindow carried a
-console.log; both are gone. The extraction to `GroundBarrel.frag.qsb` is
-required, not a preference: Qt 6.12 no longer prepares inline GLSL in
-ShaderEffect — the nest's plasmashell proved it with `shader preparation
-failed` for the URL-encoded source URL. Verified with `make lint` (green)
-and `make test ARGS=20-zoom` (8/0, the barrel's goldens exact), and live:
+console.log; both are gone. Inline GLSL is a dead end, not a preference:
+Qt 6.12 refuses to prepare it in ShaderEffect (the nest's plasmashell
+failed the URL-encoded source), which is why the round extracted a
+precompiled shader at all - and why the ground is plain QML today, after
+the sphere left (2026-10-12). Verified with `make lint` (green) and, live,
 `make hot` recompiled the scene tree (HotRev 14) with no Ground errors in
 the journal. The desktopWindow handle needs a KWin restart before it runs
 live; its console.log is the only line that left.
 
-The seam decision landed: the bend moved off the ground and onto the
-whole plane - ui.qml wraps the ground, the frame bands, the windows, the
-tags, the web and the chips in one item, and a ShaderEffectSource grab
-resamples it through the barrel at zoom-out (the layer.effect route was
-tried and blurs the window textures inside the compositor's scene). The
-grab carries visible/hideSource/live on one gate - a live:false grab
-otherwise paints a stale frame at 1:1, and that stale frame was the seam
-reading 0.0726. The wallpaper stays flat and the seam holds: 128 is 3/0
-through the new `panpx` verb (a screen-pixel pan with no torch, so the
-scenario's crops stay exact), 20-zoom is 8/0 and 10-open 11/0.
+The seam question closed twice: first the bend moved off the ground and
+onto the whole plane (a ShaderEffectSource grab with one
+visible/hideSource/live gate - the stale grab was the 0.0726 seam), then
+the whole warp left with the sphere (2026-10-12), which makes the seam
+trivially flat at every zoom. The scenario keeps its exact `panpx` verb
+and stays 3/0; 10-open is 11/0.
 
 The kde-material-you-colors TypeError spam that made the loop look worse is
 downstream of wallpaper-change events — a four-second burst at the switch,
@@ -200,24 +203,12 @@ torch's tan, so the window drifted off the pointer; it carries the camera's
 own delta now (81 29/0). And the ground's own tap cleared a fresh
 ctrl+click selection the thumb had just set (96 10/0). Two harness
 lessons: the nest seeds MovesGlide off like the other motion knobs (a
-placed window is read at its landing, not mid-glide), and `make barrel`
-plus lint-shader's regeneration check keep shared/GroundBarrel.frag.qsb
-honest. Scenario 104's quick-press delivery check skips honestly - the
+placed window is read at its landing, not mid-glide). Scenario 104's quick-press delivery check skips honestly - the
 nest's probe client logs its activation but not the press in this build,
 so that proof belongs to the live session. The full suite at the pass's
 end: 256 pass, 12 fail, 2 skip, and every one of the 12 is a suite-order
 artefact, green alone the same evening; docs/testing.md's "Things that
 cost time" lists them rather than letting them pass for green.
-
-The sphere question, answered in the look: the zoom-out bend's one-axis
-smile - a vertical shift driven only by x - became a true sphere. The
-plane is read as the surface of a sphere the screen slices, sampled by
-arc distance (`R * asin(rp / R)`) in every direction, aspect-correct; the
-silhouette radius rides the zoom (`sphereRadiusPx`, a few screen radii,
-so the limb never shows and the rim's overdraw stays within the old
-clamp's own scale), and at 1:1 the pass is still off and the plane exactly
-flat. No golden moved: at 0.4 zoom the new arithmetic lands inside the old
-smile's own tolerances.
 
 ### 2026-10-20 — the canvas feeds the shader wallpaper
 

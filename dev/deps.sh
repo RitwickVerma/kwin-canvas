@@ -11,7 +11,7 @@ CORE="kpackagetool6:kpackage qdbus6:qt6-tools kwriteconfig6:kconfig kwin_wayland
 # qmllint is asked for by absolute path: the Qt5 build in /usr/bin answers to
 # the same name and lints QML differently. reuse is only needed to run the same
 # lint the CI job runs.
-TESTS="spectacle:spectacle magick:imagemagick python3:python /usr/lib/qt6/bin/qmllint:qt6-declarative /usr/lib/qt6/bin/qsb:qt6-shadertools reuse:reuse shellcheck:shellcheck glslangValidator:shaderc"
+TESTS="spectacle:spectacle magick:imagemagick python3:python /usr/lib/qt6/bin/qmllint:qt6-declarative reuse:reuse shellcheck:shellcheck glslangValidator:shaderc"
 TOOLS="gcc:gcc wayland-scanner:wayland pkg-config:pkgconf vulture:vulture"
 DEMO="ffmpeg:ffmpeg"
 APPS="kcalc:kcalc kwrite:kwrite konsole:konsole dolphin:dolphin gwenview:gwenview"

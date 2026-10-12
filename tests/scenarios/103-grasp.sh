@@ -49,17 +49,16 @@ run_scenario() {
     sleep 0.7; c state
     assert_eq "the second hold opens quietly too" "$(head -1 <<<"$LAST_STATE" | grep -c 'visible=true quiet grasp')" 1
     sleep 0.7; c state
-    # The sphere's pan: a 200 px hand drag is not 200 canvas px - the
-    # camera rides the sphere's arc and the tan accelerates it, so the
-    # middle drag lands at 138.7/66.0 here (measured; see panBy).
-    assert_near "a middle drag pans, x" "$(sget viewx)" 138.7 3
-    assert_near "and y" "$(sget viewy)" 66.0 3
+    # The 1:1 pan is exact: the 200/100 px hand drag moves the plane the
+    # same 200/100 (the torch belongs to the zoom-out).
+    assert_near "a middle drag pans, x" "$(sget viewx)" 200 3
+    assert_near "and y" "$(sget viewy)" 100 3
     for i in $(seq 1 15); do c state; [ "$(sget visible)" = false ] && break; sleep 0.3; done
     assert_eq "and the release closes again" "$(sget visible)" false
     # The pan is the release: the location opens at the panned viewport, not
     # back where the hold began.
-    assert_near "the viewport became the panned view, x" "$(tget 0 x)" 139 1
-    assert_near "and y" "$(tget 0 y)" 66 1
+    assert_near "the viewport became the panned view, x" "$(tget 0 x)" 200 1
+    assert_near "and y" "$(tget 0 y)" 100 1
     wait
     c state
     sleep 0.4

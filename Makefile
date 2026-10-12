@@ -24,12 +24,11 @@ QDBUS       := qdbus6
 NEST        := ./dev/nest.sh
 PYTHON      := python3
 QMLLINT     := /usr/lib/qt6/bin/qmllint
-QSB         := /usr/lib/qt6/bin/qsb
 
 .DEFAULT_GOAL := help
 .PHONY: help deps deps-install install uninstall install-system uninstall-system reload enable disable status hot \
         lint lint-reuse lint-qml lint-shell lint-shader lint-deadcode lint-python \
-        tools fixtures barrel play nest nest-down nest-clients nest-fixtures nest-reload nest-shot nest-log nest-clean nest-cmd \
+        tools fixtures play nest nest-down nest-clients nest-fixtures nest-reload nest-shot nest-log nest-clean nest-cmd \
         test test-panel test-decor test-two-outputs test-shim golden unit demo video clean stage dist pkgbuild aur aur-passthrough release tour \
         plugin plugin-try plugin-install-system plugin-status
 
@@ -93,8 +92,6 @@ stage:
 	cp -r decoration $(BUILD)/decoration
 	cp shared/Ground.qml $(BUILD)/effect/contents/ui/Ground.qml
 	cp shared/Ground.qml $(BUILD)/wallpaper/contents/ui/Ground.qml
-	cp shared/GroundBarrel.frag.qsb $(BUILD)/effect/contents/ui/GroundBarrel.frag.qsb
-	cp shared/GroundBarrel.frag.qsb $(BUILD)/wallpaper/contents/ui/GroundBarrel.frag.qsb
 
 install: stage ## Install the effect, the ground wallpaper and the applet as user packages, and the CLI into ~/.local/bin
 	@$(KPT) --type KWin/Effect --upgrade $(BUILD)/effect >/dev/null 2>&1 || $(KPT) --type KWin/Effect --install $(BUILD)/effect >/dev/null
@@ -209,9 +206,6 @@ tools: ## Build the fake-input client used by tests and demos (build/tools/fakei
 
 fixtures: ## Generate the test fixtures (wallpaper, tile, text files)
 	$(PYTHON) tests/fixtures/gen.py
-
-barrel: ## Rebuild the plane's precompiled shader from shared/GroundBarrel.frag (Qt 6 qsb)
-	$(QSB) --glsl "320 es,330,440" shared/GroundBarrel.frag -o shared/GroundBarrel.frag.qsb
 
 # ---- nested compositor ------------------------------------------------------
 nest: ## Start the nested KWin with the effect and plasmashell inside (own D-Bus bus and config)

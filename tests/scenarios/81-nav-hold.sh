@@ -28,8 +28,8 @@ run_scenario() {
     open_1to1                     # view (0,0) at 1:1: screen and canvas agree
     printf 'move 1700 900\nsleep 60\ndown right\nsleep 60\nglide 1500 800\nsleep 60\nup right\n' | input
     sleep 0.3; c state
-    assert_near "held-button drag pans x" "$(sget viewx)" 138.7 3
-    assert_near "held-button drag pans y" "$(sget viewy)" 66.0 3
+    assert_near "held-button drag pans x" "$(sget viewx)" 200 3
+    assert_near "held-button drag pans y" "$(sget viewy)" 100 3
 
     # The same hold starting on a window takes the window instead: the body
     # grip takes the PanHold buttons too, so a held right button on a window is
@@ -96,8 +96,8 @@ run_scenario() {
     printf "move $kx $ky\nsleep 60\ndown middle\nsleep 60\nglide %d %d\nsleep 60\nup middle\n" \
         "$((kx - 140))" "$((ky - 60))" | input
     sleep 0.3; c state
-    assert_near "middle drag over a window pans the canvas" "$(sget viewx)" 93.9 4
-    assert_near "and pans that axis too" "$(sget viewy)" 39.2 4
+    assert_near "middle drag over a window pans the canvas" "$(sget viewx)" 140 4
+    assert_near "and pans that axis too" "$(sget viewy)" 60 4
     assert_eq "and moves no window" "$(eget KCalc x)" 100
     assert_eq "and fires no window gesture" "$(sget menus)" 0
 

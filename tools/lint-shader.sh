@@ -29,22 +29,6 @@ for frag in "$HERE"/shaders/*.frag; do
     fi
 done
 
-# The effect's precompiled plane shader is a committed build of
-# shared/GroundBarrel.frag; a stale pair would ship the wrong bend, so the
-# regeneration must be byte-identical (`make barrel` rebuilds it).
-QSB="${QSB:-/usr/lib/qt6/bin/qsb}"
-if [ -x "$QSB" ]; then
-    if "$QSB" --glsl "320 es,330,440" "$HERE/shared/GroundBarrel.frag" -o "$OUT/GroundBarrel.frag.qsb" >/dev/null 2>&1 \
-       && cmp -s "$OUT/GroundBarrel.frag.qsb" "$HERE/shared/GroundBarrel.frag.qsb"; then
-        :
-    else
-        echo "shared/GroundBarrel.frag.qsb is not this qsb's build of shared/GroundBarrel.frag (run: make barrel, and inspect the diff)"
-        fails=$((fails + 1))
-    fi
-else
-    echo "lint-shader: $QSB not found; skipping the plane shader's regen check"
-fi
-
 if [ "$fails" -ne 0 ]; then
     echo "lint-shader: $fails shader(s) failed"
     exit 1

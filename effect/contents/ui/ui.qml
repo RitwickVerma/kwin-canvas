@@ -339,18 +339,11 @@ Item {
             }
         }
 
-        // The plane's bend, once, over everything that sits on it: the
-        // ground, the frame bands, the windows, the tags, the web and the
-        // chips are warped together at zoom-out, so nothing floats off the
-        // ground. The shader pass below grabs this whole item and resamples
-        // it; at 1:1 the item draws itself and no offscreen pass happens.
-        // The warp is a picture effect: the input keeps its unwarped
-        // geometry, so at deep zoom-out the eye and the hand disagree by
-        // the bend's own few pixels. (The plane's items keep their
-        // indentation across the wrapper: it is a render scope, not a
+        // The plane's items - the ground, the frame bands, the windows, the
+        // tags, the web and the chips - gathered under one item. (They keep
+        // their indentation across the wrapper: it is a scope, not a
         // lexical one.)
         Item {
-            id: worldLayer
             anchors.fill: parent
 
         Ground {
@@ -1267,42 +1260,9 @@ Item {
                 }
             }
         }
-        } // worldLayer
+        } // the plane
 
-        // The sphere pass: the plane, grabbed as one picture and bent. The
-        // mechanism is the ground's own proven one - a ShaderEffectSource
-        // grab - because layer.enabled inside the compositor's scene blurs
-        // the window textures the plane carries. live only while the bend
-        // is real; at 1:1 the plane draws itself and the pass is idle.
-        ShaderEffectSource {
-            id: worldSource
-            anchors.fill: parent
-            sourceItem: worldLayer
-            // All three switch together with the bend: when it is real the
-            // plane is hidden and this item's live texture is what the
-            // shader draws; when it is not, both are out of the scene and
-            // the plane draws itself (a live:false grab would otherwise
-            // paint a stale frame over it).
-            visible: effect.sphereWarp > 0.0001
-            hideSource: effect.sphereWarp > 0.0001
-            live: effect.sphereWarp > 0.0001
-        }
-        ShaderEffect {
-            anchors.fill: parent
-            visible: effect.sphereWarp > 0.0001
-            property var src: worldSource
-            // The true sphere: the screen is a slice of a sphere with this
-            // silhouette radius, and the picture curves away in every
-            // direction. (The old barrel's one-axis smile is gone.)
-            property real viewW: width
-            property real viewH: height
-            property real radius: effect.sphereRadiusPx
-            fragmentShader: Qt.resolvedUrl("GroundBarrel.frag.qsb")
-            blending: true
-        }
-
-        // The marquee stays flat: a screen-space selection rectangle,
-        // outside the plane's warp.
+        // The marquee stays flat: a screen-space selection rectangle.
         Rectangle {
             id: marqueeBox
             property real x0: 0

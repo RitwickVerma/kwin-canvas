@@ -57,20 +57,19 @@ run_scenario() {
     assert_eq "typing reached KWrite" "$(changed "$(region_rmse "$OUT/pt-clicked.png" "$OUT/pt-typed.png" 600x260+690+380)")" 1
     # The ground still pans.
     printf 'drag 1700 1000 1500 900\n' | input; sleep 0.4; c state
-    assert_near "ground drag pans x" "$(sget viewx)" 138.7 2
-    assert_near "ground drag pans y" "$(sget viewy)" 66.0 2
+    assert_near "ground drag pans x" "$(sget viewx)" 200 2
+    assert_near "ground drag pans y" "$(sget viewy)" 100 2
     # The chord enters the location in view: the viewport lands where the
     # camera was, the windows are written relative to it, the plugin is off.
     chord; sleep 0.6; c state
     assert_eq "the chord entered the location" "$(sget visible)" false
     assert_eq "plugin switched off" "$(pt_state | grep -c 'active=false')" 1
-    assert_near "viewport where the camera was x" "$(sget viewx)" 139.0 2
-    assert_near "viewport where the camera was y" "$(sget viewy)" 66.0 2
-    assert_near "KCalc written relative to it" "$(eget KCalc fx)" -39 2
-    # The drag's pan was (+138.7,+66.0) with the torch; slide the camera
-    # back exactly, so the desk the next scenario finds has the view it
-    # expects.
-    c "slide -139 -66"
+    assert_near "viewport where the camera was x" "$(sget viewx)" 200 2
+    assert_near "viewport where the camera was y" "$(sget viewy)" 100 2
+    assert_near "KCalc written relative to it" "$(eget KCalc fx)" -100 2
+    # The drag's pan was (+200,+100) at 1:1; slide the camera back exactly,
+    # so the desk the next scenario finds has the view it expects.
+    c "slide -200 -100"
     # Leave the fixtures as found: undo the typed letter, scroll Konsole
     # back, drop the selection, then the usual arrange, so the scenarios
     # that follow (and their goldens) see the same desk this one found.
