@@ -57,6 +57,9 @@ KWin.SceneEffect {
     property real viewX: 0
     property real viewY: 0
     property real zoom: 1.0
+    // The sphere the torch pans over, as a visual: 0 at 1:1 (the flat
+    // plane), 1 at the far zoom-out. The ground's shader reads it.
+    readonly property real sphereWarp: Math.max(0, 1 - zoom)
     property real entryViewX: 0
     property real entryViewY: 0
 
@@ -976,71 +979,6 @@ KWin.SceneEffect {
         entryAnims = {};
         entryGhosts = {};
         if (keys.length) moveRev++;
-    }
-    // The plane remembers the day. Every movement of the camera leaves a
-    // point on the path behind it; the trail draws the last few minutes of
-    // that path on the ground, so the zoomed-out plane answers "where have
-    // I been today". It lives at the skin's zoom and stays out of the 1:1
-    // seam - the closed location never changes.
-    property var pathPts: []
-    property int pathRev: 0
-    property string pathSvg: ""
-    property var pathChunks: []
-    property real lastPathAt: 0
-    function pathPrune() {
-        const now = Date.now();
-        let cut = 0;
-        while (cut < pathPts.length && now - pathPts[cut].t > 600000) cut++;
-        if (cut > 0) pathPts.splice(0, cut);
-        const pts = Logic.simplifyPath(pathPts, 40);
-        const n = pts.length;
-        pathSvg = "";
-        pathChunks = [];
-        if (n < 2) { pathRev++; return; }
-        // The trail is a comet, not a crayon: a smooth Catmull-Rom curve
-        // (each segment pulled toward its neighbours), split into a few
-        // chunks so the oldest end fades out of existence instead of
-        // stopping dead.
-        const seg = function (i) {
-            const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(n - 1, i + 2)];
-            return "C" + (p1.x + (p2.x - p0.x) / 6).toFixed(1) + " " + (p1.y + (p2.y - p0.y) / 6).toFixed(1) + " "
-                + (p2.x - (p3.x - p1.x) / 6).toFixed(1) + " " + (p2.y - (p3.y - p1.y) / 6).toFixed(1) + " "
-                + p2.x.toFixed(1) + " " + p2.y.toFixed(1);
-        };
-        const ttl = 600000;
-        const K = Math.min(10, Math.max(1, Math.ceil(n / 24)));
-        const step = Math.max(1, Math.floor(n / K));
-        const chunks = [];
-        for (let k = 0; k < K; k++) {
-            const a = k * step;
-            const b = Math.min(n - 1, (k + 1) * step);
-            if (b <= a) continue;
-            const headAge = now - pts[b].t;
-            const o = 0.45 * Math.max(0, 1 - headAge / ttl);
-            if (o < 0.015) continue;
-            const c = [];
-            for (let i = a; i < b; i++) c.push(seg(i));
-            chunks.push({ svg: "M" + pts[a].x.toFixed(1) + " " + pts[a].y.toFixed(1) + " " + c.join(" "), o: o });
-        }
-        pathChunks = chunks;
-        pathSvg = chunks.length ? chunks[chunks.length - 1].svg : "";
-        pathRev++;
-    }
-    function pathSample() {
-        if (configuration.DayTrail === false) {
-            if (pathPts.length) { pathPts = []; pathSvg = ""; pathChunks = []; pathRev++; }
-            return;
-        }
-        const now = Date.now();
-        if (now - lastPathAt > 5000) { lastPathAt = now; pathPrune(); } // the parked trail still ages away
-        const vs = KWin.Workspace.virtualScreenGeometry;
-        const cx = viewX + vs.width / (2 * zoom);
-        const cy = viewY + vs.height / (2 * zoom);
-        const last = pathPts.length ? pathPts[pathPts.length - 1] : null;
-        if (last && Math.hypot(cx - last.x, cy - last.y) < 90) return;
-        pathPts.push({ x: cx, y: cy, t: now });
-        if (pathPts.length > 500) pathPts.shift();
-        pathPrune();
     }
     function restoreLayout(back) {
         if (!back) return;
@@ -2230,8 +2168,8 @@ KWin.SceneEffect {
         // The torch turns by dx/(R*zoom) radians: R times that angle is
         // dx/zoom - the plain 1:1 pan at the home - and the tan accelerates
         // the same hand movement toward the edges.
-        const tx = Math.atan(viewX / R) - dx / (R * zoom);
-        const ty = Math.atan(viewY / R) - dy / (R * zoom);
+        const tx = Math.atan(viewX / R) - dx / (R * zoom) * 0.65; // the torch turns a touch slower: the sweep reads, not races
+        const ty = Math.atan(viewY / R) - dy / (R * zoom) * 0.65;
         const lim = 85 * Math.PI / 180;
         viewX = R * Math.tan(Math.max(-lim, Math.min(lim, tx)));
         viewY = R * Math.tan(Math.max(-lim, Math.min(lim, ty)));
@@ -2482,7 +2420,6 @@ KWin.SceneEffect {
             if (effect.camLive()) effect.camStep(dt);
             effect.floatPinned(dt);
             effect.stepEntryAnims();
-            effect.pathSample();
         }
     }
 
@@ -4022,15 +3959,6 @@ KWin.SceneEffect {
         for (let i = 0; i < clusters.length && i < 16; i++) {
             s += "cluster=" + Math.round(clusters[i].cx) + "," + Math.round(clusters[i].cy) + "," + clusters[i].n + "\n";
         }
-        if (pathPts.length > 0) {
-            s += "trail=";
-            const start = Math.max(0, pathPts.length - 64);
-            for (let i = start; i < pathPts.length; i++) {
-                s += Math.round(pathPts[i].x) + "," + Math.round(pathPts[i].y);
-                if (i < pathPts.length - 1) s += ",";
-            }
-            s += "\n";
-        }
         return s;
     }
     function publishCanvasState() {
@@ -4712,7 +4640,7 @@ KWin.SceneEffect {
             + " moves=" + Object.keys(entryAnims).length
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
             + " ql=" + ql
-            + " trail=" + pathPts.length
+           
             + " cpu=" + Math.round(cpuBusy)
             + " gpu=" + Math.round(gpuBusy)
             + " mem=" + Math.round(memBusy)

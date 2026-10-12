@@ -353,50 +353,9 @@ Item {
             // With the wallpaper behind it the base rect above is the ground's
             // background, and the grid draws over the wallpaper.
             drawBackground: effect.backdropMode() !== "wallpaper"
+        curvature: effect.sphereWarp * 0.12
         }
 
-        // The trail: the camera's path over the last few minutes, drawn on
-        // the ground. It is canvas-space like the threads - the wrapper maps
-        // the camera once per frame and the path strings rebuild only when
-        // the buffer changes (pathRev). A comet, not a crayon: a smooth
-        // curve split into chunks that fade with their age, each a thin
-        // white core over a soft halo - the threads' own two-stroke, at a
-        // whisper.
-        Item {
-            visible: effect.skinReveal > 0.02 && effect.ql < 2 && effect.pathSvg !== ""
-            x: -(effect.viewX * effect.zoom) - view.sg.x
-            y: -(effect.viewY * effect.zoom) - view.sg.y
-            scale: effect.zoom
-            transformOrigin: Item.TopLeft
-            z: 500
-            opacity: effect.skinReveal * 0.5
-            Repeater {
-                model: { effect.pathRev; return effect.pathChunks.length; }
-                delegate: Item {
-                    required property int index
-                    readonly property var chunk: { effect.pathRev; return effect.pathChunks[index] || null; }
-                    Shape {
-                        opacity: chunk ? chunk.o : 0
-                        ShapePath {
-                            strokeWidth: 5 / effect.zoom
-                            strokeColor: Qt.rgba(1, 1, 1, 0.08)
-                            fillColor: "transparent"
-                            capStyle: ShapePath.RoundCap
-                            joinStyle: ShapePath.RoundJoin
-                            PathSvg { path: chunk ? chunk.svg : "" }
-                        }
-                        ShapePath {
-                            strokeWidth: 1.4 / effect.zoom
-                            strokeColor: Qt.rgba(1, 1, 1, 0.55)
-                            fillColor: "transparent"
-                            capStyle: ShapePath.RoundCap
-                            joinStyle: ShapePath.RoundJoin
-                            PathSvg { path: chunk ? chunk.svg : "" }
-                        }
-                    }
-                }
-            }
-        }
 
         // Pan: left-drag on the ground, middle-drag anywhere, hold Space and
         // left-drag anywhere (Space disables every Grip and IconButton), or
@@ -1320,7 +1279,7 @@ Item {
             // The corner lens: the world shrunk into a chip for a glance at
             // the plane while working. The overlay is gone - the world is
             // the map - so the lens is the only map surface left.
-            readonly property bool asMinimap: effect.canvasOpen && !effect.quiet && effect.zoom < 0.9 && !effect.grasp && view.screen === effect.primaryScreen
+            readonly property bool asMinimap: effect.canvasOpen && !effect.quiet && (effect.zoom < 0.9 || effect.navHeld) && !effect.grasp && view.screen === effect.primaryScreen
             // Mirrored into the effect's own flags: logState and the other
             // effect functions cannot see this item's id, so the map
             // publishes its home for them.
@@ -1524,6 +1483,80 @@ Item {
                     effect.camGo(effect.zoom, cx - (g.x + g.width / 2) / effect.zoom, cy - (g.y + g.height / 2) / effect.zoom);
                 }
             }
+        }
+
+        // The sphere cross-section: during the grasp the hold is a torch on
+        // a sphere, and this chip maps the torch's angular reach - the
+        // windows and the camera by their angles - so the hand knows where
+        // the sweep will land before it sweeps.
+        Item {
+            id: sphereMap
+            z: 80000
+            readonly property int mw: Math.round(view.sg.width * 0.16)
+            readonly property int mh: Math.round(view.sg.height * 0.2)
+            // The grasp only: the quiet hold at 1:1 is when the torch's
+            // reach matters, and the map sits over every window.
+            readonly property bool asSphere: effect.canvasOpen && effect.quiet && effect.grasp && view.screen === effect.primaryScreen
+            onAsSphereChanged: effect.mapMinimap = asSphere
+            readonly property rect home: Qt.rect(view.sg.width - mw - Kirigami.Units.largeSpacing * 2,
+                view.sg.height - mh - Kirigami.Units.largeSpacing * 2, mw, mh)
+            visible: asSphere
+            property bool morphReady: false
+            Component.onCompleted: { x = home.x; y = home.y; width = home.width; height = home.height; morphReady = true; }
+            onHomeChanged: { if (!morphReady) return; x = home.x; y = home.y; width = home.width; height = home.height; }
+            Behavior on x { enabled: sphereMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
+            Behavior on y { enabled: sphereMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
+            Behavior on width { enabled: sphereMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
+            Behavior on height { enabled: sphereMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
+            opacity: visible ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+            // The angular axes: the torch's +-85 degree reach fills the
+            // chip, the centre is the home view.
+            readonly property real r: { effect.revision; return effect.panSphereRadius(); }
+            readonly property real lim: 85 * Math.PI / 180
+            function ax(cx) { return 6 + (Math.atan(cx / sphereMap.R) / lim + 1) / 2 * (sphereMap.width - 12); }
+            function ay(cy) { return 6 + (Math.atan(cy / sphereMap.R) / lim + 1) / 2 * (sphereMap.height - 12); }
+            Rectangle {
+                anchors.fill: parent
+                radius: 16
+                color: Qt.rgba(0.07, 0.07, 0.09, 0.42)
+                layer.enabled: effect.ql < 2
+                layer.effect: GaussianBlur { radius: 5; samples: 17; transparentBorder: false }
+            }
+            Rectangle {
+                anchors.fill: parent
+                radius: 16
+                color: "transparent"
+                border.width: 1
+                border.color: "#3affffff"
+            }
+            Repeater {
+                model: effect.entries.length
+                delegate: Rectangle {
+                    required property int index
+                    readonly property var e: effect.entries[index]
+                    x: { effect.revision; sphereMap.width; return sphereMap.ax(e.x) - 1.6; }
+                    y: { effect.revision; sphereMap.height; return sphereMap.ay(e.y) - 1.6; }
+                    width: 3.2
+                    height: 3.2
+                    radius: 1.6
+                    color: Qt.rgba(1, 1, 1, 0.55)
+                }
+            }
+            // The camera: the crosshair at the torch's current angles.
+            Rectangle {
+                x: { effect.revision; effect.viewX; sphereMap.width; return sphereMap.ax(effect.viewX) - 4; }
+                y: { effect.revision; effect.viewY; sphereMap.height; return sphereMap.ay(effect.viewY) - 4; }
+                width: 8
+                height: 8
+                radius: 4
+                color: "transparent"
+                border.width: 1.5
+                border.color: "#e8ffffff"
+            }
+            // The centre cross: the home.
+            Rectangle { x: sphereMap.width / 2 - 0.5; y: sphereMap.height / 2 - 4; width: 1; height: 8; color: "#3affffff" }
+            Rectangle { x: sphereMap.width / 2 - 4; y: sphereMap.height / 2 - 0.5; width: 8; height: 1; color: "#3affffff" }
         }
         }
 
@@ -2013,36 +2046,34 @@ Item {
                 columns: 2
                 columnSpacing: Kirigami.Units.largeSpacing
                 rowSpacing: Kirigami.Units.smallSpacing
-                component K : PC3.Label { font.family: "monospace"; opacity: 0.85 }
-                component V : PC3.Label {}
-                K { text: "drag ground / " + effect.keyLabel(effect.configuration.KeyPan) + "+drag / middle-drag" } V { text: "pan" }
-                K { text: "hold " + effect.holdLabel(effect.configuration.PanHold) + " or middle" } V { text: "the canvas takes the pointer: drag the ground to pan, drag a window to move it" }
-                K { text: "hold it / to a screen edge" }                        V { text: "the canvas keeps panning; a window in hand comes along" }
-                K { text: "hold " + effect.holdLabel(effect.configuration.CanvasHold) } V { text: "on the desktop: the location itself becomes the canvas; drags and the wheel work, release applies" }
-                K { text: "hold it, tap " + effect.holdLabel(effect.configuration.SwapButton) } V { text: "tour the clusters - the plane's desktops - the camera hops to the next one" }
-                K { text: "click a window / rest on it" }                        V { text: "the camera pans the least that fits it wholly into view" }
-                K { text: "wheel / " + effect.keyLabel(effect.configuration.KeyZoomIn) + " / " + effect.keyLabel(effect.configuration.KeyZoomOut) } V { text: "zoom at the cursor" }
-                K { text: "drag window" }                                       V { text: "move it on the plane" }
-                K { text: "drag window edge or corner" }                        V { text: "resize it" }
-                K { text: "drag frame tag or edge" }                            V { text: "move that activity's screens" }
-                K { text: "eye on a frame tag" }                                V { text: "hide or show that frame; a hidden frame takes no windows" }
-                K { text: effect.gestureLabel(effect.configuration.MouseSelect) + " window" }        V { text: "select it" }
-                K { text: effect.gestureLabel(effect.configuration.MouseSelectAdd) + " window, or +drag ground" } V { text: "add to the selection, or select by rectangle" }
-                K { text: effect.gestureLabel(effect.configuration.MouseSelectToggle) + " window" }  V { text: "toggle its selection; a selected window drags the whole selection" }
-                K { text: effect.gestureLabel(effect.configuration.MouseContextMenu) + " window" }   V { text: "arrange the selection: horizontal, vertical, tile, grid, cascade" }
-                K { text: effect.gestureLabel(effect.configuration.MouseFocusWindow) + " window" }   V { text: effect.focusHelp() }
-                K { text: effect.gestureLabel(effect.configuration.MouseZoomToActivity) + " frame" }  V { text: "zoom to that activity" }
-                K { text: effect.gestureLabel(effect.configuration.MouseGotoActivity) + " frame" }    V { text: "apply with that activity current" }
-                K { text: effect.gestureLabel(effect.configuration.MouseNewActivityAt) + " window outside frames" } V { text: "new activity centred on it" }
-                K { text: effect.keyLabel(effect.configuration.KeyNext) + " / " + effect.keyLabel(effect.configuration.KeyPrev) } V { text: "step the selection through the windows; the camera follows" }
-                K { text: effect.keyLabel(effect.configuration.KeyPanLeft) + " / " + effect.keyLabel(effect.configuration.KeyPanRight) + " / " + effect.keyLabel(effect.configuration.KeyPanUp) + " / " + effect.keyLabel(effect.configuration.KeyPanDown) } V { text: "pan the camera one step" }
-                K { text: "1..9" }                                          V { text: "jump straight to that cluster - its number on the badge; the camera returns to the spot you left it at" }
-                K { text: "the dot in the toolbar" }                          V { text: "whose hand is on the pointer: filled - the window's, hollow - the canvas's" }
-                K { text: effect.keyLabel(effect.configuration.KeyApply) }      V { text: "enter the location under the screen centre; with a window selected, enter it focused" }
-                K { text: effect.keyLabel(effect.configuration.KeyCancel) }     V { text: "back to where you were, nothing moved" }
-                K { text: effect.keyLabel(effect.configuration.KeyHome) }       V { text: "look through this activity's frames" }
-                K { text: effect.keyLabel(effect.configuration.KeyOrigin) }     V { text: "camera to the canvas origin" }
-                K { text: effect.keyLabel(effect.configuration.KeyFit) }        V { text: "zoom to fit" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "drag ground / " + effect.keyLabel(effect.configuration.KeyPan) + "+drag / middle-drag" } PC3.Label { text: "pan" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "hold " + effect.holdLabel(effect.configuration.PanHold) + " or middle" } PC3.Label { text: "the canvas takes the pointer: drag the ground to pan, drag a window to move it" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "hold it / to a screen edge" }                        PC3.Label { text: "the canvas keeps panning; a window in hand comes along" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "hold " + effect.holdLabel(effect.configuration.CanvasHold) } PC3.Label { text: "on the desktop: the location itself becomes the canvas; drags and the wheel work, release applies" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "hold it, tap " + effect.holdLabel(effect.configuration.SwapButton) } PC3.Label { text: "tour the clusters - the plane's desktops - the camera hops to the next one" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "click a window / rest on it" }                        PC3.Label { text: "the camera pans the least that fits it wholly into view" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "wheel / " + effect.keyLabel(effect.configuration.KeyZoomIn) + " / " + effect.keyLabel(effect.configuration.KeyZoomOut) } PC3.Label { text: "zoom at the cursor" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "drag window" }                                       PC3.Label { text: "move it on the plane" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "drag window edge or corner" }                        PC3.Label { text: "resize it" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "drag frame tag or edge" }                            PC3.Label { text: "move that activity's screens" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "eye on a frame tag" }                                PC3.Label { text: "hide or show that frame; a hidden frame takes no windows" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseSelect) + " window" }        PC3.Label { text: "select it" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseSelectAdd) + " window, or +drag ground" } PC3.Label { text: "add to the selection, or select by rectangle" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseSelectToggle) + " window" }  PC3.Label { text: "toggle its selection; a selected window drags the whole selection" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseContextMenu) + " window" }   PC3.Label { text: "arrange the selection: horizontal, vertical, tile, grid, cascade" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseFocusWindow) + " window" }   PC3.Label { text: effect.focusHelp() }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseZoomToActivity) + " frame" }  PC3.Label { text: "zoom to that activity" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseGotoActivity) + " frame" }    PC3.Label { text: "apply with that activity current" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseNewActivityAt) + " window outside frames" } PC3.Label { text: "new activity centred on it" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyNext) + " / " + effect.keyLabel(effect.configuration.KeyPrev) } PC3.Label { text: "step the selection through the windows; the camera follows" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyPanLeft) + " / " + effect.keyLabel(effect.configuration.KeyPanRight) + " / " + effect.keyLabel(effect.configuration.KeyPanUp) + " / " + effect.keyLabel(effect.configuration.KeyPanDown) } PC3.Label { text: "pan the camera one step" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "1..9" }                                          PC3.Label { text: "jump straight to that cluster - its number on the badge; the camera returns to the spot you left it at" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "the dot in the toolbar" }                          PC3.Label { text: "whose hand is on the pointer: filled - the window's, hollow - the canvas's" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyApply) }      PC3.Label { text: "enter the location under the screen centre; with a window selected, enter it focused" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyCancel) }     PC3.Label { text: "back to where you were, nothing moved" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyHome) }       PC3.Label { text: "look through this activity's frames" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyOrigin) }     PC3.Label { text: "camera to the canvas origin" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyFit) }        PC3.Label { text: "zoom to fit" }
             }
         }
 

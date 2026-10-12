@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
-scenario_desc="the shader channel: every commit writes the plane's remembered state - the view, the clusters and the day-trail - as a plain text file the shader wallpaper's engine can hand to a fragment shader"
+scenario_desc="the shader channel: every commit writes the plane's remembered state - the view and the clusters - as a plain text file the shader wallpaper's engine can hand to a fragment shader"
 
 run_scenario() {
     source tests/lib.sh
@@ -23,9 +23,6 @@ run_scenario() {
     assert_eq "and one line per cluster" "$(grep -c '^cluster=' "$statefile")" "$(sget clusters)"
     clusterx=$(grep '^cluster=' "$statefile" | head -1 | cut -d= -f2 | cut -d, -f1)
     assert_near "with the light where the room sits" "$clusterx" 900 60
-    # The trail is pinned off in the nest's seed (it would grow in every
-    # scenario's pans); this part turns it on for its own proof.
-    setcfg DayTrail true
     c open
     c "pan 600 0"
     # The live feed: while the canvas runs, the state file follows the
@@ -40,8 +37,6 @@ run_scenario() {
     fi
     c commit
     sleep 0.5
-    assert_eq "and the trail rides the same file" "$(grep -c '^trail=' "$statefile")" 1
-    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key DayTrail --delete
     c cancel
     arrange
 }

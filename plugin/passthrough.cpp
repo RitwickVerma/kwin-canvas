@@ -170,8 +170,8 @@ void CanvasPassthrough::setCamera(double viewX, double viewY, double zoom, const
 void CanvasPassthrough::setCanvasState(const QString &state)
 {
     // The shader channel: the effect pushes the plane's remembered state at
-    // each commit (view=, grid=, cluster=, trail= lines in plane coordinates);
-    // the clusters and the trail land here screen-projected (scaled by the
+    // each commit (view=, grid=, cluster= lines in plane coordinates);
+    // the clusters land here screen-projected (scaled by the
     // zoom the effect publishes), so a fragment shader works in pixels with
     // no camera math of its own; the grid passes through raw and scrolls
     // with the view on the shader side.
@@ -209,18 +209,6 @@ void CanvasPassthrough::setCanvasState(const QString &state)
             const QStringList p = line.mid(8).split(QLatin1Char(','));
             if (p.size() == 3) {
                 out << "cluster=" << int((p[0].toDouble() - viewX) * zoomV) << ',' << int((p[1].toDouble() - viewY) * zoomV) << ',' << p[2] << QLatin1Char('\n');
-            }
-        } else if (line.startsWith(QLatin1String("trail="))) {
-            const QStringList p = line.mid(6).split(QLatin1Char(','));
-            if (p.size() >= 2) {
-                out << "trail=";
-                for (int i = 0; i + 1 < p.size(); i += 2) {
-                    out << int((p[i].toDouble() - viewX) * zoomV) << ',' << int((p[i + 1].toDouble() - viewY) * zoomV);
-                    if (i + 2 < p.size()) {
-                        out << ',';
-                    }
-                }
-                out << QLatin1Char('\n');
             }
         }
     }

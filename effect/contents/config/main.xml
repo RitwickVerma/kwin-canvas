@@ -148,10 +148,6 @@
             <label>The zoom door: with the canvas closed, the wheel over the bare ground zooms the world out of the location - the canvas opens at the 1:1 seam and the wheel keeps zooming into the overworld; zooming back in to 1:1 flies the camera home and re-enters the location. Over a window, the wheel stays that window's, so games and apps keep their scroll. Needs the pass-through plugin to see the wheel while the canvas is closed.</label>
             <default>true</default>
         </entry>
-        <entry name="DayTrail" type="Bool">
-            <label>The plane remembers the day: the open canvas draws a faint fading line on the ground where the camera has travelled this session, the oldest part gone after about ten minutes. It lives in the zoomed-out world and stays out of the 1:1 seam, so the normal desktop never changes.</label>
-            <default>true</default>
-        </entry>
         <entry name="HotRev" type="Int">
             <label>The hot-reload revision, bumped by "make hot": each bump recompiles the scene tree (ui.qml) in the running session, so a look-polish edit lands without a re-login. The effect's logic lives in main.qml and still needs a compositor restart to change.</label>
             <default>0</default>
