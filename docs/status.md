@@ -137,8 +137,8 @@ moves the plane exactly - panBy gained an exact branch and the torch's
 arc stays for the zoom-out alone - and the scenarios that carry 1:1 hand
 values moved back off the torch's numbers (94's 100; 103's and 85's
 200/100; 81's 200/100 and 140/60). The quiet hold's sphere map and the
-torch's arc are still there: older, separate, and awaiting their own
-verdict.
+torch's arc are still there too - older, separate, and kept by the user's
+own verdict.
 
 ### 2026-10-11 — the wallpaper crash loop leaves, and the plane bends whole
 
