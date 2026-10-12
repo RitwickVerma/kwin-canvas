@@ -19,10 +19,10 @@ run_scenario() {
     c "zoom 0.4 960 540"
     printf 'drag 1700 900 1500 800\n' | input
     sleep 0.3; c state
-    # The sphere's pan: the drag rides the arc and the tan accelerates it,
-    # so this 200x100 px drag lands at -583.6/-522.7 (measured; see panBy).
-    assert_near "ground drag pans x" "$(sget viewx)" -583.6 2
-    assert_near "ground drag pans y" "$(sget viewy)" -522.7 2
+    # The hand moves the plane exactly: 200x100 px at 0.4 zoom is 500x250
+    # canvas px, so from the home's -1440/-810 the view lands at -940/-560.
+    assert_near "ground drag pans x" "$(sget viewx)" -940 2
+    assert_near "ground drag pans y" "$(sget viewy)" -560 2
     # Drag KCalc by its title bar (the client area is the app's when
     # pass-through is live), 100 by 50 screen px: 250 by 125 canvas units
     # at zoom 0.4. Snapping off: this measures the drag, not the snap (98
@@ -35,13 +35,12 @@ run_scenario() {
     assert_near "window drag moves y" "$(eget KCalc y)" 245 3
     snap input-dragged
     # The chord enters the location under the screen centre: canvas
-    # (1816.4, 827.3) at this camera (the torch panned less than the hand
-    # moved), so the viewport lands at (856.4, 287.3) and KCalc is written
-    # relative to it, where the drag left it on the plane.
+    # (1460, 790) at this camera, so the viewport lands at (500, 250) and
+    # KCalc is written relative to it, where the drag left it on the plane.
     printf 'key leftctrl down\nkey leftalt down\nkey space\nkey leftalt up\nkey leftctrl up\n' | input
     sleep 0.6; c state
     assert_eq "the chord enters" "$(sget visible)" false
-    assert_near "KCalc written relative to the entered viewport x" "$(eget KCalc fx)" -506 3
-    assert_near "KCalc written relative to the entered viewport y" "$(eget KCalc fy)" -42 3
+    assert_near "KCalc written relative to the entered viewport x" "$(eget KCalc fx)" -150 3
+    assert_near "KCalc written relative to the entered viewport y" "$(eget KCalc fy)" -5 3
     arrange >/dev/null
 }

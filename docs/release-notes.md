@@ -1,7 +1,7 @@
 Unreleased:
 
-- A drag at 1:1 moves the plane exactly with the hand - no acceleration,
-  no drift from the pointer; the torch's arc belongs to the zoom-out.
+- A drag moves the plane exactly with the hand, at every zoom - no
+  acceleration, no drift from the pointer.
 
 - The wheel behaves everywhere on the canvas now: a wheel with a canvas
   button held zooms the canvas instead of nothing, and the zoom door no
@@ -12,12 +12,6 @@ Unreleased:
 
 - A tiled ground whose image cannot be loaded now falls back to the grid
   instead of leaving the plane blank.
-
-- The pan is a torch: the camera sits at the centre of a sphere the plane
-  is projected on, so a hold-drag turns the view by an angle instead of
-  dragging it 1:1 - the same hand movement sweeps more plane the further
-  from home you are, and the sphere's radius follows the windows' own
-  spread so the plane always fits inside the torch's reach.
 
 - The camera and the moves feel the work they do. A far flight runs a
   stiffer spring and settles as promptly as a nudge, so big jumps never

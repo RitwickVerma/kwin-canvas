@@ -35,10 +35,10 @@ run_scenario() {
     sleep 1.0; c state
     local vx vy; vx=$(sget viewx); vy=$(sget viewy)
     sleep 1.6; c state
-    # The sphere's pan again: the hand's 200/100 px land at 335.5/131.9
-    # canvas px at this view and zoom (measured; see panBy).
-    assert_near "the ground drag pans the camera x" "$(sget viewx)" "$(awk -v v="$vx" 'BEGIN{print v + 335.5}')" 2
-    assert_near "the ground drag pans the camera y" "$(sget viewy)" "$(awk -v v="$vy" 'BEGIN{print v + 131.9}')" 2
+    # The hand moves the plane exactly: 200/100 px are 333.3/166.7 canvas
+    # px at 0.6 zoom - no arc, no acceleration.
+    assert_near "the ground drag pans the camera x" "$(sget viewx)" "$(awk -v v="$vx" 'BEGIN{print v + 200/0.6}')" 2
+    assert_near "the ground drag pans the camera y" "$(sget viewy)" "$(awk -v v="$vy" 'BEGIN{print v + 100/0.6}')" 2
     assert_eq "the drag never grabbed the window" "$(eget Gwenview x)" 4000
     sleep 2.3
     c cancel

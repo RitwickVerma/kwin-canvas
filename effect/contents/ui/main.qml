@@ -2176,30 +2176,13 @@ KWin.SceneEffect {
     // The sphere's radius grows with the windows' spread (the furthest
     // window must stay inside the torch's reach) plus a margin, so the
     // plane can keep growing before the sphere follows it.
-    function panSphereRadius() {
-        let spread = 0;
-        for (let i = 0; i < entries.length; ++i) {
-            const e = entries[i];
-            spread = Math.max(spread, Math.hypot(e.x + e.width, e.y + e.height), Math.hypot(e.x, e.y));
-        }
-        const floor = 2 * actionScreen().geometry.height / Math.max(0.01, zoom);
-        return Math.max(spread, floor) * 1.6 / Math.tan(85 * Math.PI / 180);
-    }
     function panBy(dx, dy) {
         effect.dbg("pan", "panBy dx=" + dx + " dy=" + dy);
-        // At 1:1 the hand moves the plane exactly - the eye and the hand
-        // agree there. The torch belongs to the zoom-out, where the world
-        // is a sphere and the sweep reads rather than races.
-        if (zoom >= 0.99999) { viewX -= dx / zoom; viewY -= dy / zoom; return; }
-        const R = panSphereRadius();
-        // The torch turns by dx/(R*zoom) radians: R times that angle is
-        // dx/zoom - the plain 1:1 pan at the home - and the tan accelerates
-        // the same hand movement toward the edges.
-        const tx = Math.atan(viewX / R) - dx / (R * zoom) * 0.65; // the torch turns a touch slower: the sweep reads, not races
-        const ty = Math.atan(viewY / R) - dy / (R * zoom) * 0.65;
-        const lim = 85 * Math.PI / 180;
-        viewX = R * Math.tan(Math.max(-lim, Math.min(lim, tx)));
-        viewY = R * Math.tan(Math.max(-lim, Math.min(lim, ty)));
+        // The hand moves the plane exactly, at every zoom: the eye and the
+        // hand agree everywhere. (The arc - the camera riding a sphere the
+        // tan accelerated - left with the sphere.)
+        viewX -= dx / zoom;
+        viewY -= dy / zoom;
     }
 
     // ---- camera physics ------------------------------------------------------

@@ -132,13 +132,15 @@ the goldens always held: 20-zoom is 8/0 with both snaps untouched
 (extents rmse 0.00120189; the snap pair predates the bend, so the flat
 render simply lands on it), and 128 stays 3/0.
 
-The same round honored the earlier verdict on the feel: at 1:1 the hand
-moves the plane exactly - panBy gained an exact branch and the torch's
-arc stays for the zoom-out alone - and the scenarios that carry 1:1 hand
-values moved back off the torch's numbers (94's 100; 103's and 85's
-200/100; 81's 200/100 and 140/60). The quiet hold's sphere map and the
-torch's arc are still there too - older, separate, and kept by the user's
-own verdict.
+The same round honored the feel verdicts: at 1:1 the hand moves the
+plane exactly (panBy's exact branch), and the scenarios that carry 1:1
+hand values moved back off the torch's numbers (94's 100; 103's and
+85's 200/100; 81's 200/100 and 140/60). Then the torch itself left: the
+user asked why the "torch-like cursor navigation" survived the sphere's
+removal, and the answer became the change - panBy is `view -= dx / zoom`
+at every zoom now, `panSphereRadius` is gone, and 80/112/20-zoom carry
+the linear values again. The quiet hold's sphere map remains: older,
+separate, and kept by the user's own verdict.
 
 ### 2026-10-11 — the wallpaper crash loop leaves, and the plane bends whole
 
