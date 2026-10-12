@@ -167,16 +167,7 @@ Item {
         anchors.fill: parent
         property var src: flatSource
         property real bend: ground.curvature
-        fragmentShader: "
-            uniform sampler2D src;
-            uniform highp float bend;
-            varying highp vec2 qt_TexCoord0;
-            void main() {
-                highp vec2 uv = qt_TexCoord0;
-                highp vec2 c = uv - vec2(0.5, 0.5);
-                uv.y += bend * (c.x * c.x - 0.0833);
-                uv = clamp(uv, vec2(0.0, 0.0), vec2(1.0, 1.0));
-                gl_FragColor = texture2D(src, uv);
-            }"
+        fragmentShader: Qt.resolvedUrl("GroundBarrel.frag.qsb") // precompiled: Qt 6 shaders are .qsb, never inline GLSL
+        blending: true
     }
 }

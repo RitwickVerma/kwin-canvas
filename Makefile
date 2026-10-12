@@ -92,6 +92,8 @@ stage:
 	cp -r decoration $(BUILD)/decoration
 	cp shared/Ground.qml $(BUILD)/effect/contents/ui/Ground.qml
 	cp shared/Ground.qml $(BUILD)/wallpaper/contents/ui/Ground.qml
+	cp shared/GroundBarrel.frag.qsb $(BUILD)/effect/contents/ui/GroundBarrel.frag.qsb
+	cp shared/GroundBarrel.frag.qsb $(BUILD)/wallpaper/contents/ui/GroundBarrel.frag.qsb
 
 install: stage ## Install the effect, the ground wallpaper and the applet as user packages, and the CLI into ~/.local/bin
 	@$(KPT) --type KWin/Effect --upgrade $(BUILD)/effect >/dev/null 2>&1 || $(KPT) --type KWin/Effect --install $(BUILD)/effect >/dev/null

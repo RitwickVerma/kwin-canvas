@@ -115,6 +115,53 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-11 — the wallpaper crash loop leaves, and the bent ground's seam is red
+
+The session began outside the tree: plasmashell was in an endless
+crash-restart loop — every instance died SIGABRT after ~5 s, 89 restarts
+deep — because the desktop's Wallpaper Engine scene (2546328018,
+"KrS_stars_snow") asks for a render-target `_rt_shadowAtlas` and an
+`_alias_lightCookie` material the plugin's June-2025 backend cannot
+resolve: WPSceneParser errors, then an uncaught `std::out_of_range` on a
+worker thread, every start, deterministically. The unit's own drop-in had
+`StartLimitIntervalSec=0` and `Restart=always`, so it could never stop on
+its own, and each core is 15.8 MB — the dump store reached 3.9 GB. Upstream
+closed the matching issue (#504) in May 2026 with "use waywallen", and the
+scene backend no longer exists on the plugin's main branch, so an update
+would not have helped. The loop was stopped by hand: containment 129's
+wallpaper plugin now reads `kwin-canvas-ground` (the scene's section stays
+in the file, dormant), and plasmashell has run uninterrupted since 23:50:41
+with zero scene-loading lines and the desktop drawing its grid over
+#1C1F26 at 5120x1440. The cores still need root to go:
+`sudo coredumpctl vacuum --vacuum-size=1G`. Waywallen (the maintainer's
+successor, in the AUR as waywallen-bin, waywallen-display and
+plasma-wallpaper-waywallen) is the route back to scene wallpapers.
+
+The tree's uncommitted round was broken in the live install and is now
+fixed: `shared/Ground.qml` carried `transparent: true` on the
+ShaderEffectSource (invalid in Qt 6.12 — the install logged `Type Ground
+unavailable` because of it), and `main.qml`'s refreshDesktopWindow carried a
+console.log; both are gone. The extraction to `GroundBarrel.frag.qsb` is
+required, not a preference: Qt 6.12 no longer prepares inline GLSL in
+ShaderEffect — the nest's plasmashell proved it with `shader preparation
+failed` for the URL-encoded source URL. Verified with `make lint` (green)
+and `make test ARGS=20-zoom` (8/0, the barrel's goldens exact), and live:
+`make hot` recompiled the scene tree (HotRev 14) with no Ground errors in
+the journal. The desktopWindow handle needs a KWin restart before it runs
+live; its console.log is the only line that left.
+
+What the round did not fix, and is a real decision: scenario 128 is red
+against 51532eb (seam rmse 0.0726, threshold 0.02) and an A/B with HEAD's
+Ground.qml reproduces it exactly — the bent ground is the cause, not the
+WIP. `c open` opens at OpenZoom 0.8, so the effect's ground draws with
+curvature 0.024 while the wallpaper's ground is still flat, and the seam
+cannot hold. Either the wallpaper receives the same curvature or 128 opens
+at 1:1; the call is open.
+
+The kde-material-you-colors TypeError spam that made the loop look worse is
+downstream of wallpaper-change events — a four-second burst at the switch,
+quiet since; nothing in this tree feeds it.
+
 ### 2026-10-20 — the canvas feeds the shader wallpaper
 
 The user runs the wallpaper-engine video wallpaper and asked for a

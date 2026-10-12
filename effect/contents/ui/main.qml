@@ -1430,6 +1430,30 @@ KWin.SceneEffect {
         return true;
     }
 
+    // The desktop's own window (the live wallpaper surface) for a screen.
+    // Wallpaper Engine and other non-KDE wallpapers exist only as the
+    // desktop window's texture, which KWin.DesktopBackground does not draw,
+    // so the backdrop asks the compositor for the real window instead.
+    function desktopWindowFor(screen) {
+        const stack = KWin.Workspace.stackingOrder;
+        for (let i = stack.length - 1; i >= 0; --i) {
+            const w = stack[i];
+            if (!w || w.deleted || !w.desktopWindow) continue;
+            if (screen && w.screen && w.screen !== screen) continue;
+            return w;
+        }
+        return null;
+    }
+
+    // The bindable handle the scene tree binds to: refreshed whenever the
+    // window set changes, so a video wallpaper's desktop window is picked
+    // up the moment it arrives. A bare function call in the ui.qml cannot
+    // bind, which is the QQmlExpression warning and the stale-null gray.
+    property QtObject desktopWindow: null
+    function refreshDesktopWindow() {
+        desktopWindow = desktopWindowFor(null);
+    }
+
     // A window the fly covers: every window the user can click, wider than
     // what the canvas draws - a utility window flies too. KWin's own
     // keep-visible rule must never be the thing that moves a window the
@@ -4323,8 +4347,8 @@ KWin.SceneEffect {
         }
         function onActivitiesChanged(id) { Qt.callLater(effect.activitiesChanged); }
         // App popups come and go with these too; resync() refreshes them.
-        function onWindowAdded(w) { if (effect.visible) Qt.callLater(effect.resync); }
-        function onWindowRemoved(w) { if (w) delete effect.focusAt[w.internalId]; if (effect.visible) Qt.callLater(effect.resync); }
+        function onWindowAdded(w) { Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
+        function onWindowRemoved(w) { if (w) delete effect.focusAt[w.internalId]; Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
         // Switching activities at 1:1 switches viewport: the ground follows.
         function onCurrentActivityChanged(id) {
             if (effect.refreshActivities()) effect.ensureTargets();
@@ -4703,6 +4727,7 @@ KWin.SceneEffect {
         loadPinned();
         loadClusterState();
         refreshActivities();
+        refreshDesktopWindow();
         lastDebugSeq = configuration.DebugSeq;
         publishHold();
         // The last committed viewport: the plane comes back where it was.
