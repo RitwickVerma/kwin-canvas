@@ -175,6 +175,7 @@ function smartPanNeighbourhood(rect, others, g, viewX, viewY, zoom, pad) {
     // The base: the least displacement (smartPan's own pick).
     let dx = Math.max(xMin, Math.min(0, xMax));
     let dy = Math.max(yMin, Math.min(0, yMax));
+    if (dx === 0 && dy === 0) return { dx: dx, dy: dy }; // already in view: the neighbourhood stays put, a rest under the pointer is sacred
     if (!others || others.length === 0) return { dx: dx, dy: dy };
     // The neighbourhood is local: only the windows within a screen's own
     // scale of the focused one may pull the camera. A window across the
@@ -189,8 +190,11 @@ function smartPanNeighbourhood(rect, others, g, viewX, viewY, zoom, pad) {
     }
     others = near;
     if (others.length === 0) return { dx: dx, dy: dy };
-    function xIn(w, d) { return d > w.x - sl - sw && d < w.x + w.width - sl; }
-    function yIn(w, d) { return d > w.y - st - sh && d < w.y + w.height - st; }
+    // Fully inside the screen counts; an edge just touching does not.
+    // (The old rule counted a window whose corner grazed the screen,
+    // which is how the camera kept parking the cluster just outside.)
+    function xIn(w, d) { return d > w.x - sl && d < w.x + w.width - sl - sw; }
+    function yIn(w, d) { return d > w.y - st && d < w.y + w.height - st - sh; }
     function count(dxx, dyy) {
         let n = 0;
         for (let i = 0; i < others.length; ++i) {
@@ -208,8 +212,15 @@ function smartPanNeighbourhood(rect, others, g, viewX, viewY, zoom, pad) {
             if (b > lo && b < hi) pts.push(b);
         }
         pts.sort(function (p, q) { return p - q; });
+        // The smart placement: a pan that keeps strictly more of the
+        // neighbourhood on screen wins, and among those the LEAST
+        // displacement - the camera moves as little as it can, so the
+        // most of the other windows stay in view. Nothing strictly
+        // better: the base stands (the least move, the rest under the
+        // pointer sacred).
+        const baseN = xAxis ? count(cur, fixed) : count(fixed, cur);
         let best = cur;
-        let bestN = xAxis ? count(cur, fixed) : count(fixed, cur);
+        let bestN = baseN;
         let bestD = Math.abs(cur);
         for (let i = 0; i + 1 < pts.length; ++i) {
             const mid = (pts[i] + pts[i + 1]) / 2;
@@ -217,7 +228,7 @@ function smartPanNeighbourhood(rect, others, g, viewX, viewY, zoom, pad) {
             const d = Math.abs(mid);
             if (n > bestN || (n === bestN && d < bestD)) { bestN = n; bestD = d; best = mid; }
         }
-        return best;
+        return bestN > baseN ? best : cur;
     }
     for (let pass = 0; pass < 2; ++pass) {
         dx = sweep(dx, dy, xMin, xMax, true);

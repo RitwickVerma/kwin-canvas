@@ -327,6 +327,7 @@ KWin.SceneEffect {
         if (!quiet || !grasp) { grasp = false; graspOverworld = false; graspTarget = null; chipCount = 0; return; }
         if (sceneGestures > 0) {
             deferredClose = graspEnd;
+            deferredAt = Date.now();
             return;
         }
         grasp = false;
@@ -1224,6 +1225,15 @@ KWin.SceneEffect {
         // The pass-through's own rest shows the cue while its clock runs;
         // the canvas's glow waits for the handoff instead of duelling
         // with that cue, so the two never overlap.
+        // A parked close that has waited out its welcome is forced: a stuck gesture loses to the user's intent.
+        if (deferredClose !== null && Date.now() - deferredAt > 5000) {
+            sceneGestures = 0;
+            const fn = deferredClose;
+            deferredClose = null;
+            deferredAt = 0;
+            fn();
+            return;
+        }
         if (navHeld || quiet || pointerButtons !== Qt.NoButton || restStart !== "") return;
         const c = globalToCanvas(p.x, p.y);
         let e = null;
@@ -1883,6 +1893,7 @@ KWin.SceneEffect {
     // runs the moment the buttons come up.
     property int sceneGestures: 0
     property var deferredClose: null
+    property real deferredAt: 0 // when the parked close was asked for; a stuck gesture loses after 5s
     onSceneGesturesChanged: {
         if (sceneGestures === 0 && deferredClose !== null) {
             const fn = deferredClose;
@@ -2679,6 +2690,7 @@ KWin.SceneEffect {
         finishEntryAnims();
         if (sceneGestures > 0) {
             deferredClose = function () { commit(activate); };
+            deferredAt = Date.now();
             return;
         }
         camStop();
@@ -2798,6 +2810,7 @@ KWin.SceneEffect {
         if (!visible) return;
         if (sceneGestures > 0) {
             deferredClose = doCancel;
+            deferredAt = Date.now();
             return;
         }
         unsettle();
@@ -4280,11 +4293,17 @@ KWin.SceneEffect {
         const t = peekTarget(activityOf(w));
         const f = w.frameGeometry;
         const rect = { x: f.x + t.x, y: f.y + t.y, width: f.width, height: f.height };
-        // The activation fly is the plain least-pan: the focused window
-        // wholly on screen with the least movement. The neighbourhood pan
-        // (the tour's own) belongs to the cluster hops, where the eye
-        // wants the windows around the destination too.
-        const d = smartPan(rect, null, 24);
+        // The activation fly keeps the whole neighbourhood in view: the
+        // focused window lands with its cluster around it, not pinned at
+        // the screen edge (the plain least-pan parked the window at the
+        // edge with the cluster just outside).
+        const others = [];
+        for (let i = 0; i < entries.length; ++i) {
+            const e = entries[i];
+            if (e.window === w) continue;
+            others.push({ x: e.x, y: e.y, width: e.width, height: e.height });
+        }
+        const d = smartPan(rect, others, 24);
         if (d.dx !== 0 || d.dy !== 0) slideTo(d.dx, d.dy);
     }
     // The entry a window is drawn from, or null.
@@ -4450,6 +4469,7 @@ KWin.SceneEffect {
         case "open": open(); break;
         case "commit": commit(null); break;
         case "cancel": doCancel(); break;
+    case "release": sceneGestures = 0; break; // the stuck-gesture emergency: the parked close fires at once
         case "toggle": toggle(); break;
         case "home": home(); break;
         case "origin": origin(); break;
