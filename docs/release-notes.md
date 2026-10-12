@@ -1,5 +1,10 @@
 Unreleased:
 
+- The zoom-out bend is a true sphere now: the plane is read as the surface
+  of a sphere the screen slices, so it curves away in every direction -
+  vertically and horizontally alike - instead of the old one-axis smile.
+  At 1:1 the pass is off and the plane is exactly flat.
+
 - The wheel behaves everywhere on the canvas now: a wheel with a canvas
   button held zooms the canvas instead of nothing, and the zoom door no
   longer eats a wheel over an already-open canvas.

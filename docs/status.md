@@ -115,6 +115,24 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-12 — the plane is a true sphere, not a smile
+
+The user asked why the bend "does not work that well vertically" and then
+asked for the real thing: a curved slice out of a true sphere. The old
+warp moved only y, and only with x - a one-axis smile that left every
+vertical line straight. The world pass now reads the plane as the surface
+of a sphere: each pixel at radius rp on screen samples the surface at the
+arc distance R * asin(rp / R), aspect-corrected, so the picture curves
+away in every direction and minifies toward the rim. R rides the zoom
+(sphereRadiusPx: the screen half-diagonal times 2.6 over sphereWarp), and
+the pass stays off at 1:1, so the flat contract holds. Verified: make lint
+green; make test ARGS=20-zoom 8/0 with both committed goldens holding
+(extents rmse 0.00901796 - the new look stays inside the old smile's own
+tolerances at 0.4 zoom, so nothing was re-recorded); 128-wallpaper-ground
+3/0 (the seam at 1:1 is untouched); a 0.2-zoom nest shot shows a gentle
+bow with a clean rim and no clamp smearing. The torch pan's sphere radius
+and the quiet hold's sphere map remain their own, separate things.
+
 ### 2026-10-11 — the wallpaper crash loop leaves, and the plane bends whole
 
 The session began outside the tree: plasmashell was in an endless
@@ -190,6 +208,16 @@ so that proof belongs to the live session. The full suite at the pass's
 end: 256 pass, 12 fail, 2 skip, and every one of the 12 is a suite-order
 artefact, green alone the same evening; docs/testing.md's "Things that
 cost time" lists them rather than letting them pass for green.
+
+The sphere question, answered in the look: the zoom-out bend's one-axis
+smile - a vertical shift driven only by x - became a true sphere. The
+plane is read as the surface of a sphere the screen slices, sampled by
+arc distance (`R * asin(rp / R)`) in every direction, aspect-correct; the
+silhouette radius rides the zoom (`sphereRadiusPx`, a few screen radii,
+so the limb never shows and the rim's overdraw stays within the old
+clamp's own scale), and at 1:1 the pass is still off and the plane exactly
+flat. No golden moved: at 0.4 zoom the new arithmetic lands inside the old
+smile's own tolerances.
 
 ### 2026-10-20 — the canvas feeds the shader wallpaper
 

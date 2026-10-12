@@ -60,6 +60,16 @@ KWin.SceneEffect {
     // The sphere the torch pans over, as a visual: 0 at 1:1 (the flat
     // plane), 1 at the far zoom-out. The ground's shader reads it.
     readonly property real sphereWarp: Math.max(0, 1 - zoom)
+    // The true sphere's silhouette radius in pixels: the world's picture is
+    // read as the surface of a sphere this big, so it curves away in every
+    // direction - more the farther the camera is from 1:1. Always a few
+    // screen radii beyond the corners, so the limb never shows; sphereWarp 0
+    // keeps the pass off entirely.
+    readonly property real sphereRadiusPx: {
+        const sg = actionScreen().geometry;
+        const diag = Math.hypot(sg.width, sg.height) / 2;
+        return diag * 2.6 / Math.max(0.0001, sphereWarp);
+    }
     property real entryViewX: 0
     property real entryViewY: 0
 

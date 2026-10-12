@@ -1291,7 +1291,12 @@ Item {
             anchors.fill: parent
             visible: effect.sphereWarp > 0.0001
             property var src: worldSource
-            property real bend: effect.sphereWarp * 0.12
+            // The true sphere: the screen is a slice of a sphere with this
+            // silhouette radius, and the picture curves away in every
+            // direction. (The old barrel's one-axis smile is gone.)
+            property real viewW: width
+            property real viewH: height
+            property real radius: effect.sphereRadiusPx
             fragmentShader: Qt.resolvedUrl("GroundBarrel.frag.qsb")
             blending: true
         }
