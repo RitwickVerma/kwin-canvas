@@ -139,10 +139,12 @@ Tests run hidden with `NEST_VIRTUAL=1`; only `make play` needs a window.
 From the audit list: `dragRaw` cleared in `endDrag`, the click-pan timer
 stopped on commit, cancel and slide end, `deskArea` clipped to the screen's
 rectangle, the dead `farewellHide` fade branch removed. The focus-activity
-case did not reproduce as a bug (139 pins it). A second `commit` on a closed canvas is now a no-op (`142`; it pushed two undo
+case did not reproduce as a bug (139 pins it). The sphere map was nested inside the lens (an unclosed content `Item` in
+`ui.qml`, a stray `}` after the sphere): it never drew in a grasp. Fixed,
+pinned by `114`'s corner-glass check. A second `commit` on a closed canvas is now a no-op (`142`; it pushed two undo
 entries). Still open: an Esc that lands inside the 170 ms farewell after a
 commit (the debug channel cannot deliver it that fast, so it is unmeasured), the forced-close `sceneGestures` write, the
-minimap drag scale, the sphereMap nesting, delegate TypeErrors, `nest_env`
+minimap drag scale, delegate TypeErrors, `nest_env`
 word-splitting. Not checked: the decor applet in a
 real plasmashell, and the plugin's NVML path (no NVIDIA load measured).
 

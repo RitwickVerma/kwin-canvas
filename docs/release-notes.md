@@ -1,5 +1,9 @@
 Unreleased:
 
+- The grasp's sphere map draws again: the chip in the bottom-right corner that
+  shows where the sweep will land had been built inside the corner lens,
+  which hides itself the moment a grasp begins, so it never appeared.
+
 - A commit asked for twice no longer puts the layout on the undo stack twice:
   the second ask, after the canvas has closed, does nothing.
 

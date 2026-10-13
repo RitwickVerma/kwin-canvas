@@ -1394,6 +1394,7 @@ Item {
                     }
                 }
             }
+            }
             // The minimap's own click flies the camera to the point; the
             // lens never steals the pointer from the windows beneath it.
             TapHandler {
@@ -1490,7 +1491,6 @@ Item {
             // The centre cross: the home.
             Rectangle { x: sphereMap.width / 2 - 0.5; y: sphereMap.height / 2 - 4; width: 1; height: 8; color: "#3affffff" }
             Rectangle { x: sphereMap.width / 2 - 4; y: sphereMap.height / 2 - 0.5; width: 8; height: 1; color: "#3affffff" }
-        }
         }
 
         // The grasp teaches itself: one line, while the hold is zoomed out
