@@ -265,14 +265,33 @@ Item {
         // raw - no blur, no dim, no treatment - because a zoomed-out view
         // cannot borrow the real desktop the way 1:1 does. At 1:1 this
         // steps aside and the compositor's own wallpaper, sharp, shows
-        // through the plane's transparent gaps.
-        KWin.DesktopBackground {
+        // through the plane's transparent gaps. While the camera moves the
+        // source steps out of the scene and the grab below holds its last
+        // frame: a live full-screen read of a video wallpaper under a pan
+        // starves it (the black the pans had); a held frame cannot.
+        Item {
+            id: overworldBg
+            anchors.fill: parent
+            // No visible gate on the source: Qt drops a ShaderEffectSource's
+            // held texture when its source becomes non-renderable, and the
+            // screen goes black while the camera moves. The source stays in
+            // the scene and the ShaderEffectSource's hideSource keeps it
+            // off-screen; the wrapper's visibility comes from below.
+
+            KWin.DesktopBackground {
+                anchors.fill: parent
+                output: view.screen
+                desktop: KWin.Workspace.currentDesktop
+                activity: effect.currentActivity || "default"
+            }
+        }
+        ShaderEffectSource {
+            sourceItem: overworldBg
             anchors.fill: parent
             z: -90
             visible: effect.zoom < 0.999
-            output: view.screen
-            desktop: KWin.Workspace.currentDesktop
-            activity: effect.currentActivity || "default"
+            live: !(effect.camLive() || effect.edgePanGain > 0.01)
+            hideSource: true
         }
 
         // The plane's items - the ground, the frame bands, the windows, the
@@ -501,11 +520,29 @@ Item {
                     // An empty activity makes KWin 6.7 dereference a null
                     // activities object when activities are disabled, so
                     // always pass a non-empty one.
-                    KWin.DesktopBackground {
+                    // The frame's backdrop, held while the camera moves: a
+                    // live full-screen read of a video wallpaper starves
+                    // under a pan (the black the pans had), so the desktop is
+                    // rendered into a source item and the grab below holds
+                    // its last frame through the motion. No visible gate on
+                    // the source - a hidden source loses its renderable
+                    // texture and the held frame would come out black.
+                    Item {
+                        id: frameBg
                         anchors.fill: parent
-                        output: frame.modelData
-                        desktop: KWin.Workspace.currentDesktop
-                        activity: activityFrames.activity || "default"
+
+                        KWin.DesktopBackground {
+                            anchors.fill: parent
+                            output: frame.modelData
+                            desktop: KWin.Workspace.currentDesktop
+                            activity: activityFrames.activity || "default"
+                        }
+                    }
+                    ShaderEffectSource {
+                        sourceItem: frameBg
+                        anchors.fill: parent
+                        live: !(effect.camLive() || effect.edgePanGain > 0.01)
+                        hideSource: true
                     }
 
                     // Sheet tint: keeps the frame legible when no background
