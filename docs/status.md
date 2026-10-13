@@ -145,7 +145,12 @@ cannot draw it and KWin composites the scene over black. `ui.qml` now draws
 the desktop window with a `WindowThumbnail` whenever the canvas is open
 (`deskwin=` in `state`, pinned by `93`); in the nest, with a static wallpaper,
 it is pixel-identical to the compositor's. **Not verified: a Wallpaper Engine
-wallpaper, which the nest cannot run.** The first build bound the layer's `client` to a function call: the live journal said
+wallpaper, which the nest cannot run.** Live check (2026-10-13): KWin's scripting API reports plasmashell's desktop window
+on DP-3 (`desktopWindow=true`, 4096x1152 logical, layer 0, not minimised), and
+the scene finds it and logs it (`kwin-canvas ui: desktop window for DP-3`).
+The layer is found imperatively in `ui.qml` (a 1 s timer while the canvas is
+open) because the stacking order does not notify. Not seen: the open canvas
+on the live desktop. The first build bound the layer's `client` to a function call: the live journal said
 `ui.qml:286:13 depends on non-bindable properties` and the layer stayed null
 (black still, at 1:1). It binds to `desktopWindows[output]` now, refreshed
 with the window set. If it is still black live, check the journal for that

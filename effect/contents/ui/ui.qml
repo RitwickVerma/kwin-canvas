@@ -282,10 +282,35 @@ Item {
         // desktop shows, the open canvas shows too. At 1:1 it is the same
         // picture the compositor draws, so nothing moves.
         KWin.WindowThumbnail {
+            id: deskThumb
             anchors.fill: parent
             z: -89
             visible: effect.canvasOpen && client !== null
-            client: effect.desktopWindows[view.screen.name] || null
+            // Found here, imperatively, and not through a binding: the
+            // stacking order does not notify (a bound call stayed null and
+            // logged "depends on non-bindable properties"), and a hot reload
+            // swaps this file but not the effect's own, which may predate
+            // the handles it would otherwise offer.
+            property var desk: null
+            client: desk
+            function refresh() {
+                const w = effect.desktopWindowFor(view.screen);
+                if (w === desk) return;
+                desk = w;
+                console.log("kwin-canvas ui: desktop window for " + (view.screen ? view.screen.name : "?") + ": "
+                    + (w ? (w.resourceClass + " / " + w.caption + " " + w.frameGeometry.width + "x" + w.frameGeometry.height) : "none"));
+            }
+            Component.onCompleted: refresh()
+            Connections {
+                target: effect
+                function onVisibleChanged() { if (effect.visible) deskThumb.refresh(); }
+            }
+            Timer {
+                interval: 1000
+                repeat: true
+                running: effect.canvasOpen
+                onTriggered: deskThumb.refresh()
+            }
         }
 
         // The plane's items - the ground, the frame bands, the windows, the
