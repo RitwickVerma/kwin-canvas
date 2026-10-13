@@ -144,6 +144,15 @@ Cheapest first, and stop where the change warrants:
   Anything a user can see gets a line, in the same prose voice as the rest.
 - **`README.md`** — what the project is, for someone deciding whether to use it.
 
+## Finding your way
+
+`effect/contents/ui/main.qml` is 4.8k lines, so search before reading. If
+`graphify-out/` exists (local, gitignored, built with `graphify`), start at
+`graphify-out/GRAPH_REPORT.md`, then `graphify explain "NAME"` or
+`graphify path "A" "B"` for how two pieces connect. The graph is a map of an
+older tree, not a check: it goes stale with every edit, so confirm a hit with
+`grep` before relying on it, and never commit `graphify-out/`.
+
 ## Conventions this repo holds you to
 
 - **SPDX headers.** Every file that can carry a comment starts with its copyright
