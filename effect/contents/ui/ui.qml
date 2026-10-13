@@ -242,7 +242,7 @@ Item {
         focus: true
         Connections {
             target: effect
-            function onVisibleChanged() { if (effect.visible) view.hoverCount = 0; }
+            function onVisibleChanged() { if (effect.visible) { view.hoverCount = 0; view.spaceHeld = false; } }
             // The switcher asks for the keyboard focus through a property
             // bump: the effect's own scope cannot name a view delegate.
             function onSwitcherFocusReqChanged() { view.focus = true; }
@@ -762,6 +762,7 @@ Item {
                 onRestingChanged: {
                     if (resting) {
                         restFill = 0;
+                        restAnim.to = 1;
                         restAnim.duration = Math.max(1, Number(effect.restStart.split("|")[1]) || 900);
                         restAnim.restart();
                     } else if (restFill > 0.01) {

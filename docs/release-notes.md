@@ -1,5 +1,25 @@
 Unreleased:
 
+- The Alt+Tab-style switcher keeps waiting while its modifier is held: the
+  re-arm of its settle beat threw an error on every poll, so the switcher
+  could enter a window while the chord was still down.
+
+- The rest cue along a window's edge fills again after the first time it is
+  cancelled, and Space no longer stays "held" across a close and reopen,
+  which left the canvas unresponsive until Space was pressed once more.
+
+- The cluster chip and the cluster switcher centre the cluster on the
+  screen under the pointer, not only on a screen at the desk's origin.
+
+- The decor applet's tooltips name their own button, its lit states clear
+  when no window has focus, and it falls back to KDE's stock titlebar
+  button layout when none is configured.
+
+- The pass-through plugin no longer lets a window caption containing a bar
+  scramble the applet's state, writes the shader's state file atomically,
+  and reads the GPU load through one NVML session instead of opening one
+  per poll.
+
 - The 1:1 hold shows only the desktop: while a grasp (or a quiet slide)
   is in hand the canvas draws none of itself - the lit threads fade out
   at 1:1 and the ground's grid no longer draws over the wallpaper.

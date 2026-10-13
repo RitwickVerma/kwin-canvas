@@ -30,6 +30,7 @@
 #include <string.h>
 #include <time.h>
 #include <ctype.h>
+#include <math.h>
 
 #include <wayland-client.h>
 #include "fake-input-client-protocol.h"
@@ -109,7 +110,8 @@ static void connect_display(const char *name)
 
     struct wl_registry *reg = wl_display_get_registry(display);
     wl_registry_add_listener(reg, &registry_listener, NULL);
-    wl_display_roundtrip(display);
+    if (wl_display_roundtrip(display) < 0)
+        die("registry roundtrip failed: %s", strerror(errno));
 
     if (!fake_name)
         die("compositor does not advertise org_kde_kwin_fake_input\n"
@@ -167,7 +169,9 @@ static bool parse_double(const char *s, double *out)
     if (!s || !*s)
         return false;
     *out = strtod(s, &end);
-    return *end == '\0';
+    // "nan" and "inf" parse as numbers; sent as a fixed-point position they
+    // are undefined behaviour in wl_fixed_from_double, so refuse them here.
+    return *end == '\0' && isfinite(*out);
 }
 
 static bool parse_long(const char *s, long *out)
@@ -175,8 +179,9 @@ static bool parse_long(const char *s, long *out)
     char *end;
     if (!s || !*s)
         return false;
+    errno = 0;
     *out = strtol(s, &end, 10);
-    return *end == '\0';
+    return *end == '\0' && errno == 0;
 }
 
 static bool parse_button(const char *s, uint32_t *out)

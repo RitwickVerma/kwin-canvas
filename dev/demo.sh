@@ -41,8 +41,8 @@ c commit >/dev/null
 FRAMES=$OUT
 FRAME=0
 burst() {
-    local n=$1 i
-    for i in $(seq 1 "$n"); do
+    local n=$1
+    for _ in $(seq 1 "$n"); do
         FRAME=$((FRAME + 1))
         shot "$FRAMES/frame-$(printf '%02d' "$FRAME").png" >/dev/null 2>&1
         sleep 0.4

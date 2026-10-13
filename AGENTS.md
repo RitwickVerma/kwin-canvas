@@ -111,7 +111,7 @@ Cheapest first, and stop where the change warrants:
 
 | Path | What it holds |
 |---|---|
-| `effect/contents/ui/main.qml` | The canvas: 3.3k lines, the whole effect — snapshot, ground, frames, thumbnails, pan, zoom, pick, commit |
+| `effect/contents/ui/main.qml` | The canvas: 4.8k lines, the whole effect — snapshot, ground, frames, thumbnails, pan, zoom, pick, commit |
 | `effect/contents/ui/config.ui` | The settings form. **Every knob is declared in `effect/contents/config/main.xml` first** — that file is the schema |
 | `shared/Ground.qml` | The ground renderer, copied into the effect and the wallpaper at stage time: one edit has to suit both |
 | `wallpaper/` | The ground at 1:1 in a real plasmashell |
@@ -138,7 +138,8 @@ Cheapest first, and stop where the change warrants:
 - **`docs/testing.md`** — the harness, the scenario vocabulary, what CI checks,
   and `Things that cost time`, where the hard-won specifics live.
 - **`docs/status.md`** — where the fork stands: verified, not verifiable here,
-  open decisions, next candidates.
+  open decisions, next candidates, and the latest few sessions. Older session
+  logs live in **`docs/status-archive.md`**.
 - **`docs/release-notes.md`** — user-visible changes, newest under `Unreleased:`.
   Anything a user can see gets a line, in the same prose voice as the rest.
 - **`README.md`** — what the project is, for someone deciding whether to use it.

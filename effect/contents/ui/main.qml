@@ -561,7 +561,7 @@ KWin.SceneEffect {
         const cx = r.x + w / 2, cy = r.y + h / 2;
         dbg("map", "cluster " + (ci + 1) + " chip: flying to zoom " + z.toFixed(2) + " at (" + Math.round(cx) + "," + Math.round(cy) + ")");
         noteGesture();
-        camGo(z, cx - sg.width / (2 * z), cy - sg.height / (2 * z), undefined, undefined, 2.0);
+        camGo(z, cx - (sg.x + sg.width / 2) / z, cy - (sg.y + sg.height / 2) / z, undefined, undefined, 2.0);
     }
 
     // ---- floating windows ----------------------------------------------------
@@ -2083,7 +2083,7 @@ KWin.SceneEffect {
                 return;
             }
             if ((m & effect.switcherModMask) === 0) effect.chordRelease();
-            else effect.switcherSettle.restart();
+            else switcherSettle.restart();
         }
     }
     // The switcher: the whole plane fitted to the screen. The chord opens
@@ -2121,7 +2121,7 @@ KWin.SceneEffect {
             if (r && (r.width > 0 || r.height > 0)) {
                 const sg = actionScreen().geometry;
                 const z = Math.min(1.0, Math.max(0.2, Math.min(sg.width / (r.width + 48), sg.height / (r.height + 48))));
-                camGo(z, r.x + r.width / 2 - sg.width / (2 * z), r.y + r.height / 2 - sg.height / (2 * z), undefined, undefined, 3.0);
+                camGo(z, r.x + r.width / 2 - (sg.x + sg.width / 2) / z, r.y + r.height / 2 - (sg.y + sg.height / 2) / z, undefined, undefined, 3.0);
             } else {
                 zoomExtents(true, 3.0);
             }

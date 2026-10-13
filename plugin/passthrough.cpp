@@ -21,6 +21,7 @@
 #include <QJsonObject>
 #include <QLibrary>
 #include <QLoggingCategory>
+#include <QSaveFile>
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QTimer>
@@ -31,6 +32,19 @@ Q_LOGGING_CATEGORY(KWIN_CANVAS, "kwin_canvas_passthrough", QtDebugMsg)
 using namespace KWin;
 
 static const QString s_path = QStringLiteral("/KWinCanvas");
+
+// A window caption as one field of the state reply. The reply is split on
+// "|" by the decor applet and read as one line, and real captions carry both
+// ("Inbox | Mail", a title with a newline), so they would shift every flag
+// after the caption or end the line early.
+static QString replyField(const QString &caption)
+{
+    QString s = caption;
+    s.replace(QLatin1Char('|'), QLatin1Char('/'));
+    s.replace(QLatin1Char('\n'), QLatin1Char(' '));
+    s.replace(QLatin1Char('\r'), QLatin1Char(' '));
+    return s;
+}
 
 // The canvas-modifier buttons as a mask, from the effect's config. The
 // plugin reads this itself at startup: the effect publishes the mask over
@@ -71,7 +85,9 @@ CanvasPassthrough::CanvasPassthrough()
     // only ever finds the plugin through this object.
     for (int i = 1; i <= 5; ++i) {
         QTimer::singleShot(200 * i, this, [this]() {
-            QDBusConnection::sessionBus().registerObject(s_path, this, QDBusConnection::ExportScriptableSlots);
+            if (!m_registered) {
+                m_registered = QDBusConnection::sessionBus().registerObject(s_path, this, QDBusConnection::ExportScriptableSlots);
+            }
         });
     }
     // The hold mask from the config, so a missed publish cannot leave the
@@ -175,8 +191,11 @@ void CanvasPassthrough::setCanvasState(const QString &state)
     // zoom the effect publishes), so a fragment shader works in pixels with
     // no camera math of its own; the grid passes through raw and scrolls
     // with the view on the shader side.
-    QFile f(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + QStringLiteral("/kwin-canvas-state.txt"));
-    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+    // Written through QSaveFile: the shader polls this file, and an in-place
+    // truncate-and-write lets it read a half-written plane. The save is a
+    // rename, so a reader sees the old file or the new one, never a mix.
+    QSaveFile f(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + QStringLiteral("/kwin-canvas-state.txt"));
+    if (!f.open(QIODevice::WriteOnly)) {
         return;
     }
     QTextStream out(&f);
@@ -212,6 +231,8 @@ void CanvasPassthrough::setCanvasState(const QString &state)
             }
         }
     }
+    out.flush();
+    f.commit();
 }
 
 void CanvasPassthrough::setNavButtons(int buttons)
@@ -323,7 +344,7 @@ QString CanvasPassthrough::state() const
     if (KWin::Window *w = workspace()->activeWindow(); w) {
         win = QStringLiteral(" win=%1|%2|%3|%4|%5|%6|%7")
                   .arg(w->internalId().toString())
-                  .arg(w->caption())
+                  .arg(replyField(w->caption()))
                   .arg(w->maximizeMode() == KWin::MaximizeMode::MaximizeFull ? QStringLiteral("1") : QStringLiteral("0"))
                   .arg(w->isOnAllDesktops() ? QStringLiteral("1") : QStringLiteral("0"))
                   .arg(w->keepAbove() ? QStringLiteral("1") : QStringLiteral("0"))
@@ -335,9 +356,9 @@ QString CanvasPassthrough::state() const
                .arg(m_viewX)
                .arg(m_viewY)
                .arg(m_zoom)
-               .arg(m_grab ? m_grab->caption() : QStringLiteral("-"))
+               .arg(m_grab ? replyField(m_grab->caption()) : QStringLiteral("-"))
                .arg(m_grabGround ? QStringLiteral("true") : QStringLiteral("false"))
-               .arg(m_hover ? m_hover->caption() : QStringLiteral("-"))
+               .arg(m_hover ? replyField(m_hover->caption()) : QStringLiteral("-"))
                .arg(m_nav)
                .arg(m_hold)
                .arg(atSeam(waylandServer()->seat()->pointerPos()) ? QStringLiteral("1") : QStringLiteral("0"))
@@ -379,27 +400,25 @@ void CanvasPassthrough::windowAction(const QString &action)
 // alone governs the ladder.
 static int nvmlBusy()
 {
+    // Initialised once: nvmlInit is reference-counted and not free, and this
+    // runs every couple of seconds for the whole session. The device handle
+    // is kept with it; a failed start leaves the channel at -1 for good.
     static bool tried = false;
-    static int (*initFn)() = nullptr;
-    static int (*handleFn)(unsigned, void **) = nullptr;
+    static void *dev = nullptr;
     static int (*utilFn)(void *, void *) = nullptr;
     if (!tried) {
         tried = true;
         static QLibrary lib(QStringLiteral("libnvidia-ml.so.1"));
         if (lib.load()) {
-            initFn = (int (*)())lib.resolve("nvmlInit_v2");
-            handleFn = (int (*)(unsigned, void **))lib.resolve("nvmlDeviceGetHandleByIndex_v2");
-            utilFn = (int (*)(void *, void *))lib.resolve("nvmlDeviceGetUtilizationRates");
+            auto initFn = (int (*)())lib.resolve("nvmlInit_v2");
+            auto handleFn = (int (*)(unsigned, void **))lib.resolve("nvmlDeviceGetHandleByIndex_v2");
+            auto util = (int (*)(void *, void *))lib.resolve("nvmlDeviceGetUtilizationRates");
+            if (initFn && handleFn && util && initFn() == 0 && handleFn(0, &dev) == 0 && dev) {
+                utilFn = util;
+            }
         }
     }
-    if (!initFn || !handleFn || !utilFn) {
-        return -1;
-    }
-    if (initFn() != 0) {
-        return -1;
-    }
-    void *dev = nullptr;
-    if (handleFn(0, &dev) != 0 || !dev) {
+    if (!utilFn) {
         return -1;
     }
     // nvmlUtilization_t is two unsigned ints: gpu, then memory.

@@ -19,7 +19,8 @@
 set -euo pipefail
 
 if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
-    export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+    DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+    export DBUS_SESSION_BUS_ADDRESS
 fi
 
 for tool in qdbus6 kreadconfig6 kwriteconfig6; do
@@ -65,5 +66,6 @@ case "${1:-}" in
     open)   send open   "stepping out to the overworld" 10 ;;
     toggle) send toggle "toggled" ;;
     status) echo "kwin-canvas: effect loaded: $(loaded); pass-through plugin: $(plugin)" ;;
+    -h|--help|help) sed -n '8,12p' "$0"; exit 0 ;;
     *) sed -n '8,12p' "$0"; exit 1 ;;
 esac

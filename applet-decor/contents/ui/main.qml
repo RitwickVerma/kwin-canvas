@@ -89,6 +89,9 @@ PlasmoidItem {
                 if (i < 0) {
                     root.winMax = false;
                     root.winFloat = false;
+                    root.winAbove = false;
+                    root.winBelow = false;
+                    root.winCapture = false;
                     return;
                 }
                 const p = out.slice(i + 5).trim().split("|");
@@ -125,8 +128,8 @@ PlasmoidItem {
         repeat: true
         running: true
         onTriggered: {
-            executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnLeft");
-            executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnRight");
+            executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnLeft --default MS");
+            executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnRight --default HIAX");
         }
     }
     // The first layout happens before either timer fires: the panel sizes
@@ -135,8 +138,8 @@ PlasmoidItem {
     // computes zero and the applet paints over its neighbours.
     Component.onCompleted: {
         executable.run("qdbus6 org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.state");
-        executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnLeft");
-        executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnRight");
+        executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnLeft --default MS");
+        executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnRight --default HIAX");
     }
 
     // The width is a function of the state, not of the row's own layout:
@@ -321,15 +324,15 @@ PlasmoidItem {
             }
 
             PlasmaComponents3.ToolTip.text: {
-                if (parent.modelData === "X") return i18n("Close the window");
-                if (parent.modelData === "I") return i18n("Minimize the window");
-                if (parent.modelData === "A") return i18n("Maximize or restore the window");
-                if (parent.modelData === "S") return i18n("Float the window: pin it to all desktops");
-                if (parent.modelData === "F") return i18n("Keep the window above the others");
-                if (parent.modelData === "B") return i18n("Keep the window below the others");
+                if (modelData === "X") return i18n("Close the window");
+                if (modelData === "I") return i18n("Minimize the window");
+                if (modelData === "A") return i18n("Maximize or restore the window");
+                if (modelData === "S") return i18n("Float the window: pin it to all desktops");
+                if (modelData === "F") return i18n("Keep the window above the others");
+                if (modelData === "B") return i18n("Keep the window below the others");
                 return i18n("Hide the window from screen capture");
             }
-            PlasmaComponents3.ToolTip.visible: hovered && parent.modelData !== "_"
+            PlasmaComponents3.ToolTip.visible: hovered && modelData !== "_"
             PlasmaComponents3.ToolTip.delay: Qt.styleHints.mousePressAndHoldInterval
 
             MouseArea {
