@@ -329,15 +329,18 @@ Item {
             }
         }
 
-        // The overworld's wallpaper: KWin's own desktop background, drawn
-        // raw - no blur, no dim, no treatment - because a zoomed-out view
-        // cannot borrow the real desktop the way 1:1 does. At 1:1 this
-        // steps aside and the compositor's own wallpaper, sharp, shows
-        // through the plane's transparent gaps.
+        // The wallpaper under the plane: KWin's own desktop background, drawn
+        // raw - no blur, no dim, no treatment - whenever the canvas is up.
+        // The scene is composited over black, not over the desktop, so
+        // wherever no frame covers the view (a zoomed-out view, and a slide
+        // at 1:1 that has carried its frame away: measured, up to 37% of the
+        // screen black until the landing snapped to the desktop) the plane's
+        // gaps would show that black. At 1:1 with the frame in place it is
+        // the same picture under the frame.
         KWin.DesktopBackground {
             anchors.fill: parent
             z: -90
-            visible: effect.zoom < 0.999 && view.wallpaperDrawable
+            visible: effect.visible && view.wallpaperDrawable
             output: view.screen
             desktop: KWin.Workspace.currentDesktop
             activity: effect.currentActivity || "default"

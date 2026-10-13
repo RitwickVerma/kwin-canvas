@@ -139,7 +139,12 @@ Tests run hidden with `NEST_VIRTUAL=1`; only `make play` needs a window.
 From the audit list: `dragRaw` cleared in `endDrag`, the click-pan timer
 stopped on commit, cancel and slide end, `deskArea` clipped to the screen's
 rectangle, the dead `farewellHide` fade branch removed. The focus-activity
-case did not reproduce as a bug (139 pins it). **The black fly is fixed by `wallpaperDrawable` in `ui.qml` (the last paragraph here is history).**
+case did not reproduce as a bug (139 pins it). **Second black, measured in the nest: late in a quiet slide 36% of the screen was
+black (the frame had left and the wallpaper layer was off at 1:1); the layer now
+draws whenever the canvas is up (`144`, 36% -> 0). Open: the landing still differs
+~14% RMSE between the last slide frame and the desktop (video wallpaper not yet
+separated from position/colour), and frame pacing is unmeasured.**
+**The black fly is fixed by `wallpaperDrawable` in `ui.qml` (the last paragraph here is history).**
 **Cause, measured live on 2026-10-13 with a Wallpaper Engine video: during a quiet
 slide the frames' `KWin.DesktopBackground` painted solid black (0,0,0 where the
 closed desktop was 6,28,63); with that item hidden the same patch matched. The

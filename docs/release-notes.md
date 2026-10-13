@@ -1,5 +1,10 @@
 Unreleased:
 
+- A fly no longer shows black behind the sliding view: the wallpaper is drawn
+  under the plane whenever the canvas is up, not only below 1:1. Late in a
+  slide up to a third of the screen was black, where the monitor frame had
+  moved away, until the landing snapped back to the desktop.
+
 - The grasp's sphere map draws again: the chip in the bottom-right corner that
   shows where the sweep will land had been built inside the corner lens,
   which hides itself the moment a grasp begins, so it never appeared.
