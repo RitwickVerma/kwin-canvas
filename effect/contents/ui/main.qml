@@ -2695,6 +2695,10 @@ KWin.SceneEffect {
     // the desktop mid-press.
     function commit(activate) {
         dbg("commit", "entering at zoom " + zoom.toFixed(3) + ", activate=" + activate);
+        // A commit on a closed canvas is a second ask for a close that has
+        // landed: it would write the layout again and push it on the undo
+        // stack twice. doCancel has the same guard.
+        if (!visible) return;
         endSwitcher();
         finishEntryAnims();
         stopClickPan();
@@ -4744,6 +4748,7 @@ KWin.SceneEffect {
             + " rest=" + (restStart ? "1" : "0")
             + " moves=" + Object.keys(entryAnims).length
             + " dragraw=" + Object.keys(dragRaw).length
+            + " undo=" + undoStack.length
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
             + " map=" + (mapMinimap ? "minimap" : "-")
             + " ql=" + ql

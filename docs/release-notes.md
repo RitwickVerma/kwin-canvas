@@ -1,5 +1,8 @@
 Unreleased:
 
+- A commit asked for twice no longer puts the layout on the undo stack twice:
+  the second ask, after the canvas has closed, does nothing.
+
 - A window you dragged glides again when arrange, tidy or undo moves it: the
   drag's bookkeeping was never cleared, so the effect left that window to a
   hand that had let go.

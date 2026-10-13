@@ -64,6 +64,7 @@ sget() {
         seam)     sed -n 's/.* seam=\([0-9]*\).*/\1/p' <<<"$line" ;;
         moves)    sed -n 's/.* moves=\([0-9]*\).*/\1/p' <<<"$line" ;;
         dragraw)  sed -n 's/.* dragraw=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        undo)     sed -n 's/.* undo=\([0-9]*\).*/\1/p' <<<"$line" ;;
         map)      sed -n 's/.* map=\([a-z-]*\).*/\1/p' <<<"$line" ;;
         ql)       sed -n 's/.* ql=\([0-9]*\).*/\1/p' <<<"$line" ;;
         cpu)      sed -n 's/.* cpu=\([0-9]*\).*/\1/p' <<<"$line" ;;

@@ -57,7 +57,7 @@ make nest-reload             # reinstall, restart the nest, relaunch clients
 make nest-down               # stop it
 make nest-clean              # kill leftovers of nests whose state is gone
 
-make test                    # all scenarios, ~10 min: expect "== pass 253  fail 9  skip 2" - the 9 are suite-order, each green alone (docs/testing.md)
+make test                    # all scenarios, ~10 min: expect "== pass 253  fail 10  skip 2" - the 10 are suite-order, each green alone (docs/testing.md)
 make test ARGS=60            # scenarios whose file name matches
 make test ARGS="--update-golden 93"   # re-record that scenario's golden shots
 make test-two-outputs        # NEST_OUTPUTS=2, the 91 scenarios
@@ -92,7 +92,7 @@ Cheapest first, and stop where the change warrants:
 3. **`make test ARGS=<name>`** — one or two scenarios in a nest, a minute or two:
    the right size for a change you can describe in one sentence.
 4. **`make test`** — the whole suite against a fresh nest, ten minutes or so,
-   253 pass, 9 fail, 2 skip on the current tree: each fail is a suite-order
+   253 pass, 10 fail, 2 skip on the current tree: each fail is a suite-order
    artefact, green alone the same evening (the list and the reasoning are in
    `docs/testing.md`). The skips say what they cannot check here:
    `91-two-outputs`, because it needs a two-output nest — `make
