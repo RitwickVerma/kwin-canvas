@@ -139,7 +139,14 @@ Tests run hidden with `NEST_VIRTUAL=1`; only `make play` needs a window.
 From the audit list: `dragRaw` cleared in `endDrag`, the click-pan timer
 stopped on commit, cancel and slide end, `deskArea` clipped to the screen's
 rectangle, the dead `farewellHide` fade branch removed. The focus-activity
-case did not reproduce as a bug (139 pins it). The sphere map was nested inside the lens (an unclosed content `Item` in
+case did not reproduce as a bug (139 pins it). The black flash on a fly (and at 1:1) is a Wallpaper Engine wallpaper
+(`com.github.catsout.wallpaperEngineKde` is the live one): `DesktopBackground`
+cannot draw it and KWin composites the scene over black. `ui.qml` now draws
+the desktop window with a `WindowThumbnail` whenever the canvas is open
+(`deskwin=` in `state`, pinned by `93`); in the nest, with a static wallpaper,
+it is pixel-identical to the compositor's. **Not verified: a Wallpaper Engine
+wallpaper, which the nest cannot run.** If it is still black live, the next
+step is whether that window is a `desktopWindow` to KWin at all. The sphere map was nested inside the lens (an unclosed content `Item` in
 `ui.qml`, a stray `}` after the sphere): it never drew in a grasp. Fixed,
 pinned by `114`'s corner-glass check. A second `commit` on a closed canvas is now a no-op (`142`; it pushed two undo
 entries). Still open: an Esc that lands inside the 170 ms farewell after a

@@ -2695,10 +2695,10 @@ KWin.SceneEffect {
     // the desktop mid-press.
     function commit(activate) {
         dbg("commit", "entering at zoom " + zoom.toFixed(3) + ", activate=" + activate);
-        // A commit on a closed canvas is a second ask for a close that has
-        // landed: it would write the layout again and push it on the undo
-        // stack twice. doCancel has the same guard.
-        if (!visible) return;
+        // A commit on a closed canvas still writes and publishes (the debug
+        // channel uses it so), but it is a second ask for a close that has
+        // landed: its layout must not go on the undo stack a second time.
+        const wasOpen = visible;
         endSwitcher();
         finishEntryAnims();
         stopClickPan();
@@ -2781,8 +2781,10 @@ KWin.SceneEffect {
         zoom = 1.0;
         // Every commit leaves its layout on the undo stack, so Ctrl+Z can
         // step back to the one before it.
-        if (undoStack.length >= 20) undoStack.shift();
-        undoStack.push({ targets: copyTargets(targets), layout: entries.map(function (e) { return { internalId: e.window.internalId, x: e.x, y: e.y, activity: e.activity }; }) });
+        if (wasOpen) {
+            if (undoStack.length >= 20) undoStack.shift();
+            undoStack.push({ targets: copyTargets(targets), layout: entries.map(function (e) { return { internalId: e.window.internalId, x: e.x, y: e.y, activity: e.activity }; }) });
+        }
         // The location survives the session: where the eye left the plane
         // is where it comes back to after a restart.
         configuration.ViewX = Math.round(viewX);
@@ -4749,6 +4751,7 @@ KWin.SceneEffect {
             + " moves=" + Object.keys(entryAnims).length
             + " dragraw=" + Object.keys(dragRaw).length
             + " undo=" + undoStack.length
+            + " deskwin=" + (desktopWindowFor(null) ? "1" : "0")
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
             + " map=" + (mapMinimap ? "minimap" : "-")
             + " ql=" + ql

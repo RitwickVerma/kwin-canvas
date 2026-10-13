@@ -274,6 +274,19 @@ Item {
             desktop: KWin.Workspace.currentDesktop
             activity: effect.currentActivity || "default"
         }
+        // A wallpaper that is not Plasma's (a video, a scene) exists only as
+        // the desktop window's own texture, which DesktopBackground cannot
+        // draw: that left the scene over KWin's black - below 1:1, and at
+        // 1:1 too, where the compositor's wallpaper is assumed to show
+        // through. The window itself is drawn over it, so whatever the
+        // desktop shows, the open canvas shows too. At 1:1 it is the same
+        // picture the compositor draws, so nothing moves.
+        KWin.WindowThumbnail {
+            anchors.fill: parent
+            z: -89
+            visible: effect.canvasOpen && client !== null
+            client: { effect.desktopWindow; return effect.desktopWindowFor(view.screen); }
+        }
 
         // The plane's items - the ground, the frame bands, the windows, the
         // tags, the web and the chips - gathered under one item. (They keep

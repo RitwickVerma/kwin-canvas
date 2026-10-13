@@ -7,6 +7,9 @@ run_scenario() {
     # The wallpaper haze: one blur layer per output, drawing the desktop
     # window itself.
     assert_eq "a blur layer per output" "$(sget backdrop)" 1
+    # A video or scene wallpaper exists only as the desktop window's texture:
+    # the zoomed-out view draws that window, so it must have a handle.
+    assert_eq "the desktop window has a handle for the zoomed-out view" "$(sget deskwin)" 1
     # A zoomed-out view is where the haze can be seen at all: at 1:1 the
     # monitor frame covers the view exactly and the layer is hidden. 0.6 shows
     # the plane around the desk, which is what the wallpaper is for.
