@@ -199,7 +199,7 @@ Item {
     // scene's keys to the QuickView's active focus item, and a static
     // focus binding inside a loaded item never takes it - the split's
     // own regression. The force is the only form that registers.
-    Component.onCompleted: { console.log("kwin-canvas ui: loaded"); view.forceActiveFocus(); }
+    Component.onCompleted: { console.log("kwin-canvas ui: loaded"); view.forceActiveFocus(); view.checkWallpaper(); }
         id: view
         readonly property var screen: KWin.SceneView.screen
         readonly property rect sg: KWin.SceneView.screen.geometry
@@ -211,6 +211,39 @@ Item {
         // the same picture there, and an instant swap is invisible.
         opacity: effect.sceneFade
         property bool spaceHeld: false
+        // Whether KWin.DesktopBackground can draw the desktop's wallpaper.
+        // It can for Plasma's own picture wallpapers; for a video or a scene
+        // (Wallpaper Engine, waywallen) it paints solid black, and the
+        // frames carried that black over the real desktop: every fly showed
+        // it, since the frames move and the black moves with them. Where it
+        // cannot draw, the layers step aside and the compositor's own
+        // desktop shows through, as it does at 1:1 between the frames.
+        // Optimistic until plasmashell answers, so a picture wallpaper never
+        // loses its frames to a slow reply.
+        property bool wallpaperDrawable: true
+        function checkWallpaper() {
+            wallpaperQuery.arguments = ["let r = ''; const ds = desktops(); for (let i = 0; i < ds.length; ++i) { r += (ds[i].wallpaperPlugin || '') + '|'; } print(r);"];
+            wallpaperQuery.call();
+        }
+        KWin.DBusCall {
+            id: wallpaperQuery
+            service: "org.kde.plasmashell"
+            path: "/PlasmaShell"
+            dbusInterface: "org.kde.PlasmaShell"
+            method: "evaluateScript"
+            onFinished: (result) => {
+                const known = ["org.kde.image", "org.kde.slideshow", "org.kde.color", "org.kde.potd", "kwin-canvas-ground"];
+                const plugins = String(result || "").split("|").filter(function (p) { return p.trim().length > 0; });
+                // An empty answer says nothing: keep what was last known.
+                if (plugins.length === 0) return;
+                view.wallpaperDrawable = plugins.every(function (p) { return known.indexOf(p.trim()) !== -1; });
+                console.log("kwin-canvas ui: wallpaper " + plugins.join(",") + " drawable=" + view.wallpaperDrawable);
+            }
+        }
+        Connections {
+            target: effect
+            function onVisibleChanged() { if (effect.visible) view.checkWallpaper(); }
+        }
         // Number of grips and buttons under the pointer. The pan handler
         // refuses a left press while this is non-zero, so a drag that starts
         // on one of them acts on it instead of racing the pan.
@@ -261,6 +294,41 @@ Item {
             visible: effect.backdropMode() !== "wallpaper"
         }
 
+        // The wallpaper where DesktopBackground cannot draw it: the desktop's
+        // own window, as the compositor has it, filling the view. Shown in
+        // every state the canvas is up, quiet slides included (the frames
+        // move in a fly; this does not), and only for a wallpaper that is
+        // not a picture, so a picture wallpaper is exactly as before. The
+        // window is looked up here, not through a binding: the stacking
+        // order does not notify, and a hot reload swaps this file but not
+        // the effect's own.
+        KWin.WindowThumbnail {
+            id: deskThumb
+            anchors.fill: parent
+            z: -91
+            property var desk: null
+            client: desk
+            visible: effect.visible && !view.wallpaperDrawable && client !== null
+            function refresh() {
+                const w = effect.desktopWindowFor(view.screen);
+                if (w !== desk) desk = w;
+            }
+            Connections {
+                target: effect
+                function onVisibleChanged() { if (effect.visible) deskThumb.refresh(); }
+            }
+            Connections {
+                target: view
+                function onWallpaperDrawableChanged() { deskThumb.refresh(); }
+            }
+            Timer {
+                interval: 1000
+                repeat: true
+                running: effect.visible && !view.wallpaperDrawable
+                onTriggered: deskThumb.refresh()
+            }
+        }
+
         // The overworld's wallpaper: KWin's own desktop background, drawn
         // raw - no blur, no dim, no treatment - because a zoomed-out view
         // cannot borrow the real desktop the way 1:1 does. At 1:1 this
@@ -269,7 +337,7 @@ Item {
         KWin.DesktopBackground {
             anchors.fill: parent
             z: -90
-            visible: effect.zoom < 0.999
+            visible: effect.zoom < 0.999 && view.wallpaperDrawable
             output: view.screen
             desktop: KWin.Workspace.currentDesktop
             activity: effect.currentActivity || "default"
@@ -501,6 +569,7 @@ Item {
                     // activities object when activities are disabled, so
                     // always pass a non-empty one.
                     KWin.DesktopBackground {
+                        visible: view.wallpaperDrawable
                         anchors.fill: parent
                         output: frame.modelData
                         desktop: KWin.Workspace.currentDesktop

@@ -139,7 +139,16 @@ Tests run hidden with `NEST_VIRTUAL=1`; only `make play` needs a window.
 From the audit list: `dragRaw` cleared in `endDrag`, the click-pan timer
 stopped on commit, cancel and slide end, `deskArea` clipped to the screen's
 rectangle, the dead `farewellHide` fade branch removed. The focus-activity
-case did not reproduce as a bug (139 pins it). **The desktop-window layer was REMOVED again (see the end of this paragraph).**
+case did not reproduce as a bug (139 pins it). **The black fly is fixed by `wallpaperDrawable` in `ui.qml` (the last paragraph here is history).**
+**Cause, measured live on 2026-10-13 with a Wallpaper Engine video: during a quiet
+slide the frames' `KWin.DesktopBackground` painted solid black (0,0,0 where the
+closed desktop was 6,28,63); with that item hidden the same patch matched. The
+item draws only Plasma's own picture wallpapers.** Frames and the zoomed-out
+background now draw only when every wallpaper plugin is a known picture one
+(`org.kde.image`, slideshow, colour, potd, our ground); otherwise a
+`WindowThumbnail` of the desktop window sits under the plane. Pinned by `143`.
+The earlier layer that was removed (`e8fa19b`) was drawn *over* the black frames,
+which is why it never helped.
 The black flash on a fly (and at 1:1) is a Wallpaper Engine wallpaper
 (`com.github.catsout.wallpaperEngineKde` is the live one): `DesktopBackground`
 cannot draw it and KWin composites the scene over black. `ui.qml` now draws
