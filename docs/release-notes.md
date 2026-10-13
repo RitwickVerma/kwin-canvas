@@ -1,10 +1,5 @@
 Unreleased:
 
-- A video or scene wallpaper (Wallpaper Engine) no longer turns black behind
-  the canvas, at 1:1 or zoomed out: the open canvas now draws the desktop
-  window itself under the plane, which Plasma's own wallpaper item cannot do
-  for a non-Plasma wallpaper.
-
 - The grasp's sphere map draws again: the chip in the bottom-right corner that
   shows where the sweep will land had been built inside the corner lens,
   which hides itself the moment a grasp begins, so it never appeared.
