@@ -133,7 +133,16 @@ sampled the hint strip 40 px above where it is, which the old haze hid.
 After those fixes the full suite gave pass 254, fail 11, skip 2 (no
 `TypeError`), and each of the 13 scenarios that failed in it passes alone
 (`103 115 123 127 129 131 30 50 60 61 81 93 97`): the suite-order flake, so
-the baseline is now 254/11/2, not 256/12/2. Not checked: the decor applet in a
+the baseline is now 254/11/2, not 256/12/2 (253/9/2 with three scenarios
+added: `138-drag-glide`, `139-focus-activity`, `141-click-pan-close`).
+Tests run hidden with `NEST_VIRTUAL=1`; only `make play` needs a window.
+From the audit list: `dragRaw` cleared in `endDrag`, the click-pan timer
+stopped on commit, cancel and slide end, `deskArea` clipped to the screen's
+rectangle, the dead `farewellHide` fade branch removed. The focus-activity
+case did not reproduce as a bug (139 pins it). Still open: the re-entrant
+cancel during the 170 ms close, the forced-close `sceneGestures` write, the
+minimap drag scale, the sphereMap nesting, delegate TypeErrors, `nest_env`
+word-splitting. Not checked: the decor applet in a
 real plasmashell, and the plugin's NVML path (no NVIDIA load measured).
 
 - `main.qml`: the switcher's modifier poll called `effect.switcherSettle.restart()`,

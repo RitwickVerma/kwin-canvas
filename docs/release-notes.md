@@ -1,5 +1,16 @@
 Unreleased:
 
+- A window you dragged glides again when arrange, tidy or undo moves it: the
+  drag's bookkeeping was never cleared, so the effect left that window to a
+  hand that had let go.
+
+- A click on a window no longer pans the camera after the canvas has closed:
+  committing, cancelling or ending a slide inside the double-click wait drops
+  the pending pan.
+
+- The smart landing counts the neighbours it can bring into view on a screen
+  that is not at the desk's origin, as it does on the first screen.
+
 - The ground wallpaper follows the camera again: the check that it is the
   active wallpaper always read empty, so since the wallpaper-write change
   nothing reached it - not the camera, not the grid knobs.

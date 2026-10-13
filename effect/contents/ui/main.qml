@@ -2513,17 +2513,11 @@ KWin.SceneEffect {
         closing = true;
         farewellThen = then;
         if (chromeFade > 0.02) farewellAnim.restart();
-        // A close from a zoomed-out overworld fades the scene out: the
-        // camera must jump to 1:1 for the close, and the fade masks the
-        // jump - through black, KWin's composition under the scene, which
-        // is the honest choice for that jump. At 1:1 the scene and the
-        // desktop are the same picture (the thumbnails cover the real
-        // windows at the same pixels), so the close is instant there - a
-        // fade would only flash black.
-        if (zoom !== 1) {
-            sceneFadeAnim.to = 0;
-            sceneFadeAnim.restart();
-        }
+        // The close is instant at 1:1: the scene and the desktop are the same
+        // picture there (the thumbnails cover the real windows at the same
+        // pixels), so a fade would only run through black - KWin composites
+        // the scene over black, not over the desktop. Both callers put the
+        // camera at 1:1 before they get here, so there is no jump to mask.
         closeTimer.restart();
     }
     Timer {
@@ -2703,6 +2697,7 @@ KWin.SceneEffect {
         dbg("commit", "entering at zoom " + zoom.toFixed(3) + ", activate=" + activate);
         endSwitcher();
         finishEntryAnims();
+        stopClickPan();
         if (sceneGestures > 0) {
             deferredClose = function () { commit(activate); };
             deferredAt = Date.now();
@@ -2822,6 +2817,7 @@ KWin.SceneEffect {
     function doCancel() {
         dbg("cancel", "switcher=" + switcherActive);
         endSwitcher();
+        stopClickPan();
         if (!visible) return;
         if (sceneGestures > 0) {
             deferredClose = doCancel;
@@ -2927,9 +2923,11 @@ KWin.SceneEffect {
             const e = entries[i];
             if (!e || e.window.deleted || e.window.internalId === skip) continue;
             if (e.activity !== a || !onActivity(e.window, a)) continue;
-            const l = Math.max(e.x - tx, 0), t = Math.max(e.y - ty, 0);
-            const r = Math.min(e.x - tx + e.width, g.width);
-            const b = Math.min(e.y - ty + e.height, g.height);
+            // The screen sits at (g.x, g.y) in the desk: a screen off the origin
+            // is clipped against its own rectangle, not against 0..width.
+            const l = Math.max(e.x - tx, g.x), t = Math.max(e.y - ty, g.y);
+            const r = Math.min(e.x - tx + e.width, g.x + g.width);
+            const b = Math.min(e.y - ty + e.height, g.y + g.height);
             if (r > l && b > t) sum += (r - l) * (b - t);
         }
         return sum;
@@ -3300,6 +3298,9 @@ KWin.SceneEffect {
                 pinned[e.window.caption] = { sx: sx0, sy: sy0 };
         }
         dragIndex = -1;
+        // The drag's set goes with it: animateEntry leaves a window in dragRaw
+        // to the hand, so one left behind would never glide again.
+        dragRaw = {};
         endWindowDrag();
     }
 
@@ -3499,12 +3500,18 @@ KWin.SceneEffect {
         }
     }
     property var clickPanEntry: null
+    // The click's pan is owed to an open canvas: every close drops it, or the
+    // timer would fly a camera nobody is looking at after the commit.
+    function stopClickPan() {
+        clickPanEntry = null;
+        clickPanTimer.stop();
+    }
     Timer {
         id: clickPanTimer
         interval: 140
         repeat: false
         onTriggered: {
-            if (clickPanEntry) {
+            if (clickPanEntry && visible) {
                 const e = clickPanEntry;
                 clickPanEntry = null;
                 bringIntoView(e);
@@ -4202,6 +4209,7 @@ KWin.SceneEffect {
     // screen.
     function endSlide() {
         if (!quiet) return;
+        stopClickPan();
         swiping = false;
         dropPassthrough();
         zoom = 1.0;
@@ -4735,6 +4743,7 @@ KWin.SceneEffect {
             + " outcome=" + (grasp ? (zoom < 0.72 ? "world" : "land") : "-")
             + " rest=" + (restStart ? "1" : "0")
             + " moves=" + Object.keys(entryAnims).length
+            + " dragraw=" + Object.keys(dragRaw).length
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
             + " map=" + (mapMinimap ? "minimap" : "-")
             + " ql=" + ql
