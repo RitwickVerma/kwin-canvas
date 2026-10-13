@@ -2446,7 +2446,10 @@ KWin.SceneEffect {
     }
 
     Timer {
-        interval: 8
+        // A display's own cadence is all the compositor needs: the old 8 ms
+        // ticks repainted twice per frame, and that doubled full-screen load
+        // is exactly what starved the video wallpaper's renderer in motion.
+        interval: 16
         repeat: true
         running: effect.visible
         onTriggered: {
@@ -3983,8 +3986,34 @@ KWin.SceneEffect {
         method: "evaluateScript"
     }
 
+    // The active wallpaper: the ground's offset writes are only meaningful
+    // while the kwin-canvas-ground wallpaper is drawing them - and any write
+    // there makes plasmashell rebuild the wallpaper item, so a foreign
+    // wallpaper (a video, say) must never receive them.
+    KWin.DBusCall {
+        id: wallpaperQueryCall
+        service: "org.kde.plasmashell"
+        path: "/PlasmaShell"
+        dbusInterface: "org.kde.PlasmaShell"
+        method: "evaluateScript"
+        onFinished: (result) => {
+            const s = String(result || "");
+            effect.groundIsActive = s.indexOf("kwin-canvas-ground") !== -1;
+            effect.groundCheckedAt = Date.now();
+            effect.dbg("ground", "wallpaper query: " + s);
+        }
+    }
+    property bool groundIsActive: false
+    property double groundCheckedAt: 0
+    function refreshGroundWallpaper() {
+        wallpaperQueryCall.arguments = ["let r = ''; const ds = desktops(); for (let i = 0; i < ds.length; ++i) { r += (ds[i].wallpaperPlugin || '') + '|'; } r;"];
+        wallpaperQueryCall.call();
+    }
+
     function publishGround() {
         if (!configuration.PublishGround) return;
+        if (Date.now() - groundCheckedAt > 3000) refreshGroundWallpaper();
+        if (!groundIsActive) return;
         const script =
             "const ds = desktops();" +
             "for (let i = 0; i < ds.length; ++i) {" +
@@ -4756,6 +4785,7 @@ KWin.SceneEffect {
         rebuildBindings();
         readSwipeFingers();
         publishHold();
+        refreshGroundWallpaper();
         Qt.callLater(recluster);
         const seq = configuration.DebugSeq;
         if (seq !== lastDebugSeq) {
@@ -4775,6 +4805,7 @@ KWin.SceneEffect {
         refreshDesktopWindow();
         lastDebugSeq = configuration.DebugSeq;
         publishHold();
+        refreshGroundWallpaper();
         // The last committed viewport: the plane comes back where it was.
         viewX = Number(configuration.ViewX) || 0;
         viewY = Number(configuration.ViewY) || 0;
