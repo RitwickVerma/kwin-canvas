@@ -1,5 +1,11 @@
 Unreleased:
 
+- The canvas's automatic camera moves wait for the hand now: a rest on a
+  half-hidden window fetches it only after the same deliberate pause the
+  pass-through uses (**HoverDelay**, 900 ms by default) and glides gently
+  rather than snatching, and the edge pan's ramp is even from the moment it
+  starts - no late surge toward the edge.
+
 - A drag moves the plane exactly with the hand, at every zoom - no
   acceleration, no drift from the pointer.
 

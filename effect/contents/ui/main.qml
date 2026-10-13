@@ -469,7 +469,10 @@ KWin.SceneEffect {
             others.push({ x: entries[i].x, y: entries[i].y, width: entries[i].width, height: entries[i].height });
         }
         const d = smartPan({ x: e.x, y: e.y, width: e.width, height: e.height }, others, 24);
-        if (d.dx !== 0 || d.dy !== 0) { dbg("camGo", "bringIntoView " + (e.window ? e.window.caption : "?") + " d=(" + Math.round(d.dx) + "," + Math.round(d.dy) + ")"); camGo(zoom, viewX + d.dx, viewY + d.dy); }
+        // The hover's fetch is a suggestion, not a flight: it glides at a
+        // lower rate than a choose-move, so a rest over a half-hidden window
+        // slides it in instead of snatching it.
+        if (d.dx !== 0 || d.dy !== 0) { dbg("camGo", "bringIntoView " + (e.window ? e.window.caption : "?") + " d=(" + Math.round(d.dx) + "," + Math.round(d.dy) + ")"); camGo(zoom, viewX + d.dx, viewY + d.dy, undefined, undefined, 0.55); }
     }
 
     // The best camera pan for a canvas rect: the least movement that keeps
@@ -1200,7 +1203,13 @@ KWin.SceneEffect {
             hoverSince = now;
             return;
         }
-        if (e && now - hoverSince >= 200) {
+        // The camera's fetch asks for the window on screen at HALF the
+        // pointer's own handoff pause (HoverDelay): the move precedes the
+        // handoff, so the window has settled into view before it changes
+        // hands - the whole point of the hover. Never sooner than the old
+        // 200 ms.
+        const hoverRest = Math.max(200, Math.round(Number(configuration.HoverDelay) * 0.5));
+        if (e && now - hoverSince >= hoverRest) {
             if (!hoverBrought) {
                 hoverBrought = true;
                 bringIntoView(e);
@@ -3834,16 +3843,15 @@ KWin.SceneEffect {
         const ty = Math.abs(dy) <= deadY ? 0 : Math.sign(dy) * Math.min(1, (Math.abs(dy) - deadY) / reachY);
         if (tx === 0 && ty === 0) return;
         // The depth, curved: a gentle start and a strong edge.
-        const vx = Math.sign(tx) * Math.pow(Math.abs(tx), 1.7) * edgePanSpeed * dt;
-        const vy = Math.sign(ty) * Math.pow(Math.abs(ty), 1.7) * edgePanSpeed * dt;
+        const vx = Math.sign(tx) * Math.pow(Math.abs(tx), 1.2) * edgePanSpeed * dt;
+        const vy = Math.sign(ty) * Math.pow(Math.abs(ty), 1.2) * edgePanSpeed * dt;
         noteGesture();
         const beforeX = viewX, beforeY = viewY;
         panBy(-vx, -vy);
-        // The window rides the camera's own move, not the raw step: the
-        // torch's tan can carry the camera much further than vx, and the
-        // window must keep its screen spot exactly - which is the same as
-        // moving with the camera across the plane. dragEntry's units are
-        // screen pixels, so the plane delta rides through the zoom.
+        // The window rides the camera's own move: it must keep its screen
+        // spot exactly, which is the same as moving with the camera across
+        // the plane. dragEntry's units are screen pixels, so the plane delta
+        // rides through the zoom.
         edgeDrag((viewX - beforeX) * zoom, (viewY - beforeY) * zoom);
     }
 

@@ -1174,12 +1174,13 @@ Item {
                 transformOrigin: Item.TopLeft
                 z: modelData.z
                 Shape {
-                    // The web is overworld chrome: it fades out with the zoom,
-                    // like the frames' tint, so a 1:1 view - the normal mode the
-                    // fly slides across - is the desktop alone. Full strength by
-                    // zoom 0.75, gone at 1:1; the unlit constellation dissolves
-                    // between 0.45 and 0.5 instead of cutting out at half zoom.
-                    readonly property real want: ((modelData.lit ? Math.max(0.3, 0.55 * modelData.co) : (effect.ql >= 2 ? 0 : 0.22 * modelData.co)) * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20))) * effect.skinReveal
+                    // The web is overworld chrome: the unlit constellation
+                    // fades out with the zoom, dissolving between 0.45 and 0.5
+                    // instead of cutting out at half zoom - while a lit thread
+                    // (the cluster the focus is in) draws at every zoom; a 1:1
+                    // view is the desktop alone because a quiet hold carries no
+                    // web at all.
+                    readonly property real want: (modelData.lit ? Math.max(0.3, 0.55 * modelData.co) : (effect.ql >= 2 ? 0 : 0.22 * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20)) * modelData.co)) * effect.skinReveal
                     property real show: 0
                     opacity: show
                     Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
@@ -1504,8 +1505,8 @@ Item {
             z: 80000
             readonly property int mw: Math.round(view.sg.width * 0.16)
             readonly property int mh: Math.round(view.sg.height * 0.2)
-            // The grasp only: the quiet hold at 1:1 is when the torch's
-            // reach matters, and the map sits over every window.
+            // The grasp only: the quiet hold at 1:1 is when the map is
+            // useful, and it sits over every window.
             readonly property bool asSphere: effect.visible && effect.quiet && effect.grasp && view.screen === effect.primaryScreen
             onAsSphereChanged: effect.mapMinimap = asSphere
             readonly property rect home: Qt.rect(view.sg.width - mw - Kirigami.Units.largeSpacing * 2,
@@ -1520,9 +1521,19 @@ Item {
             Behavior on height { enabled: sphereMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
             opacity: visible ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-            // The angular axes: the torch's +-85 degree reach fills the
-            // chip, the centre is the home view.
-            readonly property real r: { effect.revision; return effect.panSphereRadius(); }
+            // The angular axes: the plane's own reach - a screen's worth at
+            // the current zoom, or the entries' extent if larger - fills the
+            // chip's +-85 degrees; the centre is the home view.
+            readonly property real r: {
+                effect.revision;
+                let spread = 0;
+                for (let i = 0; i < effect.entries.length; ++i) {
+                    const e = effect.entries[i];
+                    spread = Math.max(spread, Math.hypot(e.x + e.width, e.y + e.height), Math.hypot(e.x, e.y));
+                }
+                const floor = 2 * view.sg.height / Math.max(0.01, effect.zoom);
+                return Math.max(spread, floor) * 1.6 / Math.tan(85 * Math.PI / 180);
+            }
             readonly property real lim: 85 * Math.PI / 180
             function ax(cx) { return 6 + (Math.atan(cx / sphereMap.r) / lim + 1) / 2 * (sphereMap.width - 12); }
             function ay(cy) { return 6 + (Math.atan(cy / sphereMap.r) / lim + 1) / 2 * (sphereMap.height - 12); }

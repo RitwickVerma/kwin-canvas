@@ -115,6 +115,41 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-12 — the automatic camera moves learn to wait
+
+The user picked the feel pass from the improvement menu. The hover's
+fetch no longer starts after a bare 200 ms of rest: it waits out the
+same deliberate pause the pointer's own handoff uses (`HoverDelay`,
+900 ms by default, never less than the old 200), and it asks for a
+gentle 0.55 flight rate instead of the default - a suggestion, not a
+flight. The edge pan's ramp exponent went from 1.7 to 1.2, so a
+half-depth band gives 391 px/s from the first frame (up from 277) with
+the same 900 px/s maximum and no late surge. A nest probe measured
+both: the fetch made no move at 800 ms and arrived by 1700 ms at the
+exact least-move (KCalc half-off at 1800 -> view 384), and the edge
+pan carried 398.9 px in its first second. (The probe's nest has the
+spring off, so it measured the gate and the landing; the 0.55 glide
+shows where SmoothZoom is on.) The momentum the feel needed was
+already there: PanInertia coasts a flick by PanFriction, and
+`94-physics` measures it.
+
+The verification, and one bug the suite caught on the way: the fetch
+waits half of `HoverDelay` now, not the whole pause - the pass-through
+takes the pointer at that same pause, so the camera's move must land
+before the handoff, not after (109-seam had been red for it; it is 9/0
+now). The edge ramp's exponent fell from 1.7 to 1.2, so it pulls evenly
+from the first moment (391 px/s at half depth, the same 900 at the
+edge). Three scenarios the leftover `panSphereRadius` call had broken -
+104-capture (19/0, one honest skip) and 115-stress (4/0) besides the 109
+above - came back once it was gone, and 113-thread-duck (4/0) exposed a
+real regression the ui.qml extraction had carried since it happened: the
+web's zoom fade had been lifted out of the unlit branch, so every LIT
+thread vanished above 0.5 zoom - the fade is back inside the unlit
+branch, where the comment always said it belonged, and a lit thread
+draws at every zoom. The full suite: 256 pass, 12 fail, 2 skip - exactly
+the documented baseline, every one of the 12 the known suite-order
+artefact, green alone.
+
 ### 2026-10-12 — the sphere leaves, and 1:1 becomes exact
 
 The user asked why the bend "does not work that well vertically", then
