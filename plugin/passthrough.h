@@ -37,8 +37,11 @@ class SurfaceInterface;
  * implicit grab that lasts until every button is up. A press of a canvas
  * button (setNavButtons) is the canvas's instead, wherever it lands, so a held
  * button is a portal into the canvas rather than something the window sees. A
- * press on the ground leaves the whole gesture to the canvas. Hover and wheel
- * go to the window under the pointer. Every key goes to the seat's focused
+ * press on the ground leaves the whole gesture to the canvas. The hold button
+ * (setHoldButtons) is the same story wherever it lands: a quick release is
+ * replayed as the window's own click, a hold outlasting the threshold opens
+ * the canvas. Hover and wheel go to the window under the pointer. Every key
+ * goes to the seat's focused
  * surface, which KWin keeps on the active window; global chords have already
  * had their turn, so the canvas's own chord still fires.
  *
@@ -193,9 +196,6 @@ private:
     QTimer m_idleTimer;
     /** A hold button is currently down (one of m_hold). */
     bool m_holdDown = false;
-    /** Hold buttons whose press was passed through to the window under the
-     * pointer, so their release goes with it and never gets eaten. */
-    uint m_holdPassed = 0;
     /** The hold button that is down, for the mask-change check in setHoldButtons. */
     Qt::MouseButton m_heldButton = Qt::NoButton;
     /** A hold button is down but the threshold has not passed: it may still be a click. */

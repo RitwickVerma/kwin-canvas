@@ -841,15 +841,12 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     if (uint(event->button) & m_hold) {
         const bool pressed = event->state == PointerButtonState::Pressed;
         if (pressed) {
-            // The hold belongs to the desktop: in the closed location a
-            // window under the pointer keeps its button - a game's own back
-            // button must never open the canvas. Held in the open overworld
-            // it is navigation only, as ever. The pass-through is remembered
-            // so the release goes with it instead of being eaten.
-            if (!m_active && windowUnder(event->position)) {
-                m_holdPassed |= uint(event->button);
-                return false;
-            }
+            // The hold works everywhere now: over the desktop or a window,
+            // in the closed location or the open overworld. A press that
+            // outlasts the threshold is the canvas modifier; released
+            // sooner it is replayed as the click it was (replayClick), so
+            // a window's own back button still works. Held in the open
+            // overworld it is navigation only, as ever.
             if (!m_holdDown && !m_holdCandidate) {
                 // The press is consumed from the start and the threshold
                 // decides what it was: outlasted, it is the canvas modifier;
@@ -860,10 +857,6 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
                 if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: hold candidate pressed, waiting the delay";
             }
         } else {
-            if (m_holdPassed & uint(event->button)) {
-                m_holdPassed &= ~uint(event->button);
-                return false;
-            }
             if (m_holdDown) {
                 m_holdDown = false;
                 if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: hold released, canvas closes";

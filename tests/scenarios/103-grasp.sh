@@ -13,13 +13,20 @@ run_scenario() {
     fi
     c state
     assert_eq "closed to start" "$(sget visible)" false
-    # MB4 over a window belongs to the window: a game's own back button
-    # must never open the canvas. The hold passes through, its release
-    # goes with it, and the canvas stays closed throughout.
-    printf 'move 900 400\nsleep 60\ndown back\nsleep 500\nup back\n' | input &
+    # A quick MB4 press over a window is the window's click, replayed -
+    # a game's own back button still works (the delivery's proof belongs
+    # to the live session; here the canvas must stay closed).
+    printf 'move 900 400\nsleep 60\ndown back\nsleep 80\nup back\n' | input &
     sleep 0.7; c state
-    assert_eq "the hold over a window left the canvas closed" "$(sget visible)" false
+    assert_eq "a quick press over a window leaves the canvas closed" "$(sget visible)" false
     wait
+    # A held MB4 over a window opens the canvas too: the hold works
+    # everywhere now, not only on the bare desktop.
+    printf 'move 900 400\nsleep 60\ndown back\nsleep 900\nup back\n' | input &
+    sleep 0.7; c state
+    assert_eq "and a hold over a window opens it there" "$(head -1 <<<"$LAST_STATE" | grep -c 'visible=true quiet grasp')" 1
+    wait
+    c state
     # Holding MB4 anywhere on the desktop makes the location itself the
     # canvas: the overworld opens quietly at 1:1, pixel-identical, no chrome.
     # The hold is one injector stream - its exit is itself the release - with
