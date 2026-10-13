@@ -1,5 +1,9 @@
 Unreleased:
 
+- The first frame of a fly no longer flashes black over a video wallpaper: the
+  scene starts by showing the desktop's own window and only hands over to
+  Plasma's wallpaper item once it knows the wallpaper is a picture.
+
 - A fly no longer shows black behind the sliding view: the wallpaper is drawn
   under the plane whenever the canvas is up, not only below 1:1. Late in a
   slide up to a third of the screen was black, where the monitor frame had

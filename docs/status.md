@@ -139,7 +139,15 @@ Tests run hidden with `NEST_VIRTUAL=1`; only `make play` needs a window.
 From the audit list: `dragRaw` cleared in `endDrag`, the click-pan timer
 stopped on commit, cancel and slide end, `deskArea` clipped to the screen's
 rectangle, the dead `farewellHide` fade branch removed. The focus-activity
-case did not reproduce as a bug (139 pins it). **Second black, measured in the nest: late in a quiet slide 36% of the screen was
+case did not reproduce as a bug (139 pins it). **Third black, from the user's own screen recording (16:29, 5120x1440, 60 fps): three
+single-frame dips (frames 73, 117, 143), each the right-hand quarter of the screen
+and the bottom black while the windows had already moved, i.e. the first frame of a
+slide's scene before any wallpaper layer had content. `wallpaperDrawable` started
+true (optimistic) so the frames painted KWin's black for that frame; it now starts
+false and the desktop window shows until plasmashell has said the wallpaper is a
+picture. NOT reproduced in the nest (its wallpaper is a picture); verify with a new
+recording.**
+**Second black, measured in the nest: late in a quiet slide 36% of the screen was
 black (the frame had left and the wallpaper layer was off at 1:1); the layer now
 draws whenever the canvas is up (`144`, 36% -> 0). Open: the landing still differs
 ~14% RMSE between the last slide frame and the desktop (video wallpaper not yet

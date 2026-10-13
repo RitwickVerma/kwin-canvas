@@ -218,9 +218,14 @@ Item {
         // it, since the frames move and the black moves with them. Where it
         // cannot draw, the layers step aside and the compositor's own
         // desktop shows through, as it does at 1:1 between the frames.
-        // Optimistic until plasmashell answers, so a picture wallpaper never
-        // loses its frames to a slow reply.
-        property bool wallpaperDrawable: true
+        // False until plasmashell has answered, and the scene is rebuilt on
+        // every open: starting optimistic let the frames paint KWin's black
+        // over a video wallpaper for the frame or two before the reply
+        // (a recording showed one fully black frame per open). Unknown shows
+        // the desktop window, which for a picture wallpaper is the same
+        // picture, and only a known picture wallpaper hands over to the
+        // frames' own item.
+        property bool wallpaperDrawable: false
         function checkWallpaper() {
             wallpaperQuery.arguments = ["let r = ''; const ds = desktops(); for (let i = 0; i < ds.length; ++i) { r += (ds[i].wallpaperPlugin || '') + '|'; } print(r);"];
             wallpaperQuery.call();
@@ -313,6 +318,7 @@ Item {
                 const w = effect.desktopWindowFor(view.screen);
                 if (w !== desk) desk = w;
             }
+            Component.onCompleted: refresh()
             Connections {
                 target: effect
                 function onVisibleChanged() { if (effect.visible) deskThumb.refresh(); }
