@@ -145,8 +145,11 @@ cannot draw it and KWin composites the scene over black. `ui.qml` now draws
 the desktop window with a `WindowThumbnail` whenever the canvas is open
 (`deskwin=` in `state`, pinned by `93`); in the nest, with a static wallpaper,
 it is pixel-identical to the compositor's. **Not verified: a Wallpaper Engine
-wallpaper, which the nest cannot run.** If it is still black live, the next
-step is whether that window is a `desktopWindow` to KWin at all. The sphere map was nested inside the lens (an unclosed content `Item` in
+wallpaper, which the nest cannot run.** The first build bound the layer's `client` to a function call: the live journal said
+`ui.qml:286:13 depends on non-bindable properties` and the layer stayed null
+(black still, at 1:1). It binds to `desktopWindows[output]` now, refreshed
+with the window set. If it is still black live, check the journal for that
+warning, then whether that window is a `desktopWindow` to KWin at all. The sphere map was nested inside the lens (an unclosed content `Item` in
 `ui.qml`, a stray `}` after the sphere): it never drew in a grasp. Fixed,
 pinned by `114`'s corner-glass check. A second `commit` on a closed canvas is now a no-op (`142`; it pushed two undo
 entries). Still open: an Esc that lands inside the 170 ms farewell after a

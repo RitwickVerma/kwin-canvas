@@ -1461,8 +1461,18 @@ KWin.SceneEffect {
     // up the moment it arrives. A bare function call in the ui.qml cannot
     // bind, which is the QQmlExpression warning and the stale-null gray.
     property QtObject desktopWindow: null
+    // One per output, by the output's name: the scene's layer binds to this
+    // (reassigned whole, so the binding re-evaluates) and not to a call.
+    property var desktopWindows: ({})
     function refreshDesktopWindow() {
         desktopWindow = desktopWindowFor(null);
+        const m = {};
+        const screens = KWin.Workspace.screens;
+        for (let i = 0; i < screens.length; ++i) {
+            const w = desktopWindowFor(screens[i]);
+            if (w) m[screens[i].name] = w;
+        }
+        desktopWindows = m;
     }
 
     // A window the fly covers: every window the user can click, wider than
@@ -4751,7 +4761,7 @@ KWin.SceneEffect {
             + " moves=" + Object.keys(entryAnims).length
             + " dragraw=" + Object.keys(dragRaw).length
             + " undo=" + undoStack.length
-            + " deskwin=" + (desktopWindowFor(null) ? "1" : "0")
+            + " deskwin=" + Object.keys(desktopWindows).length
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
             + " map=" + (mapMinimap ? "minimap" : "-")
             + " ql=" + ql

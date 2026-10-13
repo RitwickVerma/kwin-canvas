@@ -285,7 +285,7 @@ Item {
             anchors.fill: parent
             z: -89
             visible: effect.canvasOpen && client !== null
-            client: { effect.desktopWindow; return effect.desktopWindowFor(view.screen); }
+            client: effect.desktopWindows[view.screen.name] || null
         }
 
         // The plane's items - the ground, the frame bands, the windows, the
