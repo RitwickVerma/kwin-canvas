@@ -121,12 +121,19 @@ Written without a nested KWin, then verified in one. `make lint` is green,
 `make plugin` compiles the C++ edits clean (no warnings), and the scenarios that
 touch them pass alone after `make nest-reload`: `106` 8/0, `124` 9/0, `125` 5/0,
 `127` 6/0, `129` 10/0, `137` 11/0, `85` 21/0, `87` and `88` 2/0 each. The
-full suite gave pass 253, fail 15, skip 2 with no `TypeError` in the log, against
-the old 256/12/2. Rerun alone, ten scenarios still fail (`114`, `115`, `123`,
-`128`, `133`, `60`, `61`, `80`, `90`, `93`) with exactly the same counts on a
-clean `HEAD` (the edits stashed, plugin and nest rebuilt), so they are not from
-this work; they are unexplained, not yet the documented suite-order flake, and
-the next session should look at them first. Not checked: the decor applet in a
+full suite gave pass 253, fail 15, skip 2 with no `TypeError` in the log.
+Ten scenarios failed alone with the same counts on a clean `HEAD`, and every
+one had a cause (fixed in the next commit): `5328642` made `publishGround`
+wait on a plasmashell query that always answered empty (`evaluateScript`
+returns what the script `print`s, not its last expression), so the wallpaper
+never received the camera or the knobs (`128`, `115`); `80a7231` took the haze, dim
+and veil out and re-recorded two goldens, leaving `60`, `61`, `80`, `90` and
+`123` on stale goldens and `93`/`133` asserting a dim that is gone; `114`
+sampled the hint strip 40 px above where it is, which the old haze hid.
+After those fixes the full suite gave pass 254, fail 11, skip 2 (no
+`TypeError`), and each of the 13 scenarios that failed in it passes alone
+(`103 115 123 127 129 131 30 50 60 61 81 93 97`): the suite-order flake, so
+the baseline is now 254/11/2, not 256/12/2. Not checked: the decor applet in a
 real plasmashell, and the plugin's NVML path (no NVIDIA load measured).
 
 - `main.qml`: the switcher's modifier poll called `effect.switcherSettle.restart()`,

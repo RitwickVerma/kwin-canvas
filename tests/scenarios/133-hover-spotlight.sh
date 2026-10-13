@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
-scenario_desc="the hover spotlight: the window the pointer rests on steps forward into the light, the bare plane behind it dims, and the light comes back when the hand leaves"
+scenario_desc="the hover spotlight: the window the pointer rests on steps forward into the light, nothing tints the bare plane behind it, and the light is the same when the hand leaves when the hand leaves"
 
 region_rmse() {   # before after region
     magick "$1" -crop "$3" +repage "$OUT/ho-a.png"
@@ -28,12 +28,13 @@ run_scenario() {
     shot "$OUT/ho-dim.png" >/dev/null
     # A bare stretch of the plane behind every window: canvas (2040,2840) ->
     # screen (60,880). Only the veil has ever touched it.
-    assert_eq "the plane behind dims" "$(changed "$(region_rmse "$OUT/ho-pre.png" "$OUT/ho-dim.png" "120x120+60+880")")" 1
+    # The veil is gone (the look is raw): the wallpaper behind is never tinted.
+    assert_eq "the plane behind is not tinted" "$(changed "$(region_rmse "$OUT/ho-pre.png" "$OUT/ho-dim.png" "120x120+60+880")")" 0
     # The hand leaves for the empty ground; the light comes back.
     input move 1600 900
     sleep 0.8
     shot "$OUT/ho-back.png" >/dev/null
-    assert_eq "and the light comes back" "$(changed "$(region_rmse "$OUT/ho-pre.png" "$OUT/ho-back.png" "120x120+60+880")")" 0
+    assert_eq "and it is the same when the hand leaves" "$(changed "$(region_rmse "$OUT/ho-pre.png" "$OUT/ho-back.png" "120x120+60+880")")" 0
     c cancel
     arrange >/dev/null
 }

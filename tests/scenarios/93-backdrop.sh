@@ -11,26 +11,17 @@ run_scenario() {
     # monitor frame covers the view exactly and the layer is hidden. 0.6 shows
     # the plane around the desk, which is what the wallpaper is for.
     c "zoom 0.6 960 540"
-    # The dim: 0 is the wallpaper as the desktop shows it, 1 hides it behind
-    # the ground's background so the desks and the windows are all there is.
-    # Both are recorded as goldens, and the two have to differ on screen too -
-    # which is what a golden alone would not say.
-    setcfg BackdropDim 0
-    c state
-    snap backdrop-undimmed
-    setcfg BackdropDim 1
-    c state
-    snap backdrop-dimmed
-    assert_differs "the dim changes the plane" backdrop-dimmed backdrop-undimmed
-    setcfg BackdropDim 0.45
+    # The wallpaper rides through raw below 1:1: no blur, no dim, no tint.
+    # BackdropDim and BackdropBlur are inert knobs now, kept so an old
+    # config still loads; the scenario pins that they change nothing, which
+    # a golden alone would not say.
     c state
     snap backdrop-wallpaper
-    # The blur knob: 0 is the wallpaper sharp beyond the desk, which reads as
-    # it repeating; the default is a haze. The two have to differ on screen.
+    setcfg BackdropDim 1
     setcfg BackdropBlur 0
     c state
-    snap backdrop-sharp
-    assert_differs "the blur softens the continuation" backdrop-sharp backdrop-wallpaper
+    snap backdrop-knobs
+    assert_same "the dim and blur knobs are inert" backdrop-wallpaper backdrop-knobs
     setcfg BackdropBlur 48
     # Backdrop=grid is the plane of old: no wallpaper, the ground's own
     # background and the grid.

@@ -157,6 +157,21 @@ snap() {
     fi
 }
 
+# assert_same NAME A B [MAX]: the two shots taken by snap differ by at most MAX
+# (0.003) of normalized RMSE - for a setting that must change nothing on screen.
+assert_same() {
+    local name=$1 a=$OUT/$2.png b=$OUT/$3.png max=${4:-0.003}
+    if [ ! -s "$a" ] || [ ! -s "$b" ]; then fail "$name: a shot is missing"; return; fi
+    local metric
+    metric=$( { magick compare -metric RMSE "$a" "$b" "$OUT/$name.diff.png" 2>&1 || true; } | sed -n 's/.*(\([0-9.e-]*\)).*/\1/p')
+    if [ -z "$metric" ]; then fail "$name: compare failed"; return; fi
+    if awk -v m="$metric" -v t="$max" 'BEGIN{exit !(m <= t)}'; then
+        ok "$name (rmse $metric)"; rm -f "$OUT/$name.diff.png"
+    else
+        fail "$name: rmse $metric > $max, the two shots differ"
+    fi
+}
+
 # assert_differs NAME A B [MIN]: the two shots taken by snap differ by at least
 # MIN (0.01) of normalized RMSE - for what a setting has to change on screen,
 # where a golden would only pin one of the two.

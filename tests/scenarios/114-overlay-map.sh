@@ -33,7 +33,7 @@ run_scenario() {
     sx=1725
     sy=642
     hx=940   # inside the hint strip at the bottom centre
-    hy=1015
+    hy=1055
 
     # The real desktop, then the hold's world: the chip and the hint strip
     # are what the world as the map brings to the screen.

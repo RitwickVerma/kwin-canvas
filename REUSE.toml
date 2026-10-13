@@ -54,11 +54,9 @@ SPDX-License-Identifier = "GPL-2.0-or-later"
 # recorded.
 path = [
     "docs/recovery.md",
-    "tests/golden/backdrop-dimmed.png",
     "tests/golden/backdrop-grid.png",
-    "tests/golden/backdrop-sharp.png",
+    "tests/golden/backdrop-knobs.png",
     "tests/golden/backdrop-slide.png",
-    "tests/golden/backdrop-undimmed.png",
     "tests/golden/backdrop-wallpaper.png",
     "tests/golden/corner-zoom.png",
     "tests/golden/minimap-rect.png",

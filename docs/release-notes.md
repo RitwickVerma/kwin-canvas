@@ -1,5 +1,9 @@
 Unreleased:
 
+- The ground wallpaper follows the camera again: the check that it is the
+  active wallpaper always read empty, so since the wallpaper-write change
+  nothing reached it - not the camera, not the grid knobs.
+
 - The Alt+Tab-style switcher keeps waiting while its modifier is held: the
   re-arm of its settle beat threw an error on every poll, so the switcher
   could enter a window while the chord was still down.

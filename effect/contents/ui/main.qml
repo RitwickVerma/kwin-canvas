@@ -4006,7 +4006,7 @@ KWin.SceneEffect {
     property bool groundIsActive: false
     property double groundCheckedAt: 0
     function refreshGroundWallpaper() {
-        wallpaperQueryCall.arguments = ["let r = ''; const ds = desktops(); for (let i = 0; i < ds.length; ++i) { r += (ds[i].wallpaperPlugin || '') + '|'; } r;"];
+        wallpaperQueryCall.arguments = ["let r = ''; const ds = desktops(); for (let i = 0; i < ds.length; ++i) { r += (ds[i].wallpaperPlugin || '') + '|'; } print(r);"];
         wallpaperQueryCall.call();
     }
 
