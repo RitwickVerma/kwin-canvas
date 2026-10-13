@@ -1409,6 +1409,9 @@ KWin.SceneEffect {
     readonly property bool edgePan: configuration.EdgePan !== false
     readonly property int edgePanMargin: Math.max(1, Math.round(Number(configuration.EdgePanMargin) || 1))
     readonly property real edgePanSpeed: Math.max(0, Number(configuration.EdgePanSpeed) || 0)
+    // The edge pan's own envelope: the motion gathers over ~120 ms and lets
+    // go the same way, instead of snapping on at the band's lip.
+    property real edgePanGain: 0
     // Activity colour schemes. The colour-blind safe ones are published sets:
     // Okabe & Ito (2008), Paul Tol's bright set, IBM's Carbon set. mono
     // differs by luminance only.
@@ -2263,6 +2266,10 @@ KWin.SceneEffect {
     // refused a drag that paused before the release (see the pan handler),
     // which is what lets "drag it where you want it and let go" land exactly
     // where it was put.
+    // How long the current flick has been coasting: the decay eases in over
+    // the first ~120 ms, so a throw keeps its own beat before the friction
+    // takes over.
+    property real flingAge: 0
     function camFling(dx, dy, ms) {
         camStop();
         if (!panInertia || ms <= 0) return;
@@ -2274,6 +2281,7 @@ KWin.SceneEffect {
         if (speed > maxSpeed) { vx *= maxSpeed / speed; vy *= maxSpeed / speed; }
         camVX = vx;
         camVY = vy;
+        flingAge = 0;
     }
 
     // Spring the camera to a scale, and - unless a screen point is given to pin
@@ -2374,7 +2382,14 @@ KWin.SceneEffect {
             const walked = Math.min(1, Math.hypot(viewX - camFromX, viewY - camFromY) / Math.max(1, tdist));
             camTraceFade = 1 - walked;
         } else {
-            const f = Math.exp(-panFriction * dt);
+            // The flick's own beat first: the friction eases in over the
+            // opening ~120 ms - a throw keeps its speed for a breath and
+            // then decays - and gathers again near camRest so the stop
+            // eases out instead of cutting.
+            flingAge += dt;
+            const eased = panFriction * (0.55 + 0.45 * Math.min(1, flingAge / 0.12));
+            const near = Math.max(0, Math.min(1, Math.hypot(camVX, camVY) * zoom / (2 * camRest)));
+            const f = Math.exp(-(eased / Math.max(0.3, near)) * dt);
             camVX *= f; camVY *= f; camVZoom *= f;
         }
         const z = clampZoom(zoom + camVZoom * dt);
@@ -3653,6 +3668,13 @@ KWin.SceneEffect {
         dbusInterface: "org.kde.kwin.canvas.Passthrough"
         method: "setVerbose"
     }
+    KWin.DBusCall {
+        id: doorCall
+        service: "org.kde.KWin"
+        path: "/KWinCanvas"
+        dbusInterface: "org.kde.kwin.canvas.Passthrough"
+        method: "setDoorEnabled"
+    }
     // The plugin's own state, polled for the toolbar's hand dot. The reply
     // string is "active=.. view=(x,y) zoom=.. grab=.. ground=.. hover=..
     // nav=.. hold=.. seam=.." - a hover or a grab is the window's hand.
@@ -3767,6 +3789,15 @@ KWin.SceneEffect {
         const hover = Number(configuration.HoverDelay) || 900;
         hoverDelayCall.arguments = [hover | 0];
         hoverDelayCall.call();
+        publishDoor();
+    }
+    // The zoom door's knob reaches the plugin too: the door needs the
+    // filter's eyes while the canvas is closed, and the plugin reads its
+    // own copy once at load - so the effect publishes the setting at every
+    // reconfigure (the same moments publishHold runs).
+    function publishDoor() {
+        doorCall.arguments = [configuration.WheelDoor !== false];
+        doorCall.call();
     }
     // The trace flag reaches the plugin too, so its side of every decision
     // lands in the same log.
@@ -3841,10 +3872,14 @@ KWin.SceneEffect {
         const reachX = edgePanMargin, reachY = edgePanMargin;
         const tx = Math.abs(dx) <= deadX ? 0 : Math.sign(dx) * Math.min(1, (Math.abs(dx) - deadX) / reachX);
         const ty = Math.abs(dy) <= deadY ? 0 : Math.sign(dy) * Math.min(1, (Math.abs(dy) - deadY) / reachY);
-        if (tx === 0 && ty === 0) return;
+        // The envelope: the pan gathers over ~120 ms and lets go the same
+        // way, so the camera never snaps into or out of the edge motion.
+        const target = (tx !== 0 || ty !== 0) ? 1 : 0;
+        edgePanGain += (target - edgePanGain) * (1 - Math.exp(-dt / (target > edgePanGain ? 0.045 : 0.075)));
+        if (edgePanGain < 0.002 && target === 0) { edgePanGain = 0; return; }
         // The depth, curved: a gentle start and a strong edge.
-        const vx = Math.sign(tx) * Math.pow(Math.abs(tx), 1.2) * edgePanSpeed * dt;
-        const vy = Math.sign(ty) * Math.pow(Math.abs(ty), 1.2) * edgePanSpeed * dt;
+        const vx = Math.sign(tx) * Math.pow(Math.abs(tx), 1.2) * edgePanSpeed * dt * edgePanGain;
+        const vy = Math.sign(ty) * Math.pow(Math.abs(ty), 1.2) * edgePanSpeed * dt * edgePanGain;
         noteGesture();
         const beforeX = viewX, beforeY = viewY;
         panBy(-vx, -vy);
@@ -4021,16 +4056,9 @@ KWin.SceneEffect {
         const m = String(configuration.Backdrop || "wallpaper").trim().toLowerCase();
         return m === "grid" ? "grid" : "wallpaper";
     }
-    function backdropDim() {
-        const d = Number(configuration.BackdropDim);
-        if (isNaN(d)) return 0.45;
-        return Math.max(0, Math.min(1, d));
-    }
-    function backdropBlur() {
-        const b = Number(configuration.BackdropBlur);
-        if (isNaN(b)) return 48;
-        return Math.max(0, Math.min(128, Math.round(b)));
-    }
+    // The wallpaper rides through untouched now: the backdrop's half-res
+    // copy and its blur are gone, so the real desktop behind the plane is
+    // the haze-free, grey-free continuation at every zoom.
     // The blur layers drawn: one per output, in wallpaper mode. The state
     // line reports this, so a scenario can see which mode is up.
     readonly property int backdropLayers: backdropMode() === "wallpaper" ? KWin.Workspace.screens.length : 0

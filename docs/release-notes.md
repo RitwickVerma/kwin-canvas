@@ -1,10 +1,19 @@
 Unreleased:
 
+- The 1:1 hold shows only the desktop: while a grasp (or a quiet slide)
+  is in hand the canvas draws none of itself - the lit threads fade out
+  at 1:1 and the ground's grid no longer draws over the wallpaper.
+
+- The canvas modifier (hold MB4) opens the canvas wherever the pointer is
+  now - over a window as well as the bare desktop. A quick press still goes
+  to the window as its own click (a game's back button keeps working), and
+  inside the open canvas the hold stays navigation-only.
+
 - The canvas's automatic camera moves wait for the hand now: a rest on a
-  half-hidden window fetches it only after the same deliberate pause the
-  pass-through uses (**HoverDelay**, 900 ms by default) and glides gently
-  rather than snatching, and the edge pan's ramp is even from the moment it
-  starts - no late surge toward the edge.
+  half-hidden window fetches it after half of the pass-through's own pause
+  (**HoverDelay**, 900 ms by default), so the move lands before the pointer
+  changes hands, and it glides gently rather than snatching; the edge pan's
+  ramp is even from the moment it starts - no late surge toward the edge.
 
 - A drag moves the plane exactly with the hand, at every zoom - no
   acceleration, no drift from the pointer.

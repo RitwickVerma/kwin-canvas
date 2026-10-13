@@ -112,11 +112,14 @@ the window on the plane; selection, the marquee and the arrange menu start
 from the title bar. Stepping in writes every entry once from its plane
 position.
 
-The plugin also watches the canvas-modifier buttons (`setHoldButtons`)
-while the canvas is closed: a press of one is consumed before any window
-sees it and flips the effect's `canvasHold` property - the route that opens
-the quiet grasp and commits on the release - and a mask change under a held
-button ends the hold.
+The plugin also watches the canvas-modifier buttons (`setHoldButtons`):
+a press of one is consumed before any window sees it and becomes a hold
+candidate - outlast the threshold and it flips the effect's `canvasHold`
+property, the route that opens the quiet grasp and commits on the release,
+wherever the pointer is (over the desktop or over a window); release
+sooner and the click is replayed to the window under the pointer, so a
+window's own back button still works. A mask change under a held button
+ends the hold.
 
 **Plane input** is the route that replaces pass-through: an LD_PRELOAD shim
 for stock kwin_wayland 6.7.5 (`dev/spike/preload`, a spike) moves KWin's
@@ -596,7 +599,8 @@ to the focused window.
 The pointer navigates too. A click on a window, and a hover that rests on one
 for a moment, pans the camera the least that brings the window wholly into
 view (`bringIntoView`, the Tab cycle's own helper): what the eye lands on is
-what the screen shows. The hover pan waits 250 ms and stands down while the
+what the screen shows. The hover pan waits out half of the pass-through's own pause
+(`HoverDelay`) and glides gently, and it stands down while the
 hand is navigating, so it never fights a drag, and it settles once the
 window is visible, so it never oscillates.
 

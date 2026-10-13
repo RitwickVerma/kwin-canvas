@@ -115,6 +115,42 @@ those, from this side of the fork:
 
 ## Sessions
 
+### 2026-10-12 — the hold works everywhere, and the door's knob is wired
+
+The user asked for the canvas modifier to stop being a desktop-only
+gesture: "long hold shold go to canvas everywhere". The plugin's
+`pointerButton` hold branch had passed a CanvasHold press to the window
+under the pointer while the canvas was closed (a game's own back button
+must never open the canvas); that pass-through branch and its
+`m_holdPassed` bookkeeping are gone. Every CanvasHold press is now a hold
+candidate wherever it lands: outlast `HoldDelay` and the canvas opens
+quietly at 1:1 (the grasp), release sooner and the press is replayed as
+the window's own click through the seat, so the back button still works
+over a game. Verified: `make plugin` builds; 103-grasp 28/0 with its two
+new checks (a quick press leaves the canvas closed; a hold over a window
+opens it), 85-passthrough 21/0, 127-rest-cue 6/0, and the full suite at
+its baseline.
+
+The user's "scroll on desktop doesn't work" turned out to be a knob, not
+code: the live kwinrc carried `WheelDoor=false` (the only anomalous key
+in the group), so the zoom door was off. The knob had no live route
+either - the plugin reads its `m_door` once at load and the effect never
+called `setDoorEnabled` - so a KCM toggle would have waited for the next
+KWin start. main.qml now publishes it (`doorCall`/`publishDoor`, on every
+reconfigure) and the live kwinrc is true again; both halves land at the
+next login, and from then on the knob applies as it says it does.
+
+The same evening the user asked for the grasp's look to be the desktop
+alone: "pleaser dont show threads for 1:1 0 zoom pans" and then "dont
+even show the grid or the canvas or anything". Two quiet-look fixes in
+ui.qml: the thread delegate's lit branch regained its own zoom fade
+(full by 0.75, gone at 1:1 - the want formula had lost it in the ui.qml
+extraction, which the 113 scenario's flapping had already been hinting
+at), and the Ground invocation is now `visible: !effect.quiet`, so a 1:1
+grasp shows nothing of the canvas over the wallpaper: only the windows
+move, exactly as the quiet hold promised. The threads fade and the grid
+gate are scene-side: `make hot` puts them in a running session.
+
 ### 2026-10-12 — the automatic camera moves learn to wait
 
 The user picked the feel pass from the improvement menu. The hover's

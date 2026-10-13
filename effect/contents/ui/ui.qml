@@ -255,88 +255,24 @@ Item {
             anchors.fill: parent
             z: -100
             color: effect.configuration.Background
+            // The wallpaper mode is a true passthrough: the effect draws no
+            // base there, so the real desktop (wallpaper included) shows
+            // through the plane untouched - zero copies, nothing to grey it.
+            visible: effect.backdropMode() !== "wallpaper"
         }
 
-        // Backdrop: the blurred continuation of the desktop's wallpaper,
-        // screen-fixed like an overview's backdrop. The desks keep the exact
-        // wallpaper - every frame draws the real desktop window - and beyond
-        // them the plane is the same wallpaper in a haze, dimmed so the desks
-        // and the windows stay the subject, with the ground grid over it. It
-        // is the desktop window itself, live, and it hides while the current
-        // activity's frame covers the view (open at 1:1, an idle slide),
-        // which is exactly where the blur would be invisible anyway, so it
-        // costs nothing until the camera moves.
-        Item {
-                        anchors.fill: parent
+        // The overworld's wallpaper: KWin's own desktop background, drawn
+        // raw - no blur, no dim, no treatment - because a zoomed-out view
+        // cannot borrow the real desktop the way 1:1 does. At 1:1 this
+        // steps aside and the compositor's own wallpaper, sharp, shows
+        // through the plane's transparent gaps.
+        KWin.DesktopBackground {
+            anchors.fill: parent
             z: -90
-            readonly property bool wallpaper: effect.backdropMode() === "wallpaper"
-            // The frame for this screen, drawn: does it cover the view?
-            readonly property bool covered: {
-                if (!wallpaper) return false;
-                effect.revision;
-                if (effect.isHidden(effect.currentActivity, view.screen)) return false;
-                const t = effect.peekTarget(effect.currentActivity);
-                const og = view.sg;
-                const x = (t.x + og.x - effect.viewX) * effect.zoom;
-                const y = (t.y + og.y - effect.viewY) * effect.zoom;
-                const w = og.width * effect.zoom, h = og.height * effect.zoom;
-                return x <= 0 && y <= 0 && x + w >= view.width && y + h >= view.height;
-            }
-            // The haze fades with the camera instead of switching: stepping
-            // in softens it out as the desk fills the view, stepping out
-            // softens it back. At rest under a covering frame it is gone and
-            // costs nothing.
-            // The quiet hold and slide are the desktop itself: the wallpaper
-            // stays, sharp, wherever the frames fade - no grey base ever
-            // shows through a transient move. The blur itself is overworld
-            // chrome: at 1:1 the real desktop behind the view is already the
-            // sharp picture, so the quiet slide skips the haze entirely.
-            readonly property bool wantShown: wallpaper && (!covered || effect.quiet)
-            property real blurAlpha: wantShown ? 1 : 0
-            Behavior on blurAlpha { NumberAnimation { duration: 280; easing.type: Easing.InOutCubic } }
-            visible: wallpaper && (wantShown || blurAlpha > 0.004)
-            opacity: blurAlpha
-            // The source is rendered at half resolution and the blur is
-            // upscaled: a quarter of the pixels for the same haze, which is
-            // the difference between a full-screen blur that runs and one
-            // that exhausts the GPU alongside the live thumbnails.
-            Item {
-                id: blurSourceHost
-                width: Math.max(1, Math.round(view.width / 2))
-                height: Math.max(1, Math.round(view.height / 2))
-                anchors.centerIn: parent
-                KWin.DesktopBackground {
-                    anchors.fill: parent
-                    output: view.screen
-                    desktop: KWin.Workspace.currentDesktop
-                    activity: effect.currentActivity || "default"
-                }
-            }
-            FastBlur {
-                anchors.fill: parent
-                source: blurSourceHost
-                // The quiet slide (a focus fly, a pan chord at 1:1) is the
-                // desktop gliding: the wallpaper stays, sharp, so a
-                // transient move never flashes grey or the overworld's blur.
-                // The ladder sheds in the eye's order, not the cost's: the
-                // standing shadows and the depth go first (the quiet-night
-                // rung), the web and the blur next, the pictures last. The
-                // blur is a half-screen FBO sampled every frame, but the
-                // haze is what the eye forgives first, so it stays a rung
-                // longer than the shadows.
-                radius: (effect.quiet || effect.ql >= 2) ? 0 : effect.backdropBlur()
-                transparentBorder: false
-            }
-            // The dim over the blur only: the desks ride above it and stay
-            // bright. Zero while the canvas slides at 1:1, where the plane
-            // and the desktop have to be the same thing, and it fades in
-            // with the chrome on open and out with it on the step in, so
-            // stepping out and back never flashes the dim.
-            Rectangle {
-                anchors.fill: parent
-                color: effect.configuration.Background
-                opacity: effect.backdropDim() * effect.chromeFade * effect.skinReveal
-            }
+            visible: effect.zoom < 0.999
+            output: view.screen
+            desktop: KWin.Workspace.currentDesktop
+            activity: effect.currentActivity || "default"
         }
 
         // The plane's items - the ground, the frame bands, the windows, the
@@ -361,6 +297,10 @@ Item {
             // With the wallpaper behind it the base rect above is the ground's
             // background, and the grid draws over the wallpaper.
             drawBackground: effect.backdropMode() !== "wallpaper"
+            // The 1:1 view is the desktop itself: the grid draws only when
+            // the camera is zoomed out - never over the wallpaper during a
+            // grasp, a hover fetch or any other flat pan.
+            visible: zoom < 0.999
         }
 
 
@@ -985,35 +925,6 @@ Item {
             }
         }
 
-        // The hover spotlight: the window the pointer has settled on steps
-        // forward into the light - the ground, the frames, the threads and
-        // the windows behind it dim under a whisper of the house dark, and
-        // the light comes back when the hand leaves. The dim rides the same
-        // gates as the glow: only the deliberate rest (never a press, never
-        // a pass-through handoff, never the quiet seam, never the switcher's
-        // own light, never below the ladder's top rung). It carries no
-        // pointer handlers, so every press falls through to whatever is
-        // beneath it. The hovered window itself paints at z 2000, above
-        // this veil, so it alone keeps the full light.
-        Rectangle {
-            anchors.fill: parent
-            z: 1999
-            color: Qt.rgba(0.05, 0.05, 0.08, 0.30)
-            visible: !effect.quiet && effect.ql < 1 && !effect.switcherActive
-            opacity: {
-                effect.hoverEntry;
-                effect.focusEntry;
-                effect.skinReveal;
-                effect.pointerButtons;
-                effect.restStart;
-                return effect.hoverEntry !== null && effect.focusEntry === effect.hoverEntry
-                    && effect.skinReveal > 0.02 && effect.pointerButtons === Qt.NoButton
-                    && effect.restStart === "" ? 1 : 0;
-            }
-            Behavior on opacity {
-                NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
-            }
-        }
 
         // App popups, above the windows and the frame tags, below the
         // toolbar and the canvas's menus, in KWin's stacking order. Each is
@@ -1180,7 +1091,7 @@ Item {
                     // (the cluster the focus is in) draws at every zoom; a 1:1
                     // view is the desktop alone because a quiet hold carries no
                     // web at all.
-                    readonly property real want: (modelData.lit ? Math.max(0.3, 0.55 * modelData.co) : (effect.ql >= 2 ? 0 : 0.22 * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20)) * modelData.co)) * effect.skinReveal
+                    readonly property real want: (modelData.lit ? Math.max(0.3, 0.55 * modelData.co) * Math.min(1, Math.max(0, (1 - effect.zoom) * 4)) : (effect.ql >= 2 ? 0 : 0.22 * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20)) * modelData.co)) * effect.skinReveal
                     property real show: 0
                     opacity: show
                     Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
