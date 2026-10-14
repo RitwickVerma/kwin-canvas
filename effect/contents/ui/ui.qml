@@ -1691,7 +1691,11 @@ Item {
             } else if (k >= Qt.Key_1 && k <= Qt.Key_9) {
                 // The digits hop straight to cluster N - the badge's number.
                 // The cluster is the room, so a bare digit is the jump.
-                if (!(event.modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier | Qt.MetaModifier))) effect.clusterJumpTo(k - Qt.Key_1 + 1);
+                const n = k - Qt.Key_1 + 1;
+                const mods = event.modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier | Qt.MetaModifier);
+                if (!mods) effect.clusterJumpTo(n);
+                else if (mods === Qt.ControlModifier) { if (!event.isAutoRepeat) effect.bookmarkSet(n); }
+                else if (mods === Qt.AltModifier) { if (!event.isAutoRepeat) effect.bookmarkGo(n); }
                 else return;
             } else {
                 return;
@@ -2083,6 +2087,7 @@ Item {
                 PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyNext) + " / " + effect.keyLabel(effect.configuration.KeyPrev) } PC3.Label { text: "step the selection through the windows; the camera follows" }
                 PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyPanLeft) + " / " + effect.keyLabel(effect.configuration.KeyPanRight) + " / " + effect.keyLabel(effect.configuration.KeyPanUp) + " / " + effect.keyLabel(effect.configuration.KeyPanDown) } PC3.Label { text: "pan the camera one step" }
                 PC3.Label { font.family: "monospace"; opacity: 0.85; text: "1..9" }                                          PC3.Label { text: "jump straight to that cluster - its number on the badge; the camera returns to the spot you left it at" }
+                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "Ctrl+1..9 / Alt+1..9" }                    PC3.Label { text: "keep this view in that slot / fly back to it - the camera's place and how far out" }
                 PC3.Label { font.family: "monospace"; opacity: 0.85; text: "the dot in the toolbar" }                          PC3.Label { text: "whose hand is on the pointer: filled - the window's, hollow - the canvas's" }
                 PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyApply) }      PC3.Label { text: "enter the location under the screen centre; with a window selected, enter it focused" }
                 PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyCancel) }     PC3.Label { text: "back to where you were, nothing moved" }

@@ -855,6 +855,17 @@ the settings pages through `KCMLauncher.openSystemSettings`, as Overview does.
   isolation but not yet driven inside a live plasmashell; the ground wallpaper
   has since run live (a live switch rendered its ground on the desktop).
 
+## Bookmarks
+
+Nine saved views, slot 1 to 9. Ctrl+digit in the open canvas stores where the
+camera is looking - or, in a flight, where it is going - and how far out;
+Alt+digit flies back with `camGo` on the same spring as every other flight
+(`bookmarkSet`, `bookmarkGo`, and the debug verbs `bookmark set N` / `bookmark go N`).
+Bare digits stay the cluster jump. The slots are JSON in the hidden `Bookmarks`
+knob, loaded at startup, so they survive a restart; `state` reports `bookmarks=`
+(how many are held). Scenario `145` pins the flight, an empty slot, the config
+write and the real keys.
+
 ## Next
 
 - Snap `zoom` to 1 with a short animation on the plain `commit` paths that

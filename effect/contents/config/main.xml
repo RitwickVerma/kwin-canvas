@@ -401,6 +401,10 @@
             <label>The key that flies the camera to the previous cluster, in reading order on the plane.</label>
             <default>BracketLeft</default>
         </entry>
+        <entry name="Bookmarks" type="String">
+            <label>The saved views, as JSON keyed by slot 1 to 9: where the camera was and how far out. Ctrl+digit in the open canvas saves the view in that slot, Alt+digit flies back to it. A hidden knob, for persistence only.</label>
+            <default></default>
+        </entry>
         <entry name="ViewX" type="Double">
             <default>0</default>
         </entry>

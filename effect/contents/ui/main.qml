@@ -1120,6 +1120,39 @@ KWin.SceneEffect {
         configuration.ClusterNames = JSON.stringify(clusterNames);
         configuration.writeConfig();
     }
+    // Bookmarks: nine named views. Ctrl+digit keeps where the camera is
+    // looking (or is flying to) and how far out, Alt+digit flies back on the
+    // camera's own spring. Per slot, kept in the config so a restart keeps them.
+    property var bookmarks: ({})
+    function loadBookmarks() {
+        let b = {};
+        try { b = JSON.parse(configuration.Bookmarks || "{}"); } catch (err) { b = {}; }
+        bookmarks = b;
+    }
+    function bookmarkSet(n) {
+        if (!(n >= 1 && n <= 9) || !visible) return;
+        // A flight in progress is saved at where it is going: that is the
+        // view the hand meant.
+        const b = {
+            x: camHasGoal ? camGoalX : viewX,
+            y: camHasGoal ? camGoalY : viewY,
+            z: camHasGoal ? camGoalZoom : zoom
+        };
+        if (!Number.isFinite(b.x) || !Number.isFinite(b.y) || !(b.z > 0)) return;
+        const all = Object.assign({}, bookmarks);
+        all[n] = b;
+        bookmarks = all;
+        configuration.Bookmarks = JSON.stringify(all);
+        configuration.writeConfig();
+        toast("Bookmark " + n + " saved");
+    }
+    function bookmarkGo(n) {
+        if (!(n >= 1 && n <= 9) || !visible) return;
+        const b = bookmarks[n];
+        if (!b) { toast("No bookmark " + n); return; }
+        noteGesture();
+        camGo(b.z, b.x, b.y, undefined, undefined, 2.0);
+    }
     // The toast: a brief glass chip naming what just happened.
     property string toastText: ""
     property int toastRev: 0
@@ -4572,6 +4605,12 @@ KWin.SceneEffect {
     case "release": sceneGestures = 0; break; // the stuck-gesture emergency: the parked close fires at once
         case "toggle": toggle(); break;
         case "home": home(); break;
+        case "bookmark": {
+            // bookmark set N | bookmark go N: the keys' two verbs, for a script.
+            if (a[1] === "set" && numok(2)) bookmarkSet(Number(a[2]));
+            else if (a[1] === "go" && numok(2)) bookmarkGo(Number(a[2]));
+            break;
+        }
         case "origin": origin(); break;
         case "extents": zoomExtents(); break;
         case "pan": if (numok(1) && numok(2)) panBy(Number(a[1]), Number(a[2])); break;
@@ -4772,6 +4811,7 @@ KWin.SceneEffect {
             + " moves=" + Object.keys(entryAnims).length
             + " dragraw=" + Object.keys(dragRaw).length
             + " undo=" + undoStack.length
+            + " bookmarks=" + Object.keys(bookmarks).length
             + " deskwin=" + Object.keys(desktopWindows).length
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
             + " map=" + (mapMinimap ? "minimap" : "-")
@@ -4839,6 +4879,7 @@ KWin.SceneEffect {
         loadHiddenFrames();
         loadPinned();
         loadClusterState();
+        loadBookmarks();
         refreshActivities();
         refreshDesktopWindow();
         lastDebugSeq = configuration.DebugSeq;

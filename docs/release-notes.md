@@ -1,5 +1,10 @@
 Unreleased:
 
+- Bookmarks. In the open canvas Ctrl+1..9 keeps the view you are looking at
+  (or flying to) in that slot, and Alt+1..9 flies back to it on the camera's
+  own spring - the place and how far out. The slots are kept across restarts.
+  An empty slot says so and moves nothing. The help card lists the keys.
+
 - The first frame of a fly no longer flashes black over a video wallpaper: the
   scene starts by showing the desktop's own window and only hands over to
   Plasma's wallpaper item once it knows the wallpaper is a picture.
