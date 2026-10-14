@@ -1,5 +1,10 @@
 Unreleased:
 
+- A tiled or maximized window is part of a room: take one by the hand in the
+  canvas and every tiled or maximized window of its cluster comes with it, so
+  a KWin tile layout or a KZones layout moves as one. A free window still
+  moves alone.
+
 - Un-maximizing or un-tiling a window after the view has slid puts it back
   where the plane has it. KWin keeps a window's restore spot in screen
   coordinates, and the canvas moves the real windows when it slides, so the

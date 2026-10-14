@@ -3346,8 +3346,24 @@ KWin.SceneEffect {
         camStop();
         dragRaw = {};
         dragIndex = index;
-        const set = isSelected(e) ? entries.filter(isSelected) : [e];
+        const set = isSelected(e) ? entries.filter(isSelected) : roomOf(e);
         for (let i = 0; i < set.length; ++i) dragRaw[set[i].window.internalId] = { x: set[i].x, y: set[i].y };
+    }
+    // A window held by KWin to a screen-locked state - tiled, or maximized -
+    // belongs to a room: the other such windows in its cluster. Tiling is
+    // one layout across a frame, so taking one window by the hand takes the
+    // layout; a free window is its own set.
+    function lockedEntry(e) { return !!e && !!e.window && !e.window.deleted && (!!e.window.tile || !!e.window.maximizeMode); }
+    function roomOf(e) {
+        if (!lockedEntry(e)) return [e];
+        const ci = clusterIndexOfEntry(e);
+        if (ci < 0 || !clusters[ci]) return [e];
+        const out = [];
+        for (let k = 0; k < clusters[ci].ids.length; ++k) {
+            const m = entryById(clusters[ci].ids[k]);
+            if (m && lockedEntry(m)) out.push(m);
+        }
+        return out.length > 0 ? out : [e];
     }
     // A hand on a cluster's badge is a hand on the whole cluster: the drag
     // set becomes its members, and the ordinary drag machinery moves them
