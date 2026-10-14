@@ -140,15 +140,12 @@ From the audit list: `dragRaw` cleared in `endDrag`, the click-pan timer
 stopped on commit, cancel and slide end, `deskArea` clipped to the screen's
 rectangle, the dead `farewellHide` fade branch removed. The focus-activity
 case did not reproduce as a bug (139 pins it). **Dock approach (`149`, needs `make test-panel`): the hover's fetch stands back within 120 px of a dock. `107-overlay` fails one check under `test-panel` with or without that change (passes in the plain nest): the panel changes its setup. Not investigated.**
-**End-of-slide flash, still OPEN (measured in the nest, picture wallpaper): in about 5% of
-quiet slides (2 of 30, 4 of 45) a screenshot taken 340-520 ms into a 400 ms slide-back shows
-the scene at the slide's start position with ~21% of the screen black (the right and bottom,
-exactly the strip the frame left), `state` already says `visible=false` and the fades are
-1/1/1. It happens with the wallpaper layer swapped for the desktop-window thumbnail alone, so
-it is not the wallpaper layers. Reading: a stale scene frame is composited for one frame
-around `endSlide`'s `visible = false`. Not fixed. A hold-the-last-frame or
-hide-before-write ordering is the next thing to try; reproduce with the loop above (slide
-300 100, slide -300 -100, one screenshot at a varied offset).**
+**End-of-slide flash (`150`): fixed in the nest. About 1 in 60 quiet slides showed one stale
+frame at the landing (the slide's last position, ~21% black on the right and bottom, no
+toolbar); `endSlide` now closes through a 32 ms timer so the scene paints once at the
+destination first. 0 of 450 slides flashed with it (150 + 300), 1-2 of 60-150 without. A
+first attempt (clear `quiet` after the hide) did nothing: 2 of 150. Needs a session
+restart (`main.qml`); not seen live.**
 **Tiled room (`147`): dragging one tiled/maximized window drags every tiled/maximized
 window of its cluster; a free window moves alone. `111-thread-z` fails 3 checks on every
 commit I bisected (back to 273f9e7) although it passed in earlier full runs: an environment

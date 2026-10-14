@@ -4462,8 +4462,23 @@ KWin.SceneEffect {
         // the real windows at the destination (the thumbnails cover them at
         // the same pixels), so cutting to the real desktop is invisible. A
         // fade-out here would run through black and flash.
-        visible = false;
-        quiet = false;
+        // One more paint at the destination before the scene goes: the
+        // camera, the targets and the real windows have all just changed in
+        // this turn, and a close in the same turn can leave the compositor
+        // showing the scene's frame from before them - the slide's last
+        // position with black where its frame had left. At the destination
+        // the scene is the desktop it covers, so the extra frame is unseen.
+        slideCloseTimer.restart();
+    }
+    Timer {
+        id: slideCloseTimer
+        interval: 32
+        repeat: false
+        onTriggered: {
+            if (!effect.quiet) return;
+            effect.visible = false;
+            effect.quiet = false;
+        }
     }
 
     // Jump to the destination and settle now (another action wants the canvas).

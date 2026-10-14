@@ -1,5 +1,11 @@
 Unreleased:
 
+- The end of a fly no longer flashes a stale frame. The canvas closed in the
+  same moment the camera, the targets and the real windows jumped to the
+  destination, and the compositor could draw the scene's frame from before
+  that - the slide's last position with black where its frame had left. The
+  scene now stays one more paint (32 ms) at the destination before it goes.
+
 - Reaching for a dock or panel no longer pans the canvas. A pause over a
   window on the way down to the panel counted as a hover and the camera
   fetched that window into view; within a hand's reach of a panel (120 px)
