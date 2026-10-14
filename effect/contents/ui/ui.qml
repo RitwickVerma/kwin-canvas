@@ -225,7 +225,12 @@ Item {
         // the desktop window, which for a picture wallpaper is the same
         // picture, and only a known picture wallpaper hands over to the
         // frames' own item.
-        property bool wallpaperDrawable: false
+        // The effect's own answer when it has one (it outlives the scene, so
+        // it is known before the first frame); this scene's own query only
+        // for an effect compiled before it had one (a hot reload swaps this
+        // file and not main.qml).
+        property bool queried: false
+        property bool wallpaperDrawable: effect.wallpaperPicture !== undefined ? effect.wallpaperPicture : queried
         function checkWallpaper() {
             wallpaperQuery.arguments = ["let r = ''; const ds = desktops(); for (let i = 0; i < ds.length; ++i) { r += (ds[i].wallpaperPlugin || '') + '|'; } print(r);"];
             wallpaperQuery.call();
@@ -241,8 +246,8 @@ Item {
                 const plugins = String(result || "").split("|").filter(function (p) { return p.trim().length > 0; });
                 // An empty answer says nothing: keep what was last known.
                 if (plugins.length === 0) return;
-                view.wallpaperDrawable = plugins.every(function (p) { return known.indexOf(p.trim()) !== -1; });
-                console.log("kwin-canvas ui: wallpaper " + plugins.join(",") + " drawable=" + view.wallpaperDrawable);
+                view.queried = plugins.every(function (p) { return known.indexOf(p.trim()) !== -1; });
+                console.log("kwin-canvas ui: wallpaper " + plugins.join(",") + " drawable=" + view.wallpaperDrawable + " effect=" + effect.wallpaperPicture);
             }
         }
         Connections {

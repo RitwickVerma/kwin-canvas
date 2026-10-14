@@ -139,7 +139,16 @@ Tests run hidden with `NEST_VIRTUAL=1`; only `make play` needs a window.
 From the audit list: `dragRaw` cleared in `endDrag`, the click-pan timer
 stopped on commit, cancel and slide end, `deskArea` clipped to the screen's
 rectangle, the dead `farewellHide` fade branch removed. The focus-activity
-case did not reproduce as a bug (139 pins it). **Third black, from the user's own screen recording (16:29, 5120x1440, 60 fps): three
+case did not reproduce as a bug (139 pins it). **The effect now remembers whether the wallpaper is a picture (`wallpaperPicture` in
+`main.qml`, asked at load, on reconfigure and on every open); the scene reads it
+instead of asking afresh each open, so it is known before the first frame. A hot
+reload swaps only `ui.qml`, which falls back to its own query. Open: a thumbnail's
+first frame is still black. Considered and not built: playing the video inside the
+scene with QtMultimedia (a second 2560x1440 decode in the compositor process, a
+cold first frame again unless the player lives in main.qml and forwards frames,
+and a decoder crash would take KWin, and the session, with it). The cheaper next
+step is to hold the first presented frame until the thumbnail has painted.**
+**Third black, from the user's own screen recording (16:29, 5120x1440, 60 fps): three
 single-frame dips (frames 73, 117, 143), each the right-hand quarter of the screen
 and the bottom black while the windows had already moved, i.e. the first frame of a
 slide's scene before any wallpaper layer had content. `wallpaperDrawable` started

@@ -2596,6 +2596,7 @@ KWin.SceneEffect {
 
     // ---- open / close ------------------------------------------------------
     function open(quietMode, spec) {
+        refreshGroundWallpaper();
         if (visible) return;
         camStop();
         graspJumped = false;
@@ -4022,11 +4023,21 @@ KWin.SceneEffect {
         onFinished: (result) => {
             const s = String(result || "");
             effect.groundIsActive = s.indexOf("kwin-canvas-ground") !== -1;
+            // Whether every wallpaper is one Plasma's own item can draw. Kept
+            // here, on the effect, because the scene is rebuilt on every
+            // open and a scene that has to ask for itself paints its first
+            // frames before the answer: the black frame of a fly.
+            const plugins = s.split("|").filter(function (p) { return p.trim().length > 0; });
+            if (plugins.length > 0) {
+                const picture = ["org.kde.image", "org.kde.slideshow", "org.kde.color", "org.kde.potd", "kwin-canvas-ground"];
+                effect.wallpaperPicture = plugins.every(function (p) { return picture.indexOf(p.trim()) !== -1; });
+            }
             effect.groundCheckedAt = Date.now();
             effect.dbg("ground", "wallpaper query: " + s);
         }
     }
     property bool groundIsActive: false
+    property bool wallpaperPicture: false
     property double groundCheckedAt: 0
     function refreshGroundWallpaper() {
         wallpaperQueryCall.arguments = ["let r = ''; const ds = desktops(); for (let i = 0; i < ds.length; ++i) { r += (ds[i].wallpaperPlugin || '') + '|'; } print(r);"];
