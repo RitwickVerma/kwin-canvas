@@ -15,6 +15,11 @@ stands right now is [docs/status.md](docs/status.md).
 1. **Never test in the live session.** The effect moves windows and grabs
    input, so a bad build is a session you cannot use. Everything goes through
    the nested KWin first: `make play` to look at it, `make test` to prove it.
+   That includes driving it: no `kwin-canvas open`, no debug-channel slide, no
+   screenshot or recording of the live desktop, no `make hot`, unless the user
+   asked for that in the message. The user may be in a game. Run tests hidden
+   (`NEST_VIRTUAL=1`, below), and remember the nest uses the real GPU: leave
+   long soaks until the user says the machine is free.
 2. **A QML edit needs a nest restart** (`make nest-reload`), not `make reload`:
    KWin's QML engine holds the component it compiled, so neither a reload nor
    clearing the QML cache picks up a new `main.qml`. In a live session only a
@@ -22,7 +27,13 @@ stands right now is [docs/status.md](docs/status.md).
    loaded through a version-stamped URL, so a UI edit there applies with
    `make hot` (it bumps the `HotRev` knob and the engine recompiles the
    scene live). The effect's logic still lives in `main.qml` and still needs
-   the restart.
+   the restart, and so does the plugin (KWin loads plugins at start; the
+   installed copy is `/usr/lib/qt6/plugins/kwin/plugins`, installed by hand
+   with `sudo`, which an agent cannot do). A hot reload swaps `ui.qml` and
+   not `main.qml`, so a live scene can sit over an older effect: whatever
+   `ui.qml` reads from `effect` must be allowed to be missing (check the
+   property or function exists before using it), or the live journal fills
+   with `TypeError`s.
 3. **Measured, not assumed.** A scenario measures the effect's own state
    (`make nest-cmd CMD=state`), a screenshot pins the pixels, and a commit
    message ends with a `Verified:` paragraph naming the commands that passed.
@@ -57,8 +68,10 @@ make nest-reload             # reinstall, restart the nest, relaunch clients
 make nest-down               # stop it
 make nest-clean              # kill leftovers of nests whose state is gone
 
-make test                    # all scenarios, ~10 min: expect "== pass 253  fail 10  skip 2" - the 10 are suite-order, each green alone (docs/testing.md)
+make test                    # all scenarios, ~10 min; the last full run was 253 pass, 10 fail, 2 skip, before the newest scenarios: the fails are suite-order, each green alone (docs/testing.md)
+NEST_VIRTUAL=1 make test ...   # the same on a virtual framebuffer: no window opens on your desktop
 make test ARGS=60            # scenarios whose file name matches
+make test-panel ARGS=117     # with Plasma's default panel in the nest (the dock scenarios, 117 and 149)
 make test ARGS="--update-golden 93"   # re-record that scenario's golden shots
 make test-two-outputs        # NEST_OUTPUTS=2, the 91 scenarios
 make test-shim               # tests/shim/* under the plane-input preload shim
@@ -91,10 +104,12 @@ Cheapest first, and stop where the change warrants:
    what the CI jobs run, so a red pipeline reproduces here.
 3. **`make test ARGS=<name>`** — one or two scenarios in a nest, a minute or two:
    the right size for a change you can describe in one sentence.
-4. **`make test`** — the whole suite against a fresh nest, ten minutes or so,
-   253 pass, 10 fail, 2 skip on the current tree: each fail is a suite-order
-   artefact, green alone the same evening (the list and the reasoning are in
-   `docs/testing.md`). The skips say what they cannot check here:
+4. **`make test`** — the whole suite against a fresh nest, ten minutes or so.
+   The last full run gave 253 pass, 10 fail, 2 skip: each fail is a suite-order
+   artefact, green alone (the list and the reasoning are in `docs/testing.md`).
+   Run every failure alone before believing it, and bisect before blaming a
+   change: `111-thread-z` fails three checks on every commit back to a good
+   full run, so it is not one you just made. The skips say what they cannot check here:
    `91-two-outputs`, because it needs a two-output nest — `make
    test-two-outputs` gives it that — and `135-decoration`, because the canvas
    decoration loads only under `NEST_DECOR=canvas` (`make test-decor`).
@@ -111,7 +126,7 @@ Cheapest first, and stop where the change warrants:
 
 | Path | What it holds |
 |---|---|
-| `effect/contents/ui/main.qml` | The canvas: 4.8k lines, the whole effect — snapshot, ground, frames, thumbnails, pan, zoom, pick, commit |
+| `effect/contents/ui/main.qml` | The canvas: 5.1k lines, the whole effect — snapshot, ground, frames, thumbnails, pan, zoom, pick, commit |
 | `effect/contents/ui/config.ui` | The settings form. **Every knob is declared in `effect/contents/config/main.xml` first** — that file is the schema |
 | `shared/Ground.qml` | The ground renderer, copied into the effect and the wallpaper at stage time: one edit has to suit both |
 | `wallpaper/` | The ground at 1:1 in a real plasmashell |
@@ -119,7 +134,7 @@ Cheapest first, and stop where the change warrants:
 | `plugin/` | The optional pass-through plugin: a KWin plugin plus an input filter (C++) |
 | `tools/kwin-canvas` | The CLI: the debug channel from a terminal or a VT |
 | `tools/fakeinput.c` | The fake-input client the tests and the demo drive |
-| `tests/run.sh`, `tests/lib.sh` | The runner and its vocabulary: `c`, `sget`, `eget`, `setcfg`, `snap`, `arrange`, `input`, `push_border` |
+| `tests/run.sh`, `tests/lib.sh` | The runner and its vocabulary: `c`, `sget`, `eget`, `setcfg`, `snap`, `assert_same`, `assert_differs`, `arrange`, `input`, `push_border`, `kwinjs` (a KWin script run in the nest, as a tiler would act on a window) |
 | `tests/scenarios/NN-name.sh` | Scenarios: sourced fragments, mode 644, no shebang; each sets `scenario_desc` and defines `run_scenario` |
 | `tests/golden/`, `tests/fixtures/` | Committed screenshots, and fixtures generated from `gen.py` |
 | `tests/shim/`, `tests/run-shim.sh` | The plane-input scenarios, under `dev/spike/preload` |
@@ -146,7 +161,7 @@ Cheapest first, and stop where the change warrants:
 
 ## Finding your way
 
-`effect/contents/ui/main.qml` is 4.8k lines, so search before reading. If
+`effect/contents/ui/main.qml` is 5.1k lines, so search before reading. If
 `graphify-out/` exists (local, gitignored, built with `graphify`), start at
 `graphify-out/GRAPH_REPORT.md`, then `graphify explain "NAME"` or
 `graphify path "A" "B"` for how two pieces connect. The graph is a map of an
@@ -170,7 +185,15 @@ older tree, not a check: it goes stale with every edit, so confirm a hit with
   commands and their results. No `feat:`/`fix:` prefixes.
 - **British spelling** in prose (`licence`, `colour`, `neighbour`), as upstream.
 - **Scenarios are sourced, never run**: mode 644, no shebang, `scenario_desc` and
-  `run_scenario`, and a `snap` only where the pixels matter.
+  `run_scenario`, and a `snap` only where the pixels matter. Look at `ls
+  tests/scenarios` for the next free number (two files once took 141). A new
+  scenario earns its place by failing without the change it pins: run it with
+  the fix disabled and say so in the commit. A new golden needs a `REUSE.toml`
+  entry, and a helper nobody calls fails the dead-code census.
+- **`state` is the measurement.** When a scenario needs something the effect
+  knows, add a field to the `state` line in `main.qml` and a case in `sget`
+  (`undo=`, `bookmarks=`, `moves=`, `dragraw=` were added that way) rather than
+  inferring it from pixels.
 - **Shell** is bash with `set -uo pipefail`, and a script that sources another
   carries a `# shellcheck source=` comment whether or not the linter is installed.
 - **The Makefile** is tabs, and every target documents itself with a trailing
@@ -201,6 +224,11 @@ older tree, not a check: it goes stale with every edit, so confirm a hit with
   `WindowPhysics`, `MovesGlide`) so a scenario measures the canvas and not the
   spring; `94-physics` is the scenario that turns them on. A scenario expecting
   instant motion is not wrong.
+- **Tests run on a quiet nest, and the nest's wallpaper is a picture.** A video
+  or scene wallpaper (Wallpaper Engine, waywallen) takes a different code path
+  (`wallpaperPicture`, the desktop-window thumbnail) that the nest cannot
+  run. `143-slide-wallpaper` stands in with the world-map plugin, which is not
+  a picture; anything that depends on a real video is checked live, by the user.
 - **`qmllint` is called by absolute path** (`/usr/lib/qt6/bin/qmllint`) because
   the Qt5 build in `/usr/bin` answers to the same name.
 - **`make release`, `make aur` and `make aur-passthrough`** publish to the
@@ -231,6 +259,28 @@ first:
   variable would silently fall back to the live session's bus.
 - **`make nest-clean`** when you are done: portals and kactivitymanagerd outlive
   the private bus they were activated on.
+- **`evaluateScript` returns what the script `print()`s**, not its last
+  expression. A query that ends in a bare `r;` answers empty, and the code
+  that waited on it silently never ran (the ground wallpaper stopped
+  following the camera for a day).
+- **`KWin.DesktopBackground` draws only Plasma's own picture wallpapers.** For a
+  video or scene it paints solid black, and the monitor frames carried that
+  black across the screen in every fly. The scene asks plasmashell which
+  plugins are active (`wallpaperDrawable`) and shows the desktop window
+  instead.
+- **KWin keeps restore geometry in screen coordinates**, and a script can
+  neither read nor write it (`docs/architecture.md`, *States KWin keeps in
+  screen coordinates*). Anything the canvas moves by sliding the view leaves a
+  maximized or tiled window's restore spot stale; the effect corrects it.
+- **A screenshot takes about 300 ms**, so it cannot catch a 400 ms animation
+  reliably, and a flash a frame long shows in one slide in sixty. Measure it
+  with a loop of many slides and a varied offset, count the hits, and compare
+  against the unfixed build: a handful of clean runs proves nothing. Screen
+  recording needs a portal permission nobody is there to click.
+- **Controls:** to prove a fix, disable it and watch the check fail. Copy the
+  file aside first, restore it by `cp`, and `diff` it afterwards; a `git
+  stash` of a file that also carries a new `state` field takes the field with
+  it and the control reads empty.
 
 ## Upstream, the fork, and the two things that cannot be built here
 

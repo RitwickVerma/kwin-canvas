@@ -140,6 +140,10 @@ From the audit list: `dragRaw` cleared in `endDrag`, the click-pan timer
 stopped on commit, cancel and slide end, `deskArea` clipped to the screen's
 rectangle, the dead `farewellHide` fade branch removed. The focus-activity
 case did not reproduce as a bug (139 pins it). **Dock approach (`149`, needs `make test-panel`): the hover's fetch stands back within 120 px of a dock. `107-overlay` fails one check under `test-panel` with or without that change (passes in the plain nest): the panel changes its setup. Not investigated.**
+**AGENTS.md was reworked at the end of the 2026-10-13/14 session: the live-session
+rule (the user may be gaming), `NEST_VIRTUAL=1`, the hot-reload trap (`ui.qml` over an
+older `main.qml`), and the traps this session found (`evaluateScript` `print()`,
+`DesktopBackground` black, KWin restore geometry, screenshot timing, controls).**
 **End-of-slide flash (`150`): fixed in the nest. About 1 in 60 quiet slides showed one stale
 frame at the landing (the slide's last position, ~21% black on the right and bottom, no
 toolbar); `endSlide` now closes through a 32 ms timer so the scene paints once at the
