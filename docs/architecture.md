@@ -855,6 +855,23 @@ the settings pages through `KCMLauncher.openSystemSettings`, as Overview does.
   isolation but not yet driven inside a live plasmashell; the ground wallpaper
   has since run live (a live switch rendered its ground on the desktop).
 
+## States KWin keeps in screen coordinates
+
+Maximized, tiled and fullscreen windows have a restore rectangle that KWin keeps
+in screen coordinates and a script can neither read nor write. The canvas moves
+the real windows when the view slides, so the rectangle goes stale: measured in
+the nest, a window un-maximized after a slide of (300,200) came back at its old
+screen spot, 300 and 200 px from where the plane had it. The plane is the truth.
+`trackFree` keeps each free window's plane spot, sampled once its geometry has
+settled (120 ms; KWin changes the geometry before it flips the flag, so sampling
+on the change itself would take the maximized rectangle for the free spot);
+`noteReturnedFree` holds the sampler when the flag clears and `restoreToPlane`
+puts the window at that plane spot under the view as it now is, 150 ms later,
+once KWin has applied its own restore. Closed canvas only: an open canvas absorbs
+a window's own geometry changes into the plane. Scenario `146` pins maximize and a
+KWin tile, and fails with the watchers off. KZones writes plain geometry and a
+zone number, so it takes the same path, but it is not installed in the nest.
+
 ## Bookmarks
 
 Nine saved views, slot 1 to 9. Ctrl+digit in the open canvas stores where the

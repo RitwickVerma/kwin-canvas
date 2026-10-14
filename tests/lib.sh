@@ -41,6 +41,20 @@ setcfg() {
     c state >/dev/null
 }
 
+# kwinjs CODE [SETTLE]: run a KWin script in the nest, as a user's script or a
+# tiler would act on a window (maximize, tile), and give it SETTLE seconds
+# (0.8). The script finds windows by caption: FIND_KWRITE sets w to KWrite's.
+FIND_KWRITE='var w = null; workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("KWrite") >= 0) w = x; });'
+kwinjs() {
+    local f id; f="$OUT/kwinjs.js"
+    printf '%s\n' "$1" > "$f"
+    id=$(nq org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript "$f" kwinjs | tail -1)
+    nq org.kde.KWin /Scripting/Script"$id" org.kde.kwin.Script.run >/dev/null
+    sleep "${2:-0.8}"
+    nq org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript kwinjs >/dev/null
+    rm -f "$f"
+}
+
 # sget zoom|viewx|viewy|visible|activity|entries|popups|nactivities  -> value from the last state line
 sget() {
     local line; line=$(head -1 <<<"$LAST_STATE")

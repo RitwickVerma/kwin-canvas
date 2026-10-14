@@ -1,5 +1,11 @@
 Unreleased:
 
+- Un-maximizing or un-tiling a window after the view has slid puts it back
+  where the plane has it. KWin keeps a window's restore spot in screen
+  coordinates, and the canvas moves the real windows when it slides, so the
+  window used to come back as far from its neighbours as the view had moved.
+  Works for KWin tiles and maximize; KZones is untested.
+
 - Bookmarks. In the open canvas Ctrl+1..9 keeps the view you are looking at
   (or flying to) in that slot, and Alt+1..9 flies back to it on the camera's
   own spring - the place and how far out. The slots are kept across restarts.

@@ -1120,6 +1120,93 @@ KWin.SceneEffect {
         configuration.ClusterNames = JSON.stringify(clusterNames);
         configuration.writeConfig();
     }
+    // ---- states KWin keeps in screen coordinates ------------------------------
+    // A maximized or tiled window has a restore rectangle that KWin keeps in
+    // screen coordinates, which a script can neither read nor write. The
+    // canvas moves the real windows when the view slides, so after a slide
+    // that rectangle is stale: unmaximize put the window where the plane no
+    // longer had it (measured: 300 and 200 px off after a slide of that
+    // size). The plane is the truth. Note where the window sat on it as it
+    // leaves the free state, and as it comes back put it at that place
+    // under the view as it now is. Only with the canvas closed: an open
+    // canvas absorbs a window's own geometry changes into the plane.
+    property var planeRestore: ({})
+    property var holdTrack: ({})
+    property var watchedWindows: ({})
+    property var dirtyWindows: ({})
+    property var restoreQueue: []
+    function windowFree(w) { return !w.maximizeMode && !w.tile && !w.fullScreen; }
+    // While a window is free its plane spot is kept, sampled once its
+    // geometry has settled (a plane coordinate, so the canvas's own slides
+    // leave it true). The sample waits because KWin changes the geometry
+    // before it flips the maximized or tiled flag: read on the change itself
+    // and the maximized rectangle would be taken for the free spot. Settled,
+    // the window is no longer free and the last free spot is the one kept.
+    function trackFree(w) {
+        if (!w || w.deleted || holdTrack[w.internalId] || !windowFree(w)) return;
+        const t = targetOf(activityOf(w)), g = w.frameGeometry;
+        planeRestore[w.internalId] = { x: g.x + t.x, y: g.y + t.y };
+    }
+    function markDirty(w) {
+        dirtyWindows[w.internalId] = w;
+        sampleTimer.restart();
+    }
+    Timer {
+        id: sampleTimer
+        interval: 120
+        repeat: false
+        onTriggered: {
+            const d = effect.dirtyWindows;
+            effect.dirtyWindows = ({});
+            for (const id in d) effect.trackFree(d[id]);
+        }
+    }
+    function noteReturnedFree(w) {
+        if (!w || w.deleted || !windowFree(w)) return;
+        const id = w.internalId, r = planeRestore[id];
+        if (!r || holdTrack[id]) return;
+        // Hold the sampler: KWin is about to put the window at its own
+        // restore spot, and that must not overwrite the plane's.
+        holdTrack[id] = true;
+        restoreQueue.push({ w: w, r: r });
+        restoreTimer.restart();
+    }
+    function restoreToPlane(w, r) {
+        if (!w || w.deleted) return;
+        delete holdTrack[w.internalId];
+        if (!visible && windowFree(w)) {
+            const t = targetOf(activityOf(w)), g = w.frameGeometry;
+            const fx = Math.round(r.x - t.x), fy = Math.round(r.y - t.y);
+            if (Math.abs(g.x - fx) >= 1 || Math.abs(g.y - fy) >= 1) {
+                dbg("restore", "back to the plane: " + Math.round(g.x) + "," + Math.round(g.y) + " -> " + fx + "," + fy);
+                w.frameGeometry = Qt.rect(fx, fy, g.width, g.height);
+            }
+        }
+        trackFree(w);
+    }
+    Timer {
+        id: restoreTimer
+        interval: 150
+        repeat: false
+        onTriggered: {
+            const q = effect.restoreQueue;
+            effect.restoreQueue = [];
+            for (let i = 0; i < q.length; ++i) effect.restoreToPlane(q[i].w, q[i].r);
+        }
+    }
+    function watchWindow(w) {
+        if (!w || watchedWindows[w.internalId]) return;
+        watchedWindows[w.internalId] = true;
+        trackFree(w);
+        w.frameGeometryChanged.connect(function () { effect.markDirty(w); });
+        w.maximizedChanged.connect(function () { effect.noteReturnedFree(w); });
+        w.tileChanged.connect(function () { effect.noteReturnedFree(w); });
+    }
+    function watchAllWindows() {
+        const all = KWin.Workspace.stackingOrder;
+        for (let i = 0; i < all.length; ++i) watchWindow(all[i]);
+    }
+
     // Bookmarks: nine named views. Ctrl+digit keeps where the camera is
     // looking (or is flying to) and how far out, Alt+digit flies back on the
     // camera's own spring. Per slot, kept in the config so a restart keeps them.
@@ -4482,8 +4569,8 @@ KWin.SceneEffect {
         }
         function onActivitiesChanged(id) { Qt.callLater(effect.activitiesChanged); }
         // App popups come and go with these too; resync() refreshes them.
-        function onWindowAdded(w) { Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
-        function onWindowRemoved(w) { if (w) delete effect.focusAt[w.internalId]; Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
+        function onWindowAdded(w) { effect.watchWindow(w); Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
+        function onWindowRemoved(w) { if (w) { delete effect.focusAt[w.internalId]; delete effect.watchedWindows[w.internalId]; delete effect.planeRestore[w.internalId]; delete effect.holdTrack[w.internalId]; delete effect.dirtyWindows[w.internalId]; } Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
         // Switching activities at 1:1 switches viewport: the ground follows.
         function onCurrentActivityChanged(id) {
             if (effect.refreshActivities()) effect.ensureTargets();
@@ -4880,6 +4967,7 @@ KWin.SceneEffect {
         loadPinned();
         loadClusterState();
         loadBookmarks();
+        watchAllWindows();
         refreshActivities();
         refreshDesktopWindow();
         lastDebugSeq = configuration.DebugSeq;

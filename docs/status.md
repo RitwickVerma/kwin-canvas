@@ -139,7 +139,8 @@ Tests run hidden with `NEST_VIRTUAL=1`; only `make play` needs a window.
 From the audit list: `dragRaw` cleared in `endDrag`, the click-pan timer
 stopped on commit, cancel and slide end, `deskArea` clipped to the screen's
 rectangle, the dead `farewellHide` fade branch removed. The focus-activity
-case did not reproduce as a bug (139 pins it). **Bookmarks landed (`145`): Ctrl+1..9 saves, Alt+1..9 flies back; effect-side (`main.qml`),
+case did not reproduce as a bug (139 pins it). **Tiling/maximize (`146`): a window leaving maximized or tiled returns to its plane spot (`main.qml`; needs a session restart; KZones untested). Next: a room of tiled windows moving as one, canvas-side maximize filling the frame.**
+**Bookmarks landed (`145`): Ctrl+1..9 saves, Alt+1..9 flies back; effect-side (`main.qml`),
 so a Plasma session restart loads it. Not yet seen live.**
 **The effect now remembers whether the wallpaper is a picture (`wallpaperPicture` in
 `main.qml`, asked at load, on reconfigure and on every open); the scene reads it
