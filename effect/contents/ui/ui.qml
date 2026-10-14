@@ -1694,8 +1694,10 @@ Item {
                 const n = k - Qt.Key_1 + 1;
                 const mods = event.modifiers & (Qt.ControlModifier | Qt.ShiftModifier | Qt.AltModifier | Qt.MetaModifier);
                 if (!mods) effect.clusterJumpTo(n);
-                else if (mods === Qt.ControlModifier) { if (!event.isAutoRepeat) effect.bookmarkSet(n); }
-                else if (mods === Qt.AltModifier) { if (!event.isAutoRepeat) effect.bookmarkGo(n); }
+                // The functions live on the effect; a hot reload swaps this
+                // file and not the effect's own, which may predate them.
+                else if (mods === Qt.ControlModifier) { if (!event.isAutoRepeat && effect.bookmarkSet) effect.bookmarkSet(n); }
+                else if (mods === Qt.AltModifier) { if (!event.isAutoRepeat && effect.bookmarkGo) effect.bookmarkGo(n); }
                 else return;
             } else {
                 return;
