@@ -462,6 +462,20 @@ KWin.SceneEffect {
     // leaves the most of the other windows in view. The natural stopping
     // points are the alignments that bring the window's edges, or a
     // neighbour's, onto the screen's; the least movement wins the ties.
+    // The pointer is on, or within a hand's reach of, a dock or panel: the
+    // approach zone. The margin is the distance a pointer covers in a
+    // moment's reach, so a pause just short of the panel counts.
+    function nearDock(px, py) {
+        const margin = 120;
+        const stack = KWin.Workspace.stackingOrder;
+        for (let i = 0; i < stack.length; ++i) {
+            const w = stack[i];
+            if (!w || w.deleted || !w.dock) continue;
+            const g = w.frameGeometry;
+            if (px >= g.x - margin && px < g.x + g.width + margin && py >= g.y - margin && py < g.y + g.height + margin) return true;
+        }
+        return false;
+    }
     function bringIntoView(e) {
         const others = [];
         for (let i = 0; i < entries.length; ++i) {
@@ -1332,7 +1346,11 @@ KWin.SceneEffect {
         if (e && now - hoverSince >= hoverRest) {
             if (!hoverBrought) {
                 hoverBrought = true;
-                bringIntoView(e);
+                // A pause on the way to a dock or panel is a pointer in
+                // transit, not an interest in the window it stopped over:
+                // the fetch would drag the camera as the hand reaches for the
+                // panel.
+                if (!nearDock(p.x, p.y)) bringIntoView(e);
             }
             if (focusEntry !== e) {
                 focusEntry = e;

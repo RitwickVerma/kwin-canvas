@@ -139,7 +139,8 @@ Tests run hidden with `NEST_VIRTUAL=1`; only `make play` needs a window.
 From the audit list: `dragRaw` cleared in `endDrag`, the click-pan timer
 stopped on commit, cancel and slide end, `deskArea` clipped to the screen's
 rectangle, the dead `farewellHide` fade branch removed. The focus-activity
-case did not reproduce as a bug (139 pins it). **End-of-slide flash, still OPEN (measured in the nest, picture wallpaper): in about 5% of
+case did not reproduce as a bug (139 pins it). **Dock approach (`149`, needs `make test-panel`): the hover's fetch stands back within 120 px of a dock. `107-overlay` fails one check under `test-panel` with or without that change (passes in the plain nest): the panel changes its setup. Not investigated.**
+**End-of-slide flash, still OPEN (measured in the nest, picture wallpaper): in about 5% of
 quiet slides (2 of 30, 4 of 45) a screenshot taken 340-520 ms into a 400 ms slide-back shows
 the scene at the slide's start position with ~21% of the screen black (the right and bottom,
 exactly the strip the frame left), `state` already says `visible=false` and the fades are

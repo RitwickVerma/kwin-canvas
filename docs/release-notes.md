@@ -1,5 +1,10 @@
 Unreleased:
 
+- Reaching for a dock or panel no longer pans the canvas. A pause over a
+  window on the way down to the panel counted as a hover and the camera
+  fetched that window into view; within a hand's reach of a panel (120 px)
+  the hover's fetch now stands back. Everywhere else it behaves as before.
+
 - A second corner push, with the camera left where the first push put it,
   now goes back to where you began. It used to enter "the location under the
   screen centre", which at a zoom-to-fit view is the middle of the plane, so
