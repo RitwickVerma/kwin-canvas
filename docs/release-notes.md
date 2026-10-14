@@ -1,5 +1,11 @@
 Unreleased:
 
+- A second corner push, with the camera left where the first push put it,
+  now goes back to where you began. It used to enter "the location under the
+  screen centre", which at a zoom-to-fit view is the middle of the plane, so
+  entry and exit landed at places nobody asked for. After you navigate, the
+  second push still enters where you are looking.
+
 - A tiled or maximized window is part of a room: take one by the hand in the
   canvas and every tiled or maximized window of its cluster comes with it, so
   a KWin tile layout or a KZones layout moves as one. A free window still

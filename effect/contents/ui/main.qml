@@ -2748,6 +2748,9 @@ KWin.SceneEffect {
         visible = true;
         let moved = false;
         if (!quiet) moved = openView(spec);
+        // Where the opening view put the camera: a close that finds it still
+        // there has not been navigated, and goes back to where it began.
+        openGoal = moved && camHasGoal ? { x: camGoalX, y: camGoalY, z: camGoalZoom } : null;
         if (!quiet && passthrough) probeCall.call();
         // The fidelity ladder samples the load the moment the overworld
         // opens - no brief spell of full decoration on an already-busy
@@ -2988,9 +2991,24 @@ KWin.SceneEffect {
     // it always has. With BorderSlide the borders are a route around the
     // plane instead of a door in and out of it: a push pans one step toward
     // the pushed side, a slide at 1:1 and a camera step in the open canvas.
+    // The opening view of this canvas, when it moved the camera (a corner
+    // push at "fit" or a zoom): null once it has been left or never moved.
+    property var openGoal: null
+    function untouchedSinceOpen() {
+        const g = openGoal;
+        if (!g) return false;
+        const x = camHasGoal ? camGoalX : viewX, y = camHasGoal ? camGoalY : viewY, z = camHasGoal ? camGoalZoom : zoom;
+        return Math.abs(x - g.x) < 1 && Math.abs(y - g.y) < 1 && Math.abs(z - g.z) < 0.001;
+    }
     function toggleFromBorder(border) {
         if (configuration.BorderSlide) { borderSlide(border); return; }
         if (quiet) { if (grasp) graspEnd(); else finishSlide(); return; }
+        // Pushed again with the camera where the push left it: nothing was
+        // chosen, so the way out is the way back. Entering "the location
+        // under the screen centre" is only meaningful once you have looked
+        // somewhere; at a fit view that centre is the plane's middle, and
+        // the exit landed at a place nobody asked for.
+        if (visible && untouchedSinceOpen()) { cancel(); return; }
         if (visible) { enterHere(); return; }
         open(false, configuration.BorderZoom);
     }
