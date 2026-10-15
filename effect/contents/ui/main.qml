@@ -604,6 +604,7 @@ KWin.SceneEffect {
     // How many entries are pinned, recounted on every resync and revision:
     // the frame tick skips the float walk when it is 0.
     readonly property int pinnedCount: { revision; let n = 0; for (let i = 0; i < entries.length; ++i) if (isPinnedEntry(entries[i])) n++; return n; }
+    function floatHeld() { for (const id in floatOf) return true; return false; }
     function windowPinned(w) { return !!w && !w.deleted && (w.onAllDesktops || w.keepAbove); }
     function isPinnedEntry(e) { return !!e && windowPinned(e.window); }
     function setPinned(w, on) {
@@ -2599,7 +2600,10 @@ KWin.SceneEffect {
             if (effect.camLive()) effect.camStep(dt);
             // Each of these is a walk over every window: at rest with nothing
             // floating and nothing gliding there is nothing for them to do.
-            if (effect.pinnedCount > 0) effect.floatPinned(dt);
+            // The float walk also drops a picture whose window has just been
+            // unpinned (floatOf), so it runs while any picture is still held,
+            // not only while a window is pinned.
+            if (effect.pinnedCount > 0 || effect.floatHeld()) effect.floatPinned(dt);
             for (const id in effect.entryAnims) { effect.stepEntryAnims(); break; }
         }
     }
@@ -2748,6 +2752,10 @@ KWin.SceneEffect {
         dragIndex = -1;
         targetRaw = null;
         pendingNewAt = null;
+        // The tour's anchor belongs to one visit: a digit jump or a bracket
+        // tour sets it, and left alone it made the next visit's tour start
+        // from the room the last one ended in, not from where the eye is.
+        travelCluster = -1;
         loadHiddenFrames();
         refreshActivities();
         refreshNames();
@@ -2764,7 +2772,8 @@ KWin.SceneEffect {
         if (!quiet) moved = openView(spec);
         // Where the opening view put the camera: a close that finds it still
         // there has not been navigated, and goes back to where it began.
-        openGoal = moved && camHasGoal ? { x: camGoalX, y: camGoalY, z: camGoalZoom } : null;
+        // With SmoothZoom off the view jumps and leaves no goal: the camera itself is the goal.
+        openGoal = !moved ? null : camHasGoal ? { x: camGoalX, y: camGoalY, z: camGoalZoom } : { x: viewX, y: viewY, z: zoom };
         if (!quiet && passthrough) probeCall.call();
         // The fidelity ladder samples the load the moment the overworld
         // opens - no brief spell of full decoration on an already-busy
@@ -3496,7 +3505,9 @@ KWin.SceneEffect {
         // to the hand, so one left behind would never glide again.
         dragRaw = {};
         lastSnapDX = 0; lastSnapDY = 0;
-        if (windowPhysics && fresh && speed > throwMin && set.length > 0) {
+        // Only where the glide animates: with MovesGlide off animateEntry
+        // writes the destination at once, and a throw would be a teleport.
+        if (windowPhysics && configuration.MovesGlide !== false && fresh && speed > throwMin && set.length > 0) {
             // Screen px/s to plane px, over the carry time; capped so a wild
             // flick does not send a window off into the dark.
             const k = Math.min(1, throwMax / (speed * throwCarry));
@@ -4429,12 +4440,31 @@ KWin.SceneEffect {
             Qt.callLater(slideGo);
             return;
         }
+        // The flight's length follows its distance, gently: a short hop is
+        // quick, a long one a little longer, so near moves never drag and far
+        // ones never jerk. PanDuration is the reference for about half a
+        // screen; 0 still jumps.
+        const dist = Math.hypot(slideToX - viewX, slideToY - viewY) * zoom;
+        const g = actionScreen().geometry;
+        const half = Math.max(1, Math.hypot(g.width, g.height) / 2);
+        slideMs = panDuration <= 0 ? 0 : Math.round(Math.max(0.8, Math.min(1.5, 0.8 + 0.7 * Math.sqrt(dist / half))) * panDuration);
         slideAnim.restart();
     }
+    property int slideMs: panDuration
 
     // Open quietly if closed. False while the real canvas is open.
     function beginSlide() {
         if (visible && !quiet) return false;
+        // A slide that has landed holds the scene one paint more before its
+        // close (slideCloseTimer). A new slide in that 32 ms must not glide on
+        // the landed canvas: its entry state is the old slide's, and the
+        // landing would shift the windows by the first slide a second time.
+        // The close is taken now, and the new slide opens fresh.
+        if (slideCloseTimer.running) {
+            slideCloseTimer.stop();
+            visible = false;
+            quiet = false;
+        }
         if (!visible) {
             // The quiet scene opens instantly, opaque: KWin composites the
             // scene's framebuffer over black, so a fade-in here would flash
@@ -4543,8 +4573,11 @@ KWin.SceneEffect {
 
     ParallelAnimation {
         id: slideAnim
-        NumberAnimation { target: effect; property: "viewX"; to: effect.slideToX; duration: effect.panDuration; easing.type: Easing.InOutCubic }
-        NumberAnimation { target: effect; property: "viewY"; to: effect.slideToY; duration: effect.panDuration; easing.type: Easing.InOutCubic }
+        // Leaps off at once and lands with a hair of carry (a 3% OutBack):
+        // the old in-out curve had covered 5% of the way at 50 ms, so every
+        // fly seemed to hesitate before it went. This one is past half by then.
+        NumberAnimation { target: effect; property: "viewX"; to: effect.slideToX; duration: effect.slideMs; easing.type: Easing.OutBack; easing.overshoot: 0.9 }
+        NumberAnimation { target: effect; property: "viewY"; to: effect.slideToY; duration: effect.slideMs; easing.type: Easing.OutBack; easing.overshoot: 0.9 }
         onFinished: effect.endSlide()
     }
 
@@ -4812,6 +4845,7 @@ KWin.SceneEffect {
     case "release": sceneGestures = 0; break; // the stuck-gesture emergency: the parked close fires at once
         case "toggle": toggle(); break;
         case "home": home(); break;
+        case "reloadstate": loadClusterState(); loadBookmarks(); break;
         case "bookmark": {
             // bookmark set N | bookmark go N: the keys' two verbs, for a script.
             if (a[1] === "set" && numok(2)) bookmarkSet(Number(a[2]));

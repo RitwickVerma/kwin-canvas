@@ -42,8 +42,6 @@ Decoration {
     // One pin: on all desktops or kept above (the same test the canvas uses).
     readonly property bool floating: decoration.client.onAllDesktops || decoration.client.keepAbove
     readonly property bool maximized: decoration.client.maximized
-    readonly property bool above: decoration.client.keepAbove
-    readonly property bool below: decoration.client.keepBelow
     readonly property color glyph: activeWindow ? Qt.rgba(1, 1, 1, 0.88) : Qt.rgba(1, 1, 1, 0.45)
     readonly property color glass: Qt.rgba(0.05, 0.05, 0.08, 0.62)
 
@@ -208,7 +206,7 @@ Decoration {
                     const lit = parent.lit;
                     ctx.strokeStyle = lit ? "#2a6ddf" : "#ffffff";
                     ctx.fillStyle = lit ? "#2a6ddf" : "#ffffff";
-                    ctx.lineWidth = (code === "S" || code === "F" || code === "B") ? 1.3 : 1.2;
+                    ctx.lineWidth = code === "S" ? 1.3 : 1.2;
                     if (code === "X") {
                         ctx.beginPath();
                         ctx.moveTo(1.5, 1.5);
@@ -246,38 +244,6 @@ Decoration {
                         ctx.arc(5, 5, 0.9, 0, Math.PI * 2);
                         ctx.arc(5, 8, 0.9, 0, Math.PI * 2);
                         ctx.fill();
-                    } else if (code === "F") {
-                        // The push to the top: the base bar with the
-                        // chevron above it.
-                        ctx.beginPath();
-                        ctx.moveTo(1.5, 8.5);
-                        ctx.lineTo(8.5, 8.5);
-                        ctx.stroke();
-                        ctx.beginPath();
-                        ctx.moveTo(2, 6.5);
-                        ctx.lineTo(5, 1.5);
-                        ctx.lineTo(8, 6.5);
-                        if (lit) {
-                            ctx.closePath();
-                            ctx.fill();
-                        }
-                        ctx.stroke();
-                    } else if (code === "B") {
-                        // The push to the bottom: the mirrored chevron
-                        // under its base bar.
-                        ctx.beginPath();
-                        ctx.moveTo(1.5, 1.5);
-                        ctx.lineTo(8.5, 1.5);
-                        ctx.stroke();
-                        ctx.beginPath();
-                        ctx.moveTo(2, 3.5);
-                        ctx.lineTo(5, 8.5);
-                        ctx.lineTo(8, 3.5);
-                        if (lit) {
-                            ctx.closePath();
-                            ctx.fill();
-                        }
-                        ctx.stroke();
                     } else if (code === "H") {
                         ctx.beginPath();
                         ctx.moveTo(3.3, 2.2);

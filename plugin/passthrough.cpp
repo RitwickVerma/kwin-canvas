@@ -337,9 +337,9 @@ QString CanvasPassthrough::state() const
 {
     // The panel applet's window decor rides the same reply: the trailing
     // " win=" token names the focused window - internalId, caption,
-    // maximized, on-all-desktops (the float), keep-above, keep-below
-    // and exclude-from-capture flags - so the panel can draw the decor
-    // for the window the user is actually on.
+    // maximized, pinned (on all desktops or kept above: the one pin),
+    // keep-above, keep-below and exclude-from-capture flags - so the panel
+    // can draw the decor for the window the user is actually on.
     QString win;
     if (KWin::Window *w = workspace()->activeWindow(); w) {
         win = QStringLiteral(" win=%1|%2|%3|%4|%5|%6|%7")
