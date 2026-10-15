@@ -2502,10 +2502,9 @@ KWin.SceneEffect {
     // has not caused yet - the wheel sets a goal, nothing on screen has moved,
     // no frame is drawn, and the spring never starts. A timer steps from the
     // event loop; the step it takes is what damages the scene, and the motion
-    // then keeps its own frames coming. 16 ms is a frame at 60 Hz, and the dt
-    // is deliberately the interval and not what the event loop actually took,
-    // so a busy loop slows the camera rather than lengthening its steps - an
-    // explicit Euler spring is only stable for a fraction of its period.
+    // then keeps its own frames coming. The tick calls this in sub-steps of at
+    // most 16 ms (a frame at 60 Hz): an explicit Euler spring is only stable
+    // for a fraction of its period, so a long tick is split, never stretched.
     function camStep(dt) {
         if (!camLive() || dt <= 0) return;
         // (The Euler spring is only stable while w*dt stays well under 1:
@@ -2572,19 +2571,18 @@ KWin.SceneEffect {
 
     property real lastTickAt: 0
 
-    // The physics tick's dt: the real time since the last tick, clamped
-    // to a frame at 60 Hz. The Euler spring is only stable for a fraction
-    // of its period, so a busy loop then slows the motion rather than
-    // lengthening its steps - the old fixed dt's property, kept - while
-    // a fast display still integrates at real time instead of the
-    // timer's own cadence.
+    // The physics tick's dt: the real time since the last tick, up to a
+    // tenth of a second (past that the loop stalled, and catching up would
+    // lurch). The Euler spring is only stable for a fraction of its period,
+    // so the tick integrates it in sub-steps of at most a frame at 60 Hz:
+    // under load the camera keeps real time, as the wall-clock slides do,
+    // instead of running in slow motion against them.
     function frameDt() {
         const now = Date.now();
         let dt = (now - lastTickAt) / 1000;
         if (!(dt > 0)) dt = 0;
         lastTickAt = now;
-        if (dt > 0.0167) dt = 0.0167;
-        return dt;
+        return Math.min(dt, 0.1);
     }
 
     Timer {
@@ -2596,13 +2594,16 @@ KWin.SceneEffect {
         running: effect.visible
         onTriggered: {
             const dt = effect.frameDt();
-            if (effect.camLive()) effect.camStep(dt);
+            if (effect.camLive()) {
+                const n = Math.max(1, Math.ceil(dt / 0.0167));
+                for (let i = 0; i < n; ++i) effect.camStep(dt / n);
+            }
             // Each of these is a walk over every window: at rest with nothing
             // floating and nothing gliding there is nothing for them to do.
             // The float walk also drops a picture whose window has just been
             // unpinned (floatOf), so it runs while any picture is still held,
             // not only while a window is pinned.
-            if (effect.pinnedCount > 0 || effect.floatHeld()) effect.floatPinned(dt);
+            if (effect.pinnedCount > 0 || effect.floatHeld()) effect.floatPinned(Math.min(dt, 0.0167));
             for (const id in effect.entryAnims) { effect.stepEntryAnims(); break; }
         }
     }
