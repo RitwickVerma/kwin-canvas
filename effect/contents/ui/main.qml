@@ -514,10 +514,11 @@ KWin.SceneEffect {
     // The debug channel's own replay sequence: the last DebugSeq seen, so
     // each reconfigure replays its command exactly once.
     property int lastDebugSeq: 0
-    // The float: the windows hover in Z as the camera steps out of the
-    // location, so the overworld feels alive - a gentle per-window bob,
-    // each at its own phase, ramping in with the zoom-out.
-    readonly property real floatAmt: windowPhysics && !quiet && visible ? Math.min(1, Math.max(0, (1 - zoom) * 3)) : 0
+    // There used to be an idle bob here: every window drifting 2.4 px on its
+    // own phase while zoomed out. It re-evaluated every window's position and
+    // rebuilt the cluster threads 60 times a second at rest (measured: 21% of
+    // a core zoomed out, against 1.2% without it), for decoration only. The
+    // motion that stays is the motion the hand causes.
 
     // The grasp's jump: the world is the map, so a window clicked while
     // the hold is zoomed out is the release's destination - the hold that
@@ -688,15 +689,12 @@ KWin.SceneEffect {
         }
         floatPrevViewX = viewX;
         floatPrevViewY = viewY;
-        // The bob's phase advances with real time, whatever the tick
-        // rate the frame chain lands on (the old timer's 62.5 Hz). Only
-        // while something reads it: the bob (zoomed out), or a floating
-        // window's picture. At 1:1 with nothing floating, every thumbnail's
-        // position bound to floatRev re-evaluated each frame for nothing
-        // (measured: an idle open canvas took 2.6% of a core).
+        // Advances only while a window floats: its picture rides the camera.
+        // Every thumbnail's position binds to floatRev, so advancing it with
+        // nothing floating re-evaluated them all each frame for nothing.
         let floating = false;
         for (const fid in floatOf) { floating = true; break; }
-        if (floatAmt > 0 || floating) floatRev += dt * 62.5;
+        if (floating) floatRev += dt * 62.5;
     }
     // ---- hover navigation ----------------------------------------------------
     // The pointer rests on a window and the camera pans the least that brings
@@ -1056,7 +1054,6 @@ KWin.SceneEffect {
         for (let k = 0; k < entries.length; ++k) {
             const e = entries[k];
             const f = floatOf[e.window.internalId];
-            const bob = Math.sin(floatRev * 0.035 + k * 137.508) * 2.4 * floatAmt;
             rects.push({
                 // The float's picture is stored in screen coordinates, so it
                 // is translated back onto the plane before it occludes: a
@@ -1064,7 +1061,7 @@ KWin.SceneEffect {
                 // where the eye sees its picture, not where its old canvas
                 // spot was.
                 x: f ? viewX + f.x / zoom : e.x,
-                y: (f ? viewY + f.y / zoom : e.y) + bob,
+                y: f ? viewY + f.y / zoom : e.y,
                 w: e.width,
                 h: e.height
             });
@@ -1079,10 +1076,9 @@ KWin.SceneEffect {
                 const e = entryById(c.ids[k]);
                 if (!e) continue;
                 const idx = entries.indexOf(e);
-                const bob = Math.sin(floatRev * 0.035 + idx * 137.508) * 2.4 * floatAmt;
-                pts.push({
+                    pts.push({
                     x: e.x + e.width / 2,
-                    y: e.y + e.height / 2 + bob,
+                    y: e.y + e.height / 2,
                     z: windowZ(e)
                 });
             }

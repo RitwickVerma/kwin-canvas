@@ -689,11 +689,8 @@ Item {
                 // under the delegates, so a drag follows its entry, not its index.
                 property var held: null
                 readonly property int heldIndex: { effect.revision; return effect.entries.indexOf(held); }
-                // The float's bob: each window hovers at its own phase.
-                readonly property real phase: index * 137.508
-                readonly property real bob: { effect.floatRev; effect.ql; return effect.ql >= 2 ? 0 : Math.sin(effect.floatRev * 0.035 + phase) * 2.4 * effect.floatAmt; }
                 x: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; effect.moveRev; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].x - effect.viewX) * effect.zoom - view.sg.x; return f ? f.x : base; }
-                y: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; effect.moveRev; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; return (f ? f.y : base) + thumb.bob; }
+                y: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; effect.moveRev; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; return f ? f.y : base; }
                 width: { effect.revision; return effect.entries[index].width * effect.zoom; }
                 height: { effect.revision; return effect.entries[index].height * effect.zoom; }
                 visible: !effect.quiet || entry.activity === effect.currentActivity
@@ -1378,7 +1375,7 @@ Item {
                     required property int index
                     readonly property var e: effect.entries[index]
                     x: { effect.revision; return planeMap.mx(e.x); }
-                    y: { effect.revision; effect.floatRev; return planeMap.my(e.y) + Math.sin(effect.floatRev * 0.035 + index * 137.508) * 1.2 * effect.floatAmt * planeMap.sc; }
+                    y: { effect.revision; return planeMap.my(e.y); }
                     width: { effect.revision; return Math.max(1.6, e.width * planeMap.sc); }
                     height: { effect.revision; return Math.max(1.6, e.height * planeMap.sc); }
                     radius: 1

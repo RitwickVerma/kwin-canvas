@@ -1,5 +1,11 @@
 Unreleased:
 
+- The idle bob is gone. Zoomed out, every window used to drift a couple of
+  pixels on its own phase, which recomputed every window and rebuilt the
+  cluster threads 60 times a second while nothing happened: about a fifth of a
+  CPU core at rest (21%, measured in the nest). Without it the zoomed-out
+  canvas idles at 2.5%. The motion that stays is the motion your hand causes.
+
 - A captioned tutorial GIF leads the README: one activity, eight steps, from
   the desktop to the hold's map and back. `make tutorial` regenerates it in a
   hidden nest. The README opens with what the canvas is, a feature list and a
