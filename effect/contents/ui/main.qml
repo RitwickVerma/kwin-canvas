@@ -689,8 +689,14 @@ KWin.SceneEffect {
         floatPrevViewX = viewX;
         floatPrevViewY = viewY;
         // The bob's phase advances with real time, whatever the tick
-        // rate the frame chain lands on (the old timer's 62.5 Hz).
-        floatRev += dt * 62.5;
+        // rate the frame chain lands on (the old timer's 62.5 Hz). Only
+        // while something reads it: the bob (zoomed out), or a floating
+        // window's picture. At 1:1 with nothing floating, every thumbnail's
+        // position bound to floatRev re-evaluated each frame for nothing
+        // (measured: an idle open canvas took 2.6% of a core).
+        let floating = false;
+        for (const fid in floatOf) { floating = true; break; }
+        if (floatAmt > 0 || floating) floatRev += dt * 62.5;
     }
     // ---- hover navigation ----------------------------------------------------
     // The pointer rests on a window and the camera pans the least that brings

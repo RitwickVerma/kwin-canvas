@@ -1,5 +1,10 @@
 Unreleased:
 
+- An open canvas sitting still costs almost nothing. The floating windows'
+  clock advanced every frame even with nothing floating, so every window's
+  position was recomputed 60 times a second at rest; measured in the nest,
+  an idle open canvas went from 2.6% of a CPU core to under 0.1%.
+
 - Snapping is a magnet. When a dragged window catches an edge, it no longer
   jumps the last few pixels: the picture springs onto the edge with a small
   overshoot. The window's real position is exact either way. Part of
