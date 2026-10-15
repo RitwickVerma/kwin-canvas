@@ -1326,7 +1326,9 @@ Item {
             // behind the lens's glass.
             Item {
                 anchors.fill: parent
-                opacity: effect.chromeFade
+                // The quiet grasp never runs the chrome's fade-in, and a normal
+                // exit leaves it at 0: the hold's map must not inherit that.
+                opacity: effect.grasp ? 1 : effect.chromeFade
             // The dim behind the lens, and the tint over it: the tint is
             // what makes the white sheets read as cards instead of a
             // negative reflection over the desktop.
