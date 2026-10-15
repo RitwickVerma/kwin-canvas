@@ -1,5 +1,10 @@
 Unreleased:
 
+- Windows can be thrown. Let go of a window in the canvas while still moving
+  it fast and it keeps going on the hand's momentum, easing to rest a short
+  way on (at most 360 screen px). A window set down after a pause stays exactly
+  where you put it. Part of WindowPhysics; off with it.
+
 - One pin instead of three. Float, keep above and pin on all desktops are a
   single state that KWin holds, so the canvas, the title-bar pill, the panel
   applet and KDE's own window menu always agree. A window is pinned when it is

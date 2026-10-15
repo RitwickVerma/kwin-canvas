@@ -3475,12 +3475,43 @@ KWin.SceneEffect {
             if (Math.abs(sx0 - cl.sx) < 0.5 && Math.abs(sy0 - cl.sy) < 0.5)
                 pinned[e.window.caption] = { sx: sx0, sy: sy0 };
         }
+        // The throw: a window let go while still moving fast keeps going, on
+        // the glide's own Hermite curve with the hand's velocity as its start,
+        // and comes to rest a short way on (the distance a flick would carry
+        // under friction). Only for a hand that was still moving in the last
+        // 80 ms - a window set down after a pause stays where it was put.
+        const set = [];
+        for (let i = 0; i < entries.length; ++i) if (dragRaw[entries[i].window.internalId]) set.push(entries[i]);
+        const speed = Math.hypot(dragVX, dragVY);
+        const fresh = dragLastAt > 0 && Date.now() - dragLastAt < 80;
         dragIndex = -1;
         // The drag's set goes with it: animateEntry leaves a window in dragRaw
         // to the hand, so one left behind would never glide again.
         dragRaw = {};
+        if (windowPhysics && fresh && speed > throwMin && set.length > 0) {
+            // Screen px/s to plane px, over the carry time; capped so a wild
+            // flick does not send a window off into the dark.
+            const k = Math.min(1, throwMax / (speed * throwCarry));
+            const ox = dragVX * throwCarry * k / zoom, oy = dragVY * throwCarry * k / zoom;
+            dbg("throw", "speed=" + Math.round(speed) + " carry=(" + Math.round(ox) + "," + Math.round(oy) + ")");
+            lastThrow = { dx: ox, dy: oy };
+            for (let i = 0; i < set.length; ++i) {
+                const e = set[i];
+                if (isPinnedEntry(e)) continue;
+                animateEntry(e, e.x + ox, e.y + oy, 0, dragVX / zoom, dragVY / zoom);
+            }
+        } else {
+            lastThrow = null;
+        }
         endWindowDrag();
     }
+    // The throw's tuning: the hand speed (screen px/s) below which a release
+    // is a set-down, the carry time a flick travels for, and the furthest it
+    // may carry in screen px.
+    readonly property real throwMin: 900
+    readonly property real throwCarry: 0.12
+    readonly property real throwMax: 360
+    property var lastThrow: null
 
     // ---- arrange the selection ----------------------------------------------
     // Entries to arrange: the selection, or the one window the menu was opened on.
@@ -4954,6 +4985,7 @@ KWin.SceneEffect {
             + " moves=" + Object.keys(entryAnims).length
             + " dragraw=" + Object.keys(dragRaw).length
             + " undo=" + undoStack.length
+            + " throw=" + (lastThrow ? Math.round(lastThrow.dx) + "," + Math.round(lastThrow.dy) : "-")
             + " bookmarks=" + Object.keys(bookmarks).length
             + " deskwin=" + Object.keys(desktopWindows).length
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
