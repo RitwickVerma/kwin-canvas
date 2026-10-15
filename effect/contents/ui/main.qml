@@ -3488,6 +3488,7 @@ KWin.SceneEffect {
         // The drag's set goes with it: animateEntry leaves a window in dragRaw
         // to the hand, so one left behind would never glide again.
         dragRaw = {};
+        lastSnapDX = 0; lastSnapDY = 0;
         if (windowPhysics && fresh && speed > throwMin && set.length > 0) {
             // Screen px/s to plane px, over the carry time; capped so a wild
             // flick does not send a window off into the dark.
@@ -3770,7 +3771,32 @@ KWin.SceneEffect {
         const box = bbox(set);
         const d = snapDelta(box, snapCandidates(dragRaw, null));
         for (let i = 0; i < set.length; ++i) { set[i].x += d.dx; set[i].y += d.dy; }
+        snapCatch(d);
         revision++;
+    }
+    // The magnet: the moment a drag catches a snap, the window would jump the
+    // last few pixels to the edge. The picture instead starts where the hand
+    // had it and springs onto the edge, so the snap reads as a pull, not a
+    // teleport. Drawn only - the entry is already exact.
+    property real snapKickX: 0
+    property real snapKickY: 0
+    property real lastSnapDX: 0
+    property real lastSnapDY: 0
+    property int snapCatches: 0
+    function snapCatch(d) {
+        const caughtX = d.dx !== 0 && lastSnapDX === 0, caughtY = d.dy !== 0 && lastSnapDY === 0;
+        lastSnapDX = d.dx; lastSnapDY = d.dy;
+        if (!windowPhysics || quiet || (!caughtX && !caughtY)) return;
+        snapCatches++;
+        snapKickAnim.stop();
+        if (caughtX) snapKickX = -d.dx * zoom;
+        if (caughtY) snapKickY = -d.dy * zoom;
+        snapKickAnim.restart();
+    }
+    ParallelAnimation {
+        id: snapKickAnim
+        NumberAnimation { target: effect; property: "snapKickX"; to: 0; duration: 170; easing.type: Easing.OutBack; easing.overshoot: 2.2 }
+        NumberAnimation { target: effect; property: "snapKickY"; to: 0; duration: 170; easing.type: Easing.OutBack; easing.overshoot: 2.2 }
     }
 
     // Command the real window to a size while the canvas is open. Position is
@@ -4985,6 +5011,7 @@ KWin.SceneEffect {
             + " moves=" + Object.keys(entryAnims).length
             + " dragraw=" + Object.keys(dragRaw).length
             + " undo=" + undoStack.length
+            + " snaps=" + snapCatches
             + " throw=" + (lastThrow ? Math.round(lastThrow.dx) + "," + Math.round(lastThrow.dy) : "-")
             + " bookmarks=" + Object.keys(bookmarks).length
             + " deskwin=" + Object.keys(desktopWindows).length

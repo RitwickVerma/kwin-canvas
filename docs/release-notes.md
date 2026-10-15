@@ -1,5 +1,10 @@
 Unreleased:
 
+- Snapping is a magnet. When a dragged window catches an edge, it no longer
+  jumps the last few pixels: the picture springs onto the edge with a small
+  overshoot. The window's real position is exact either way. Part of
+  WindowPhysics.
+
 - Windows can be thrown. Let go of a window in the canvas while still moving
   it fast and it keeps going on the hand's momentum, easing to rest a short
   way on (at most 360 screen px). A window set down after a pause stays exactly

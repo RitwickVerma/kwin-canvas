@@ -737,8 +737,10 @@ Item {
                         }
                     },
                     Translate {
-                        x: thumb.lifted ? effect.dragLagX : 0
-                        y: thumb.lifted ? effect.dragLagY : 0
+                        // The trail, plus the magnet's pull onto a snapped edge
+                        // (zero on an effect that predates it: a hot reload).
+                        x: thumb.lifted ? effect.dragLagX + (effect.snapKickX || 0) : 0
+                        y: thumb.lifted ? effect.dragLagY + (effect.snapKickY || 0) : 0
                         Behavior on x {
                             enabled: thumb.heavy
                             SpringAnimation { spring: 3.4; damping: 0.42; epsilon: 0.2 }
