@@ -1,5 +1,13 @@
 Unreleased:
 
+- One pin instead of three. Float, keep above and pin on all desktops are a
+  single state that KWin holds, so the canvas, the title-bar pill, the panel
+  applet and KDE's own window menu always agree. A window is pinned when it is
+  on all desktops or kept above; the one button sets or clears both (and clears
+  keep-below). The pill and the applet lose their separate keep-above and
+  keep-below buttons: with one virtual desktop they were the same idea. A
+  window pinned from KDE's menu now floats on the canvas too.
+
 - The end of a fly no longer flashes a stale frame. The canvas closed in the
   same moment the camera, the targets and the real windows jumped to the
   destination, and the compositor could draw the scene's frame from before

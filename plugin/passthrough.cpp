@@ -346,7 +346,7 @@ QString CanvasPassthrough::state() const
                   .arg(w->internalId().toString())
                   .arg(replyField(w->caption()))
                   .arg(w->maximizeMode() == KWin::MaximizeMode::MaximizeFull ? QStringLiteral("1") : QStringLiteral("0"))
-                  .arg(w->isOnAllDesktops() ? QStringLiteral("1") : QStringLiteral("0"))
+                  .arg((w->isOnAllDesktops() || w->keepAbove()) ? QStringLiteral("1") : QStringLiteral("0"))
                   .arg(w->keepAbove() ? QStringLiteral("1") : QStringLiteral("0"))
                   .arg(w->keepBelow() ? QStringLiteral("1") : QStringLiteral("0"))
                   .arg(w->excludeFromCapture() ? QStringLiteral("1") : QStringLiteral("0"));
@@ -382,13 +382,15 @@ void CanvasPassthrough::windowAction(const QString &action)
         const bool full = w->maximizeMode() == KWin::MaximizeMode::MaximizeFull;
         w->setMaximize(!full, !full);
     } else if (action == QLatin1String("float")) {
-        // The canvas's float is the system's own "on all desktops" pin,
-        // not the keep-above: the plane model's flag is literally that.
-        w->setOnAllDesktops(!w->isOnAllDesktops());
-    } else if (action == QLatin1String("keepabove")) {
-        w->setKeepAbove(!w->keepAbove());
-    } else if (action == QLatin1String("keepbelow")) {
-        w->setKeepBelow(!w->keepBelow());
+        // One pin: on all desktops and kept above, together, the same state
+        // the canvas floats and the title-bar pill lights. Pinned when either
+        // is on, so one toggle clears a window that has only one of them.
+        const bool pinned = !(w->isOnAllDesktops() || w->keepAbove());
+        w->setOnAllDesktops(pinned);
+        w->setKeepAbove(pinned);
+        if (pinned) {
+            w->setKeepBelow(false);
+        }
     } else if (action == QLatin1String("capture")) {
         w->setExcludeFromCapture(!w->excludeFromCapture());
     }

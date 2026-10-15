@@ -140,6 +140,7 @@ From the audit list: `dragRaw` cleared in `endDrag`, the click-pan timer
 stopped on commit, cancel and slide end, `deskArea` clipped to the screen's
 rectangle, the dead `farewellHide` fade branch removed. The focus-activity
 case did not reproduce as a bug (139 pins it). **Dock approach (`149`, needs `make test-panel`): the hover's fetch stands back within 120 px of a dock. `107-overlay` fails one check under `test-panel` with or without that change (passes in the plain nest): the panel changes its setup. Not investigated.**
+**One pin (`151`): `pinned` = on-all-desktops or keep-above, one toggle sets both; the pill and the applet draw one button; `PinnedWindows` is no longer read (still declared). Plugin and decoration changed, so this needs the plugin installed (`sudo`) and a session restart. The decoration's glyphs are proven live only (135 skips).**
 **AGENTS.md was reworked at the end of the 2026-10-13/14 session: the live-session
 rule (the user may be gaming), `NEST_VIRTUAL=1`, the hot-reload trap (`ui.qml` over an
 older `main.qml`), and the traps this session found (`evaluateScript` `print()`,

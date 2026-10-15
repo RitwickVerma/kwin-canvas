@@ -588,47 +588,36 @@ KWin.SceneEffect {
     // own "on all desktops", repurposed - the title-bar menu's pin entry
     // and the canvas agree on what floats - and the caption list
     // persists the choice.
-    property var pinned: ({})          // caption -> true, the persisted flag
+    // One state, "pinned": the window stays with you. KWin holds it, so the
+    // title bar's own menu, the pill, the panel applet and the canvas all read
+    // the same thing and nothing here is stored. It is on whenever KWin has
+    // the window on all desktops or kept above (set either from anywhere and
+    // the canvas floats it), and the one toggle sets or clears both, and
+    // clears keep-below, which would contradict it.
+    property var pinned: ({})          // caption -> { sx, sy }, where the hand left it (this session)
     property var floatOf: ({})         // window internalId -> { x, y, vx, vy, wasInX, wasInY }, screen px
     property real floatRev: 0
     property real floatPrevViewX: 0
     property real lastFloatAt: 0
     property real floatPrevViewY: 0
-    function isPinnedEntry(e) { return e && e.window && !e.window.deleted && e.window.onAllDesktops; }
-    function loadPinned() {
-        const list = configuration.PinnedWindows || [];
-        const set = {};
-        for (let i = 0; i < list.length; ++i) if (list[i]) set[list[i]] = true;
-        pinned = set;
-        const all = KWin.Workspace.stackingOrder;
-        for (let i = 0; i < all.length; ++i) {
-            if (pinned[all[i].caption] && !all[i].onAllDesktops) all[i].onAllDesktops = true;
-        }
-    }
-    function savePinned() {
-        const list = [];
-        for (const k in pinned) list.push(k);
-        configuration.PinnedWindows = list;
-        configuration.writeConfig();
+    function windowPinned(w) { return !!w && !w.deleted && (w.onAllDesktops || w.keepAbove); }
+    function isPinnedEntry(e) { return !!e && windowPinned(e.window); }
+    function setPinned(w, on) {
+        if (!w || w.deleted) return;
+        w.onAllDesktops = on;
+        w.keepAbove = on;
+        if (on) w.keepBelow = false;
     }
     function pinEntries(list) {
-        for (let i = 0; i < list.length; ++i) {
-            const e = list[i];
-            if (!e || e.window.deleted) continue;
-            if (!e.window.onAllDesktops) e.window.onAllDesktops = true;
-            pinned[e.window.caption] = true;
-        }
-        savePinned();
+        for (let i = 0; i < list.length; ++i) if (list[i]) setPinned(list[i].window, true);
     }
     function unpinEntries(list) {
-        let any = false;
         for (let i = 0; i < list.length; ++i) {
             const e = list[i];
-            if (!e || e.window.deleted) continue;
-            if (e.window.onAllDesktops) e.window.onAllDesktops = false;
-            if (delete pinned[e.window.caption]) any = true;
+            if (!e) continue;
+            setPinned(e.window, false);
+            delete pinned[e.window.caption];
         }
-        if (any) savePinned();
     }
     // The screen spot that keeps the window wholly inside the screen the
     // pointer is on, with a margin. The anchor the pin holds, and the place
@@ -4890,7 +4879,7 @@ KWin.SceneEffect {
         case "clearsel": clearSelection(); break;
         case "pin": pinEntries([entries[Number(a[1])]]); break;
         case "unpin": unpinEntries([entries[Number(a[1])]]); break;
-        case "unpinall": pinned = {}; savePinned(); break;
+        case "unpinall": pinned = {}; for (let i = 0; i < entries.length; ++i) setPinned(entries[i].window, false); break;
         case "arrange": arrange(a[1], Number(a[2]), Number(a[3])); break;
         case "tidy": tidy(); break;
         case "undo": undo(); break;
@@ -5031,7 +5020,6 @@ KWin.SceneEffect {
         rebuildBindings();
         readSwipeFingers();
         loadHiddenFrames();
-        loadPinned();
         loadClusterState();
         loadBookmarks();
         watchAllWindows();

@@ -71,8 +71,13 @@ PlasmoidItem {
         const s = buttonsLeft + buttonsRight;
         const out = [];
         for (let i = 0; i < s.length; i++) {
-            const c = s.charAt(i);
-            if (c === "X" || c === "I" || c === "A" || c === "S" || c === "F" || c === "B" || c === "E" || c === "_") out.push(c);
+            let c = s.charAt(i);
+            // One pin: keep-above (F) and on-all-desktops (S) are the same
+            // button, drawn once; keep-below (B) has none.
+            if (c === "F") c = "S";
+            if (c === "B") continue;
+            if (c === "S" && out.indexOf("S") >= 0) continue;
+            if (c === "X" || c === "I" || c === "A" || c === "S" || c === "E" || c === "_") out.push(c);
         }
         return out;
     }
@@ -327,7 +332,7 @@ PlasmoidItem {
                 if (modelData === "X") return i18n("Close the window");
                 if (modelData === "I") return i18n("Minimize the window");
                 if (modelData === "A") return i18n("Maximize or restore the window");
-                if (modelData === "S") return i18n("Float the window: pin it to all desktops");
+                if (modelData === "S") return i18n("Pin the window: keep it above and on every desktop");
                 if (modelData === "F") return i18n("Keep the window above the others");
                 if (modelData === "B") return i18n("Keep the window below the others");
                 return i18n("Hide the window from screen capture");
