@@ -601,6 +601,9 @@ KWin.SceneEffect {
     property real floatPrevViewX: 0
     property real lastFloatAt: 0
     property real floatPrevViewY: 0
+    // How many entries are pinned, recounted on every resync and revision:
+    // the frame tick skips the float walk when it is 0.
+    readonly property int pinnedCount: { revision; let n = 0; for (let i = 0; i < entries.length; ++i) if (isPinnedEntry(entries[i])) n++; return n; }
     function windowPinned(w) { return !!w && !w.deleted && (w.onAllDesktops || w.keepAbove); }
     function isPinnedEntry(e) { return !!e && windowPinned(e.window); }
     function setPinned(w, on) {
@@ -2594,8 +2597,10 @@ KWin.SceneEffect {
         onTriggered: {
             const dt = effect.frameDt();
             if (effect.camLive()) effect.camStep(dt);
-            effect.floatPinned(dt);
-            effect.stepEntryAnims();
+            // Each of these is a walk over every window: at rest with nothing
+            // floating and nothing gliding there is nothing for them to do.
+            if (effect.pinnedCount > 0) effect.floatPinned(dt);
+            for (const id in effect.entryAnims) { effect.stepEntryAnims(); break; }
         }
     }
 
