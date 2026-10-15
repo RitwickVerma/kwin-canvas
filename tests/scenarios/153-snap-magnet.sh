@@ -20,6 +20,7 @@ run_scenario() {
     c state
     assert_eq "a drag that stays on the edge is no new catch" "$(sget snaps)" "$((s0 + 1))"
     assert_eq "and stays flush" "$(eget sample.txt x)" 580
+    setcfg WindowPhysics false
     c cancel
     arrange >/dev/null
 }

@@ -37,6 +37,7 @@ run_scenario() {
     rm -f "$OUT/slow.in" "$OUT/fast.in"
     setcfg Passthrough true
     setcfg MovesGlide false
+    setcfg WindowPhysics false
     c cancel
     arrange >/dev/null
 }
