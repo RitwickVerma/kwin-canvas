@@ -1,5 +1,10 @@
 Unreleased:
 
+- A captioned tutorial GIF leads the README: one activity, eight steps, from
+  the desktop to the hold's map and back. `make tutorial` regenerates it in a
+  hidden nest. The README opens with what the canvas is, a feature list and a
+  three-line quick start; issue templates and a security note are new.
+
 - An open canvas sitting still costs almost nothing. The floating windows'
   clock advanced every frame even with nothing floating, so every window's
   position was recomputed 60 times a second at rest; measured in the nest,

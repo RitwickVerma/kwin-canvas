@@ -29,7 +29,7 @@ QMLLINT     := /usr/lib/qt6/bin/qmllint
 .PHONY: help deps deps-install install uninstall install-system uninstall-system reload enable disable status hot \
         lint lint-reuse lint-qml lint-shell lint-shader lint-deadcode lint-python \
         tools fixtures play nest nest-down nest-clients nest-fixtures nest-reload nest-shot nest-log nest-clean nest-cmd \
-        test test-panel test-decor test-two-outputs test-shim golden unit demo video clean stage dist pkgbuild aur aur-passthrough release tour \
+        tutorial test test-panel test-decor test-two-outputs test-shim golden unit demo video clean stage dist pkgbuild aur aur-passthrough release tour \
         plugin plugin-try plugin-install-system plugin-status
 
 help: ## Show this help
@@ -267,6 +267,9 @@ golden: install fixtures ## Re-record the golden screenshots from the current bu
 
 demo: install fixtures tools ## Drive a scripted session with real input; demo.gif and demo.mp4 in build/demo
 	dev/demo.sh
+
+tutorial: install fixtures tools ## Captioned single-activity tutorial in a hidden nest; copies tutorial.gif into docs/images
+	dev/tutorial.sh && cp build/tutorial/tutorial.gif docs/images/tutorial.gif
 
 tour: install fixtures ## Regenerate the screenshot tour images in docs/images
 	docs/tour.sh
