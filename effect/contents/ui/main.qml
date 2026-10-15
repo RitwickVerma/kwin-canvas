@@ -4657,6 +4657,15 @@ KWin.SceneEffect {
     // The activation fly: the desktop slides until the window is wholly in
     // view, at the pan that leaves the most of the other windows in view for
     // the least movement - not always centred, so a desk keeps its shape.
+    // The fly's landing raises the window it came for. With focus following
+    // the mouse and raise on hover only (no click-raise) KWin raises a window
+    // after the pointer has rested on it, and the pointer never moved: the
+    // window slid under it. So after an activation fly the window stayed
+    // wherever the stack had it, often under its neighbours.
+    function raiseAfterFly(w) {
+        if (!w || w.deleted) return;
+        KWin.Workspace.raiseWindow(w);
+    }
     function flyToWindow(w) {
         const t = peekTarget(activityOf(w));
         const f = w.frameGeometry;
@@ -4673,6 +4682,9 @@ KWin.SceneEffect {
         }
         const d = smartPan(rect, others, 24);
         if (d.dx !== 0 || d.dy !== 0) slideTo(d.dx, d.dy);
+        // Raised now, not at the landing: the slide is a quiet scene over the
+        // real windows, and the stacking order it shows is the real one.
+        raiseAfterFly(w);
     }
     // The entry a window is drawn from, or null.
     function entryFor(w) {

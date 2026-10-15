@@ -1,5 +1,14 @@
 Unreleased:
 
+- The window an auto fly lands on is raised. With focus following the mouse,
+  raise on hover and click-raise off, KWin raises a window only after the
+  pointer has rested on it, and the pointer never moves when a window slides
+  under it, so the flown-to window could stay under its neighbours. The fly
+  now raises it.
+- Flies are snappier and more elegant: they leap off at once and land with a
+  hair of carry (instead of starting slowly), and a short hop is quicker than a
+  long flight.
+
 - The idle bob is gone. Zoomed out, every window used to drift a couple of
   pixels on its own phase, which recomputed every window and rebuilt the
   cluster threads 60 times a second while nothing happened: about a fifth of a
