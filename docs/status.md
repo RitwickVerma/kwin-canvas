@@ -49,8 +49,8 @@ installed by hand with `sudo`.
 - `111-thread-z` (three checks, since `273f9e7`) and `115-stress`.
 - A real Wallpaper Engine / KZones run, which only the desktop can give.
 - The slide costs 6 to 12% of the main thread; where it goes is not known.
-- The 18 to 28 ms warm-up before a fly (`slideWarm`) is the one wait left; it
-  prevents a thumbnail flash, so it stays unless it can be hidden.
+- The fly starts with the open (no warm-up turn). The first painted frame is
+  the desktop's own picture; only the nest has checked there is no flash.
 
 ## The fork
 

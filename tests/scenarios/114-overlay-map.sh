@@ -48,7 +48,7 @@ run_scenario() {
     c state
     # The quiet hold carries the sphere's map, not the lens card: the lens
     # cannot be up while the hold is grasped.
-    assert_eq "the hold's map is the sphere, not the lens card" "$(sget map)" "minimap"
+    assert_eq "the hold carries the lens map" "$(sget map)" "minimap"
     shot "$OUT/om-map.png" >/dev/null
 
     local b1 b2
@@ -64,8 +64,8 @@ run_scenario() {
     # its item had been nested inside the lens, which hides itself during a
     # grasp.
     local chip
-    chip=$(magick "$OUT/om-map.png" -crop 100x30+1790+900 +repage -colorspace Gray -format '%[fx:mean]' info:)
-    assert_eq "and the sphere chip's glass darkens the corner" "$(awk -v m="$chip" 'BEGIN{print (m < 0.63)}')" 1
+    chip=$(magick "$OUT/om-map.png" -crop 100x20+1605+1035 +repage -colorspace Gray -format '%[fx:mean]' info:)
+    assert_eq "and the lens chip's glass darkens the corner" "$(awk -v m="$chip" 'BEGIN{print (m < 0.63)}')" 1
 
     # The chip flies: the camera fits the far pair, centred on it, keeping
     # the world up. The bounds are (2200,300,700,860): the fit would be

@@ -82,7 +82,6 @@ KWin.SceneEffect {
     // over black, not over the desktop), and the glide waits one
     // event-loop turn so the scene's first paint warms the cold
     // thumbnails under their real selves.
-    property bool slideWarm: false
     readonly property bool canvasOpen: visible && !quiet
     // Pass-through: the optional binary plugin is live while the canvas is
     // open. Every key, and every click, drag and wheel over a window, goes
@@ -4430,16 +4429,12 @@ KWin.SceneEffect {
         slideGo();
     }
 
-    // The glide waits one event-loop turn for the scene's first paint: the
-    // quiet canvas at 1:1 paints the same pixels as the desktop it covers,
-    // so the warm frame is invisible, and the cold thumbnails never flash
-    // under the glide.
+    // The glide starts with the open, not after it: the animation's first
+    // tick lands in the frame that paints the scene, and that tick is the
+    // start position, so the first painted frame is the desktop's own picture
+    // (the quiet canvas at 1:1) and every later frame already moves. Waiting a
+    // turn for a warm frame cost a fly its first 18 to 28 ms of stillness.
     function slideGo() {
-        if (slideWarm) {
-            slideWarm = false;
-            Qt.callLater(slideGo);
-            return;
-        }
         // The flight's length follows its distance, gently: a short hop is
         // quick, a long one a little longer, so near moves never drag and far
         // ones never jerk. PanDuration is the reference for about half a
@@ -4476,8 +4471,7 @@ KWin.SceneEffect {
             open(true);
             slideToX = viewX;
             slideToY = viewY;
-            slideWarm = true;
-            dbg("slide", "quiet open, gliding " + panDuration + "ms after the first paint");
+            dbg("slide", "quiet open, gliding " + panDuration + "ms");
         }
         return true;
     }

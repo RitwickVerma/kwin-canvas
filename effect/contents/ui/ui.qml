@@ -1283,7 +1283,7 @@ Item {
             // The corner lens: the world shrunk into a chip for a glance at
             // the plane while working. The overlay is gone - the world is
             // the map - so the lens is the only map surface left.
-            readonly property bool asMinimap: effect.canvasOpen && !effect.quiet && (effect.zoom < 0.9 || effect.navHeld) && !effect.grasp && view.screen === effect.primaryScreen
+            readonly property bool asMinimap: ((effect.canvasOpen && !effect.quiet && (effect.zoom < 0.9 || effect.navHeld) && !effect.grasp) || (effect.visible && effect.quiet && effect.grasp)) && view.screen === effect.primaryScreen
             // Mirrored into the effect's own flags: logState and the other
             // effect functions cannot see this item's id, so the map
             // publishes its home for them.
@@ -1489,91 +1489,6 @@ Item {
                 }
             }
         }
-
-        // The sphere cross-section: during the grasp the hold is a torch on
-        // a sphere, and this chip maps the torch's angular reach - the
-        // windows and the camera by their angles - so the hand knows where
-        // the sweep will land before it sweeps.
-        Item {
-            id: sphereMap
-            z: 80000
-            readonly property int mw: Math.round(view.sg.width * 0.16)
-            readonly property int mh: Math.round(view.sg.height * 0.2)
-            // The grasp only: the quiet hold at 1:1 is when the map is
-            // useful, and it sits over every window.
-            readonly property bool asSphere: effect.visible && effect.quiet && effect.grasp && view.screen === effect.primaryScreen
-            onAsSphereChanged: effect.mapMinimap = asSphere
-            readonly property rect home: Qt.rect(view.sg.width - mw - Kirigami.Units.largeSpacing * 2,
-                view.sg.height - mh - Kirigami.Units.largeSpacing * 2, mw, mh)
-            visible: asSphere
-            property bool morphReady: false
-            Component.onCompleted: { x = home.x; y = home.y; width = home.width; height = home.height; morphReady = true; }
-            onHomeChanged: { if (!morphReady) return; x = home.x; y = home.y; width = home.width; height = home.height; }
-            Behavior on x { enabled: sphereMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
-            Behavior on y { enabled: sphereMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
-            Behavior on width { enabled: sphereMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
-            Behavior on height { enabled: sphereMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
-            opacity: visible ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-            // The angular axes: the plane's own reach - a screen's worth at
-            // the current zoom, or the entries' extent if larger - fills the
-            // chip's +-85 degrees; the centre is the home view.
-            readonly property real r: {
-                effect.revision;
-                let spread = 0;
-                for (let i = 0; i < effect.entries.length; ++i) {
-                    const e = effect.entries[i];
-                    spread = Math.max(spread, Math.hypot(e.x + e.width, e.y + e.height), Math.hypot(e.x, e.y));
-                }
-                const floor = 2 * view.sg.height / Math.max(0.01, effect.zoom);
-                return Math.max(spread, floor) * 1.6 / Math.tan(85 * Math.PI / 180);
-            }
-            readonly property real lim: 85 * Math.PI / 180
-            function ax(cx) { return 6 + (Math.atan(cx / sphereMap.r) / lim + 1) / 2 * (sphereMap.width - 12); }
-            function ay(cy) { return 6 + (Math.atan(cy / sphereMap.r) / lim + 1) / 2 * (sphereMap.height - 12); }
-            Rectangle {
-                anchors.fill: parent
-                radius: 16
-                color: Qt.rgba(0.07, 0.07, 0.09, 0.42)
-                layer.enabled: effect.ql < 2
-                layer.effect: GaussianBlur { radius: 5; samples: 17; transparentBorder: false }
-            }
-            Rectangle {
-                anchors.fill: parent
-                radius: 16
-                color: "transparent"
-                border.width: 1
-                border.color: "#3affffff"
-            }
-            Repeater {
-                model: effect.entries.length
-                delegate: Rectangle {
-                    required property int index
-                    readonly property var e: effect.entries[index]
-                    x: { effect.revision; sphereMap.width; return sphereMap.ax(e.x) - 1.6; }
-                    y: { effect.revision; sphereMap.height; return sphereMap.ay(e.y) - 1.6; }
-                    width: 3.2
-                    height: 3.2
-                    radius: 1.6
-                    color: Qt.rgba(1, 1, 1, 0.55)
-                }
-            }
-            // The camera: the crosshair at the torch's current angles.
-            Rectangle {
-                x: { effect.revision; effect.viewX; sphereMap.width; return sphereMap.ax(effect.viewX) - 4; }
-                y: { effect.revision; effect.viewY; sphereMap.height; return sphereMap.ay(effect.viewY) - 4; }
-                width: 8
-                height: 8
-                radius: 4
-                color: "transparent"
-                border.width: 1.5
-                border.color: "#e8ffffff"
-            }
-            // The centre cross: the home.
-            Rectangle { x: sphereMap.width / 2 - 0.5; y: sphereMap.height / 2 - 4; width: 1; height: 8; color: "#3affffff" }
-            Rectangle { x: sphereMap.width / 2 - 4; y: sphereMap.height / 2 - 0.5; width: 8; height: 1; color: "#3affffff" }
-        }
-
         // The grasp teaches itself: one line, while the hold is zoomed out
         // enough for the world to be the map, naming what the hand can do.
         Item {
