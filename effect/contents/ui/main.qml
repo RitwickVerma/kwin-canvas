@@ -664,8 +664,12 @@ KWin.SceneEffect {
         const m = 8;
         const w = e.width * zoom, h = e.height * zoom;
         let l = g.x + m, r = g.x + g.width - w - m, t = g.y + m, b = g.y + g.height - h - m;
-        if (w >= g.width - 2 * m) l = r = g.x + m;
-        if (h >= g.height - 2 * m) t = b = g.y + m;
+        // A window the screen's own size or more (a maximized one) has no
+        // margin to keep: it sits flush, top-left aligned when larger, centred
+        // when within the margin of fitting. A margin here pushed a maximized
+        // window 8 px off the screen on the way out.
+        if (w >= g.width - 2 * m) l = r = g.x + Math.max(0, (g.width - w) / 2);
+        if (h >= g.height - 2 * m) t = b = g.y + Math.max(0, (g.height - h) / 2);
         return { l: l, r: r, t: t, b: b };
     }
     // One tick of the float. The picture sits exactly on the window while
@@ -683,20 +687,19 @@ KWin.SceneEffect {
     // never lands off-screen when the camera leaves it behind. Every way out
     // of the canvas that moves the camera (commit, a slide's landing) runs it.
     function syncFloatsToEntries() {
-        for (let i = 0; i < entries.length; ++i) {
-            const e = entries[i];
-            if (!isPinnedEntry(e)) continue;
-            // Where the picture rests: the window's own spot, held inside the
-            // screen. Read from the bounds and not from the float's last tick,
-            // which can trail the camera by a frame (a slide's landing).
-            const b = floatBounds(e);
-            const sx = Math.max(b.l, Math.min(b.r, (e.x - viewX) * zoom));
-            const sy = Math.max(b.t, Math.min(b.b, (e.y - viewY) * zoom));
-            if (Math.abs(sx - (e.x - viewX) * zoom) > 0.4 || Math.abs(sy - (e.y - viewY) * zoom) > 0.4) {
-                e.x = viewX + sx / zoom;
-                e.y = viewY + sy / zoom;
-                revision++;
-            }
+        for (let i = 0; i < entries.length; ++i) if (isPinnedEntry(entries[i])) landFloat(entries[i]);
+    }
+    // The window takes the spot its picture rests at: the true position held
+    // inside the screen. Read from the bounds and not from the float's last
+    // tick, which can trail the camera by a frame (a slide's landing).
+    function landFloat(e) {
+        const b = floatBounds(e);
+        const sx = Math.max(b.l, Math.min(b.r, (e.x - viewX) * zoom));
+        const sy = Math.max(b.t, Math.min(b.b, (e.y - viewY) * zoom));
+        if (Math.abs(sx - (e.x - viewX) * zoom) > 0.4 || Math.abs(sy - (e.y - viewY) * zoom) > 0.4) {
+            e.x = viewX + sx / zoom;
+            e.y = viewY + sy / zoom;
+            revision++;
         }
     }
     function floatPinned(dt) {
@@ -714,7 +717,14 @@ KWin.SceneEffect {
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
             const id = e.window.internalId;
-            if (!isPinnedEntry(e)) { if (floatOf[id]) { delete floatOf[id]; floatRev++; } continue; }
+            if (!isPinnedEntry(e)) {
+                // Unfloated while its picture rode the screen's edge (the
+                // button, a rule, KDE's menu): the window stays where the eye
+                // saw it, instead of the picture flying back to coordinates
+                // far off-screen.
+                if (floatOf[id]) { landFloat(e); delete floatOf[id]; floatRev++; }
+                continue;
+            }
             const b = floatBounds(e);
             const tx = (e.x - viewX) * zoom, ty = (e.y - viewY) * zoom;
             const cx = Math.max(b.l, Math.min(b.r, tx)), cy = Math.max(b.t, Math.min(b.b, ty));
@@ -723,7 +733,10 @@ KWin.SceneEffect {
             const dragging = dragIndex >= 0 && dragRaw[id];
             const camVX = dt > 0.0001 ? -(viewX - floatPrevViewX) / dt * zoom : 0;
             const camVY = dt > 0.0001 ? -(viewY - floatPrevViewY) / dt * zoom : 0;
-            Logic.floatStep(f, tx, ty, cx, cy, b.l, b.r, b.t, b.b, camVX, camVY, dragging, dt);
+            // The spring is only stable in steps of a frame or less: a late
+            // tick is split, not stretched.
+            const n = Math.max(1, Math.ceil(dt / 0.0167));
+            for (let k = 0; k < n; ++k) Logic.floatStep(f, tx, ty, cx, cy, b.l, b.r, b.t, b.b, camVX, camVY, dragging, dt / n);
         }
         floatPrevViewX = viewX;
         floatPrevViewY = viewY;
@@ -2636,7 +2649,7 @@ KWin.SceneEffect {
             // The float walk also drops a picture whose window has just been
             // unpinned (floatOf), so it runs while any picture is still held,
             // not only while a window is pinned.
-            if (effect.pinnedCount > 0 || effect.floatHeld()) effect.floatPinned(Math.min(dt, 0.0167));
+            if (effect.pinnedCount > 0 || effect.floatHeld()) effect.floatPinned(dt);
             for (const id in effect.entryAnims) { effect.stepEntryAnims(); break; }
         }
     }
