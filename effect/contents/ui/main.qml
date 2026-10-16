@@ -2623,11 +2623,17 @@ KWin.SceneEffect {
     // so the tick integrates it in sub-steps of at most a frame at 60 Hz:
     // under load the camera keeps real time, as the wall-clock slides do,
     // instead of running in slow motion against them.
+    // The first tick after an open is one frame, whatever the clock says: the
+    // scene's first paint can take 100 to 200 ms, and a spring that integrates
+    // all of it takes a third of the way in its first step - the start of the
+    // motion is skipped, and the open reads as a jump and then a glide.
+    property bool tickFresh: false
     function frameDt() {
         const now = Date.now();
         let dt = (now - lastTickAt) / 1000;
         if (!(dt > 0)) dt = 0;
         lastTickAt = now;
+        if (tickFresh) { tickFresh = false; return 0.0167; }
         return Math.min(dt, 0.1);
     }
 
@@ -2726,18 +2732,9 @@ KWin.SceneEffect {
         }
     }
 
-    // Windows fade in when the opening view moves the camera, so a step out
-    // to fit draws its subjects in instead of popping them. 1 for an open at
-    // 1:1 and for a quiet slide, where the canvas is the desktop itself.
+    // 1 whenever the canvas is drawn: the windows never fade (a step out zooms
+    // them from where they sit).
     property real thumbOpacity: 1
-    NumberAnimation {
-        id: thumbFadeAnim
-        target: effect
-        property: "thumbOpacity"
-        to: 1
-        duration: 200
-        easing.type: Easing.OutCubic
-    }
 
     // Look through the current activity's frames. On the smooth camera this
     // springs like any other destination; with SmoothZoom off it lands at
@@ -2782,6 +2779,7 @@ KWin.SceneEffect {
     function open(quietMode, spec) {
         refreshGroundWallpaper();
         if (visible) return;
+        tickFresh = true;
         camStop();
         graspJumped = false;
         quiet = !!quietMode;
@@ -2845,8 +2843,10 @@ KWin.SceneEffect {
         } else {
             chromeFade = 0;
             welcomeAnim.restart();
-            if (moved) { thumbOpacity = 0; thumbFadeAnim.restart(); }
-            else thumbOpacity = 1;
+            // The windows are on screen from the first frame (the picture is
+            // the desktop's own) and scale down with the zoom; only the chrome
+            // fades in.
+            thumbOpacity = 1;
         }
         // The canvas opens instantly, opaque: KWin composites the scene's
         // framebuffer over black, so a fade-in here would flash black, and
@@ -2870,10 +2870,14 @@ KWin.SceneEffect {
     // "enter the location under the screen centre" still agree exactly.
     // Returns whether the camera moved, so the opening knows whether the
     // windows are coming from the desktop (no fade) or from elsewhere (fade).
+    // The step out runs at its own pace, not the jump-scaled one the flights
+    // use (which finished a fit in about 90 ms, too fast to read as motion):
+    // 90% of the way in about 200 ms, ease-out, windows riding it.
+    readonly property real openRate: 1.3
     function openView(spec) {
         if (spec === undefined || spec === null || spec === "") spec = configuration.OpenZoom;
         spec = String(spec || "fit").trim().toLowerCase();
-        if (spec === "fit") { zoomExtents(true); return true; }
+        if (spec === "fit") { zoomExtents(true, openRate); return true; }
         const z = Number(spec);
         if (!(z > 0) || z >= 1) {
             // At 1:1 a fullscreen app is exactly the desktop: stepping out
@@ -2883,7 +2887,7 @@ KWin.SceneEffect {
             return false;
         }
         const g = actionScreen().geometry;
-        camZoomTo(z, g.x + g.width / 2, g.y + g.height / 2);
+        camGo(z, viewX, viewY, g.x + g.width / 2, g.y + g.height / 2, openRate);
         return true;
     }
 
@@ -2897,9 +2901,9 @@ KWin.SceneEffect {
     function fullscreenZoomTo() {
         const spec = String(configuration.FullscreenZoom || "0.85").trim().toLowerCase();
         const g = actionScreen().geometry;
-        if (spec === "fit") { zoomExtents(true); return; }
+        if (spec === "fit") { zoomExtents(true, openRate); return; }
         const z = Number(spec);
-        camZoomTo(z > 0 ? z : 0.85, g.x + g.width / 2, g.y + g.height / 2);
+        camGo(z > 0 ? z : 0.85, viewX, viewY, g.x + g.width / 2, g.y + g.height / 2, openRate);
     }
 
     // Write every window's geometry relative to the frame it sits in, move it to

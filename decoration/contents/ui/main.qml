@@ -43,6 +43,8 @@ Decoration {
     // and keep below are their own marks.
     readonly property bool floating: decoration.client.onAllDesktops
     readonly property bool maximized: decoration.client.maximized
+    readonly property bool above: decoration.client.keepAbove
+    readonly property bool below: decoration.client.keepBelow
     readonly property color glyph: activeWindow ? Qt.rgba(1, 1, 1, 0.88) : Qt.rgba(1, 1, 1, 0.45)
     readonly property color glass: Qt.rgba(0.05, 0.05, 0.08, 0.62)
 
