@@ -689,8 +689,8 @@ Item {
                 // under the delegates, so a drag follows its entry, not its index.
                 property var held: null
                 readonly property int heldIndex: { effect.revision; return effect.entries.indexOf(held); }
-                x: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; effect.moveRev; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].x - effect.viewX) * effect.zoom - view.sg.x; return f ? f.x : base; }
-                y: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; effect.moveRev; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; return f ? f.y : base; }
+                x: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; effect.moveRev; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].x - effect.viewX) * effect.zoom - view.sg.x; return f ? f.x - view.sg.x : base; }
+                y: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; effect.moveRev; const f = effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; return f ? f.y - view.sg.y : base; }
                 width: { effect.revision; return effect.entries[index].width * effect.zoom; }
                 height: { effect.revision; return effect.entries[index].height * effect.zoom; }
                 visible: !effect.quiet || entry.activity === effect.currentActivity

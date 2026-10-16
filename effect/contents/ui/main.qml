@@ -705,6 +705,12 @@ KWin.SceneEffect {
         const now = Date.now();
         if (now - lastFloatAt > 100) { floatPrevViewX = viewX; floatPrevViewY = viewY; }
         lastFloatAt = now;
+        // A window that closed (or left the plane) while floating leaves its
+        // state behind: kept, it would keep the float walk and the thumbnails'
+        // re-evaluation running every frame for a window that is gone.
+        const live = {};
+        for (let i = 0; i < entries.length; ++i) live[entries[i].window.internalId] = true;
+        for (const fid in floatOf) if (!live[fid]) { delete floatOf[fid]; floatRev++; }
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
             const id = e.window.internalId;
@@ -5075,7 +5081,7 @@ KWin.SceneEffect {
 
     function logState() {
         let s = "kwin-canvas state visible=" + visible + (quiet ? " quiet" : "") + (grasp ? " grasp" : "") + (passthroughLive ? " passthrough" : "") + (planeLive ? " plane" : "") + " zoom=" + zoom.toFixed(4) + " view=(" + viewX.toFixed(1) + "," + viewY.toFixed(1) + ") activity=" + labelOf(currentActivity) + " entries=" + entries.length
-            + " popups=" + appPopups.length + " menus=" + canvasMenus + " floats=" + pinnedCount + " nav=" + (navHeld ? "hold" : "-") + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
+            + " popups=" + appPopups.length + " menus=" + canvasMenus + " floats=" + pinnedCount + " floatheld=" + Object.keys(floatOf).length + " nav=" + (navHeld ? "hold" : "-") + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
             + " screens=" + KWin.Workspace.screens.length + " backdrop=" + backdropLayers
             + " cam=" + (camHasGoal ? "goal" : (camLive() ? "glide" : "-"))
             + " focus=" + (focusEntry ? JSON.stringify(focusEntry.window.caption) : "-")
