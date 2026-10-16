@@ -21,9 +21,19 @@ run_scenario() {
     c state; k=$(eget KCalc index)
     c "pin $k"
     assert_eq "the pin clears keep-below, which would contradict it" "$(flags KCalc)" "true true false"
-    # Either flag alone is a pin: the unpin clears both.
-    kwinjs 'workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("KCalc") >= 0) { x.onAllDesktops = false; } });' 0.8
-    assert_eq "keep-above alone is left" "$(flags KCalc)" "false true false"
+    # Float, keep above and on all desktops are one thing: whichever flag
+    # changes, from KWin's menu, a rule or a script, the others follow.
+    setflag() { kwinjs "workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf(\"KCalc\") >= 0) { x.$1 = $2; } });" 0.8; }
+    setflag keepAbove true
+    assert_eq "keep-above alone floats it: all desktops follows" "$(flags KCalc)" "true true false"
+    setflag onAllDesktops false
+    assert_eq "clearing all desktops clears keep-above too" "$(flags KCalc)" "false false false"
+    setflag onAllDesktops true
+    assert_eq "all desktops alone floats it: keep-above follows" "$(flags KCalc)" "true true false"
+    setflag keepBelow true
+    assert_eq "keep-below contradicts the float and ends it" "$(flags KCalc)" "false false true"
+    c state; k=$(eget KCalc index)
+    c "pin $k"
     c unpinall
     assert_eq "unpinning clears both" "$(flags KCalc)" "false false false"
     c cancel

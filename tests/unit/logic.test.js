@@ -98,7 +98,9 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
     ok("at rest the picture is the window", n.x === 500 && n.y === 300);
     ok("and it carries only the camera's velocity", n.vx === 0);
     const n2 = L.floatStep(f, 400, 300, 400, 300, 8, 1900, 8, 1050, -6000, 0, false, 1 / 60);
-    ok("a moving camera is carried as velocity", n2.vx === -6000 && n2.x === 400);
+    ok("a moving camera is carried as velocity, capped at a hard flick", n2.vx === -2400 && n2.x === 400);
+    const n3 = L.floatStep({ x: 100, y: 0, vx: 0, vy: 0, wasInX: true, wasInY: true }, 400, 300, 400, 300, 8, 1900, 8, 1050, -90000, 0, false, 1 / 60);
+    ok("a jump of the camera is not read as a speed beyond it", n3.vx === -2400);
 }
 
 // ---- the float bounces off the edge and settles back against it ----
@@ -111,6 +113,16 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
     for (let i = 0; i < 240; ++i) settled = L.floatStep(settled, 4, 300, 8, 300, 8, 1900, 8, 1050, 0, 0, false, 1 / 60);
     ok("the picture settles against the edge", near(settled.x, 8, 0.5));
     ok("and the spring comes to rest", Math.abs(settled.vx) < 0.1);
+}
+
+// ---- a teleported camera never flings the picture off the screen ----
+{
+    let f = { x: 100, y: 300, vx: 0, vy: 0, wasInX: true, wasInY: true };
+    f = L.floatStep(f, 4100, 300, 1900, 300, 8, 1900, 8, 1050, 90000, 0, false, 1 / 60);
+    let worst = 0;
+    for (let i = 0; i < 300; ++i) { f = L.floatStep(f, 4100, 300, 1900, 300, 8, 1900, 8, 1050, 0, 0, false, 1 / 60); worst = Math.max(worst, f.x - 1900, 8 - f.x); }
+    ok("the picture stays within a hair of its bounds", worst <= 121);
+    ok("and ends at the edge", near(f.x, 1900, 0.5));
 }
 
 // ---- the least pan: the margin, and the margin-free fullscreen ----

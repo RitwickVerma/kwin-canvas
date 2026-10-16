@@ -612,6 +612,30 @@ KWin.SceneEffect {
         w.keepAbove = on;
         if (on) w.keepBelow = false;
     }
+    // Float, keep above and on all desktops are one thing. Whichever of them
+    // changes - the title bar's menu, the pill, a window rule, a script, the
+    // canvas - the others follow, so the three never disagree. `changed` is
+    // the flag that moved ("above", "desktops", "below"); anything else
+    // (a window seen for the first time) adopts "either is set". A rule that
+    // forces one flag wins: the write the rule refuses is the one that
+    // sticks, and the rest follow what stuck.
+    property bool pinSyncing: false
+    function syncPin(w, changed) {
+        if (pinSyncing || !w || w.deleted || !w.managed) return;
+        if (w.desktopWindow || w.dock || w.popupWindow || w.specialWindow) return;
+        let target;
+        if (changed === "above") target = w.keepAbove;
+        else if (changed === "desktops") target = w.onAllDesktops;
+        else if (changed === "below") { if (!w.keepBelow) return; target = false; }
+        else target = windowPinned(w);
+        if (changed !== "below" && w.keepAbove === target && w.onAllDesktops === target) return;
+        pinSyncing = true;
+        setPinned(w, target);
+        if (w.keepAbove !== target || w.onAllDesktops !== target) setPinned(w, !target);
+        pinSyncing = false;
+        dbg("pin", "synced " + w.caption + " (" + changed + ") above=" + w.keepAbove + " all=" + w.onAllDesktops);
+        revision++;
+    }
     function pinEntries(list) {
         for (let i = 0; i < list.length; ++i) if (list[i]) setPinned(list[i].window, true);
     }
@@ -670,6 +694,27 @@ KWin.SceneEffect {
     // contribution left out, so the physics scales with the zoom instead of
     // exploding under it. Runs while the canvas is visible, a slide at 1:1
     // included.
+    // The floated windows' coordinates become their pictures' spots: the
+    // place the eye saw a window is where it is written, so a floated window
+    // never lands off-screen when the camera leaves it behind. Every way out
+    // of the canvas that moves the camera (commit, a slide's landing) runs it.
+    function syncFloatsToEntries() {
+        for (let i = 0; i < entries.length; ++i) {
+            const e = entries[i];
+            if (!isPinnedEntry(e)) continue;
+            // Where the picture rests: the window's own spot, held inside the
+            // screen. Read from the bounds and not from the float's last tick,
+            // which can trail the camera by a frame (a slide's landing).
+            const b = floatBounds(e);
+            const sx = Math.max(b.l, Math.min(b.r, (e.x - viewX) * zoom));
+            const sy = Math.max(b.t, Math.min(b.b, (e.y - viewY) * zoom));
+            if (Math.abs(sx - (e.x - viewX) * zoom) > 0.4 || Math.abs(sy - (e.y - viewY) * zoom) > 0.4) {
+                e.x = viewX + sx / zoom;
+                e.y = viewY + sy / zoom;
+                revision++;
+            }
+        }
+    }
     function floatPinned(dt) {
         // After a stall the last camera position is stale: a fresh start
         // must not read a wild velocity out of it.
@@ -1207,6 +1252,10 @@ KWin.SceneEffect {
         watchedWindows[w.internalId] = true;
         trackFree(w);
         w.frameGeometryChanged.connect(function () { effect.markDirty(w); });
+        w.keepAboveChanged.connect(function () { effect.syncPin(w, "above"); });
+        w.keepBelowChanged.connect(function () { effect.syncPin(w, "below"); });
+        w.desktopsChanged.connect(function () { effect.syncPin(w, "desktops"); });
+        syncPin(w, "seen");
         w.maximizedChanged.connect(function () { effect.noteReturnedFree(w); });
         w.tileChanged.connect(function () { effect.noteReturnedFree(w); });
     }
@@ -2878,17 +2927,7 @@ KWin.SceneEffect {
         // clamped spot - the place the eye saw the window - becomes the
         // window's coordinates, so a floated window never lands off-screen
         // when the camera leaves it behind.
-        for (let i = 0; i < entries.length; ++i) {
-            const e = entries[i];
-            if (!isPinnedEntry(e)) continue;
-            const f = floatOf[e.window.internalId];
-            if (!f) continue;
-            if (Math.abs(f.x - (e.x - viewX) * zoom) > 0.4 || Math.abs(f.y - (e.y - viewY) * zoom) > 0.4) {
-                e.x = viewX + f.x / zoom;
-                e.y = viewY + f.y / zoom;
-                revision++;
-            }
-        }
+        syncFloatsToEntries();
         for (const k in targets) {
             targets[k].x = Math.round(targets[k].x);
             targets[k].y = Math.round(targets[k].y);
@@ -4501,6 +4540,7 @@ KWin.SceneEffect {
             quiet = false;
             return;
         }
+        syncFloatsToEntries();
         targets = copyTargets(entryTargets);
         const cur = targetOf(currentActivity);
         cur.x += dx;
