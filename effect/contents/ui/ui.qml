@@ -1917,6 +1917,7 @@ Item {
                     border.color: "#80ffffff"
                     Layout.alignment: Qt.AlignCenter
                     PC3.ToolTip.text: effect.ql === 1 ? "The canvas is reduced: the machine is busy" : (effect.ql === 2 ? "The canvas is minimal: the machine is loaded" : "The canvas is bare: only the rectangles work")
+                        + (effect.configuration.QualityMode === "Auto" ? " (cpu " + Math.round(effect.cpuBusy) + "%, gpu " + Math.round(effect.gpuBusy) + "%, memory " + Math.round(effect.memBusy) + "%)" : " (fixed by the Quality setting)")
                     PC3.ToolTip.visible: rungHover.hovered
                     HoverHandler { id: rungHover; cursorShape: Qt.PointingHandCursor }
                 }

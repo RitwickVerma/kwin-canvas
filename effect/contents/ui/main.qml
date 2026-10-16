@@ -2788,6 +2788,17 @@ KWin.SceneEffect {
         camStop();
         graspJumped = false;
         quiet = !!quietMode;
+        // A fresh overworld starts at the rung the mode asks for, not the one
+        // the last session ended on: the ladder is only sampled while the
+        // overworld is open, so a spike from a game or a build, long gone,
+        // would greet this open with plain rectangles until two calm readings
+        // came in. The first samples (now, then every two seconds) re-step it.
+        if (!quiet) {
+            ql = String(configuration.QualityMode) === "Auto" ? 0 : qualityCap();
+            hotSamples = 0;
+            quietSamples = 0;
+            if (String(configuration.QualityMode) === "Auto") loadCall.call();
+        }
         // Fresh open: the pointer is the hand's until the tick sees the seam.
         seamPark = false;
         entryViewX = viewX;
