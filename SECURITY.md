@@ -1,20 +1,19 @@
-<!--
-SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
-SPDX-License-Identifier: GPL-2.0-or-later
--->
+<!-- SPDX-FileCopyrightText: 2026 Ritwick Verma -->
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+# Security policy
 
-# Security
+## Scope
+This covers the kwin-canvas KWin script/effect in this repository only. Bugs in
+KWin, Plasma or Qt belong to those projects.
 
-kwin-canvas runs inside your compositor: the effect is QML loaded by KWin,
-and the optional pass-through plugin is C++ that KWin loads at start and that
-sees every pointer and key event while the canvas is open. A bug in either can
-take the session down; a malicious change could read input.
+## Reporting
+Open a **confidential issue** on this GitLab project. Don't use a public issue
+or merge request for a vulnerability.
 
-- **Report** a vulnerability privately, by email to the address in the
-  copyright lines, not in a public issue. Say what is affected and how to
-  reproduce it; expect an answer within a week.
-- **The plugin** registers a D-Bus object, `/KWinCanvas`, on the session bus.
-  Anything running as you can call it. It changes window flags and the
-  canvas's state, nothing outside the session.
-- **Installing** the plugin system-wide needs `sudo`; the effect, the wallpaper
-  and the applets install per user in `~/.local/share` and need no privilege.
+## What to include
+- Affected version or commit, KWin/Plasma version, and session type
+- Steps to reproduce, and the impact you expect
+- A proof of concept or logs, if any
+
+## Response
+Best effort, no guaranteed timeline. There is no bug bounty.
