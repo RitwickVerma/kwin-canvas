@@ -207,7 +207,7 @@ Decoration {
                     const lit = parent.lit;
                     ctx.strokeStyle = lit ? "#2a6ddf" : "#ffffff";
                     ctx.fillStyle = lit ? "#2a6ddf" : "#ffffff";
-                    ctx.lineWidth = code === "S" ? 1.3 : 1.2;
+                    ctx.lineWidth = (code === "S" || code === "F" || code === "B") ? 1.3 : 1.2;
                     if (code === "X") {
                         ctx.beginPath();
                         ctx.moveTo(1.5, 1.5);
@@ -238,6 +238,38 @@ Decoration {
                         ctx.beginPath();
                         ctx.moveTo(5, 2.5);
                         ctx.lineTo(5, 8);
+                        ctx.stroke();
+                    } else if (code === "F") {
+                        // The push to the top: the base bar with the
+                        // chevron above it.
+                        ctx.beginPath();
+                        ctx.moveTo(1.5, 8.5);
+                        ctx.lineTo(8.5, 8.5);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(2, 6.5);
+                        ctx.lineTo(5, 1.5);
+                        ctx.lineTo(8, 6.5);
+                        if (lit) {
+                            ctx.closePath();
+                            ctx.fill();
+                        }
+                        ctx.stroke();
+                    } else if (code === "B") {
+                        // The push to the bottom: the mirrored chevron
+                        // under its base bar.
+                        ctx.beginPath();
+                        ctx.moveTo(1.5, 1.5);
+                        ctx.lineTo(8.5, 1.5);
+                        ctx.stroke();
+                        ctx.beginPath();
+                        ctx.moveTo(2, 3.5);
+                        ctx.lineTo(5, 8.5);
+                        ctx.lineTo(8, 3.5);
+                        if (lit) {
+                            ctx.closePath();
+                            ctx.fill();
+                        }
                         ctx.stroke();
                     } else if (code === "M") {
                         ctx.beginPath();
