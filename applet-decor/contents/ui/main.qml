@@ -216,7 +216,7 @@ PlasmoidItem {
 
             // The marks: X the crossed strokes, I the bar, A the hollow
             // square (the restore pair when maximized, in the accent),
-            // S the up arrow (filled in the accent when floating - the
+            // S the pushpin (filled in the accent when floating - the
             // "on all desktops" pin), F the chevron pushing up over its
             // base, B the mirrored push down, E the screen with the
             // capture crossed out.
@@ -253,16 +253,15 @@ PlasmoidItem {
                             ctx.strokeRect(1.5, 1.5, 7, 7);
                         }
                     } else if (code === "S") {
+                        // The pushpin: a round head over a needle, so the
+                        // float never reads as the keep-above chevron.
                         ctx.beginPath();
-                        ctx.moveTo(1.5, 7);
-                        ctx.lineTo(5, 2.5);
-                        ctx.lineTo(8.5, 7);
-                        ctx.closePath();
+                        ctx.arc(5, 3.4, 2.1, 0, Math.PI * 2);
                         if (lit) ctx.fill();
                         ctx.stroke();
                         ctx.beginPath();
-                        ctx.moveTo(5, 2.5);
-                        ctx.lineTo(5, 8);
+                        ctx.moveTo(5, 5.6);
+                        ctx.lineTo(5, 9);
                         ctx.stroke();
                     } else if (code === "F") {
                         ctx.beginPath();
