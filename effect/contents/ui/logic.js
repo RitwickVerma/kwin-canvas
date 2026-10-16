@@ -91,6 +91,13 @@ function recluster(rects, prevOf, ranks, gapCfg) {
 // cameraVX/VY the camera's own screen velocity, dragging whether the hand
 // owns the window, dt the step in seconds. Mutates and returns f.
 function floatStep(f, tx, ty, cx, cy, bl, br, bt, bb, cameraVX, cameraVY, dragging, dt) {
+    // A camera that jumps (a teleport, a dragged-out minimap, a bookmark with
+    // the spring off) reads as a velocity of tens of thousands of px/s, and a
+    // bounce of that flings the picture clear across the screen and beyond.
+    // The carried speed is capped at what a hard flick reaches.
+    const vmax = 2400;
+    cameraVX = Math.max(-vmax, Math.min(vmax, cameraVX));
+    cameraVY = Math.max(-vmax, Math.min(vmax, cameraVY));
     if (dragging) {
         f.x = tx; f.y = ty; f.vx = 0; f.vy = 0;
         f.wasInX = cx === tx; f.wasInY = cy === ty;
@@ -117,6 +124,11 @@ function floatStep(f, tx, ty, cx, cy, bl, br, bt, bb, cameraVX, cameraVY, draggi
     f.vy += (-w0 * w0 * (f.y - cy) - c0 * f.vy) * dt;
     f.x += f.vx * dt;
     f.y += f.vy * dt;
+    // The bounce may overshoot the edge a little, never leave the screen's
+    // neighbourhood: the picture is always findable.
+    const pad = 120;
+    f.x = Math.max(bl - pad, Math.min(br + pad, f.x));
+    f.y = Math.max(bt - pad, Math.min(bb + pad, f.y));
     return f;
 }
 

@@ -8,9 +8,9 @@ EFFECT_ID   := kwin-canvas
 WALL_ID     := kwin-canvas-ground
 APPLET_ID   := org.kde.kwin.canvas.toggle
 APPLET_DECOR_ID := org.kde.kwin.canvas.decor
-APPLET_DIR  := $(HOME)/.local/share/plasma/plasmoids
+APPLET_DIR   = $(DATA_HOME)/plasma/plasmoids
 DECOR_ID    := kwin-canvas-decoration
-DECOR_DIR   := $(HOME)/.local/share/kwin/decorations
+DECOR_DIR    = $(DATA_HOME)/kwin/decorations
 CLI         := tools/kwin-canvas
 BIN_DIR     := $(HOME)/.local/bin
 PLUGIN_ID   := kwin_canvas_passthrough
@@ -20,6 +20,10 @@ AUR_PT_DIR  := $(BUILD)/aur-passthrough
 DIST        := dist
 VERSION     := $(shell cat VERSION)
 KPT         := kpackagetool6
+# Where the packages land. The live session reads ~/.local/share; the nests
+# get their own copy (nest-install), so a test run never changes the code
+# the desktop will load at its next login.
+DATA_HOME   ?= $(HOME)/.local/share
 QDBUS       := qdbus6
 NEST        := ./dev/nest.sh
 PYTHON      := python3
@@ -29,7 +33,7 @@ QMLLINT     := /usr/lib/qt6/bin/qmllint
 .PHONY: help deps deps-install install uninstall install-system uninstall-system reload enable disable status hot \
         lint lint-reuse lint-qml lint-shell lint-shader lint-deadcode lint-python \
         tools fixtures play nest nest-down nest-clients nest-fixtures nest-reload nest-shot nest-log nest-clean nest-cmd \
-        test test-panel test-decor test-two-outputs test-shim golden unit demo video clean stage dist pkgbuild aur aur-passthrough release tour \
+        tutorial test test-panel test-decor test-two-outputs test-shim golden unit demo video clean stage dist pkgbuild aur aur-passthrough release tour \
         plugin plugin-try plugin-install-system plugin-status
 
 help: ## Show this help
@@ -96,11 +100,24 @@ stage:
 install: stage ## Install the effect, the ground wallpaper and the applet as user packages, and the CLI into ~/.local/bin
 	@$(KPT) --type KWin/Effect --upgrade $(BUILD)/effect >/dev/null 2>&1 || $(KPT) --type KWin/Effect --install $(BUILD)/effect >/dev/null
 	@$(KPT) --type Plasma/Wallpaper --upgrade $(BUILD)/wallpaper >/dev/null 2>&1 || $(KPT) --type Plasma/Wallpaper --install $(BUILD)/wallpaper >/dev/null
+	@$(MAKE) -s copy-packages DATA_HOME=$(DATA_HOME)
+	@mkdir -p $(BIN_DIR) && install -m 755 $(CLI) $(BIN_DIR)/kwin-canvas
+	@echo "installed for $$USER: $(EFFECT_ID), $(WALL_ID), $(APPLET_ID), $(APPLET_DECOR_ID), $(DECOR_ID), $(BIN_DIR)/kwin-canvas"
+
+# The applets and the decoration, copied into DATA_HOME.
+copy-packages:
 	@mkdir -p $(APPLET_DIR) && rm -rf $(APPLET_DIR)/$(APPLET_ID) && cp -r $(BUILD)/applet $(APPLET_DIR)/$(APPLET_ID)
 	@mkdir -p $(APPLET_DIR) && rm -rf $(APPLET_DIR)/$(APPLET_DECOR_ID) && cp -r $(BUILD)/applet-decor $(APPLET_DIR)/$(APPLET_DECOR_ID)
 	@mkdir -p $(DECOR_DIR) && rm -rf $(DECOR_DIR)/$(DECOR_ID) && cp -r $(BUILD)/decoration $(DECOR_DIR)/$(DECOR_ID)
-	@mkdir -p $(BIN_DIR) && install -m 755 $(CLI) $(BIN_DIR)/kwin-canvas
-	@echo "installed for $$USER: $(EFFECT_ID), $(WALL_ID), $(APPLET_ID), $(APPLET_DECOR_ID), $(DECOR_ID), $(BIN_DIR)/kwin-canvas"
+
+# The nests' own copy of every package, under build/nest-data: what a test sees
+# is this tree, and the live session's ~/.local/share is never written.
+NEST_DATA := $(CURDIR)/$(BUILD)/nest-data
+nest-install: stage ## Install the packages into build/nest-data for the nests only (the live session is untouched)
+	@mkdir -p $(NEST_DATA)/kwin/effects $(NEST_DATA)/plasma/wallpapers
+	@rm -rf $(NEST_DATA)/kwin/effects/$(EFFECT_ID) && cp -r $(BUILD)/effect $(NEST_DATA)/kwin/effects/$(EFFECT_ID)
+	@rm -rf $(NEST_DATA)/plasma/wallpapers/$(WALL_ID) && cp -r $(BUILD)/wallpaper $(NEST_DATA)/plasma/wallpapers/$(WALL_ID)
+	@$(MAKE) -s copy-packages DATA_HOME=$(NEST_DATA)
 
 uninstall: disable ## Turn the effect off and remove the user packages and the CLI
 	@$(KPT) --type KWin/Effect --remove $(EFFECT_ID) >/dev/null 2>&1 && echo "removed: $(EFFECT_ID)" || echo "not installed: $(EFFECT_ID)"
@@ -215,7 +232,7 @@ nest: ## Start the nested KWin with the effect and plasmashell inside (own D-Bus
 	@echo "       make nest-cmd CMD=open      open the canvas (or Ctrl+Alt+Space inside the window)"
 	@echo "       make nest-down              stop it"
 
-play: install fixtures ## Nest with the fixture apps arranged and the canvas open (make play ARGS=--closed for 1:1)
+play: nest-install fixtures ## Nest with the fixture apps arranged and the canvas open (make play ARGS=--closed for 1:1)
 	dev/play.sh $(ARGS)
 
 nest-down: ## Stop the nested KWin
@@ -246,29 +263,32 @@ nest-cmd: ## Send a debug command: make nest-cmd CMD="zoom 0.4 960 540"
 unit: ## Run the pure-logic unit tests (node tests/unit) - the fast iteration loop
 	node tests/unit/logic.test.js
 
-test: install fixtures tools plugin-try ## Run the scenarios against a dedicated test nest (NEST_NAME=test)
+test: nest-install fixtures tools plugin-try ## Run the scenarios against a dedicated test nest (NEST_NAME=test)
 	tests/run.sh $(ARGS)
 
-test-panel: install fixtures tools plugin-try ## Run the dock/panel scenarios against a nest that seeds the default Plasma panel (NEST_PANEL=1). ARGS= runs just that
+test-panel: nest-install fixtures tools plugin-try ## Run the dock/panel scenarios against a nest that seeds the default Plasma panel (NEST_PANEL=1). ARGS= runs just that
 	NEST_PANEL=1 tests/run.sh $(if $(ARGS),$(ARGS),86)
 	@[ -n "$(ARGS)" ] || NEST_PANEL=1 tests/run.sh 117
 
-test-decor: install fixtures tools plugin-try ## Run the decoration scenario against a nest that wears the canvas decoration (NEST_DECOR=canvas)
+test-decor: nest-install fixtures tools plugin-try ## Run the decoration scenario against a nest that wears the canvas decoration (NEST_DECOR=canvas)
 	NEST_DECOR=canvas tests/run.sh $(if $(ARGS),$(ARGS),135)
 
-test-two-outputs: install fixtures tools plugin-try ## Run the two-output scenarios against a two-output nest (NEST_OUTPUTS=2). ARGS= re-records 91's golden
+test-two-outputs: nest-install fixtures tools plugin-try ## Run the two-output scenarios against a two-output nest (NEST_OUTPUTS=2). ARGS= re-records 91's golden
 	NEST_OUTPUTS=2 tests/run.sh $(if $(ARGS),$(ARGS),91)
 
-test-shim: install fixtures tools ## Run the plane-input scenarios (tests/shim) under the preload shim; skips when the shim cannot build for this KWin
+test-shim: nest-install fixtures tools ## Run the plane-input scenarios (tests/shim) under the preload shim; skips when the shim cannot build for this KWin
 	tests/run-shim.sh $(ARGS)
 
-golden: install fixtures ## Re-record the golden screenshots from the current build
+golden: nest-install fixtures ## Re-record the golden screenshots from the current build
 	UPDATE_GOLDEN=1 tests/run.sh $(ARGS)
 
-demo: install fixtures tools ## Drive a scripted session with real input; demo.gif and demo.mp4 in build/demo
+demo: nest-install fixtures tools ## Drive a scripted session with real input; demo.gif and demo.mp4 in build/demo
 	dev/demo.sh
 
-tour: install fixtures ## Regenerate the screenshot tour images in docs/images
+tutorial: nest-install fixtures tools ## Captioned single-activity tutorial in a hidden nest; copies tutorial.gif into docs/images
+	dev/tutorial.sh && cp build/tutorial/tutorial.gif docs/images/tutorial.gif
+
+tour: nest-install fixtures ## Regenerate the screenshot tour images in docs/images
 	docs/tour.sh
 
 video: ## Assemble build/demo frames into demo.mp4 and demo.gif (run `make demo` first)

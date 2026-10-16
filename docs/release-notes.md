@@ -1,5 +1,49 @@
 Unreleased:
 
+- The window an auto fly lands on is raised. With focus following the mouse,
+  raise on hover and click-raise off, KWin raises a window only after the
+  pointer has rested on it, and the pointer never moves when a window slides
+  under it, so the flown-to window could stay under its neighbours. The fly
+  now raises it.
+- Flies are snappier and more elegant: they leap off at once and land with a
+  hair of carry (instead of starting slowly), and a short hop is quicker than a
+  long flight.
+
+- The idle bob is gone. Zoomed out, every window used to drift a couple of
+  pixels on its own phase, which recomputed every window and rebuilt the
+  cluster threads 60 times a second while nothing happened: about a fifth of a
+  CPU core at rest (21%, measured in the nest). Without it, and with the
+  frame tick skipping its window walks when nothing floats or glides, an open
+  canvas idles at 0.8%. The motion that stays is the motion your hand causes.
+
+- A captioned tutorial GIF leads the README: one activity, eight steps, from
+  the desktop to the hold's map and back. `make tutorial` regenerates it in a
+  hidden nest. The README opens with what the canvas is, a feature list and a
+  three-line quick start; issue templates and a security note are new.
+
+- An open canvas sitting still costs almost nothing. The floating windows'
+  clock advanced every frame even with nothing floating, so every window's
+  position was recomputed 60 times a second at rest; measured in the nest,
+  an idle open canvas went from 2.6% of a CPU core to under 0.1%.
+
+- Snapping is a magnet. When a dragged window catches an edge, it no longer
+  jumps the last few pixels: the picture springs onto the edge with a small
+  overshoot. The window's real position is exact either way. Part of
+  WindowPhysics.
+
+- Windows can be thrown. Let go of a window in the canvas while still moving
+  it fast and it keeps going on the hand's momentum, easing to rest a short
+  way on (at most 360 screen px). A window set down after a pause stays exactly
+  where you put it. Part of WindowPhysics; off with it.
+
+- One pin instead of three. Float, keep above and pin on all desktops are a
+  single state that KWin holds, so the canvas, the title-bar pill, the panel
+  applet and KDE's own window menu always agree. A window is pinned when it is
+  on all desktops or kept above; the one button sets or clears both (and clears
+  keep-below). The pill and the applet lose their separate keep-above and
+  keep-below buttons: with one virtual desktop they were the same idea. A
+  window pinned from KDE's menu now floats on the canvas too.
+
 - The end of a fly no longer flashes a stale frame. The canvas closed in the
   same moment the camera, the targets and the real windows jumped to the
   destination, and the compositor could draw the scene's frame from before

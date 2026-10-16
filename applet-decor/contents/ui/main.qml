@@ -56,8 +56,6 @@ PlasmoidItem {
     // the exclude-from-capture flags last.
     property bool winMax: false
     property bool winFloat: false
-    property bool winAbove: false
-    property bool winBelow: false
     property bool winCapture: false
 
     // The native titlebar-buttons configuration, the same source the
@@ -71,8 +69,13 @@ PlasmoidItem {
         const s = buttonsLeft + buttonsRight;
         const out = [];
         for (let i = 0; i < s.length; i++) {
-            const c = s.charAt(i);
-            if (c === "X" || c === "I" || c === "A" || c === "S" || c === "F" || c === "B" || c === "E" || c === "_") out.push(c);
+            let c = s.charAt(i);
+            // One pin: keep-above (F) and on-all-desktops (S) are the same
+            // button, drawn once; keep-below (B) has none.
+            if (c === "F") c = "S";
+            if (c === "B") continue;
+            if (c === "S" && out.indexOf("S") >= 0) continue;
+            if (c === "X" || c === "I" || c === "A" || c === "S" || c === "E" || c === "_") out.push(c);
         }
         return out;
     }
@@ -89,16 +92,12 @@ PlasmoidItem {
                 if (i < 0) {
                     root.winMax = false;
                     root.winFloat = false;
-                    root.winAbove = false;
-                    root.winBelow = false;
                     root.winCapture = false;
                     return;
                 }
                 const p = out.slice(i + 5).trim().split("|");
                 root.winMax = p.length > 2 && p[2] === "1";
                 root.winFloat = p.length > 3 && p[3] === "1";
-                root.winAbove = p.length > 4 && p[4] === "1";
-                root.winBelow = p.length > 5 && p[5] === "1";
                 root.winCapture = p.length > 6 && p[6] === "1";
             } else if (sourceName.indexOf("ButtonsOnLeft") >= 0) {
                 root.buttonsLeft = out.trim();
@@ -180,7 +179,7 @@ PlasmoidItem {
             required property string modelData
             property bool hovered: false
             property bool pressed: false
-            readonly property bool lit: (modelData === "S" && root.winFloat) || (modelData === "A" && root.winMax) || (modelData === "F" && root.winAbove) || (modelData === "B" && root.winBelow) || (modelData === "E" && root.winCapture)
+            readonly property bool lit: (modelData === "S" && root.winFloat) || (modelData === "A" && root.winMax) || (modelData === "E" && root.winCapture)
             scale: pressed ? 0.86 : (hovered ? 1.2 : 1)
             width: 22
             height: 22
@@ -232,7 +231,7 @@ PlasmoidItem {
                     const lit = parent.lit;
                     ctx.strokeStyle = lit ? "#2a6ddf" : "#ffffff";
                     ctx.fillStyle = lit ? "#2a6ddf" : "#ffffff";
-                    ctx.lineWidth = (code === "S" || code === "F" || code === "B") ? 1.3 : 1.2;
+                    ctx.lineWidth = code === "S" ? 1.3 : 1.2;
                     if (code === "X") {
                         ctx.beginPath();
                         ctx.moveTo(1.5, 1.5);
@@ -263,34 +262,6 @@ PlasmoidItem {
                         ctx.beginPath();
                         ctx.moveTo(5, 2.5);
                         ctx.lineTo(5, 8);
-                        ctx.stroke();
-                    } else if (code === "F") {
-                        ctx.beginPath();
-                        ctx.moveTo(1.5, 8.5);
-                        ctx.lineTo(8.5, 8.5);
-                        ctx.stroke();
-                        ctx.beginPath();
-                        ctx.moveTo(2, 6.5);
-                        ctx.lineTo(5, 1.5);
-                        ctx.lineTo(8, 6.5);
-                        if (lit) {
-                            ctx.closePath();
-                            ctx.fill();
-                        }
-                        ctx.stroke();
-                    } else if (code === "B") {
-                        ctx.beginPath();
-                        ctx.moveTo(1.5, 1.5);
-                        ctx.lineTo(8.5, 1.5);
-                        ctx.stroke();
-                        ctx.beginPath();
-                        ctx.moveTo(2, 3.5);
-                        ctx.lineTo(5, 8.5);
-                        ctx.lineTo(8, 3.5);
-                        if (lit) {
-                            ctx.closePath();
-                            ctx.fill();
-                        }
                         ctx.stroke();
                     } else if (code === "E") {
                         // The screen with the capture crossed out: the
@@ -327,9 +298,7 @@ PlasmoidItem {
                 if (modelData === "X") return i18n("Close the window");
                 if (modelData === "I") return i18n("Minimize the window");
                 if (modelData === "A") return i18n("Maximize or restore the window");
-                if (modelData === "S") return i18n("Float the window: pin it to all desktops");
-                if (modelData === "F") return i18n("Keep the window above the others");
-                if (modelData === "B") return i18n("Keep the window below the others");
+                if (modelData === "S") return i18n("Pin the window: keep it above and on every desktop");
                 return i18n("Hide the window from screen capture");
             }
             PlasmaComponents3.ToolTip.visible: hovered && modelData !== "_"

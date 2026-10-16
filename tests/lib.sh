@@ -79,6 +79,8 @@ sget() {
         moves)    sed -n 's/.* moves=\([0-9]*\).*/\1/p' <<<"$line" ;;
         dragraw)  sed -n 's/.* dragraw=\([0-9]*\).*/\1/p' <<<"$line" ;;
         undo)     sed -n 's/.* undo=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        snaps)    sed -n 's/.* snaps=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        throw)    sed -n 's/.* throw=\([-0-9,]*\).*/\1/p' <<<"$line" ;;
         bookmarks) sed -n 's/.* bookmarks=\([0-9]*\).*/\1/p' <<<"$line" ;;
         deskwin)  sed -n 's/.* deskwin=\([0-9]*\).*/\1/p' <<<"$line" ;;
         map)      sed -n 's/.* map=\([a-z-]*\).*/\1/p' <<<"$line" ;;

@@ -6,15 +6,48 @@
 [![site](https://img.shields.io/badge/site-ritwickverma.dev-ff6f00)](https://www.ritwickverma.dev/)
 [![tip](https://img.shields.io/badge/tip-buy_covfefe_for_Ritwick-e91e63)](https://buycovfefefor.ritwickverma.dev/)
 
+**An infinite canvas for KDE Plasma.** Every window lives on one endless plane.
+Step out to see all of it, fly anywhere, step back in - and what you arranged
+is real window geometry, not a picture of it.
+
+![kwin-canvas tutorial: the desktop, stepping out, the far windows, panning, flying in, a bookmark, the hold's map, landing](docs/images/tutorial.gif)
+
+- **One plane, no workspaces to juggle.** Park windows anywhere; the screen is
+  just where you are looking. Off-screen windows are still ordinary KWin
+  windows.
+- **Fly, don't search.** Double-click a window to fly to it, hold the side
+  button to turn the world into a map, `Ctrl+1..9` to bookmark a view and
+  `Alt+1..9` to fly back.
+- **Feels physical.** Spring camera, flick-to-pan inertia, windows you can throw,
+  edges that snap like magnets, a soft float on pinned windows.
+- **Stays out of the way.** With the canvas closed nothing of it runs: games and
+  fullscreen apps get KWin's native path. An idle open canvas costs about
+  nothing.
+- **Plays with KDE.** Activities, KWin tiles, maximize and the title bar's pin
+  stay in sync with the plane.
+- **Built on KWin's public scripting API.** No compositor patches; an optional
+  C++ plugin makes windows interactive while the canvas is open.
+
+### Quick start
+
+```bash
+git clone https://gitlab.com/ritwick7/kwin-canvas.git && cd kwin-canvas
+make deps                 # what is missing, and the pacman line to fix it
+./configure.sh install    # effect, wallpaper, applets, CLI into ~/.local; effect on
+```
+
+Log out and back in, then press **Meta+Ctrl+Alt+Space** (or push a screen
+corner) to step out. Full install notes, the optional plugin and every key are
+below.
+
+<details>
+<summary>The longer demo: the hover's glow, the clusters' web, the switcher</summary>
+
 ![kwin-canvas: the demo - the step out, the hover's glow, the double-click's flight, the clusters' web, the switcher's fit, the grasp's keyhole, and the step back in](docs/images/demo.gif)
 
-> **A fork, written by an agent under human direction.** This repository is a
-> fork of [`aaronsb/kwin-canvas`](https://github.com/aaronsb/kwin-canvas),
-> ahead of upstream. Every line of the fork's own work is AI-generated,
-> directed by a human; upstream's code is upstream's. The work is proposed
-> upstream in stages, and where it stands is [docs/status.md](docs/status.md).
-> Install this fork's work from the checkout below; the AUR package is
-> upstream's release until the stages land.
+</details>
+
+## How it works
 
 An infinite canvas for KDE Plasma, built on KWin's public scripting API. No
 patches, no forked compositor, no plugin against private headers.
@@ -58,7 +91,7 @@ in it - and it costs nothing while the camera sits at 1:1 on the desk, where
 it would be invisible anyway. `Backdrop=grid` is the old plane.
 
 > Proven in a nested KWin 6.7.5 session and on a live Plasma 6.7 desktop,
-> with thirty-odd scenarios and golden screenshots - but still a fork's
+> with about seventy scenarios and golden screenshots - but still a fork's
 > work in flight, not an upstream release.
 
 ## Parts
@@ -263,6 +296,15 @@ facts this rests on, and [docs/testing.md](docs/testing.md) for the harness.
 [AGENTS.md](AGENTS.md) is the way in for an AI agent — the commands, the
 conventions, what is deliberate and what has cost time — and
 [docs/status.md](docs/status.md) is where the work stands.
+
+## About this fork
+
+This repository is a fork of [`aaronsb/kwin-canvas`](https://github.com/aaronsb/kwin-canvas)
+(GPL-2.0-or-later), ahead of upstream. The fork's own work is AI-written under
+human direction; upstream's code is upstream's. It is proposed upstream in
+stages, and where it stands is in [docs/status.md](docs/status.md). Install
+this fork from a checkout; the AUR package is upstream's release until the
+stages land.
 
 ## Prior attempts
 

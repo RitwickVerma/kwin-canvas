@@ -75,15 +75,16 @@ LOW=(nice -n 10 ionice -c3)
 # fixture apps' window state (Dolphin's view properties, Gwenview's
 # history) must be the nest's own, or one golden run inherits whatever the
 # user's real apps saved last - the look itself is pinned by the config,
-# not borrowed. ~/.local/share stays first on the data search path for the
-# installed packages.
+# not borrowed. build/nest-data (make nest-install) is first on the data
+# search path: the nest loads the tree's packages from there, never the live
+# session's ~/.local/share.
 nest_env() {
     # XDG_CURRENT_DESKTOP=KDE: the portal broker the bus activates inherits
     # this, so it picks the KDE backend instead of the GTK one, whose
     # ScreenCast impl hangs on a compositor interface KWin does not speak.
     printf '%s\n' "XDG_CONFIG_HOME=$CONF" "XDG_STATE_HOME=$STATE/state" "XDG_CACHE_HOME=$STATE/cache" \
         "XDG_DATA_HOME=$STATE/data" "XDG_CURRENT_DESKTOP=KDE" \
-        "XDG_DATA_DIRS=$HOME/.local/share:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+        "XDG_DATA_DIRS=$HERE/build/nest-data:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 }
 # The nest's bus address, or a loud failure: an empty DBUS_SESSION_BUS_ADDRESS
 # makes D-Bus fall back to the live session's bus.
@@ -172,9 +173,9 @@ CFG
         # The nest's XDG_DATA_HOME is its own, so the decoration must be
         # copied into it: the nest's kwin scans $STATE/data/kwin/decorations,
         # never the user's ~/.local/share.
-        if [ -d "$HOME/.local/share/kwin/decorations/kwin-canvas-decoration" ]; then
+        if [ -d "$HERE/build/nest-data/kwin/decorations/kwin-canvas-decoration" ]; then
             mkdir -p "$STATE/data/kwin/decorations"
-            cp -r "$HOME/.local/share/kwin/decorations/kwin-canvas-decoration" "$STATE/data/kwin/decorations/"
+            cp -r "$HERE/build/nest-data/kwin/decorations/kwin-canvas-decoration" "$STATE/data/kwin/decorations/"
         fi
     fi
     # kded's GTK module writes $HOME/.gtkrc-2.0 whatever XDG_CONFIG_HOME
@@ -483,7 +484,7 @@ log() { tail -n "${1:-60}" "$LOG"; }
 # KWin's QML engine caches components by URL, so a changed main.qml never
 # reloads in place. Restart the nested compositor and relaunch the clients.
 reload() {
-    (cd "$HERE" && make -s install >/dev/null)
+    (cd "$HERE" && make -s nest-install >/dev/null)
     down >/dev/null
     up
     clients

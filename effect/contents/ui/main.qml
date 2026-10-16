@@ -82,7 +82,6 @@ KWin.SceneEffect {
     // over black, not over the desktop), and the glide waits one
     // event-loop turn so the scene's first paint warms the cold
     // thumbnails under their real selves.
-    property bool slideWarm: false
     readonly property bool canvasOpen: visible && !quiet
     // Pass-through: the optional binary plugin is live while the canvas is
     // open. Every key, and every click, drag and wheel over a window, goes
@@ -514,10 +513,11 @@ KWin.SceneEffect {
     // The debug channel's own replay sequence: the last DebugSeq seen, so
     // each reconfigure replays its command exactly once.
     property int lastDebugSeq: 0
-    // The float: the windows hover in Z as the camera steps out of the
-    // location, so the overworld feels alive - a gentle per-window bob,
-    // each at its own phase, ramping in with the zoom-out.
-    readonly property real floatAmt: windowPhysics && !quiet && visible ? Math.min(1, Math.max(0, (1 - zoom) * 3)) : 0
+    // There used to be an idle bob here: every window drifting 2.4 px on its
+    // own phase while zoomed out. It re-evaluated every window's position and
+    // rebuilt the cluster threads 60 times a second at rest (measured: 21% of
+    // a core zoomed out, against 1.2% without it), for decoration only. The
+    // motion that stays is the motion the hand causes.
 
     // The grasp's jump: the world is the map, so a window clicked while
     // the hold is zoomed out is the release's destination - the hold that
@@ -588,47 +588,64 @@ KWin.SceneEffect {
     // own "on all desktops", repurposed - the title-bar menu's pin entry
     // and the canvas agree on what floats - and the caption list
     // persists the choice.
-    property var pinned: ({})          // caption -> true, the persisted flag
+    // One state, "pinned": the window stays with you. KWin holds it, so the
+    // title bar's own menu, the pill, the panel applet and the canvas all read
+    // the same thing and nothing here is stored. It is on whenever KWin has
+    // the window on all desktops or kept above (set either from anywhere and
+    // the canvas floats it), and the one toggle sets or clears both, and
+    // clears keep-below, which would contradict it.
+    property var pinned: ({})          // caption -> { sx, sy }, where the hand left it (this session)
     property var floatOf: ({})         // window internalId -> { x, y, vx, vy, wasInX, wasInY }, screen px
     property real floatRev: 0
     property real floatPrevViewX: 0
     property real lastFloatAt: 0
     property real floatPrevViewY: 0
-    function isPinnedEntry(e) { return e && e.window && !e.window.deleted && e.window.onAllDesktops; }
-    function loadPinned() {
-        const list = configuration.PinnedWindows || [];
-        const set = {};
-        for (let i = 0; i < list.length; ++i) if (list[i]) set[list[i]] = true;
-        pinned = set;
-        const all = KWin.Workspace.stackingOrder;
-        for (let i = 0; i < all.length; ++i) {
-            if (pinned[all[i].caption] && !all[i].onAllDesktops) all[i].onAllDesktops = true;
-        }
+    // How many entries are pinned, recounted on every resync and revision:
+    // the frame tick skips the float walk when it is 0.
+    readonly property int pinnedCount: { revision; let n = 0; for (let i = 0; i < entries.length; ++i) if (isPinnedEntry(entries[i])) n++; return n; }
+    function floatHeld() { for (const id in floatOf) return true; return false; }
+    function windowPinned(w) { return !!w && !w.deleted && (w.onAllDesktops || w.keepAbove); }
+    function isPinnedEntry(e) { return !!e && windowPinned(e.window); }
+    function setPinned(w, on) {
+        if (!w || w.deleted) return;
+        w.onAllDesktops = on;
+        w.keepAbove = on;
+        if (on) w.keepBelow = false;
     }
-    function savePinned() {
-        const list = [];
-        for (const k in pinned) list.push(k);
-        configuration.PinnedWindows = list;
-        configuration.writeConfig();
+    // Float, keep above and on all desktops are one thing. Whichever of them
+    // changes - the title bar's menu, the pill, a window rule, a script, the
+    // canvas - the others follow, so the three never disagree. `changed` is
+    // the flag that moved ("above", "desktops", "below"); anything else
+    // (a window seen for the first time) adopts "either is set". A rule that
+    // forces one flag wins: the write the rule refuses is the one that
+    // sticks, and the rest follow what stuck.
+    property bool pinSyncing: false
+    function syncPin(w, changed) {
+        if (pinSyncing || !w || w.deleted || !w.managed) return;
+        if (w.desktopWindow || w.dock || w.popupWindow || w.specialWindow) return;
+        let target;
+        if (changed === "above") target = w.keepAbove;
+        else if (changed === "desktops") target = w.onAllDesktops;
+        else if (changed === "below") { if (!w.keepBelow) return; target = false; }
+        else target = windowPinned(w);
+        if (changed !== "below" && w.keepAbove === target && w.onAllDesktops === target) return;
+        pinSyncing = true;
+        setPinned(w, target);
+        if (w.keepAbove !== target || w.onAllDesktops !== target) setPinned(w, !target);
+        pinSyncing = false;
+        dbg("pin", "synced " + w.caption + " (" + changed + ") above=" + w.keepAbove + " all=" + w.onAllDesktops);
+        revision++;
     }
     function pinEntries(list) {
-        for (let i = 0; i < list.length; ++i) {
-            const e = list[i];
-            if (!e || e.window.deleted) continue;
-            if (!e.window.onAllDesktops) e.window.onAllDesktops = true;
-            pinned[e.window.caption] = true;
-        }
-        savePinned();
+        for (let i = 0; i < list.length; ++i) if (list[i]) setPinned(list[i].window, true);
     }
     function unpinEntries(list) {
-        let any = false;
         for (let i = 0; i < list.length; ++i) {
             const e = list[i];
-            if (!e || e.window.deleted) continue;
-            if (e.window.onAllDesktops) e.window.onAllDesktops = false;
-            if (delete pinned[e.window.caption]) any = true;
+            if (!e) continue;
+            setPinned(e.window, false);
+            delete pinned[e.window.caption];
         }
-        if (any) savePinned();
     }
     // The screen spot that keeps the window wholly inside the screen the
     // pointer is on, with a margin. The anchor the pin holds, and the place
@@ -677,6 +694,27 @@ KWin.SceneEffect {
     // contribution left out, so the physics scales with the zoom instead of
     // exploding under it. Runs while the canvas is visible, a slide at 1:1
     // included.
+    // The floated windows' coordinates become their pictures' spots: the
+    // place the eye saw a window is where it is written, so a floated window
+    // never lands off-screen when the camera leaves it behind. Every way out
+    // of the canvas that moves the camera (commit, a slide's landing) runs it.
+    function syncFloatsToEntries() {
+        for (let i = 0; i < entries.length; ++i) {
+            const e = entries[i];
+            if (!isPinnedEntry(e)) continue;
+            // Where the picture rests: the window's own spot, held inside the
+            // screen. Read from the bounds and not from the float's last tick,
+            // which can trail the camera by a frame (a slide's landing).
+            const b = floatBounds(e);
+            const sx = Math.max(b.l, Math.min(b.r, (e.x - viewX) * zoom));
+            const sy = Math.max(b.t, Math.min(b.b, (e.y - viewY) * zoom));
+            if (Math.abs(sx - (e.x - viewX) * zoom) > 0.4 || Math.abs(sy - (e.y - viewY) * zoom) > 0.4) {
+                e.x = viewX + sx / zoom;
+                e.y = viewY + sy / zoom;
+                revision++;
+            }
+        }
+    }
     function floatPinned(dt) {
         // After a stall the last camera position is stale: a fresh start
         // must not read a wild velocity out of it.
@@ -699,9 +737,12 @@ KWin.SceneEffect {
         }
         floatPrevViewX = viewX;
         floatPrevViewY = viewY;
-        // The bob's phase advances with real time, whatever the tick
-        // rate the frame chain lands on (the old timer's 62.5 Hz).
-        floatRev += dt * 62.5;
+        // Advances only while a window floats: its picture rides the camera.
+        // Every thumbnail's position binds to floatRev, so advancing it with
+        // nothing floating re-evaluated them all each frame for nothing.
+        let floating = false;
+        for (const fid in floatOf) { floating = true; break; }
+        if (floating) floatRev += dt * 62.5;
     }
     // ---- hover navigation ----------------------------------------------------
     // The pointer rests on a window and the camera pans the least that brings
@@ -1061,7 +1102,6 @@ KWin.SceneEffect {
         for (let k = 0; k < entries.length; ++k) {
             const e = entries[k];
             const f = floatOf[e.window.internalId];
-            const bob = Math.sin(floatRev * 0.035 + k * 137.508) * 2.4 * floatAmt;
             rects.push({
                 // The float's picture is stored in screen coordinates, so it
                 // is translated back onto the plane before it occludes: a
@@ -1069,7 +1109,7 @@ KWin.SceneEffect {
                 // where the eye sees its picture, not where its old canvas
                 // spot was.
                 x: f ? viewX + f.x / zoom : e.x,
-                y: (f ? viewY + f.y / zoom : e.y) + bob,
+                y: f ? viewY + f.y / zoom : e.y,
                 w: e.width,
                 h: e.height
             });
@@ -1084,10 +1124,9 @@ KWin.SceneEffect {
                 const e = entryById(c.ids[k]);
                 if (!e) continue;
                 const idx = entries.indexOf(e);
-                const bob = Math.sin(floatRev * 0.035 + idx * 137.508) * 2.4 * floatAmt;
-                pts.push({
+                    pts.push({
                     x: e.x + e.width / 2,
-                    y: e.y + e.height / 2 + bob,
+                    y: e.y + e.height / 2,
                     z: windowZ(e)
                 });
             }
@@ -1213,6 +1252,10 @@ KWin.SceneEffect {
         watchedWindows[w.internalId] = true;
         trackFree(w);
         w.frameGeometryChanged.connect(function () { effect.markDirty(w); });
+        w.keepAboveChanged.connect(function () { effect.syncPin(w, "above"); });
+        w.keepBelowChanged.connect(function () { effect.syncPin(w, "below"); });
+        w.desktopsChanged.connect(function () { effect.syncPin(w, "desktops"); });
+        syncPin(w, "seen");
         w.maximizedChanged.connect(function () { effect.noteReturnedFree(w); });
         w.tileChanged.connect(function () { effect.noteReturnedFree(w); });
     }
@@ -2508,10 +2551,9 @@ KWin.SceneEffect {
     // has not caused yet - the wheel sets a goal, nothing on screen has moved,
     // no frame is drawn, and the spring never starts. A timer steps from the
     // event loop; the step it takes is what damages the scene, and the motion
-    // then keeps its own frames coming. 16 ms is a frame at 60 Hz, and the dt
-    // is deliberately the interval and not what the event loop actually took,
-    // so a busy loop slows the camera rather than lengthening its steps - an
-    // explicit Euler spring is only stable for a fraction of its period.
+    // then keeps its own frames coming. The tick calls this in sub-steps of at
+    // most 16 ms (a frame at 60 Hz): an explicit Euler spring is only stable
+    // for a fraction of its period, so a long tick is split, never stretched.
     function camStep(dt) {
         if (!camLive() || dt <= 0) return;
         // (The Euler spring is only stable while w*dt stays well under 1:
@@ -2578,19 +2620,18 @@ KWin.SceneEffect {
 
     property real lastTickAt: 0
 
-    // The physics tick's dt: the real time since the last tick, clamped
-    // to a frame at 60 Hz. The Euler spring is only stable for a fraction
-    // of its period, so a busy loop then slows the motion rather than
-    // lengthening its steps - the old fixed dt's property, kept - while
-    // a fast display still integrates at real time instead of the
-    // timer's own cadence.
+    // The physics tick's dt: the real time since the last tick, up to a
+    // tenth of a second (past that the loop stalled, and catching up would
+    // lurch). The Euler spring is only stable for a fraction of its period,
+    // so the tick integrates it in sub-steps of at most a frame at 60 Hz:
+    // under load the camera keeps real time, as the wall-clock slides do,
+    // instead of running in slow motion against them.
     function frameDt() {
         const now = Date.now();
         let dt = (now - lastTickAt) / 1000;
         if (!(dt > 0)) dt = 0;
         lastTickAt = now;
-        if (dt > 0.0167) dt = 0.0167;
-        return dt;
+        return Math.min(dt, 0.1);
     }
 
     Timer {
@@ -2602,9 +2643,17 @@ KWin.SceneEffect {
         running: effect.visible
         onTriggered: {
             const dt = effect.frameDt();
-            if (effect.camLive()) effect.camStep(dt);
-            effect.floatPinned(dt);
-            effect.stepEntryAnims();
+            if (effect.camLive()) {
+                const n = Math.max(1, Math.ceil(dt / 0.0167));
+                for (let i = 0; i < n; ++i) effect.camStep(dt / n);
+            }
+            // Each of these is a walk over every window: at rest with nothing
+            // floating and nothing gliding there is nothing for them to do.
+            // The float walk also drops a picture whose window has just been
+            // unpinned (floatOf), so it runs while any picture is still held,
+            // not only while a window is pinned.
+            if (effect.pinnedCount > 0 || effect.floatHeld()) effect.floatPinned(Math.min(dt, 0.0167));
+            for (const id in effect.entryAnims) { effect.stepEntryAnims(); break; }
         }
     }
 
@@ -2752,6 +2801,10 @@ KWin.SceneEffect {
         dragIndex = -1;
         targetRaw = null;
         pendingNewAt = null;
+        // The tour's anchor belongs to one visit: a digit jump or a bracket
+        // tour sets it, and left alone it made the next visit's tour start
+        // from the room the last one ended in, not from where the eye is.
+        travelCluster = -1;
         loadHiddenFrames();
         refreshActivities();
         refreshNames();
@@ -2768,7 +2821,8 @@ KWin.SceneEffect {
         if (!quiet) moved = openView(spec);
         // Where the opening view put the camera: a close that finds it still
         // there has not been navigated, and goes back to where it began.
-        openGoal = moved && camHasGoal ? { x: camGoalX, y: camGoalY, z: camGoalZoom } : null;
+        // With SmoothZoom off the view jumps and leaves no goal: the camera itself is the goal.
+        openGoal = !moved ? null : camHasGoal ? { x: camGoalX, y: camGoalY, z: camGoalZoom } : { x: viewX, y: viewY, z: zoom };
         if (!quiet && passthrough) probeCall.call();
         // The fidelity ladder samples the load the moment the overworld
         // opens - no brief spell of full decoration on an already-busy
@@ -2873,17 +2927,7 @@ KWin.SceneEffect {
         // clamped spot - the place the eye saw the window - becomes the
         // window's coordinates, so a floated window never lands off-screen
         // when the camera leaves it behind.
-        for (let i = 0; i < entries.length; ++i) {
-            const e = entries[i];
-            if (!isPinnedEntry(e)) continue;
-            const f = floatOf[e.window.internalId];
-            if (!f) continue;
-            if (Math.abs(f.x - (e.x - viewX) * zoom) > 0.4 || Math.abs(f.y - (e.y - viewY) * zoom) > 0.4) {
-                e.x = viewX + f.x / zoom;
-                e.y = viewY + f.y / zoom;
-                revision++;
-            }
-        }
+        syncFloatsToEntries();
         for (const k in targets) {
             targets[k].x = Math.round(targets[k].x);
             targets[k].y = Math.round(targets[k].y);
@@ -3486,12 +3530,46 @@ KWin.SceneEffect {
             if (Math.abs(sx0 - cl.sx) < 0.5 && Math.abs(sy0 - cl.sy) < 0.5)
                 pinned[e.window.caption] = { sx: sx0, sy: sy0 };
         }
+        // The throw: a window let go while still moving fast keeps going, on
+        // the glide's own Hermite curve with the hand's velocity as its start,
+        // and comes to rest a short way on (the distance a flick would carry
+        // under friction). Only for a hand that was still moving in the last
+        // 80 ms - a window set down after a pause stays where it was put.
+        const set = [];
+        for (let i = 0; i < entries.length; ++i) if (dragRaw[entries[i].window.internalId]) set.push(entries[i]);
+        const speed = Math.hypot(dragVX, dragVY);
+        const fresh = dragLastAt > 0 && Date.now() - dragLastAt < 80;
         dragIndex = -1;
         // The drag's set goes with it: animateEntry leaves a window in dragRaw
         // to the hand, so one left behind would never glide again.
         dragRaw = {};
+        lastSnapDX = 0; lastSnapDY = 0;
+        // Only where the glide animates: with MovesGlide off animateEntry
+        // writes the destination at once, and a throw would be a teleport.
+        if (windowPhysics && configuration.MovesGlide !== false && fresh && speed > throwMin && set.length > 0) {
+            // Screen px/s to plane px, over the carry time; capped so a wild
+            // flick does not send a window off into the dark.
+            const k = Math.min(1, throwMax / (speed * throwCarry));
+            const ox = dragVX * throwCarry * k / zoom, oy = dragVY * throwCarry * k / zoom;
+            dbg("throw", "speed=" + Math.round(speed) + " carry=(" + Math.round(ox) + "," + Math.round(oy) + ")");
+            lastThrow = { dx: ox, dy: oy };
+            for (let i = 0; i < set.length; ++i) {
+                const e = set[i];
+                if (isPinnedEntry(e)) continue;
+                animateEntry(e, e.x + ox, e.y + oy, 0, dragVX / zoom, dragVY / zoom);
+            }
+        } else {
+            lastThrow = null;
+        }
         endWindowDrag();
     }
+    // The throw's tuning: the hand speed (screen px/s) below which a release
+    // is a set-down, the carry time a flick travels for, and the furthest it
+    // may carry in screen px.
+    readonly property real throwMin: 900
+    readonly property real throwCarry: 0.12
+    readonly property real throwMax: 360
+    property var lastThrow: null
 
     // ---- arrange the selection ----------------------------------------------
     // Entries to arrange: the selection, or the one window the menu was opened on.
@@ -3750,7 +3828,32 @@ KWin.SceneEffect {
         const box = bbox(set);
         const d = snapDelta(box, snapCandidates(dragRaw, null));
         for (let i = 0; i < set.length; ++i) { set[i].x += d.dx; set[i].y += d.dy; }
+        snapCatch(d);
         revision++;
+    }
+    // The magnet: the moment a drag catches a snap, the window would jump the
+    // last few pixels to the edge. The picture instead starts where the hand
+    // had it and springs onto the edge, so the snap reads as a pull, not a
+    // teleport. Drawn only - the entry is already exact.
+    property real snapKickX: 0
+    property real snapKickY: 0
+    property real lastSnapDX: 0
+    property real lastSnapDY: 0
+    property int snapCatches: 0
+    function snapCatch(d) {
+        const caughtX = d.dx !== 0 && lastSnapDX === 0, caughtY = d.dy !== 0 && lastSnapDY === 0;
+        lastSnapDX = d.dx; lastSnapDY = d.dy;
+        if (!windowPhysics || quiet || (!caughtX && !caughtY)) return;
+        snapCatches++;
+        snapKickAnim.stop();
+        if (caughtX) snapKickX = -d.dx * zoom;
+        if (caughtY) snapKickY = -d.dy * zoom;
+        snapKickAnim.restart();
+    }
+    ParallelAnimation {
+        id: snapKickAnim
+        NumberAnimation { target: effect; property: "snapKickX"; to: 0; duration: 170; easing.type: Easing.OutBack; easing.overshoot: 2.2 }
+        NumberAnimation { target: effect; property: "snapKickY"; to: 0; duration: 170; easing.type: Easing.OutBack; easing.overshoot: 2.2 }
     }
 
     // Command the real window to a size while the canvas is open. Position is
@@ -4366,22 +4469,37 @@ KWin.SceneEffect {
         slideGo();
     }
 
-    // The glide waits one event-loop turn for the scene's first paint: the
-    // quiet canvas at 1:1 paints the same pixels as the desktop it covers,
-    // so the warm frame is invisible, and the cold thumbnails never flash
-    // under the glide.
+    // The glide starts with the open, not after it: the animation's first
+    // tick lands in the frame that paints the scene, and that tick is the
+    // start position, so the first painted frame is the desktop's own picture
+    // (the quiet canvas at 1:1) and every later frame already moves. Waiting a
+    // turn for a warm frame cost a fly its first 18 to 28 ms of stillness.
     function slideGo() {
-        if (slideWarm) {
-            slideWarm = false;
-            Qt.callLater(slideGo);
-            return;
-        }
+        // The flight's length follows its distance, gently: a short hop is
+        // quick, a long one a little longer, so near moves never drag and far
+        // ones never jerk. PanDuration is the reference for about half a
+        // screen; 0 still jumps.
+        const dist = Math.hypot(slideToX - viewX, slideToY - viewY) * zoom;
+        const g = actionScreen().geometry;
+        const half = Math.max(1, Math.hypot(g.width, g.height) / 2);
+        slideMs = panDuration <= 0 ? 0 : Math.round(Math.max(0.8, Math.min(1.5, 0.8 + 0.7 * Math.sqrt(dist / half))) * panDuration);
         slideAnim.restart();
     }
+    property int slideMs: panDuration
 
     // Open quietly if closed. False while the real canvas is open.
     function beginSlide() {
         if (visible && !quiet) return false;
+        // A slide that has landed holds the scene one paint more before its
+        // close (slideCloseTimer). A new slide in that 32 ms must not glide on
+        // the landed canvas: its entry state is the old slide's, and the
+        // landing would shift the windows by the first slide a second time.
+        // The close is taken now, and the new slide opens fresh.
+        if (slideCloseTimer.running) {
+            slideCloseTimer.stop();
+            visible = false;
+            quiet = false;
+        }
         if (!visible) {
             // The quiet scene opens instantly, opaque: KWin composites the
             // scene's framebuffer over black, so a fade-in here would flash
@@ -4393,8 +4511,7 @@ KWin.SceneEffect {
             open(true);
             slideToX = viewX;
             slideToY = viewY;
-            slideWarm = true;
-            dbg("slide", "quiet open, gliding " + panDuration + "ms after the first paint");
+            dbg("slide", "quiet open, gliding " + panDuration + "ms");
         }
         return true;
     }
@@ -4423,6 +4540,7 @@ KWin.SceneEffect {
             quiet = false;
             return;
         }
+        syncFloatsToEntries();
         targets = copyTargets(entryTargets);
         const cur = targetOf(currentActivity);
         cur.x += dx;
@@ -4490,8 +4608,11 @@ KWin.SceneEffect {
 
     ParallelAnimation {
         id: slideAnim
-        NumberAnimation { target: effect; property: "viewX"; to: effect.slideToX; duration: effect.panDuration; easing.type: Easing.InOutCubic }
-        NumberAnimation { target: effect; property: "viewY"; to: effect.slideToY; duration: effect.panDuration; easing.type: Easing.InOutCubic }
+        // Leaps off at once and lands with a hair of carry (a 3% OutBack):
+        // the old in-out curve had covered 5% of the way at 50 ms, so every
+        // fly seemed to hesitate before it went. This one is past half by then.
+        NumberAnimation { target: effect; property: "viewX"; to: effect.slideToX; duration: effect.slideMs; easing.type: Easing.OutBack; easing.overshoot: 0.9 }
+        NumberAnimation { target: effect; property: "viewY"; to: effect.slideToY; duration: effect.slideMs; easing.type: Easing.OutBack; easing.overshoot: 0.9 }
         onFinished: effect.endSlide()
     }
 
@@ -4571,6 +4692,15 @@ KWin.SceneEffect {
     // The activation fly: the desktop slides until the window is wholly in
     // view, at the pan that leaves the most of the other windows in view for
     // the least movement - not always centred, so a desk keeps its shape.
+    // The fly's landing raises the window it came for. With focus following
+    // the mouse and raise on hover only (no click-raise) KWin raises a window
+    // after the pointer has rested on it, and the pointer never moved: the
+    // window slid under it. So after an activation fly the window stayed
+    // wherever the stack had it, often under its neighbours.
+    function raiseAfterFly(w) {
+        if (!w || w.deleted) return;
+        KWin.Workspace.raiseWindow(w);
+    }
     function flyToWindow(w) {
         const t = peekTarget(activityOf(w));
         const f = w.frameGeometry;
@@ -4587,6 +4717,9 @@ KWin.SceneEffect {
         }
         const d = smartPan(rect, others, 24);
         if (d.dx !== 0 || d.dy !== 0) slideTo(d.dx, d.dy);
+        // Raised now, not at the landing: the slide is a quiet scene over the
+        // real windows, and the stacking order it shows is the real one.
+        raiseAfterFly(w);
     }
     // The entry a window is drawn from, or null.
     function entryFor(w) {
@@ -4759,6 +4892,7 @@ KWin.SceneEffect {
     case "release": sceneGestures = 0; break; // the stuck-gesture emergency: the parked close fires at once
         case "toggle": toggle(); break;
         case "home": home(); break;
+        case "reloadstate": loadClusterState(); loadBookmarks(); break;
         case "bookmark": {
             // bookmark set N | bookmark go N: the keys' two verbs, for a script.
             if (a[1] === "set" && numok(2)) bookmarkSet(Number(a[2]));
@@ -4890,7 +5024,7 @@ KWin.SceneEffect {
         case "clearsel": clearSelection(); break;
         case "pin": pinEntries([entries[Number(a[1])]]); break;
         case "unpin": unpinEntries([entries[Number(a[1])]]); break;
-        case "unpinall": pinned = {}; savePinned(); break;
+        case "unpinall": pinned = {}; for (let i = 0; i < entries.length; ++i) setPinned(entries[i].window, false); break;
         case "arrange": arrange(a[1], Number(a[2]), Number(a[3])); break;
         case "tidy": tidy(); break;
         case "undo": undo(); break;
@@ -4965,6 +5099,8 @@ KWin.SceneEffect {
             + " moves=" + Object.keys(entryAnims).length
             + " dragraw=" + Object.keys(dragRaw).length
             + " undo=" + undoStack.length
+            + " snaps=" + snapCatches
+            + " throw=" + (lastThrow ? Math.round(lastThrow.dx) + "," + Math.round(lastThrow.dy) : "-")
             + " bookmarks=" + Object.keys(bookmarks).length
             + " deskwin=" + Object.keys(desktopWindows).length
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
@@ -5031,7 +5167,6 @@ KWin.SceneEffect {
         rebuildBindings();
         readSwipeFingers();
         loadHiddenFrames();
-        loadPinned();
         loadClusterState();
         loadBookmarks();
         watchAllWindows();

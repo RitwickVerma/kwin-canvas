@@ -31,7 +31,18 @@ run_scenario() {
     c state
     assert_eq "navigated, the second push still closes it" "$(sget visible)" false
     assert_true "and enters where it was looking, not where it began" "$(sget viewx)" != "0.0"
+    # SmoothZoom off: the open jumps to the fit view and leaves no camera
+    # goal, and the second push must still go back where it began.
     setcfg SmoothZoom false
+    c cancel; sleep 0.6
+    cmd "slide 700 300" >/dev/null 2>&1; sleep 1.6
+    c state; v0="$(sget viewx),$(sget viewy)"
+    push_border 7; sleep 0.8
+    c state
+    assert_eq "without the smooth camera the push opens it too" "$(sget visible)" true
+    push_border 7; sleep 1.2
+    c state
+    assert_eq "and the second push lands where it began" "$(sget viewx),$(sget viewy)" "$v0"
     set_borders 7
     setcfg BorderZoom 0.8
     arrange >/dev/null

@@ -39,10 +39,9 @@ Decoration {
     // The states the pill shows: a floated window wears the accent ring
     // and the filled arrow; a maximized one shows the restore glyph;
     // the keep-above and keep-below marks light their own accent.
-    readonly property bool floating: decoration.client.onAllDesktops
+    // One pin: on all desktops or kept above (the same test the canvas uses).
+    readonly property bool floating: decoration.client.onAllDesktops || decoration.client.keepAbove
     readonly property bool maximized: decoration.client.maximized
-    readonly property bool above: decoration.client.keepAbove
-    readonly property bool below: decoration.client.keepBelow
     readonly property color glyph: activeWindow ? Qt.rgba(1, 1, 1, 0.88) : Qt.rgba(1, 1, 1, 0.45)
     readonly property color glass: Qt.rgba(0.05, 0.05, 0.08, 0.62)
 
@@ -66,10 +65,12 @@ Decoration {
             if (t === DecorationOptions.DecorationButtonClose) out.push("X");
             else if (t === DecorationOptions.DecorationButtonMinimize) out.push("I");
             else if (t === DecorationOptions.DecorationButtonMaximizeRestore) out.push("A");
-            else if (t === DecorationOptions.DecorationButtonOnAllDesktops) out.push("S");
+            else if (t === DecorationOptions.DecorationButtonOnAllDesktops) { if (out.indexOf("S") < 0) out.push("S"); }
             else if (t === DecorationOptions.DecorationButtonMenu) out.push("M");
-            else if (t === DecorationOptions.DecorationButtonKeepAbove) out.push("F");
-            else if (t === DecorationOptions.DecorationButtonKeepBelow) out.push("B");
+            // Keep above and on all desktops are one pin here: whichever the
+            // title bar is configured with draws the single pin button, once.
+            else if (t === DecorationOptions.DecorationButtonKeepAbove) { if (out.indexOf("S") < 0) out.push("S"); }
+            else if (t === DecorationOptions.DecorationButtonKeepBelow) { }
             else if (t === DecorationOptions.DecorationButtonQuickHelp) out.push("H");
             else if (t === DecorationOptions.DecorationButtonExplicitSpacer) out.push("_");
         }
@@ -153,7 +154,7 @@ Decoration {
             required property string modelData
             property bool hovered: false
             property bool pressed: false
-            readonly property bool lit: (modelData === "S" && root.floating) || (modelData === "A" && root.maximized) || (modelData === "F" && root.above) || (modelData === "B" && root.below)
+            readonly property bool lit: (modelData === "S" && root.floating) || (modelData === "A" && root.maximized)
             scale: pressed ? 0.86 : (hovered ? 1.2 : 1)
             width: 22
             height: 22
@@ -205,7 +206,7 @@ Decoration {
                     const lit = parent.lit;
                     ctx.strokeStyle = lit ? "#2a6ddf" : "#ffffff";
                     ctx.fillStyle = lit ? "#2a6ddf" : "#ffffff";
-                    ctx.lineWidth = (code === "S" || code === "F" || code === "B") ? 1.3 : 1.2;
+                    ctx.lineWidth = code === "S" ? 1.3 : 1.2;
                     if (code === "X") {
                         ctx.beginPath();
                         ctx.moveTo(1.5, 1.5);
@@ -243,38 +244,6 @@ Decoration {
                         ctx.arc(5, 5, 0.9, 0, Math.PI * 2);
                         ctx.arc(5, 8, 0.9, 0, Math.PI * 2);
                         ctx.fill();
-                    } else if (code === "F") {
-                        // The push to the top: the base bar with the
-                        // chevron above it.
-                        ctx.beginPath();
-                        ctx.moveTo(1.5, 8.5);
-                        ctx.lineTo(8.5, 8.5);
-                        ctx.stroke();
-                        ctx.beginPath();
-                        ctx.moveTo(2, 6.5);
-                        ctx.lineTo(5, 1.5);
-                        ctx.lineTo(8, 6.5);
-                        if (lit) {
-                            ctx.closePath();
-                            ctx.fill();
-                        }
-                        ctx.stroke();
-                    } else if (code === "B") {
-                        // The push to the bottom: the mirrored chevron
-                        // under its base bar.
-                        ctx.beginPath();
-                        ctx.moveTo(1.5, 1.5);
-                        ctx.lineTo(8.5, 1.5);
-                        ctx.stroke();
-                        ctx.beginPath();
-                        ctx.moveTo(2, 3.5);
-                        ctx.lineTo(5, 8.5);
-                        ctx.lineTo(8, 3.5);
-                        if (lit) {
-                            ctx.closePath();
-                            ctx.fill();
-                        }
-                        ctx.stroke();
                     } else if (code === "H") {
                         ctx.beginPath();
                         ctx.moveTo(3.3, 2.2);
@@ -317,10 +286,14 @@ Decoration {
                     if (parent.modelData === "X") decoration.requestClose();
                     else if (parent.modelData === "I") decoration.requestMinimize();
                     else if (parent.modelData === "A") decoration.requestToggleMaximization(Qt.LeftButton);
-                    else if (parent.modelData === "S") decoration.requestToggleOnAllDesktops();
+                    else if (parent.modelData === "S") {
+                        // The one pin: both flags together, as the canvas sets them.
+                        const on = !root.floating;
+                        if (decoration.client.onAllDesktops !== on) decoration.requestToggleOnAllDesktops();
+                        if (decoration.client.keepAbove !== on) decoration.requestToggleKeepAbove();
+                        if (on && decoration.client.keepBelow) decoration.requestToggleKeepBelow();
+                    }
                     else if (parent.modelData === "M") decoration.requestShowWindowMenu();
-                    else if (parent.modelData === "F") decoration.requestToggleKeepAbove();
-                    else if (parent.modelData === "B") decoration.requestToggleKeepBelow();
                     else if (parent.modelData === "H") decoration.requestContextHelp();
                 }
             }

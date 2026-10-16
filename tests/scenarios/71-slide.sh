@@ -27,6 +27,8 @@ run_scenario() {
     assert_eq "closed after the cancel" "$(sget visible)" false
     assert_near "cancel kept KCalc" "$(eget KCalc fx)" $((x0 - 500 - 960)) 1
     c "slide -1460 -300"
-    c state
+    # The slide's length follows its distance, so a long return takes longer
+    # than the 220 ms reference: wait for it to land rather than race it.
+    for _ in $(seq 1 25); do c state; [ "$(sget visible)" = false ] && break; sleep 0.15; done
     assert_eq "back where it started" "$(eget KCalc fx)" "$x0"
 }
