@@ -426,6 +426,10 @@
         <entry name="DebugSeq" type="Int">
             <default>0</default>
         </entry>
+        <entry name="Perf" type="Bool">
+            <label>Write timings of the canvas's own motion to the journal, as "kwin-canvas perf: EVENT key=value" lines (open, first-paint, settle, slide, hover-fetch, ticks). Off costs nothing.</label>
+            <default>false</default>
+        </entry>
         <entry name="Verbose" type="Bool">
             <label>Write a trace of every decision the canvas takes to KWin's log, as [canvas] lines. Toggled live by the debug channel's "verbose" command.</label>
             <default>false</default>

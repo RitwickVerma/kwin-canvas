@@ -741,6 +741,42 @@ lean are zero, so what the state reports is what the screen shows. Everything
 is one per drag, not per window, which is what makes a group drag read as one
 piece of paper.
 
+**The perf trace** (`Perf` knob, off by default) writes the canvas's own
+timings to the journal, one `console.log` line each, in exactly this shape:
+`kwin-canvas perf: EVENT key=value key=value`. Every call site tests the
+boolean before it reads a clock or keeps a number, so off costs nothing; on,
+the tick spacing goes in a fixed 251-bin histogram, never a growing list.
+
+| Event | Keys | Meaning |
+|---|---|---|
+| `open` | none | `open()` ran (a quiet slide opens too) |
+| `first-paint` | `ms` | `open()` to the first physics tick after it, the time the scene took to produce its first frame |
+| `settle` | `ms`, `zoom` | `open()` until the camera is within 2% of its goal, once per open (at once when there is no goal) |
+| `slide` | `dist`, `ms` | a quiet slide: distance in px and wall-clock time from the animation's start to its landing |
+| `hover-fetch` | `ms` | the rest that made the camera fetch a hovered window (the pointer's rest, which is the fetch's latency) |
+| `ticks` | `n`, `p50`, `p95`, `max` | physics tick spacing in ms over the session, written when the canvas closes |
+
+**Where an open's first 150 ms go.** `open()` itself takes about 1 ms; the
+first physics tick comes 150 to 200 ms after it because `visible = true`
+hands the main thread to KWin, which builds a new scene view per screen on
+every open. Measured in the hidden nest (real GPU, 5 windows, `OpenZoom fit`,
+marks at the start of `open()`, at the delegate `Loader`'s creation, at
+`ui.qml`'s `onCompleted` and at the first tick, 5 to 8 opens each):
+roughly 75 to 80 ms is KWin creating the `QQuickWindow` and its `QRhi` (the
+log shows `Creating QRhi ... Created QRhi` once per open, before the
+delegate exists); roughly 40 ms is instantiating `ui.qml`; roughly 35 to 40
+ms is the first frame's sync and render before the timer gets the thread.
+Cutting scene sections from `ui.qml` (hot-reloaded, so no restart) moved the
+`ui.qml` share by 0 to 14 ms in total, with no single section above noise:
+the windows, the ground, the minimap, the toolbar and the tags each cost a
+few ms. The wallpaper query, the load pulse and the ground publish are
+asynchronous D-Bus calls or run at the close, and cost nothing here. The
+first open after a session starts is worse (about 290 ms: the QML
+compile and a cold driver). The view cannot be built ahead from QML:
+`QuickSceneEffect` creates its views when it starts and drops them when it
+stops, and keeping it started would draw the full-screen scene and break
+direct scanout all day, which is the cost the idle bob once had.
+
 ## Screen edges
 
 `X-KWin-Border-Activate` in the metadata puts the effect into the Screen

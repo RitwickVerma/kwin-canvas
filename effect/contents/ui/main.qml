@@ -296,6 +296,67 @@ KWin.SceneEffect {
             + " quiet=" + quiet + " grasp=" + grasp
             + " clusters=" + clusters.length);
     }
+    // The perf trace: timings of the canvas's own motion, one journal line
+    // each, "kwin-canvas perf: EVENT key=value ...". Off by default and free
+    // when off: every call site checks `perf` before it reads a clock or
+    // keeps a number, so a user's "it pauses before it flies" becomes figures
+    // instead of a guess. Events: open, first-paint ms, settle ms zoom,
+    // slide dist ms, hover-fetch ms, ticks n p50 p95 max (on the close).
+    property bool perf: configuration.Perf
+    function perfLog(ev, kv) {
+        console.log("kwin-canvas perf: " + ev + (kv ? " " + kv : ""));
+    }
+    property real perfOpenAt: 0       // Date.now() at the last open()
+    property bool perfSettled: true   // the camera has been reported for this open
+    property real perfSettleDist: 0   // what the open's flight had to cover, screen px
+    property real perfSlideAt: 0      // Date.now() when the slide animation started
+    property int perfTickN: 0
+    property real perfTickMax: 0
+    // Tick spacing as a histogram, 1 ms bins (the last takes everything from
+    // 250 ms up): constant memory however long the canvas stays open.
+    property var perfBins: []
+    // A tick fired, ms after the one before. The first after an open is the
+    // open's first paint (how long the scene took to produce a frame); every
+    // later one goes in the histogram.
+    function perfTick(now, ms, first) {
+        if (first) {
+            if (perfOpenAt > 0) perfLog("first-paint", "ms=" + (now - perfOpenAt));
+            return;
+        }
+        const b = Math.min(250, Math.max(0, Math.round(ms)));
+        if (perfBins.length === 0) perfBins = new Array(251).fill(0);
+        perfBins[b]++;
+        perfTickN++;
+        if (ms > perfTickMax) perfTickMax = ms;
+    }
+    // The camera is within 2% of its goal: the zoom to the goal's scale, the
+    // view to 2% of the way it had to go (never less than 2 px).
+    function perfSettleCheck(now) {
+        if (perfSettled) return;
+        const nearZ = !camHasGoal || Math.abs(zoom - camGoalZoom) <= 0.02 * camGoalZoom;
+        const nearV = !camHasGoal || camAnchored
+            || Math.hypot(viewX - camGoalX, viewY - camGoalY) * zoom <= Math.max(2, 0.02 * perfSettleDist);
+        if (!nearZ || !nearV) return;
+        perfSettled = true;
+        perfLog("settle", "ms=" + (now - perfOpenAt) + " zoom=" + zoom.toFixed(4));
+    }
+    function perfTicksReport() {
+        if (perfTickN > 0) {
+            const at = function (q) {
+                let acc = 0;
+                const want = Math.ceil(q * perfTickN);
+                for (let i = 0; i < perfBins.length; ++i) {
+                    acc += perfBins[i];
+                    if (acc >= want) return i;
+                }
+                return perfBins.length - 1;
+            };
+            perfLog("ticks", "n=" + perfTickN + " p50=" + at(0.5) + " p95=" + at(0.95) + " max=" + Math.round(perfTickMax));
+        }
+        perfTickN = 0;
+        perfTickMax = 0;
+        perfBins = [];
+    }
     // The map's home, mirrored out of the map item: the effect's own
     // functions read it, so logState can say whether the lens is up without
     // reaching into the scene tree.
@@ -479,7 +540,7 @@ KWin.SceneEffect {
         // A floated window rides the screen: its picture is always in view,
         // and fetching its coordinates would fly the camera away from where
         // the hand is looking.
-        if (isPinnedEntry(e)) return;
+        if (isPinnedEntry(e)) return false;
         const others = [];
         for (let i = 0; i < entries.length; ++i) {
             if (entries[i] === e) continue;
@@ -489,7 +550,10 @@ KWin.SceneEffect {
         // The hover's fetch is a suggestion, not a flight: it glides at a
         // lower rate than a choose-move, so a rest over a half-hidden window
         // slides it in instead of snatching it.
-        if (d.dx !== 0 || d.dy !== 0) { dbg("camGo", "bringIntoView " + (e.window ? e.window.caption : "?") + " d=(" + Math.round(d.dx) + "," + Math.round(d.dy) + ")"); camGo(zoom, viewX + d.dx, viewY + d.dy, undefined, undefined, 0.55); }
+        if (d.dx === 0 && d.dy === 0) return false;
+        dbg("camGo", "bringIntoView " + (e.window ? e.window.caption : "?") + " d=(" + Math.round(d.dx) + "," + Math.round(d.dy) + ")");
+        camGo(zoom, viewX + d.dx, viewY + d.dy, undefined, undefined, 0.55);
+        return true;
     }
 
     // The best camera pan for a canvas rect: the least movement that keeps
@@ -1390,7 +1454,7 @@ KWin.SceneEffect {
                 // transit, not an interest in the window it stopped over:
                 // the fetch would drag the camera as the hand reaches for the
                 // panel.
-                if (!nearDock(p.x, p.y)) bringIntoView(e);
+                if (!nearDock(p.x, p.y) && bringIntoView(e) && perf) perfLog("hover-fetch", "ms=" + (now - hoverSince));
             }
             if (focusEntry !== e) {
                 focusEntry = e;
@@ -2633,6 +2697,7 @@ KWin.SceneEffect {
         let dt = (now - lastTickAt) / 1000;
         if (!(dt > 0)) dt = 0;
         lastTickAt = now;
+        if (perf) perfTick(now, dt * 1000, tickFresh);
         if (tickFresh) { tickFresh = false; return 0.0167; }
         return Math.min(dt, 0.1);
     }
@@ -2650,6 +2715,7 @@ KWin.SceneEffect {
                 const n = Math.max(1, Math.ceil(dt / 0.0167));
                 for (let i = 0; i < n; ++i) effect.camStep(dt / n);
             }
+            if (effect.perf) effect.perfSettleCheck(Date.now());
             // Each of these is a walk over every window: at rest with nothing
             // floating and nothing gliding there is nothing for them to do.
             // The float walk also drops a picture whose window has just been
@@ -2780,6 +2846,12 @@ KWin.SceneEffect {
         refreshGroundWallpaper();
         if (visible) return;
         tickFresh = true;
+        if (perf) {
+            perfOpenAt = Date.now();
+            perfSettled = false;
+            perfSettleDist = 0;
+            perfLog("open");
+        }
         camStop();
         graspJumped = false;
         quiet = !!quietMode;
@@ -2829,6 +2901,7 @@ KWin.SceneEffect {
         // there has not been navigated, and goes back to where it began.
         // With SmoothZoom off the view jumps and leaves no goal: the camera itself is the goal.
         openGoal = !moved ? null : camHasGoal ? { x: camGoalX, y: camGoalY, z: camGoalZoom } : { x: viewX, y: viewY, z: zoom };
+        if (perf && camHasGoal) perfSettleDist = Math.hypot(camGoalX - viewX, camGoalY - viewY) * zoom;
         if (!quiet && passthrough) probeCall.call();
         // The fidelity ladder samples the load the moment the overworld
         // opens - no brief spell of full decoration on an already-busy
@@ -4542,6 +4615,10 @@ KWin.SceneEffect {
         dropPassthrough();
         zoom = 1.0;
         const dx = Math.round(slideToX - entryViewX), dy = Math.round(slideToY - entryViewY);
+        if (perf && perfSlideAt > 0) {
+            perfLog("slide", "dist=" + Math.round(Math.hypot(dx, dy)) + " ms=" + (Date.now() - perfSlideAt));
+            perfSlideAt = 0;
+        }
         // The same net as commit: a slide that landed on a non-finite camera
         // must not write non-finite frames.
         if (!Number.isFinite(dx) || !Number.isFinite(dy) || !Number.isFinite(viewX) || !Number.isFinite(viewY)) {
@@ -4625,6 +4702,7 @@ KWin.SceneEffect {
         // fly seemed to hesitate before it went. This one is past half by then.
         NumberAnimation { target: effect; property: "viewX"; to: effect.slideToX; duration: effect.slideMs; easing.type: Easing.OutBack; easing.overshoot: 0.9 }
         NumberAnimation { target: effect; property: "viewY"; to: effect.slideToY; duration: effect.slideMs; easing.type: Easing.OutBack; easing.overshoot: 0.9 }
+        onStarted: { if (effect.perf) effect.perfSlideAt = Date.now(); }
         onFinished: effect.endSlide()
     }
 
@@ -5158,7 +5236,10 @@ KWin.SceneEffect {
     // timer only runs while the canvas is visible, so a goal set at the
     // close would hang until the next open resumed it mid-flight).
     onVisibleChanged: {
-        if (!visible) camStop();
+        if (!visible) {
+            camStop();
+            if (perf) perfTicksReport();
+        }
     }
 
     onConfigurationChanged: {

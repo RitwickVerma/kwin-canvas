@@ -37,6 +37,16 @@ against the canvas (not in the nest); a Wallpaper Engine wallpaper in the nest;
 the raise after a fly with focus-follows-mouse and no click-raise (reasoned from
 the code; the nest raises on activation itself, so scenario `155` is only a guard).
 
+**Perf trace.** The `Perf` knob (off by default, free when off) writes `kwin-canvas
+perf: EVENT key=value` lines to the journal: `open`, `first-paint`, `settle`,
+`slide`, `hover-fetch`, `ticks` (format in `architecture.md` → *Motion*). Scenario
+`161-perf` checks it, and that off writes none. With it, the open's 150 to 200 ms
+before the first tick was taken apart in the nest: about half is KWin building a
+fresh `QQuickWindow` and `QRhi` for the scene on every open, a quarter is
+instantiating `ui.qml` (spread thin, no one section above noise), a quarter is the
+first frame. None of it is reachable from QML without keeping the scene running, so
+the stall is left as it is. Nest timings, not the desktop's.
+
 **Installing.** `make install` is the only target that writes `~/.local/share`, the
 copy the live session loads at login. Tests and the nest use `build/nest-data`
 (`make nest-install`). The plugin in `/usr/lib/qt6/plugins/kwin/plugins` is
@@ -50,6 +60,9 @@ installed by hand with `sudo`.
 - The slide costs 6 to 12% of the main thread; where it goes is not known.
 - The fly starts with the open (no warm-up turn). The first painted frame is
   the desktop's own picture; only the nest has checked there is no flash.
+- The open's first tick comes 150 to 200 ms after `open()`. Read `kwin-canvas perf:
+  first-paint` on the desktop (`Perf` knob) to see whether it is the same there; if
+  it is, only a smaller scene or a KWin change would shorten it.
 
 ## The fork
 
