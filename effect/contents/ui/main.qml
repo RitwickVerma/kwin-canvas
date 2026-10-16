@@ -588,12 +588,11 @@ KWin.SceneEffect {
     // own "on all desktops", repurposed - the title-bar menu's pin entry
     // and the canvas agree on what floats - and the caption list
     // persists the choice.
-    // One state, "pinned": the window stays with you. KWin holds it, so the
-    // title bar's own menu, the pill, the panel applet and the canvas all read
-    // the same thing and nothing here is stored. It is on whenever KWin has
-    // the window on all desktops or kept above (set either from anywhere and
-    // the canvas floats it), and the one toggle sets or clears both, and
-    // clears keep-below, which would contradict it.
+    // Float and "on all desktops" are one state: the window stays with you.
+    // KWin holds it, so the title bar's own menu, the pill, the panel applet,
+    // a window rule and the canvas all read and write the same flag and
+    // nothing here is stored. Keep above and keep below are separate: they
+    // are stacking, and a window may be kept above without floating.
     property var pinned: ({})          // caption -> { sx, sy }, where the hand left it (this session)
     property var floatOf: ({})         // window internalId -> { x, y, vx, vy, wasInX, wasInY }, screen px
     property real floatRev: 0
@@ -604,36 +603,17 @@ KWin.SceneEffect {
     // the frame tick skips the float walk when it is 0.
     readonly property int pinnedCount: { revision; let n = 0; for (let i = 0; i < entries.length; ++i) if (isPinnedEntry(entries[i])) n++; return n; }
     function floatHeld() { for (const id in floatOf) return true; return false; }
-    function windowPinned(w) { return !!w && !w.deleted && (w.onAllDesktops || w.keepAbove); }
+    function windowPinned(w) { return !!w && !w.deleted && w.onAllDesktops; }
     function isPinnedEntry(e) { return !!e && windowPinned(e.window); }
     function setPinned(w, on) {
         if (!w || w.deleted) return;
         w.onAllDesktops = on;
-        w.keepAbove = on;
-        if (on) w.keepBelow = false;
     }
-    // Float, keep above and on all desktops are one thing. Whichever of them
-    // changes - the title bar's menu, the pill, a window rule, a script, the
-    // canvas - the others follow, so the three never disagree. `changed` is
-    // the flag that moved ("above", "desktops", "below"); anything else
-    // (a window seen for the first time) adopts "either is set". A rule that
-    // forces one flag wins: the write the rule refuses is the one that
-    // sticks, and the rest follow what stuck.
-    property bool pinSyncing: false
-    function syncPin(w, changed) {
-        if (pinSyncing || !w || w.deleted || !w.managed) return;
-        if (w.desktopWindow || w.dock || w.popupWindow || w.specialWindow) return;
-        let target;
-        if (changed === "above") target = w.keepAbove;
-        else if (changed === "desktops") target = w.onAllDesktops;
-        else if (changed === "below") { if (!w.keepBelow) return; target = false; }
-        else target = windowPinned(w);
-        if (changed !== "below" && w.keepAbove === target && w.onAllDesktops === target) return;
-        pinSyncing = true;
-        setPinned(w, target);
-        if (w.keepAbove !== target || w.onAllDesktops !== target) setPinned(w, !target);
-        pinSyncing = false;
-        dbg("pin", "synced " + w.caption + " (" + changed + ") above=" + w.keepAbove + " all=" + w.onAllDesktops);
+    // The flag moved from outside (a window rule, the title bar's menu, a
+    // script): the float walk and the pill read it straight from the window,
+    // so a revision is all that is needed for the canvas to catch up.
+    function noteDesktopsChanged(w) {
+        if (!w || w.deleted || !w.managed) return;
         revision++;
     }
     function pinEntries(list) {
@@ -1252,10 +1232,7 @@ KWin.SceneEffect {
         watchedWindows[w.internalId] = true;
         trackFree(w);
         w.frameGeometryChanged.connect(function () { effect.markDirty(w); });
-        w.keepAboveChanged.connect(function () { effect.syncPin(w, "above"); });
-        w.keepBelowChanged.connect(function () { effect.syncPin(w, "below"); });
-        w.desktopsChanged.connect(function () { effect.syncPin(w, "desktops"); });
-        syncPin(w, "seen");
+        w.desktopsChanged.connect(function () { effect.noteDesktopsChanged(w); });
         w.maximizedChanged.connect(function () { effect.noteReturnedFree(w); });
         w.tileChanged.connect(function () { effect.noteReturnedFree(w); });
     }
@@ -5096,7 +5073,7 @@ KWin.SceneEffect {
 
     function logState() {
         let s = "kwin-canvas state visible=" + visible + (quiet ? " quiet" : "") + (grasp ? " grasp" : "") + (passthroughLive ? " passthrough" : "") + (planeLive ? " plane" : "") + " zoom=" + zoom.toFixed(4) + " view=(" + viewX.toFixed(1) + "," + viewY.toFixed(1) + ") activity=" + labelOf(currentActivity) + " entries=" + entries.length
-            + " popups=" + appPopups.length + " menus=" + canvasMenus + " nav=" + (navHeld ? "hold" : "-") + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
+            + " popups=" + appPopups.length + " menus=" + canvasMenus + " floats=" + pinnedCount + " nav=" + (navHeld ? "hold" : "-") + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
             + " screens=" + KWin.Workspace.screens.length + " backdrop=" + backdropLayers
             + " cam=" + (camHasGoal ? "goal" : (camLive() ? "glide" : "-"))
             + " focus=" + (focusEntry ? JSON.stringify(focusEntry.window.caption) : "-")

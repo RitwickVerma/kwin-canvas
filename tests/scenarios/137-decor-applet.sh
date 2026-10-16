@@ -32,22 +32,26 @@ run_scenario() {
     assert_eq "and the minimized window leaves the plane" "$(sget entries)" 4
     c cancel
 
-    # One pin: the float action sets on-all-desktops and keep-above together,
-    # and the state's win= token reports pinned (either flag) as its fourth
-    # field, then keep-above, keep-below and the capture flag.
+    # The float toggles the on-all-desktops pin alone, which the state's win=
+    # token reports as its fourth field (then keep-above, keep-below and the
+    # capture flag).
     nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction float
     sleep 0.4
-    assert_eq "the pin lifts the window" "$(pt_state | grep -c ' win=[^|]*|[^|]*|[^|]*|1|1|0|0$')" 1
+    assert_eq "the float lifts the window" "$(pt_state | grep -c ' win=[^|]*|[^|]*|[^|]*|1|0|0|0$')" 1
     nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction float
     sleep 0.4
-    assert_eq "and the same action sets it down, both flags" "$(pt_state | grep -c ' win=[^|]*|[^|]*|[^|]*|0|0|0|0$')" 1
-    # A window with only keep-above (set from KDE's own menu) is pinned too,
-    # and the one toggle clears it.
-    kwinjs "var w = workspace.activeWindow; w.keepAbove = true;" 0.8
-    assert_eq "keep-above alone reads as pinned" "$(pt_state | grep -c ' win=[^|]*|[^|]*|[^|]*|1|1|0|0$')" 1
-    nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction float
+    assert_eq "and the same action sets it down" "$(pt_state | grep -c ' win=[^|]*|[^|]*|[^|]*|0|0|0|0$')" 1
+    # Keep above and keep below are their own flags; the float is not one.
+    nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction keepabove
     sleep 0.4
-    assert_eq "and the pin toggle clears it" "$(pt_state | grep -c ' win=[^|]*|[^|]*|[^|]*|0|0|0|0$')" 1
+    assert_eq "keep-above lifts the window above, without floating it" "$(pt_state | grep -c ' win=[^|]*|[^|]*|[^|]*|0|1|0|0$')" 1
+    nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction keepabove
+    sleep 0.4
+    nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction keepbelow
+    sleep 0.4
+    assert_eq "keep-below sinks it" "$(pt_state | grep -c ' win=[^|]*|[^|]*|[^|]*|0|0|1|0$')" 1
+    nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction keepbelow
+    sleep 0.4
     nq org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction capture
     sleep 0.4
     assert_eq "the capture exclusion hides the window from capture" "$(pt_state | grep -c ' win=[^|]*|[^|]*|[^|]*|[^|]*|0|0|1$')" 1

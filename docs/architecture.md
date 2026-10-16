@@ -652,14 +652,15 @@ toast names the stop.
 
 ### Floating windows
 
-A floating window is a pinned one, and "pinned" is one state that KWin holds,
-so the title bar's own menu, the decoration's pill, the panel applet and the
-canvas cannot disagree: a window is pinned when KWin has it on all desktops
-**or** kept above, the one toggle sets or clears both (and clears keep-below,
-which would contradict it), and nothing is stored in the effect. The pill and
-the applet draw one pin button in place of the separate all-desktops,
-keep-above and keep-below ones. The `PinnedWindows` knob is no longer read;
-it stays declared so an old config still loads.
+A floating window is a pinned one, and "pinned" is one flag that KWin holds:
+on all desktops. The title bar's own menu, the decoration's pill, the panel
+applet, a window rule and the canvas all read and write it, so they cannot
+disagree - a rule that puts a window on all desktops floats it on the canvas,
+and the float button sets the same flag. Nothing is stored in the effect.
+Keep above and keep below are separate flags (stacking, not float): the pill
+and the applet draw their own buttons for them, and the float never sets or
+clears them. The `PinnedWindows` knob is no longer read; it stays declared so
+an old config still loads.
 
 The float's semantics: the window's coordinates on the plane never change -
 only the hand moves them, and a 1:1 KWin move is a move of the coordinates,

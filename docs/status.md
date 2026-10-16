@@ -14,8 +14,7 @@ tight").
 
 **Working, verified in the nest and seen live:** the quiet slide and the auto fly
 (ease-out with a hair of carry, length by distance, raised on landing), bookmarks
-(`Ctrl+1..9` save, `Alt+1..9` fly), the throw and the snap magnet, one pin (on all
-desktops or kept above, one button, held by KWin), tiled and maximized windows
+(`Ctrl+1..9` save, `Alt+1..9` fly), the throw and the snap magnet, float (the on-all-desktops flag, held by KWin; keep above is separate), tiled and maximized windows
 moving as a room and returning to their plane spot, the corner push at zoom-to-fit
 and back to where it began, the dock approach, and a wallpaper that is not a picture
 (Wallpaper Engine) drawn through the desktop window.

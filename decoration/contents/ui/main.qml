@@ -39,8 +39,9 @@ Decoration {
     // The states the pill shows: a floated window wears the accent ring
     // and the filled arrow; a maximized one shows the restore glyph;
     // the keep-above and keep-below marks light their own accent.
-    // One pin: on all desktops or kept above (the same test the canvas uses).
-    readonly property bool floating: decoration.client.onAllDesktops || decoration.client.keepAbove
+    // Float is on all desktops (the same test the canvas uses); keep above
+    // and keep below are their own marks.
+    readonly property bool floating: decoration.client.onAllDesktops
     readonly property bool maximized: decoration.client.maximized
     readonly property color glyph: activeWindow ? Qt.rgba(1, 1, 1, 0.88) : Qt.rgba(1, 1, 1, 0.45)
     readonly property color glass: Qt.rgba(0.05, 0.05, 0.08, 0.62)
@@ -65,12 +66,10 @@ Decoration {
             if (t === DecorationOptions.DecorationButtonClose) out.push("X");
             else if (t === DecorationOptions.DecorationButtonMinimize) out.push("I");
             else if (t === DecorationOptions.DecorationButtonMaximizeRestore) out.push("A");
-            else if (t === DecorationOptions.DecorationButtonOnAllDesktops) { if (out.indexOf("S") < 0) out.push("S"); }
+            else if (t === DecorationOptions.DecorationButtonOnAllDesktops) out.push("S");
             else if (t === DecorationOptions.DecorationButtonMenu) out.push("M");
-            // Keep above and on all desktops are one pin here: whichever the
-            // title bar is configured with draws the single pin button, once.
-            else if (t === DecorationOptions.DecorationButtonKeepAbove) { if (out.indexOf("S") < 0) out.push("S"); }
-            else if (t === DecorationOptions.DecorationButtonKeepBelow) { }
+            else if (t === DecorationOptions.DecorationButtonKeepAbove) out.push("F");
+            else if (t === DecorationOptions.DecorationButtonKeepBelow) out.push("B");
             else if (t === DecorationOptions.DecorationButtonQuickHelp) out.push("H");
             else if (t === DecorationOptions.DecorationButtonExplicitSpacer) out.push("_");
         }
@@ -154,7 +153,7 @@ Decoration {
             required property string modelData
             property bool hovered: false
             property bool pressed: false
-            readonly property bool lit: (modelData === "S" && root.floating) || (modelData === "A" && root.maximized)
+            readonly property bool lit: (modelData === "S" && root.floating) || (modelData === "A" && root.maximized) || (modelData === "F" && root.above) || (modelData === "B" && root.below)
             scale: pressed ? 0.86 : (hovered ? 1.2 : 1)
             width: 22
             height: 22
@@ -286,14 +285,10 @@ Decoration {
                     if (parent.modelData === "X") decoration.requestClose();
                     else if (parent.modelData === "I") decoration.requestMinimize();
                     else if (parent.modelData === "A") decoration.requestToggleMaximization(Qt.LeftButton);
-                    else if (parent.modelData === "S") {
-                        // The one pin: both flags together, as the canvas sets them.
-                        const on = !root.floating;
-                        if (decoration.client.onAllDesktops !== on) decoration.requestToggleOnAllDesktops();
-                        if (decoration.client.keepAbove !== on) decoration.requestToggleKeepAbove();
-                        if (on && decoration.client.keepBelow) decoration.requestToggleKeepBelow();
-                    }
+                    else if (parent.modelData === "S") decoration.requestToggleOnAllDesktops();
                     else if (parent.modelData === "M") decoration.requestShowWindowMenu();
+                    else if (parent.modelData === "F") decoration.requestToggleKeepAbove();
+                    else if (parent.modelData === "B") decoration.requestToggleKeepBelow();
                     else if (parent.modelData === "H") decoration.requestContextHelp();
                 }
             }
