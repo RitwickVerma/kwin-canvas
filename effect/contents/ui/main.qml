@@ -476,6 +476,10 @@ KWin.SceneEffect {
         return false;
     }
     function bringIntoView(e) {
+        // A floated window rides the screen: its picture is always in view,
+        // and fetching its coordinates would fly the camera away from where
+        // the hand is looking.
+        if (isPinnedEntry(e)) return;
         const others = [];
         for (let i = 0; i < entries.length; ++i) {
             if (entries[i] === e) continue;
@@ -1337,12 +1341,9 @@ KWin.SceneEffect {
             return;
         }
         if (navHeld || quiet || pointerButtons !== Qt.NoButton || (restStart !== "" && passthroughLive)) return;
-        const c = globalToCanvas(p.x, p.y);
-        let e = null;
-        for (let i = entries.length - 1; i >= 0; --i) {
-            const en = entries[i];
-            if (c.x >= en.x && c.x < en.x + en.width && c.y >= en.y && c.y < en.y + en.height) { e = en; break; }
-        }
+        // The window the eye sees under the pointer: a floated window is its
+        // picture at the screen's edge, not its coordinates far away.
+        const e = entryAtScreen(p.x, p.y);
         const now = Date.now();
         if (e !== hoverEntry) {
             hoverEntry = e;
@@ -4718,6 +4719,7 @@ KWin.SceneEffect {
     // the pointer is on (the swap's flight, the hover's nudge).
     function flyToEntry(e, rate) {
         if (!e) return;
+        if (isPinnedEntry(e)) return;
         const others = [];
         for (let i = 0; i < entries.length; ++i) {
             if (entries[i] === e) continue;
