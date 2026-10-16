@@ -10,18 +10,514 @@
 #   kwin-canvas open      step out to the overworld (waits up to 10 s for the effect at login)
 #   kwin-canvas toggle    step out, or in when the canvas is open
 #   kwin-canvas status    whether the effect is loaded and the plugin answers
+#   kwin-canvas doctor    read-only health check: what is installed, loaded, bound, enabled
+#   kwin-canvas perf [--since WHEN] [--from FILE]   timings the effect wrote to the journal
 #
 # Commands travel the effect's debug channel: DebugCommand and DebugSeq in
 # the [Effect-kwin-canvas] group of kwinrc, read by the effect when KWin
 # reconfigures it. From a VT the session bus is found at the user's runtime
 # directory; qdbus6 needs the bus and nothing else. `open` retries until the
 # effect is loaded, so an autostart entry can run it before KWin is done.
+#
+# doctor and perf only read: no D-Bus call that changes state, no config write,
+# no restart, so they are safe to run mid-game. doctor prints one OK, WARN or
+# FAIL line per check and exits 1 on any FAIL. Tests point it at fixtures with
+# DOCTOR_REPO (the source tree), DOCTOR_HOME (stands in for $HOME),
+# DOCTOR_PLUGIN_DIR, DOCTOR_KWIN_START and DOCTOR_PLASMA_START (epoch seconds
+# a session process started) and DOCTOR_LOAD_WAIT (seconds between the two
+# load readings).
 set -euo pipefail
 
 if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
     DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
     export DBUS_SESSION_BUS_ADDRESS
 fi
+
+# ---- doctor and perf: read-only ---------------------------------------------
+
+DOCTOR_OK=0
+DOCTOR_WARN=0
+DOCTOR_FAIL=0
+
+# verdict LEVEL TAG TEXT: one line per check, counted for the summary.
+verdict() {
+    case "$1" in
+        OK) DOCTOR_OK=$((DOCTOR_OK + 1)) ;;
+        WARN) DOCTOR_WARN=$((DOCTOR_WARN + 1)) ;;
+        FAIL) DOCTOR_FAIL=$((DOCTOR_FAIL + 1)) ;;
+    esac
+    printf '%-4s  %-10s %s\n' "$1" "$2" "$3"
+}
+
+# ini_get FILE GROUP KEY [DEFAULT]: the last value KEY has in [GROUP] of a
+# KConfig file. DEFAULT answers only when the key is absent: a key set to
+# nothing (ButtonsOnRight=) is a real value and stays empty.
+ini_get() {
+    awk -v group="[$2]" -v key="$3" -v def="${4:-}" '
+        /^\[/ { cur = $0; next }
+        cur == group {
+            i = index($0, "=")
+            if (i > 1) {
+                k = substr($0, 1, i - 1)
+                sub(/\[\$[a-z]+\]$/, "", k)
+                if (k == key) { val = substr($0, i + 1); found = 1 }
+            }
+        }
+        END { print (found ? val : def) }' "$1" 2>/dev/null || echo "${4:-}"
+}
+
+# newest_mtime PATH: the latest modification time (epoch seconds) of any file under PATH.
+newest_mtime() {
+    find "$1" -type f -printf '%T@\n' 2>/dev/null | sort -n | tail -n 1 | cut -d. -f1
+}
+
+# proc_start PID: the epoch second the process started, empty when it is gone.
+proc_start() {
+    local up
+    up=$(ps -o etimes= -p "$1" 2>/dev/null | tr -d ' ')
+    [ -n "$up" ] && echo $(( $(date +%s) - up ))
+}
+
+# session_start KWIN|PLASMA: when the live session's compositor or shell started.
+session_start() {
+    local pid="" override
+    if [ "$1" = KWIN ]; then
+        override=${DOCTOR_KWIN_START:-}
+    else
+        override=${DOCTOR_PLASMA_START:-}
+    fi
+    if [ -n "$override" ]; then echo "$override"; return 0; fi
+    if [ "$1" = KWIN ] && command -v qdbus6 >/dev/null 2>&1; then
+        pid=$(qdbus6 org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.GetConnectionUnixProcessID org.kde.KWin 2>/dev/null)
+    fi
+    case "$pid" in
+        ''|*[!0-9]*)
+            # The oldest of the user's own: a nest started later is never older than the session.
+            if [ "$1" = KWIN ]; then
+                pid=$(pgrep -o -x -u "$(id -u)" kwin_wayland 2>/dev/null)
+            else
+                pid=$(pgrep -o -x -u "$(id -u)" plasmashell 2>/dev/null)
+            fi ;;
+    esac
+    [ -n "$pid" ] && proc_start "$pid"
+}
+
+# tree_diff SRC DST: what differs between the repo's package and the installed copy, as
+# "differ PATH", "missing PATH" (in the repo, not installed) and "extra PATH" lines.
+# Ground.qml is left out: the install copies it in from shared/, checked on its own.
+tree_diff() {
+    (cd "$1" && diff -rq -x Ground.qml . "$2" 2>/dev/null) | awk '
+        /^Files \.\// { sub(/^Files \.\//, ""); sub(/ and .*/, ""); print "differ " $0; next }
+        /^Only in \.:/ { sub(/^Only in \.: /, ""); print "missing " $0; next }
+        /^Only in \.\// { sub(/^Only in \.\//, ""); sub(/: /, "/"); print "missing " $0; next }
+        /^Only in / { sub(/^Only in /, ""); print "extra " $0 }'
+}
+
+# doctor_package TAG NAME SRC DST [SHARED]: one verdict for one installed package.
+doctor_package() {
+    local tag=$1 name=$2 src=$3 dst=$4 shared=${5:-} diffs n first
+    if [ ! -d "$dst" ]; then
+        verdict FAIL "$tag" "$name is not installed ($dst is missing): make install"
+        return
+    fi
+    diffs=$(tree_diff "$src" "$dst")
+    if [ -n "$shared" ] && ! cmp -s "$shared" "$dst/contents/ui/Ground.qml"; then
+        diffs="${diffs:+$diffs
+}differ contents/ui/Ground.qml"
+    fi
+    if [ -z "$diffs" ]; then
+        verdict OK "$tag" "$name matches the repo ($dst)"
+        return
+    fi
+    n=$(printf '%s\n' "$diffs" | wc -l)
+    first=$(printf '%s\n' "$diffs" | head -n 3 | sed 's/^[a-z]* //' | paste -sd, - | sed 's/,/, /g')
+    verdict WARN "$tag" "$name differs from the repo in $n file(s) ($first): make install, then relogin if main.qml is among them"
+}
+
+doctor_installed() {
+    local repo=$1 data=$2 home=$3 cli built plugdir f found=""
+    if [ -z "$repo" ]; then
+        verdict WARN installed "no source tree to compare with (this copy runs outside a checkout): run it from the checkout's tools/ or set DOCTOR_REPO"
+        return
+    fi
+    doctor_package installed "effect" "$repo/effect" "$data/kwin/effects/kwin-canvas" "$repo/shared/Ground.qml"
+    doctor_package installed "wallpaper" "$repo/wallpaper" "$data/plasma/wallpapers/kwin-canvas-ground" "$repo/shared/Ground.qml"
+    doctor_package installed "toggle applet" "$repo/applet" "$data/plasma/plasmoids/org.kde.kwin.canvas.toggle"
+    doctor_package installed "decor applet" "$repo/applet-decor" "$data/plasma/plasmoids/org.kde.kwin.canvas.decor"
+    doctor_package installed "decoration" "$repo/decoration" "$data/kwin/decorations/kwin-canvas-decoration"
+    cli="$home/.local/bin/kwin-canvas"
+    if [ ! -f "$cli" ]; then
+        verdict FAIL installed "the CLI is not installed ($cli is missing): make install"
+    elif cmp -s "$repo/tools/kwin-canvas" "$cli"; then
+        verdict OK installed "the CLI matches the repo ($cli)"
+    else
+        verdict WARN installed "the CLI differs from the repo's tools/kwin-canvas: make install"
+    fi
+    plugdir=${DOCTOR_PLUGIN_DIR:-/usr/lib/qt6/plugins/kwin/plugins}
+    built="$repo/build/plugin/bin/kwin/plugins/kwin_canvas_passthrough.so"
+    for f in "$plugdir"/*canvas*.so; do
+        [ -e "$f" ] && found=$f
+    done
+    if [ -z "$found" ]; then
+        verdict WARN installed "the pass-through plugin is not installed in $plugdir (optional): make plugin, then as root: install -m 755 $built $plugdir/, then relogin"
+    elif [ ! -f "$built" ]; then
+        verdict OK installed "the plugin is installed ($found); no build in the repo to compare it with"
+    elif cmp -s "$built" "$found"; then
+        verdict OK installed "the plugin matches the repo's build ($found)"
+    else
+        verdict WARN installed "the plugin differs from the repo's build: as root: install -m 755 $built $found, then relogin"
+    fi
+}
+
+# stale_check TAG NAME FILE SESSION-START ADVICE: one verdict: is FILE older than the process
+# that would have loaded it.
+stale_check() {
+    local m
+    m=$(stat -c %Y "$3" 2>/dev/null) || { verdict WARN "$1" "$2: $3 is missing"; return; }
+    if [ "$m" -gt "$4" ]; then
+        verdict WARN "$1" "$2 is newer than the session: $5"
+    else
+        verdict OK "$1" "$2 is older than the session, so what runs is what is installed"
+    fi
+}
+
+doctor_session() {
+    local data=$1 cfg=$2 kstart pstart ui_m ui_dir hot kwinrc_m plug f newest
+    kstart=$(session_start KWIN)
+    pstart=$(session_start PLASMA)
+    ui_dir="$data/kwin/effects/kwin-canvas/contents/ui"
+    if [ -z "$kstart" ]; then
+        verdict WARN session "KWin is not running (or not answering on $DBUS_SESSION_BUS_ADDRESS): staleness not checked"
+    else
+        if [ -f "$ui_dir/main.qml" ]; then
+            stale_check session "main.qml" "$ui_dir/main.qml" "$kstart" "relogin to load it"
+        else
+            verdict WARN session "main.qml is not installed: staleness not checked"
+        fi
+        if [ -f "$ui_dir/ui.qml" ]; then
+            ui_m=$(stat -c %Y "$ui_dir/ui.qml")
+            if [ "$ui_m" -le "$kstart" ]; then
+                verdict OK session "ui.qml is older than the session"
+            else
+                hot=$(ini_get "$cfg/kwinrc" Effect-kwin-canvas HotRev 0)
+                kwinrc_m=$(stat -c %Y "$cfg/kwinrc" 2>/dev/null || echo 0)
+                if [ "${hot:-0}" != 0 ] && [ "$kwinrc_m" -ge "$ui_m" ]; then
+                    verdict OK session "ui.qml is newer than the session but kwinrc was written after it (HotRev $hot): presumably hot-loaded"
+                else
+                    verdict WARN session "ui.qml is newer than the session and no hot reload followed it: make hot, or relogin"
+                fi
+            fi
+        fi
+        [ -f "$ui_dir/logic.js" ] && stale_check session "logic.js" "$ui_dir/logic.js" "$kstart" "relogin to load it"
+        plug=""
+        for f in "${DOCTOR_PLUGIN_DIR:-/usr/lib/qt6/plugins/kwin/plugins}"/*canvas*.so; do
+            [ -e "$f" ] && plug=$f
+        done
+        [ -n "$plug" ] && stale_check session "the plugin" "$plug" "$kstart" "relogin to load it (KWin loads plugins at start)"
+    fi
+    if [ -z "$pstart" ]; then
+        verdict WARN session "plasmashell is not running: applet and wallpaper staleness not checked"
+    else
+        newest=$(newest_mtime "$data/plasma/plasmoids/org.kde.kwin.canvas.toggle")
+        newest=$(printf '%s\n%s\n%s\n' "${newest:-0}" "$(newest_mtime "$data/plasma/plasmoids/org.kde.kwin.canvas.decor")" "$(newest_mtime "$data/plasma/wallpapers/kwin-canvas-ground")" | sort -n | tail -n 1)
+        if [ "${newest:-0}" -gt "$pstart" ]; then
+            verdict WARN session "an applet or the ground wallpaper is newer than plasmashell: restart plasmashell (kquitapp6 plasmashell; kstart plasmashell) or relogin"
+        else
+            verdict OK session "the applets and the ground wallpaper are older than plasmashell"
+        fi
+    fi
+}
+
+# shortcut_conflicts FILE: "KEY<TAB>action | action" for every active key sequence that
+# two or more actions hold, at least one of them a Canvas action.
+shortcut_conflicts() {
+    awk '
+        # kglobalshortcutsrc escapes twice: the file turns a backslash into two,
+        # and the list inside the value turns a comma into backslash-comma.
+        function unescape(s,   i, c, n, out) {
+            out = ""; n = length(s)
+            for (i = 1; i <= n; i++) {
+                c = substr(s, i, 1)
+                if (c == "\\" && i < n) {
+                    i++; c = substr(s, i, 1)
+                    if (c == "t") out = out "\t"
+                    else if (c == "s" || c == "n" || c == "r") out = out " "
+                    else if (c == "\\") out = out "\\"
+                    else out = out "\\" c
+                } else out = out c
+            }
+            return out
+        }
+        function fields(s, f,   i, c, n, k) {
+            k = 1; f[1] = ""; n = length(s)
+            for (i = 1; i <= n; i++) {
+                c = substr(s, i, 1)
+                if (c == "\\" && i < n) { i++; f[k] = f[k] substr(s, i, 1) }
+                else if (c == ",") { k++; f[k] = "" }
+                else f[k] = f[k] c
+            }
+            return k
+        }
+        # Meta+Ctrl+Space and Ctrl+Meta+Space are one chord.
+        function norm(key,   rest, t, meta, ctrl, alt, shift) {
+            rest = key; meta = ctrl = alt = shift = 0
+            while (match(rest, /^[A-Za-z]+\+./)) {
+                t = tolower(substr(rest, 1, RLENGTH - 2))
+                if (t == "meta") meta = 1
+                else if (t == "ctrl") ctrl = 1
+                else if (t == "alt") alt = 1
+                else if (t == "shift") shift = 1
+                else break
+                rest = substr(rest, RLENGTH)
+            }
+            return (meta ? "Meta+" : "") (ctrl ? "Ctrl+" : "") (alt ? "Alt+" : "") (shift ? "Shift+" : "") rest
+        }
+        /^\[/ { group = $0; next }
+        /^[^#=]+=/ {
+            i = index($0, "=")
+            name = substr($0, 1, i - 1)
+            if (name ~ /^_/) next
+            nf = fields(unescape(substr($0, i + 1)), f)
+            friendly = (nf >= 3 && f[3] != "") ? f[3] : name
+            canvas = (name ~ /Canvas/ || friendly ~ /^Canvas/)
+            m = split(f[1], keys, "\t")
+            for (j = 1; j <= m; j++) {
+                if (keys[j] == "" || keys[j] == "none") continue
+                nk = norm(keys[j]); id = group "/" name
+                if (seen[nk SUBSEP id]++) continue
+                holders[nk] = holders[nk] (holders[nk] == "" ? "" : " | ") "\"" friendly "\""
+                count[nk]++
+                if (canvas) hascanvas[nk] = 1
+                order[++n] = nk
+            }
+        }
+        END {
+            for (j = 1; j <= n; j++) {
+                nk = order[j]
+                if (done[nk]++ || count[nk] < 2 || !hascanvas[nk]) continue
+                print nk "\t" holders[nk]
+            }
+        }' "$1" 2>/dev/null
+}
+
+doctor_shortcuts() {
+    local cfg=$1 hits key who zoom
+    if [ ! -f "$cfg/kglobalshortcutsrc" ]; then
+        verdict WARN shortcuts "$cfg/kglobalshortcutsrc is missing: nothing to check"
+    else
+        hits=$(shortcut_conflicts "$cfg/kglobalshortcutsrc")
+        if [ -z "$hits" ]; then
+            verdict OK shortcuts "no key sequence is active on a Canvas action and another action"
+        else
+            while IFS=$'\t' read -r key who; do
+                verdict FAIL shortcuts "$key is bound to $who: rebind one in System Settings > Shortcuts"
+            done <<EOF
+$hits
+EOF
+        fi
+    fi
+    # The stock Zoom effect owns Meta+wheel, Meta+= and Meta+-, which the canvas wants too.
+    zoom=$(qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.isEffectLoaded zoom 2>/dev/null || true)
+    if [ -z "$zoom" ] || [ "$zoom" = "no session" ]; then
+        zoom=$(ini_get "$cfg/kwinrc" Plugins zoomEnabled "")
+    fi
+    if [ "$zoom" = true ]; then
+        verdict WARN shortcuts "KDE's Zoom effect is on and owns Meta+wheel, Meta+= and Meta+-: turn it off in System Settings > Desktop Effects (make enable does)"
+    else
+        verdict OK shortcuts "KDE's Zoom effect is not on (zoomEnabled: ${zoom:-unset}), so Meta+wheel, Meta+= and Meta+- are free"
+    fi
+}
+
+# rung_of VALUE REDUCED MINIMAL BARE: the ladder's rung 0..3 for one channel, the way
+# qualityFor in logic.js reads it. A reading outside 0..100 counts as absent.
+rung_of() {
+    case "$1" in ''|*[!0-9]*) echo 0; return ;; esac
+    if [ "$1" -gt 100 ]; then echo 0
+    elif [ "$1" -ge "$4" ]; then echo 3
+    elif [ "$1" -ge "$3" ]; then echo 2
+    elif [ "$1" -ge "$2" ]; then echo 1
+    else echo 0; fi
+}
+
+# knob CFG KEY DEFAULT: one of the effect's hidden fidelity thresholds.
+knob() {
+    ini_get "$1/kwinrc" Effect-kwin-canvas "$2" "$3"
+}
+
+doctor_ladder() {
+    local cfg=$1 mode reading cpu gpu mem rc rg rmem rung name gtxt body
+    local cr cm cb gr gm gb mr mm mb
+    mode=$(ini_get "$cfg/kwinrc" Effect-kwin-canvas QualityMode Auto)
+    # The plugin's cpu is the busy share since its previous call, so the first call only sets
+    # the baseline and the second reads a half-second window of its own.
+    qdbus6 org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.load >/dev/null 2>&1 || true
+    sleep "${DOCTOR_LOAD_WAIT:-0.5}"
+    reading=$(qdbus6 org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.load 2>/dev/null || true)
+    case "$reading" in
+        cpu=*) ;;
+        *)
+            verdict WARN ladder "the pass-through plugin does not answer (not installed, built for another KWin, or no session): the ladder has no reading (mode $mode)"
+            return ;;
+    esac
+    cpu=${reading#cpu=}; cpu=${cpu%% *}
+    mem=${reading#*mem=}; mem=${mem%% *}
+    gpu=${reading#*gpu=}; gpu=${gpu%% *}
+    cr=$(knob "$cfg" CpuReduced 60); cm=$(knob "$cfg" CpuMinimal 80); cb=$(knob "$cfg" CpuBare 95)
+    gr=$(knob "$cfg" GpuReduced 60); gm=$(knob "$cfg" GpuMinimal 80); gb=$(knob "$cfg" GpuBare 95)
+    mr=$(knob "$cfg" MemReduced 80); mm=$(knob "$cfg" MemMinimal 90); mb=$(knob "$cfg" MemBare 97)
+    rc=$(rung_of "$cpu" "$cr" "$cm" "$cb")
+    rg=$(rung_of "$gpu" "$gr" "$gm" "$gb")
+    rmem=$(rung_of "$mem" "$mr" "$mm" "$mb")
+    rung=$rc
+    [ "$rg" -gt "$rung" ] && rung=$rg
+    [ "$rmem" -gt "$rung" ] && rung=$rmem
+    case "$rung" in 0) name=full ;; 1) name=reduced ;; 2) name=minimal ;; *) name=bare ;; esac
+    gtxt="gpu $gpu (steps at $gr/$gm/$gb)"
+    [ "$gpu" = -1 ] && gtxt="gpu not readable (no NVML)"
+    body="cpu $cpu (steps at $cr/$cm/$cb), $gtxt, mem $mem (steps at $mr/$mm/$mb)"
+    if [ "$mode" != Auto ]; then
+        verdict OK ladder "mode $mode holds its rung whatever the load; live reading: $body"
+    elif [ "$rung" -eq 0 ]; then
+        verdict OK ladder "Auto mode, full fidelity now: $body"
+    else
+        verdict WARN ladder "Auto mode, the machine is busy: the overworld would run at rung $rung ($name): $body"
+    fi
+}
+
+doctor_enabled() {
+    local cfg=$1 on loaded theme lib left right c seen pill_only="" applet_only="" neither=""
+    on=$(ini_get "$cfg/kwinrc" Plugins kwin-canvasEnabled "")
+    loaded=$(qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.isEffectLoaded kwin-canvas 2>/dev/null || true)
+    if [ "$on" = true ] && [ "$loaded" = false ]; then
+        verdict FAIL enabled "the effect is enabled in kwinrc but KWin has not loaded it: check journalctl --user -b -g kwin-canvas, then relogin"
+    elif [ "$on" = true ]; then
+        verdict OK enabled "the effect is enabled in kwinrc (loaded in KWin: ${loaded:-no answer})"
+    elif [ "$loaded" = true ]; then
+        verdict WARN enabled "the effect is loaded now but kwinrc does not enable it (kwin-canvasEnabled: ${on:-unset}): it will not load at the next login"
+    else
+        verdict WARN enabled "the effect is not enabled (kwin-canvasEnabled: ${on:-unset}): make enable"
+    fi
+    theme=$(ini_get "$cfg/kwinrc" org.kde.kdecoration2 theme "")
+    lib=$(ini_get "$cfg/kwinrc" org.kde.kdecoration2 library "")
+    left=$(ini_get "$cfg/kwinrc" org.kde.kdecoration2 ButtonsOnLeft MS)
+    right=$(ini_get "$cfg/kwinrc" org.kde.kdecoration2 ButtonsOnRight HIAX)
+    # The pill draws X I A S M F B H and a spacer; the panel applet draws X I A S F B E and a
+    # spacer (it has no menu or help call, the pill has no capture glyph).
+    seen=""
+    for c in $(printf '%s%s' "$left" "$right" | fold -w1); do
+        case "$seen" in *"$c"*) continue ;; esac
+        seen="$seen$c"
+        case "$c" in
+            X|I|A|S|F|B|_) ;;
+            M|H) pill_only="$pill_only $c" ;;
+            E) applet_only="$applet_only $c" ;;
+            *) neither="$neither $c" ;;
+        esac
+    done
+    local note="buttons left '$left' right '$right'"
+    [ -n "$pill_only" ] && note="$note; only the pill draws:$pill_only (the applet skips them)"
+    [ -n "$applet_only" ] && note="$note; only the applet draws:$applet_only (the pill has no glyph for it)"
+    [ -n "$neither" ] && note="$note; neither draws:$neither"
+    if [ "$theme" = kwin-canvas-decoration ]; then
+        verdict OK enabled "decoration: kwin-canvas-decoration is in use, so the pill is drawn; $note"
+    else
+        verdict OK enabled "decoration: ${theme:-the default} ($lib), not the canvas decoration, so no pill; $note"
+    fi
+}
+
+doctor() {
+    set +e +o pipefail
+    local home repo self cand
+    home=${DOCTOR_HOME:-$HOME}
+    repo=${DOCTOR_REPO:-}
+    if [ -z "$repo" ]; then
+        self=$(readlink -f "$0" 2>/dev/null)
+        cand=$(dirname "$self")/..
+        if [ -f "$cand/effect/metadata.json" ] && [ -f "$cand/VERSION" ]; then
+            repo=$(cd "$cand" && pwd)
+        fi
+    fi
+    echo "kwin-canvas doctor (read-only): repo ${repo:-none}, home $home"
+    doctor_installed "$repo" "$home/.local/share" "$home"
+    doctor_session "$home/.local/share" "$home/.config"
+    doctor_shortcuts "$home/.config"
+    doctor_ladder "$home/.config"
+    doctor_enabled "$home/.config"
+    echo "kwin-canvas doctor: $DOCTOR_OK ok, $DOCTOR_WARN warn, $DOCTOR_FAIL fail"
+    [ "$DOCTOR_FAIL" -eq 0 ]
+}
+
+# perf [--since WHEN] [--from FILE]: the timings the effect writes to the journal as
+# "kwin-canvas perf: EVENT key=value ...", as count, min, median, p95 and max per
+# event and key. --from reads a saved journal dump instead of asking journalctl.
+perf() {
+    set +e +o pipefail
+    local since="1 hour ago" from="" out lines other
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --since) since=${2:-}; [ -n "$since" ] || { echo "kwin-canvas: --since needs a value, like '30 min ago'"; exit 1; }; shift 2 ;;
+            --from) from=${2:-}; [ -n "$from" ] || { echo "kwin-canvas: --from needs a file"; exit 1; }; shift 2 ;;
+            *) echo "kwin-canvas: perf takes --since WHEN or --from FILE, not '$1'"; exit 1 ;;
+        esac
+    done
+    if [ -n "$from" ]; then
+        [ -r "$from" ] || { echo "kwin-canvas: cannot read $from"; exit 1; }
+        out=$(cat "$from")
+        since="the start of $from"
+    else
+        command -v journalctl >/dev/null 2>&1 || { echo "kwin-canvas: journalctl is missing"; exit 1; }
+        out=$(journalctl --user -b --since "$since" -g "kwin-canvas perf" -o cat --no-pager 2>&1)
+    fi
+    lines=$(printf '%s\n' "$out" | sed -n 's/.*kwin-canvas perf: //p')
+    other=$(printf '%s\n' "$out" | grep -v 'kwin-canvas perf: ' | grep -v '^-- No entries --$' | grep -v '^$')
+    if [ -z "$lines" ]; then
+        echo "kwin-canvas perf: no perf lines since $since."
+        echo "Either the canvas was not opened in that window, or the running KWin loaded an effect"
+        echo "build that does not write them (main.qml is only re-read at login)."
+        [ -n "$other" ] && printf 'journalctl said: %s\n' "$other"
+        return 0
+    fi
+    echo "kwin-canvas perf: $(printf '%s\n' "$lines" | wc -l) lines since $since"
+    {
+        printf '%s\n' "$lines" | awk '
+            { n[$1]++
+              for (i = 2; i <= NF; i++) {
+                  eq = index($i, "=")
+                  if (eq < 2) continue
+                  v = substr($i, eq + 1)
+                  if (v ~ /^-?[0-9]+(\.[0-9]+)?$/) print "V\t" $1 "\t" substr($i, 1, eq - 1) "\t" v
+              }
+            }
+            END { for (e in n) print "N\t" e "\t-\t" n[e] }'
+    } | sort -t "$(printf '\t')" -k2,2 -k3,3 -k4,4g | awk -F'\t' '
+        function num(x) { return x + 0 }
+        function fmt(x,   t) {
+            if (x == int(x)) return sprintf("%d", x)
+            t = sprintf("%.2f", x); sub(/0+$/, "", t); sub(/\.$/, "", t)
+            return t
+        }
+        function flush(   mid, p) {
+            if (cnt == 0) return
+            mid = (cnt % 2) ? vals[(cnt + 1) / 2] : (vals[cnt / 2] + vals[cnt / 2 + 1]) / 2
+            p = int(0.95 * cnt); if (p < 0.95 * cnt) p++
+            printf "%-12s %-6s %5d %9s %9s %9s %9s\n", ev, key, cnt, fmt(vals[1]), fmt(mid), fmt(vals[p]), fmt(vals[cnt])
+        }
+        BEGIN { printf "%-12s %-6s %5s %9s %9s %9s %9s\n", "event", "key", "n", "min", "median", "p95", "max" }
+        $1 == "N" { counts[$2] = $4; next }
+        {
+            if ($2 != ev || $3 != key) { flush(); ev = $2; key = $3; cnt = 0; delete vals }
+            vals[++cnt] = num($4); has[ev] = 1
+        }
+        END {
+            flush()
+            for (e in counts) if (!(e in has)) printf "%-12s %-6s %5d\n", e, "-", counts[e]
+        }'
+}
+
+case "${1:-}" in
+    doctor) shift; doctor "$@"; exit $? ;;
+    perf) shift; perf "$@"; exit $? ;;
+esac
 
 for tool in qdbus6 kreadconfig6 kwriteconfig6; do
     command -v "$tool" >/dev/null 2>&1 || { echo "kwin-canvas: $tool is missing (Arch: qt6-tools, kconfig)"; exit 1; }
@@ -66,6 +562,6 @@ case "${1:-}" in
     open)   send open   "stepping out to the overworld" 10 ;;
     toggle) send toggle "toggled" ;;
     status) echo "kwin-canvas: effect loaded: $(loaded); pass-through plugin: $(plugin)" ;;
-    -h|--help|help) sed -n '8,12p' "$0"; exit 0 ;;
-    *) sed -n '8,12p' "$0"; exit 1 ;;
+    -h|--help|help) sed -n '8,14p' "$0"; exit 0 ;;
+    *) sed -n '8,14p' "$0"; exit 1 ;;
 esac

@@ -102,7 +102,7 @@ it would be invisible anyway. `Backdrop=grid` is the old plane.
 | `wallpaper/` | Plasma/Wallpaper | The ground at 1:1, offset by the last committed pan |
 | `shared/Ground.qml` | copied into both | One renderer for the ground so both views match |
 | `plugin/` | KWin plugin (C++, optional) | Pass-through: while the canvas is open, clicks, drags, the wheel and keys reach the real windows |
-| `tools/kwin-canvas` | CLI (bash) | Step in, cancel, open or toggle from a terminal or a VT; status |
+| `tools/kwin-canvas` | CLI (bash) | Step in, cancel, open or toggle from a terminal or a VT; status; doctor and perf, which only read |
 | `applet/` | Plasma/Applet | A panel button that fires the Toggle Canvas chord |
 | `applet-decor/` | Plasma/Applet | The decor applet: the focused window's glyphs in the panel, in the pill's language |
 | `decoration/` | KWin/Decoration | The Canvas window frame: no title bar, the glass pill on the focused window's edge |
@@ -226,6 +226,19 @@ fires both, so pick a count you do not use elsewhere, or set it to 0.
 When the chord does not reach the open canvas, `kwin-canvas exit` from a
 terminal or a virtual terminal steps into the location under the screen
 centre; `cancel`, `open`, `toggle` and `status` are the other subcommands.
+
+**Troubleshooting: `kwin-canvas doctor`.** When something does not behave, run
+`kwin-canvas doctor` first. It only reads, so it is safe to run mid-game, and
+prints one OK, WARN or FAIL line per check: whether each installed part (the
+effect, the ground wallpaper, both applets, the window decoration, the CLI and
+the plugin) is the same as the repo's, whether the running session is older than
+the files it loaded (`main.qml` and the plugin need a relogin, `ui.qml` a
+`make hot`), whether a global shortcut is bound to a Canvas action and another
+action at once, whether KDE's Zoom effect still owns Meta+wheel, where the
+fidelity ladder stands, and what is enabled. It exits 1 if anything FAILs.
+`kwin-canvas perf [--since WHEN]` summarizes the timings the effect writes to
+the journal, when its `Perf` setting is on (`kwriteconfig6 --file kwinrc --group
+Effect-kwin-canvas --key Perf true`, then reconfigure the effect).
 It finds the session bus at the user's runtime directory, so it works from
 a VT with no display. The **Canvas** panel applet (`applet/`) is a button
 that fires the Toggle Canvas chord.

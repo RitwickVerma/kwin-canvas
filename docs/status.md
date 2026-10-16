@@ -37,6 +37,14 @@ against the canvas (not in the nest); a Wallpaper Engine wallpaper in the nest;
 the raise after a fly with focus-follows-mouse and no click-raise (reasoned from
 the code; the nest raises on activation itself, so scenario `155` is only a guard).
 
+**The CLI reads the machine.** `kwin-canvas doctor` (installed against the repo,
+session against files, shortcut clashes, the fidelity ladder, what is enabled) and
+`kwin-canvas perf` (summary of the effect's `kwin-canvas perf:` journal lines) are
+read-only and tested by `tests/unit/cli.test.sh` (`make unit`) against a fixture
+home and a fake `qdbus6`. `perf` only parses: the effect does not emit those lines
+until its `Perf` knob lands. The first real `doctor` run found the Meta+Ctrl+Space
+clash (Canvas Home and Mouse Tiler: Change Mode) and a CLI one commit behind.
+
 **Installing.** `make install` is the only target that writes `~/.local/share`, the
 copy the live session loads at login. Tests and the nest use `build/nest-data`
 (`make nest-install`). The plugin in `/usr/lib/qt6/plugins/kwin/plugins` is
