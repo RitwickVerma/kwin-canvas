@@ -249,7 +249,11 @@ void CanvasPassthrough::setHoldDelay(int ms)
 
 void CanvasPassthrough::setHoverDelay(int ms)
 {
-    if (ms > 0) {
+    // QTimer::setInterval restarts a running timer, and the effect publishes
+    // the delay on every reconfigure (every settings write, every debug
+    // command): an unchanged value must leave a running rest clock alone, or
+    // a pointer resting in the 900 ms window never gets its hover.
+    if (ms > 0 && m_hoverTimer.interval() != ms) {
         m_hoverTimer.setInterval(ms);
         qCDebug(KWIN_CANVAS) << "hover delay set to" << ms << "ms";
     }

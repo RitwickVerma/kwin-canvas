@@ -32,7 +32,8 @@ run_scenario() {
     local vx; vx=$(sget viewx)
     # The pointer is put on bare ground first: arrange parks it at the screen's
     # corner, which a nest with a panel (make test-panel) covers with the dock,
-    # and the dock owns the press, so no hold ever started there.
+    # and the dock is inferred to own the press (not measured): no hold
+    # started there.
     printf 'move 1700 900\nsleep 60\ndown back\nsleep 400\n' | input &
     sleep 0.5
     printf 'down forward\nsleep 60\nup forward\n' | input

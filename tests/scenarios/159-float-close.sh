@@ -19,8 +19,12 @@ run_scenario() {
     c cancel >/dev/null 2>&1
     # Put back the one window this closed. `fixtures` launches all five apps
     # again, which left three extra windows on the desk for every scenario
-    # after this one (20, 30, 50 and 61 then drew a different desk).
+    # after this one (20, 30, 50 and 61 then drew a different desk). What
+    # `fixtures` also did, and this keeps: drop kcalcrc, which the closing
+    # window wrote its state to, so the new KCalc starts from its defaults and
+    # the goldens do not drift.
     local n; n=$(nwindows)
+    rm -f "$CONF"/kcalcrc
     run kcalc >/dev/null 2>&1
     mapped $((n + 1)) || echo "159: kcalc did not map in time" >&2
     sleep 1

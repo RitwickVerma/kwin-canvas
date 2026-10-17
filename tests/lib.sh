@@ -25,6 +25,12 @@ TOLERANCE=${GOLDEN_TOLERANCE:-0.03}
 # exit status (`[ "$FAIL" = 0 ]`) forgot every earlier failure. The full run
 # that found it printed fail 0 above a FAIL line, and 266 passes for 653 ok lines.
 PASS=${PASS:-0}; FAIL=${FAIL:-0}; SKIP=${SKIP:-0}
+# An inherited value that is not a plain number would break the $((PASS + 1))
+# arithmetic: anything but digits starts that tally at 0.
+for _t in PASS FAIL SKIP; do
+    case ${!_t:-} in ''|*[!0-9]*) printf -v "$_t" 0 ;; esac
+done
+unset _t
 LAST_STATE=""
 mkdir -p "$OUT"
 

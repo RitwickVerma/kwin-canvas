@@ -23,21 +23,27 @@ and back to where it began, the dock approach, and a wallpaper that is not a pic
 to 12% (all on the compositor's main thread). The idle bob was the one decorative
 cost, 21% of a core zoomed out, and is gone.
 
-**The suite is green in the nest** (2026-10-16, `NEST_VIRTUAL=1`, one full run):
-655 `ok`, 0 `FAIL`, 4 skip (the live-session proof of the press delivery, the canvas
-decoration, and 91 twice for needing two outputs), no `TypeError`. The old totals were
+**The suite in the nest** (2026-10-16, `NEST_VIRTUAL=1`, one full run): 655 `ok`,
+0 `FAIL`, 4 skip in one run; the runner repaired window sizes after about ten
+scenarios (see below). It is one run, not a repeated green: the skips are the
+live-session proof of the press delivery, the canvas decoration, and 91 twice for
+needing two outputs; no `TypeError`. The old totals were
 low: `source tests/lib.sh` at the top of many scenarios reset the runner's tallies, so
 `== pass` counted only the tail; that is fixed. The leak was one scenario:
 `113-thread-duck` left the nest on Activity 2, and the next `arrange` pulled
 Activity 2's view target onto Activity 1's (the "tint" and the "Activity 2" failures
 from 20 to 95). Others found and fixed: `117`, `149`, `86` leave Plasma's default
-panel and wallpaper, `159` added three windows, `115` and `111` raced their own
-reads, `107` pressed under the dock. The runner now also resets the activity, a
+panel and wallpaper, `159` added three windows, `115` raced its own read, `111`
+read the rest's focus too early (the plugin restarted the hover clock on every
+debug command; fixed in the plugin, `161` pins it), `107` pressed where a dock
+is inferred to sit. The runner now also resets the activity, a
 leftover panel and window sizes after every scenario and prints
 `desk reset after NAME` for each, which a clean scenario never triggers; today those
 lines still name `114`, `115`, `116`, `117` (KCalc and Gwenview 410 high), `120`
-(432), `148` and `95` to `99` (Dolphin 368 to 370): `arrange` is not idempotent on
-size when the entry already holds the requested one, cause not found.
+(432), `148` and `95` to `99` (Dolphin 368 to 370). Cause, found on 114 only:
+`placeby` sizes go through the user-resize path, which snaps an edge to a
+neighbour still standing at its old place (12 px), so `arrange` is not idempotent
+on size; the others show the same signature and were not run (`docs/testing.md`).
 
 **Not verified:** KZones, `sticky-window-snapping` and `rememberwindowpositions`
 against the canvas (not in the nest); a Wallpaper Engine wallpaper in the nest;
@@ -51,12 +57,10 @@ installed by hand with `sudo`.
 
 ## Next candidates
 
-- Find why a request for the size an entry already holds leaves the real frame 10
-  px off (the `desk reset ... sizes` lines), and the plugin's hover clock restart:
-  `setHoverDelay` runs on every reconfigure and `QTimer::setInterval` restarts a
-  running timer, so polling `c state` inside the 900 ms after a pointer move
-  starves the rest (reproduced, one-line fix tried and not kept; same pattern at
-  `setHoldDelay`).
+- Make `arrange` stop snapping against stale neighbours (place every window, then
+  size them; tried on 114 and it held 420, not applied or run on the whole suite),
+  then drop `heal_sizes`. Same guard as the hover clock for `setHoldDelay`, which
+  restarts a running hold timer the same way (not shown to matter).
 - A real Wallpaper Engine / KZones run, which only the desktop can give.
 - The slide costs 6 to 12% of the main thread; where it goes is not known.
 - The fly starts with the open (no warm-up turn). The first painted frame is

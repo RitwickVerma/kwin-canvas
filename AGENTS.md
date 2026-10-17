@@ -68,7 +68,7 @@ make nest-reload             # reinstall, restart the nest, relaunch clients
 make nest-down               # stop it
 make nest-clean              # kill leftovers of nests whose state is gone
 
-make test                    # all scenarios, ~10 min; the last full run was 655 pass, 0 fail, 4 skip (docs/testing.md)
+make test                    # all scenarios, ~10 min; the last full run: 655 ok, 0 FAIL, 4 skip in one run, runner repaired sizes after ~10 scenarios, cause found on 114 only (docs/testing.md)
 NEST_VIRTUAL=1 make test ...   # the same on a virtual framebuffer: no window opens on your desktop
 make test ARGS=60            # scenarios whose file name matches
 make test-panel ARGS=117     # with Plasma's default panel in the nest (the dock scenarios, 117 and 149)
@@ -105,8 +105,10 @@ Cheapest first, and stop where the change warrants:
 3. **`make test ARGS=<name>`** — one or two scenarios in a nest, a minute or two:
    the right size for a change you can describe in one sentence.
 4. **`make test`** — the whole suite against a fresh nest, ten minutes or so.
-   The last full run gave 655 pass, 0 fail, 4 skip (the runner's totals used to
-   undercount, see `docs/testing.md`: count the `ok` and `FAIL` lines). The runner
+   The last full run gave 655 `ok`, 0 `FAIL`, 4 skip in one run, in which the
+   runner repaired window sizes after about ten scenarios (cause found on 114
+   only, see `docs/testing.md`; the runner's totals used to undercount there too:
+   count the `ok` and `FAIL` lines). The runner
    puts the desk back after each scenario and prints `desk reset after NAME` when
    it had to: that line names a scenario that leaks, fix it there. Run every
    failure alone before believing it, and bisect before blaming a change. The
