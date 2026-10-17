@@ -405,11 +405,22 @@ KWin.SceneEffect {
         selectionRev++;
     }
     function clearSelection() { selected = {}; selectionRev++; }
-    // Add every window whose canvas rect meets the rectangle.
+    // Where the eye sees a window, in the plane's coordinates: its canvas spot,
+    // or for a floated one the spot of its picture, which is stored in screen
+    // pixels and rides the screen's edge when the camera has left the window
+    // behind.
+    function pictureAt(e) {
+        const f = floatOf[e.window.internalId];
+        return f ? { x: viewX + f.x / zoom, y: viewY + f.y / zoom } : { x: e.x, y: e.y };
+    }
+    // Add every window whose drawn rect meets the rectangle: a marquee is
+    // swept over what the eye sees, so a floated window is taken by its
+    // picture and not by the coordinates it is parked at.
     function selectInRect(x, y, w, h) {
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
-            if (e.x < x + w && e.x + e.width > x && e.y < y + h && e.y + e.height > y) selected[e.window.internalId] = true;
+            const p = pictureAt(e);
+            if (p.x < x + w && p.x + e.width > x && p.y < y + h && p.y + e.height > y) selected[e.window.internalId] = true;
         }
         selectionRev++;
     }
@@ -1103,15 +1114,16 @@ KWin.SceneEffect {
         const rects = [];
         for (let k = 0; k < entries.length; ++k) {
             const e = entries[k];
-            const f = floatOf[e.window.internalId];
+            // A window clamped at the screen's edge must cut the threads
+            // where the eye sees its picture, not where its old canvas spot
+            // was. The threads themselves run between the windows' true
+            // spots (below): the web is the plane's structure, the picture
+            // only rides the screen, so a thread to a displaced floated
+            // window points off the screen toward where the window is.
+            const pic = pictureAt(e);
             rects.push({
-                // The float's picture is stored in screen coordinates, so it
-                // is translated back onto the plane before it occludes: a
-                // window clamped at the screen's edge must cut the threads
-                // where the eye sees its picture, not where its old canvas
-                // spot was.
-                x: f ? viewX + f.x / zoom : e.x,
-                y: f ? viewY + f.y / zoom : e.y,
+                x: pic.x,
+                y: pic.y,
                 w: e.width,
                 h: e.height
             });
