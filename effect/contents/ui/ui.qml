@@ -1376,6 +1376,11 @@ Item {
                 delegate: Rectangle {
                     required property int index
                     readonly property var e: effect.entries[index]
+                    // The map is of the plane, so a floated window's sheet
+                    // sits at its coordinates, where it is parked, and not
+                    // where its picture rides the screen's edge: the glance
+                    // shows where the window is, and the camera rectangle
+                    // shows how far the eye has gone from it.
                     x: { effect.revision; return planeMap.mx(e.x); }
                     y: { effect.revision; return planeMap.my(e.y); }
                     width: { effect.revision; return Math.max(1.6, e.width * planeMap.sc); }

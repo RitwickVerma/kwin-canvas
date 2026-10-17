@@ -3,7 +3,6 @@
 # shellcheck source=../tests/lib.sh
 scenario_desc="stepping into a floated window (Enter on it, a double-click) enters where the eye is: the camera is not flown to the window's coordinates and the window lands on screen where its picture was, focused"
 run_scenario() {
-    source tests/lib.sh
     arrange >/dev/null
     open_1to1
     c state >/dev/null

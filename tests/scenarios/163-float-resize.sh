@@ -3,7 +3,6 @@
 # shellcheck source=../tests/lib.sh
 scenario_desc="a floated window that grows while its picture rides the edge: the picture glides in to its new bounds instead of jumping, stays on screen, and the real window lands where the picture rests"
 run_scenario() {
-    source tests/lib.sh
     arrange >/dev/null
     open_1to1
     c state >/dev/null

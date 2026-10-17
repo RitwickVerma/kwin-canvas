@@ -3,7 +3,6 @@
 # shellcheck source=../tests/lib.sh
 scenario_desc="a hand on a floated window that rides the screen's edge takes the picture where the eye sees it: the picture follows the hand from its own spot, the camera does not move, and on release it settles inside the screen"
 run_scenario() {
-    source tests/lib.sh
     if ! have_input; then skip "fakeinput not built (make tools)"; return; fi
     # The canvas takes the pointer, not the plugin, so the drag moves the
     # thumbnail (the plugin's own scenario is 85).

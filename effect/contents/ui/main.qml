@@ -3585,6 +3585,11 @@ KWin.SceneEffect {
             lastThrow = { dx: ox, dy: oy };
             for (let i = 0; i < set.length; ++i) {
                 const e = set[i];
+                // A floated window is not thrown: it rides the screen and is
+                // kept inside it, so the hand's release spot is where the
+                // eye last saw it and where it stays. A throw toward an edge
+                // would only run the coordinates on while the picture stopped
+                // at the bound.
                 if (isPinnedEntry(e)) continue;
                 animateEntry(e, e.x + ox, e.y + oy, 0, dragVX / zoom, dragVY / zoom);
             }

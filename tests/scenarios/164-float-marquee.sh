@@ -7,7 +7,6 @@ selected() { # CAPTION -> "yes" when the state marks the window selected
     grep -aq "^  \[[0-9]*\] \*.*$1" <<<"$LAST_STATE" && echo yes || echo no
 }
 run_scenario() {
-    source tests/lib.sh
     arrange >/dev/null
     open_1to1
     c state >/dev/null
