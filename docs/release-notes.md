@@ -1,5 +1,16 @@
 Unreleased:
 
+- Floated windows behave when the camera has left them behind. Taking one by
+  the hand no longer throws its picture away to its coordinates (and turns
+  the press into a pan); stepping into one (Enter, a double-click, the
+  switcher) enters where you are instead of flying to where it is parked, and
+  it lands on screen, also from a zoomed-out view; a marquee takes it by its
+  picture; a window that grows at the edge glides in instead of jumping; and
+  on two outputs it stays on the output it is on instead of being pulled to
+  the pointer's.
+- `PinnedWindows` is no longer read (a float is KWin's on-all-desktops flag);
+  the key stays declared so an old config loads.
+
 - The window an auto fly lands on is raised. With focus following the mouse,
   raise on hover and click-raise off, KWin raises a window only after the
   pointer has rested on it, and the pointer never moves when a window slides
