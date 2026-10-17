@@ -683,6 +683,27 @@ KWin.SceneEffect {
             revision++;
         }
     }
+    // A hand takes a floated window by its picture, so the window's
+    // coordinates are brought to the picture's spot before the drag starts:
+    // the drag moves the coordinates, and the float follows them while the
+    // hand owns the window. Left at coordinates the camera pushed off the
+    // screen, the first move of the hand threw the picture to them (measured:
+    // 1500 px away at a 3000 px push, out from under the pointer).
+    function seatFloat(e) {
+        if (!isPinnedEntry(e)) return;
+        const f = floatOf[e.window.internalId];
+        let sx, sy;
+        if (f) {
+            sx = f.x; sy = f.y;
+        } else {
+            const b = floatBounds(e);
+            sx = Math.max(b.l, Math.min(b.r, (e.x - viewX) * zoom));
+            sy = Math.max(b.t, Math.min(b.b, (e.y - viewY) * zoom));
+        }
+        e.x = viewX + sx / zoom;
+        e.y = viewY + sy / zoom;
+        revision++;
+    }
     function floatPinned(dt) {
         // After a stall the last camera position is stale: a fresh start
         // must not read a wild velocity out of it.
@@ -3420,7 +3441,10 @@ KWin.SceneEffect {
         dragRaw = {};
         dragIndex = index;
         const set = isSelected(e) ? entries.filter(isSelected) : roomOf(e);
-        for (let i = 0; i < set.length; ++i) dragRaw[set[i].window.internalId] = { x: set[i].x, y: set[i].y };
+        for (let i = 0; i < set.length; ++i) {
+            seatFloat(set[i]);
+            dragRaw[set[i].window.internalId] = { x: set[i].x, y: set[i].y };
+        }
     }
     // A window held by KWin to a screen-locked state - tiled, or maximized -
     // belongs to a room: the other such windows in its cluster. Tiling is
@@ -3449,7 +3473,9 @@ KWin.SceneEffect {
         dragIndex = -1;
         for (let k = 0; k < c.ids.length; ++k) {
             const e = entryById(c.ids[k]);
-            if (e) dragRaw[e.window.internalId] = { x: e.x, y: e.y };
+            if (!e) continue;
+            seatFloat(e);
+            dragRaw[e.window.internalId] = { x: e.x, y: e.y };
         }
     }
     function dragCluster(i, dx, dy) {

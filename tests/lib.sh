@@ -310,3 +310,31 @@ arrange() {
 }
 
 have_input() { [ -x "$HERE/build/tools/fakeinput" ]; }
+
+# ---- a floated window's picture ---------------------------------------------
+# The picture is where the eye sees the window: its canvas spot in view
+# coordinates plus the float's offset from it, which the state line carries.
+# float_picture [CAPTION]: "x y w h" in screen px (KCalc by default).
+float_picture() {
+    c state >/dev/null
+    # The state prints a negative offset as "+-N"; awk reads that as 0.
+    local line; line=$(grep -a "${1:-KCalc} canvas=" <<<"$LAST_STATE" | head -1 | sed 's/+-/-/g; s/+\([0-9]\)/\1/g')
+    awk -v L="$line" -v vx="$(sget viewx)" -v vy="$(sget viewy)" -v z="$(sget zoom)" 'BEGIN{
+        match(L, /canvas=\(-?[0-9.]+,-?[0-9.]+ [0-9]+x[0-9]+\)/); s = substr(L, RSTART + 8, RLENGTH - 9);
+        split(s, a, /[, x]/); cx = a[1]; cy = a[2]; w = a[3]; h = a[4];
+        fx = 0; fy = 0;
+        if (match(L, /float=\([+-]?[0-9.-]+,[+-]?[0-9.-]+\)/)) { f = substr(L, RSTART + 7, RLENGTH - 8); split(f, b, ","); fx = b[1] + 0; fy = b[2] + 0 }
+        printf "%.1f %.1f %.1f %.1f", (cx - vx) * z + fx, (cy - vy) * z + fy, w * z, h * z }'
+}
+# float_inside [CAPTION]: "yes" when the picture is wholly inside the 1920x1080 screen.
+float_inside() {
+    local px py pw ph
+    read -r px py pw ph <<<"$(float_picture "$@")"
+    awk -v x="$px" -v y="$py" -v w="$pw" -v h="$ph" 'BEGIN{print (x >= -1 && y >= -1 && x + w <= 1921 && y + h <= 1081) ? "yes" : "no " x " " y " " w " " h}'
+}
+# float_frame [CAPTION]: "x y w h", the real window's frame as KWin has it.
+float_frame() {
+    local cap=${1:-KCalc}
+    kwinjs 'var w = null; workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("'"$cap"'") >= 0) w = x; }); var g = w.frameGeometry; print("FLOATFRAME " + Math.round(g.x) + " " + Math.round(g.y) + " " + Math.round(g.width) + " " + Math.round(g.height));' 0.6
+    grep -a "FLOATFRAME" "$STATE/kwin.log" | tail -1 | sed 's/.*FLOATFRAME //'
+}
