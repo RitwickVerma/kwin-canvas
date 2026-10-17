@@ -597,7 +597,6 @@ KWin.SceneEffect {
     // a window rule and the canvas all read and write the same flag and
     // nothing here is stored. Keep above and keep below are separate: they
     // are stacking, and a window may be kept above without floating.
-    property var pinned: ({})          // caption -> { sx, sy }, where the hand left it (this session)
     property var floatOf: ({})         // window internalId -> { x, y, vx, vy, wasInX, wasInY }, screen px
     property real floatRev: 0
     property real floatPrevViewX: 0
@@ -628,25 +627,7 @@ KWin.SceneEffect {
             const e = list[i];
             if (!e) continue;
             setPinned(e.window, false);
-            delete pinned[e.window.caption];
         }
-    }
-    // The screen spot that keeps the window wholly inside the screen the
-    // pointer is on, with a margin. The anchor the pin holds, and the place
-    // a bounced window settles. The optional tx/ty override reads a landing
-    // spot instead of the entry's live one (the arrange and the send-to
-    // clamp the destination while the window is still gliding to it).
-    function clampScreen(e, tx, ty) {
-        const g = actionScreen().geometry;
-        const w = e.width * zoom, h = e.height * zoom;
-        const m = 8;
-        let sx = ((tx !== undefined ? tx : e.x) - viewX) * zoom;
-        let sy = ((ty !== undefined ? ty : e.y) - viewY) * zoom;
-        if (w < g.width - 2 * m) sx = Math.max(g.x + m, Math.min(g.x + g.width - w - m, sx));
-        else sx = g.x + m;
-        if (h < g.height - 2 * m) sy = Math.max(g.y + m, Math.min(g.y + g.height - h - m, sy));
-        else sy = g.y + m;
-        return { sx: sx, sy: sy };
     }
     function togglePin() {
         const list = arrangeTargets();
@@ -3531,17 +3512,6 @@ KWin.SceneEffect {
 
     // The drag is over: the grip's release, or anything that ends a gesture.
     function endDrag() {
-        // A pinned window's anchor is remembered where the hand let it go:
-        // the float tick reads the entry itself and clamps the picture on
-        // screen, so a drop outside is carried, not snapped.
-        for (let i = 0; i < entries.length; ++i) {
-            const e = entries[i];
-            if (!isPinnedEntry(e) || !dragRaw[e.window.internalId]) continue;
-            const sx0 = (e.x - viewX) * zoom, sy0 = (e.y - viewY) * zoom;
-            const cl = clampScreen(e);
-            if (Math.abs(sx0 - cl.sx) < 0.5 && Math.abs(sy0 - cl.sy) < 0.5)
-                pinned[e.window.caption] = { sx: sx0, sy: sy0 };
-        }
         // The throw: a window let go while still moving fast keeps going, on
         // the glide's own Hermite curve with the hand's velocity as its start,
         // and comes to rest a short way on (the distance a flick would carry
@@ -3620,7 +3590,7 @@ KWin.SceneEffect {
         if (list.length === 0) return;
         const gap = configuration.ArrangeGap;
         const box = bbox(list);
-        const spots = {}; // internalId -> {x, y}: the landing, for the glide and the pin's clamp
+        const spots = {}; // internalId -> {x, y}: the landing, for the glide
         if (mode === "horizontal") {
             let x = box.x;
             for (let i = 0; i < list.length; ++i) { spots[list[i].window.internalId] = { x: x, y: box.y }; x += list[i].width + gap; }
@@ -3648,14 +3618,6 @@ KWin.SceneEffect {
         for (let i = 0; i < list.length; ++i) {
             const sp = spots[list[i].window.internalId];
             animateEntry(list[i], sp.x, sp.y, i * 35); // the wave: the batch lands in a cascade, not a lockstep
-        }
-        // A pinned window keeps its pin: the arrangement becomes the new
-        // anchor, clamped on screen - read from the landing, not the launch.
-        for (let i = 0; i < list.length; ++i) {
-            if (isPinnedEntry(list[i])) {
-                const sp = spots[list[i].window.internalId];
-                pinned[list[i].window.caption] = clampScreen(list[i], sp.x, sp.y);
-            }
         }
         revision++;
     }
@@ -3690,7 +3652,7 @@ KWin.SceneEffect {
     function sendTo(id) {
         const list = arrangeTargets();
         if (list.length === 0) return;
-        const spots = {}; // internalId -> {x, y}: the landing, for the glide and the pin's clamp
+        const spots = {}; // internalId -> {x, y}: the landing, for the glide
         if (id !== null && id !== undefined) {
             for (let i = 0; i < list.length; ++i) {
                 const e = list[i];
@@ -3734,12 +3696,6 @@ KWin.SceneEffect {
         for (let i = 0; i < list.length; ++i) {
             const sp = spots[list[i].window.internalId];
             animateEntry(list[i], sp.x, sp.y, i * 35); // the wave: the batch lands in a cascade, not a lockstep
-        }
-        for (let i = 0; i < list.length; ++i) {
-            if (isPinnedEntry(list[i])) {
-                const sp = spots[list[i].window.internalId];
-                pinned[list[i].window.caption] = clampScreen(list[i], sp.x, sp.y);
-            }
         }
         revision++;
     }
@@ -5037,7 +4993,7 @@ KWin.SceneEffect {
         case "clearsel": clearSelection(); break;
         case "pin": pinEntries([entries[Number(a[1])]]); break;
         case "unpin": unpinEntries([entries[Number(a[1])]]); break;
-        case "unpinall": pinned = {}; for (let i = 0; i < entries.length; ++i) setPinned(entries[i].window, false); break;
+        case "unpinall": for (let i = 0; i < entries.length; ++i) setPinned(entries[i].window, false); break;
         case "arrange": arrange(a[1], Number(a[2]), Number(a[3])); break;
         case "tidy": tidy(); break;
         case "undo": undo(); break;

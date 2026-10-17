@@ -374,7 +374,7 @@
             <default></default>
         </entry>
         <entry name="PinnedWindows" type="StringList">
-            <label>Pinned windows, by caption. A pinned window is screen-fixed: it rides the camera and never leaves the screen - the one window that follows you everywhere on the plane, this model's "on all desktops". Drag it to move its spot; drag it past an edge and it bounces back into view.</label>
+            <label>No longer read. A float is KWin's own on-all-desktops flag and is held by the window; the knob stays declared so a config that has it still loads.</label>
             <default></default>
         </entry>
         <entry name="ClusterHomes" type="String">
