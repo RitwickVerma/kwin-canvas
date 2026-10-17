@@ -10,6 +10,11 @@ Unreleased:
   the plugin's cpu sample window forward. `kwin-canvas perf` summarizes the effect's timing lines in the
   journal.
 
+- A `Perf` knob (off by default, a boolean test per call site off) writes the canvas's own
+  timings to the journal as `kwin-canvas perf:` lines: how long an open took to
+  its first frame and to settle, how long a slide took, how long the pointer
+  rested before a hover fetch, and the tick spacing when the canvas closes. It
+  turns "it pauses before it flies" into numbers.
 - The window an auto fly lands on is raised. With focus following the mouse,
   raise on hover and click-raise off, KWin raises a window only after the
   pointer has rested on it, and the pointer never moves when a window slides

@@ -48,6 +48,24 @@ shorter span) and is otherwise read-only. `perf` only parses: the effect does no
 until its `Perf` knob lands. The first real `doctor` run found the Meta+Ctrl+Space
 clash (Canvas Home and Mouse Tiler: Change Mode) and a CLI one commit behind.
 
+**Perf trace.** The `Perf` knob (off by default; off costs a boolean test per
+call site, idle CPU within noise) writes `kwin-canvas perf: EVENT key=value`
+lines to the journal: `open`, `first-paint`, `settle`, `slide`, `hover-fetch`,
+`ticks` (format in `architecture.md` -> *Motion*). Scenario `161-perf` checks it,
+and that off writes none. With it, the open's 150 to 200 ms before the first
+tick was taken apart in the nest: about half is KWin building a fresh
+`QQuickWindow` and `QRhi` for the scene on every open, a quarter is
+instantiating `ui.qml` (spread thin, no one section above noise), a quarter is
+the first frame. The first open of a session is slower still: 284, 338 and
+310 ms in three fresh nests (small sample, the harness's open at 1:1). A
+throwaway start/stop of the effect 3 s after it loads brought that to 172 to
+178 ms in three nests, with the closed idle CPU unchanged, so a pre-warm of the
+first open works in the nest; it is not shipped (see the candidates below). The
+per-open cost is left as it is: that it cannot be avoided without keeping the
+effect started is reasoned from the KWin API (a started effect draws the
+full-screen scene, which would break direct scanout), not tried. Nest timings,
+not the desktop's.
+
 **Installing.** `make install` is the only target that writes `~/.local/share`, the
 copy the live session loads at login. Tests and the nest use `build/nest-data`
 (`make nest-install`). The plugin in `/usr/lib/qt6/plugins/kwin/plugins` is
@@ -61,6 +79,15 @@ installed by hand with `sudo`.
 - The slide costs 6 to 12% of the main thread; where it goes is not known.
 - The fly starts with the open (no warm-up turn). The first painted frame is
   the desktop's own picture; only the nest has checked there is no flash.
+- The open's first tick comes 150 to 200 ms after `open()`. Read `kwin-canvas perf:
+  first-paint` on the desktop (`Perf` knob) to see whether it is the same there; if
+  it is, only a smaller scene or a KWin change would shorten it.
+- Pre-warm the first open (user item 4): the nest says it works (first open 284 to
+  338 ms down to 172 to 178 ms, idle CPU unchanged) but only for the first open of a
+  session; the shipped form is not written. Open questions: whether a start/stop at
+  load flashes the full-screen scene or grabs input on the desktop, and a cheaper
+  warm than a raw `visible` toggle. Keeping the effect started permanently to skip
+  the per-open `QRhi` cost is not tried; direct scanout is reasoned, not measured.
 
 ## The fork
 
