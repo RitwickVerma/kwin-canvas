@@ -40,13 +40,18 @@ run_scenario() {
 
     # A hold mid-flight: the grasp starts from wherever the spring is, zooms
     # out, and the release commits. The camera must survive the whole round.
-    printf 'move 960 900\nsleep 60\ndown back\nsleep 1500\nmove 960 540\nsleep 100\nclick\nsleep 300\nup back\n' | input >/dev/null 2>&1 &
+    # The click that follows the hold flies the camera on to the window, so the
+    # 0.5 must be read before it. Each debug command is a 0.3 s round trip, and
+    # a 1.5 s hold put the click at 1.66 s while the read came at about 1.75:
+    # the zoom read back was the landing flight's 0.86. The hold is long enough
+    # now that the read is well inside it.
+    printf 'move 960 900\nsleep 60\ndown back\nsleep 3500\nmove 960 540\nsleep 100\nclick\nsleep 300\nup back\n' | input >/dev/null 2>&1 &
     sleep 0.6
     c "zoom 0.5 960 540"
     sleep 0.8
     c state
     assert_eq "the mid-flight grasp is a grasp" "$(sget zoom)" "0.5000"
-    sleep 1.2
+    sleep 3.0
     # Release committed (or widened); either way the camera stays finite.
     c state
     if [ "$(sget zoom)" = "nan" ] || [ "$(sget zoom)" = "inf" ]; then

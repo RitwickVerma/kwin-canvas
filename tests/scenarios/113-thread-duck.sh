@@ -81,4 +81,13 @@ run_scenario() {
         "$(changed "$(region_rmse "$OUT/td-unlit.png" "$OUT/td-lit.png" "$b2")")" 1
 
     c cancel
+    # Konsole and Gwenview were committed inside Activity 2's frame (its
+    # target is 2160,0), and activating a window on another activity makes KWin
+    # switch to it. Left there, the next scenario's arrange ran its resetview
+    # on Activity 2 and pulled that activity's target to 0,0 on top of Activity
+    # 1's, which is what turned every frame tint after this scenario wrong
+    # (20-zoom-pan, 60-activities and 95-gestures found "Activity 2").
+    c "activity 0"
+    sleep 0.8
+    arrange >/dev/null
 }

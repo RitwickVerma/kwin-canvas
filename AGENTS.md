@@ -68,7 +68,7 @@ make nest-reload             # reinstall, restart the nest, relaunch clients
 make nest-down               # stop it
 make nest-clean              # kill leftovers of nests whose state is gone
 
-make test                    # all scenarios, ~10 min; the last full run was 253 pass, 10 fail, 2 skip, before the newest scenarios: the fails are suite-order, each green alone (docs/testing.md)
+make test                    # all scenarios, ~10 min; the last full run: 655 ok, 0 FAIL, 4 skip in one run, runner repaired sizes after ~10 scenarios, cause found on 114 only (docs/testing.md)
 NEST_VIRTUAL=1 make test ...   # the same on a virtual framebuffer: no window opens on your desktop
 make test ARGS=60            # scenarios whose file name matches
 make test-panel ARGS=117     # with Plasma's default panel in the nest (the dock scenarios, 117 and 149)
@@ -105,11 +105,14 @@ Cheapest first, and stop where the change warrants:
 3. **`make test ARGS=<name>`** — one or two scenarios in a nest, a minute or two:
    the right size for a change you can describe in one sentence.
 4. **`make test`** — the whole suite against a fresh nest, ten minutes or so.
-   The last full run gave 253 pass, 10 fail, 2 skip: each fail is a suite-order
-   artefact, green alone (the list and the reasoning are in `docs/testing.md`).
-   Run every failure alone before believing it, and bisect before blaming a
-   change: `111-thread-z` fails three checks on every commit back to a good
-   full run, so it is not one you just made. The skips say what they cannot check here:
+   The last full run gave 655 `ok`, 0 `FAIL`, 4 skip in one run, in which the
+   runner repaired window sizes after about ten scenarios (cause found on 114
+   only, see `docs/testing.md`; the runner's totals used to undercount there too:
+   count the `ok` and `FAIL` lines). The runner
+   puts the desk back after each scenario and prints `desk reset after NAME` when
+   it had to: that line names a scenario that leaks, fix it there. Run every
+   failure alone before believing it, and bisect before blaming a change. The
+   skips say what they cannot check here:
    `91-two-outputs`, because it needs a two-output nest — `make
    test-two-outputs` gives it that — and `135-decoration`, because the canvas
    decoration loads only under `NEST_DECOR=canvas` (`make test-decor`).

@@ -64,7 +64,12 @@ run_scenario() {
         printf "%d %d\n", (kx + kw / 2 - vx) * z, (ky + kh / 2 - vy) * z
     }')"
     input move "$sx" "$sy"
-    sleep 1.2
+    # A quiet wait, no debug commands in it, then one read. The rest's focus
+    # lands 1.5 to 1.9 s after the move here (measured by polling in 161's
+    # shape, with the plugin's hover-clock guard in): the 900 ms hover delay
+    # plus the effect's own settle. One read at 1.2 s caught it too early, and
+    # a read loop before the guard restarted the clock on every pass.
+    sleep 2.5
     c state
     assert_eq "the rest focused Konsole" "$(head -1 <<<"$LAST_STATE" | grep -c 'focus=.*Konsole')" 1
     assert_eq "and the hover lifts it above the web" "$(eget Konsole z)" 2000

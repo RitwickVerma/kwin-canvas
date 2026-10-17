@@ -80,5 +80,8 @@ run_scenario() {
     input move 960 500
     input click
     sleep 0.4
+    # The default layout seeded above swapped the fixture wallpaper for
+    # Plasma's own and left its panel: put the nest's shape back (see 117).
+    if [ "$seeded" = 1 ]; then shell_shape; sleep 2; fi
     arrange >/dev/null
 }

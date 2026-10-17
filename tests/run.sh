@@ -39,6 +39,7 @@ up
 fixtures
 arrange >/dev/null
 echo "   fixtures arranged: $(sget entries) windows"
+PANELS0=$(panel_count)
 
 # The effect's settings as the nest seeded them. A scenario that changes one
 # and does not put it back would hand it to every scenario after it (two once
@@ -86,6 +87,40 @@ layout_moved() {
     [ "$(awk '/^  \[/{e=$0} END{print e}' <<<"$LAST_STATE" | grep -c KCalc)" = 1 ] || return 0
     return 1
 }
+# The windows' sizes. A window's real size can end up off its arranged one
+# without its entry knowing: after 120-tidy's commit, the arrange that follows
+# asked KCalc and Gwenview for 420 high and they ended 432 (the frame itself, no
+# minimum in the way), and a request for the size the entry already holds is not
+# sent again, so every arrange after it kept them. 123's golden drew the taller
+# pair. Konsole is left out: it rounds a request to its cells (630 for 620), so
+# it never matches the spec and would read as drifted every time.
+sizes_off() {
+    local cap spec off=""
+    c state >/dev/null 2>&1
+    for cap in "${!LAYOUT[@]}"; do
+        [ "$cap" = Konsole ] && continue
+        spec=(${LAYOUT[$cap]})
+        [ "$(eget "$cap" w)x$(eget "$cap" h)" = "${spec[2]}x${spec[3]}" ] || off="$off $cap=$(eget "$cap" w)x$(eget "$cap" h)"
+    done
+    [ -z "$off" ] && return 1
+    printf '%s' "$off"
+}
+# Ask the windows that are off for a smaller size first, so the arrange that
+# follows has a real change to request.
+heal_sizes() {
+    local cap spec
+    c cancel >/dev/null 2>&1
+    open_1to1
+    for cap in "${!LAYOUT[@]}"; do
+        [ "$cap" = Konsole ] && continue
+        spec=(${LAYOUT[$cap]})
+        [ "$(eget "$cap" w)x$(eget "$cap" h)" = "${spec[2]}x${spec[3]}" ] && continue
+        c "placeby $cap ${spec[0]} ${spec[1]} ${spec[2]} $((spec[3] - 20))"
+    done
+    sleep 0.6
+    c commit
+    sleep 0.4
+}
 restore_memory() {
     local key had=0
     for key in ClusterHomes ClusterNames Bookmarks; do
@@ -95,6 +130,51 @@ restore_memory() {
         fi
     done
     [ "$had" = 1 ] && cmd "reloadstate" >/dev/null 2>&1
+}
+
+DESK_RESETS=0
+# The nest as the runner seeded it, beyond the settings: the first activity
+# current and only the two seeded ones, the canvas closed, no float, popup or
+# menu up, the five fixture windows. A scenario that switches activity or adds
+# one and fails half way (or only forgets) left the next one on "Activity 2",
+# and 60 and 95 then failed on their first assertion. Cheap to check (one
+# state read), so every scenario starts on the same activity, and each
+# correction is printed under the scenario that needed it, which is how the
+# offender gets named. The desktop's shape is part of it: 117-dock seeds
+# Plasma's default layout, which swaps every wallpaper for Plasma's own and adds
+# a panel, so the panel count is compared with the one the nest started with.
+desk_reset() {
+    local n i fixed=""
+    c state >/dev/null 2>&1
+    n=$(sget nactivities)
+    if [ "${n:-2}" -gt 2 ] 2>/dev/null; then
+        for ((i = n - 1; i >= 2; i--)); do c "rmactivity $i" >/dev/null 2>&1; done
+        sleep 1.2; c state >/dev/null 2>&1
+        fixed="$fixed removed $((n - 2)) extra activity(ies);"
+    fi
+    if [ "$(sget activity)" != "Activity 1" ]; then
+        fixed="$fixed current activity was '$(sget activity)';"
+        c "activity 0" >/dev/null 2>&1
+        sleep 0.8; c state >/dev/null 2>&1
+    fi
+    local p; p=$(panel_count)
+    if [ -n "$PANELS0" ] && [ "$p" != "$PANELS0" ]; then
+        fixed="$fixed plasmashell had $p panels, not $PANELS0 (desktop shaped again);"
+        shell_shape >/dev/null 2>&1
+        sleep 2
+    fi
+    [ "$(sget visible)" = false ] || { fixed="$fixed canvas was open;"; c cancel >/dev/null 2>&1; }
+    [ "$(sget entries)" = 5 ] || fixed="$fixed $(sget entries) windows, not 5;"
+    local f; f=$(head -1 <<<"$LAST_STATE" | sed -n 's/.* floats=\([0-9]*\).*/\1/p')
+    [ "${f:-0}" = 0 ] || fixed="$fixed $f floats;"
+    [ "$(sget popups)" = 0 ] || fixed="$fixed $(sget popups) popups;"
+    [ "$(sget menus)" = 0 ] || fixed="$fixed $(sget menus) menus;"
+    if [ -n "$fixed" ]; then
+        DESK_RESETS=$((DESK_RESETS + 1))
+        echo "   desk reset after $name:$fixed"
+        return 0
+    fi
+    return 1
 }
 
 matched=0
@@ -121,6 +201,7 @@ for f in "${files[@]}"; do
     c cancel >/dev/null 2>&1 || true
     restore_settings
     restore_memory
+    desk_reset && arrange >/dev/null 2>&1
     # The pointer is state too: one left resting where the next scenario
     # puts a window lights that window as a hover (it once changed 93's
     # goldens after 90). Bare ground of the arranged desk, away from every
@@ -132,6 +213,12 @@ for f in "${files[@]}"; do
     # one's screenshots a different desk. Cheap to check, so only a layout
     # that has moved is arranged again.
     layout_moved && arrange >/dev/null 2>&1
+    if off=$(sizes_off); then
+        DESK_RESETS=$((DESK_RESETS + 1))
+        echo "   desk reset after $name: window sizes drifted off the layout:$off;"
+        heal_sizes >/dev/null 2>&1
+        arrange >/dev/null 2>&1
+    fi
 done
 
 if [ "$matched" = 0 ]; then
