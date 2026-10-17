@@ -655,11 +655,10 @@ KWin.SceneEffect {
         revision++;
     }
     // The screen bounds a floating window's picture is kept inside, with a
-    // margin, on the screen the pointer is on. At the camera's zoom, or at z
-    // for a landing that is made at another one.
-    function floatBounds(e, z) {
-        const sg = (e.window && !e.window.deleted && e.window.screen) || actionScreen();
-        const g = sg.geometry;
+    // margin. At the camera's zoom, or at z for a landing that is made at
+    // another one; the screen is floatScreen's.
+    function floatBounds(e, z, vx, vy) {
+        const g = floatScreen(e, z, vx, vy).geometry;
         const m = 8;
         const zz = z === undefined ? zoom : z;
         const w = e.width * zz, h = e.height * zz;
@@ -671,6 +670,25 @@ KWin.SceneEffect {
         if (w >= g.width - 2 * m) l = r = g.x + Math.max(0, (g.width - w) / 2);
         if (h >= g.height - 2 * m) t = b = g.y + Math.max(0, (g.height - h) / 2);
         return { l: l, r: r, t: t, b: b };
+    }
+    // The screen a floated window is held to: the output its unclamped spot
+    // has its centre on, so the window crosses to another output when the
+    // camera or the hand takes it there; failing that (the camera has pushed
+    // the window off every output) the output it was last held to, and failing
+    // that the one the pointer is on. Not the pointer's output alone: a window
+    // floated on the second output was pulled across to the pointer's. (The
+    // window's own `screen` property does not exist in KWin 6; `output` is
+    // where the real window sat before the canvas opened, which is no use once
+    // the hand has carried the picture to another output.)
+    function floatScreen(e, z, vx, vy) {
+        const zz = z === undefined ? zoom : z;
+        const cx = vx === undefined ? viewX : vx, cy = vy === undefined ? viewY : vy;
+        const at = screenAt((e.x - cx) * zz + e.width * zz / 2, (e.y - cy) * zz + e.height * zz / 2);
+        if (at) return at;
+        const f = floatOf[e.window.internalId];
+        const ss = KWin.Workspace.screens;
+        if (f && f.out) for (let i = 0; i < ss.length; ++i) if (ss[i] === f.out) return f.out;
+        return actionScreen();
     }
     // One tick of the float. The picture sits exactly on the window while
     // the window is inside the screen - the coordinates never move, the
@@ -698,7 +716,7 @@ KWin.SceneEffect {
     // camera (vx, vy, z) when given, the live one otherwise.
     function landFloat(e, vx, vy, z) {
         const cx = vx === undefined ? viewX : vx, cy = vy === undefined ? viewY : vy, zz = z === undefined ? zoom : z;
-        const b = floatBounds(e, zz);
+        const b = floatBounds(e, zz, cx, cy);
         const sx = Math.max(b.l, Math.min(b.r, (e.x - cx) * zz));
         const sy = Math.max(b.t, Math.min(b.b, (e.y - cy) * zz));
         if (Math.abs(sx - (e.x - cx) * zz) > 0.4 || Math.abs(sy - (e.y - cy) * zz) > 0.4) {
@@ -755,7 +773,10 @@ KWin.SceneEffect {
             const tx = (e.x - viewX) * zoom, ty = (e.y - viewY) * zoom;
             const cx = Math.max(b.l, Math.min(b.r, tx)), cy = Math.max(b.t, Math.min(b.b, ty));
             let f = floatOf[id];
-            if (!f) { floatOf[id] = f = { x: tx, y: ty, vx: 0, vy: 0, wasInX: true, wasInY: true }; }
+            if (!f) { floatOf[id] = f = { x: tx, y: ty, vx: 0, vy: 0, wasInX: true, wasInY: true, out: null }; }
+            // Remembered for the ticks the window's centre is off every output.
+            const held = screenAt(tx + e.width * zoom / 2, ty + e.height * zoom / 2);
+            if (held) f.out = held;
             const dragging = dragIndex >= 0 && dragRaw[id];
             const camVX = dt > 0.0001 ? -(viewX - floatPrevViewX) / dt * zoom : 0;
             const camVY = dt > 0.0001 ? -(viewY - floatPrevViewY) / dt * zoom : 0;
