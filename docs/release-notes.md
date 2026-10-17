@@ -1,6 +1,6 @@
 Unreleased:
 
-- A `Perf` knob (off by default, costs nothing off) writes the canvas's own
+- A `Perf` knob (off by default, a boolean test per call site off) writes the canvas's own
   timings to the journal as `kwin-canvas perf:` lines: how long an open took to
   its first frame and to settle, how long a slide took, how long the pointer
   rested before a hover fetch, and the tick spacing when the canvas closes. It

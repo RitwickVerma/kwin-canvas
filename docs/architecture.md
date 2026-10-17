@@ -744,8 +744,10 @@ piece of paper.
 **The perf trace** (`Perf` knob, off by default) writes the canvas's own
 timings to the journal, one `console.log` line each, in exactly this shape:
 `kwin-canvas perf: EVENT key=value key=value`. Every call site tests the
-boolean before it reads a clock or keeps a number, so off costs nothing; on,
-the tick spacing goes in a fixed 251-bin histogram, never a growing list.
+boolean before it reads a clock or keeps a number, so off costs one
+boolean test per call site (idle CPU with it off measured within noise of
+before); on, the tick spacing goes in a fixed 251-bin histogram, never a
+growing list.
 
 | Event | Keys | Meaning |
 |---|---|---|
@@ -770,12 +772,32 @@ Cutting scene sections from `ui.qml` (hot-reloaded, so no restart) moved the
 `ui.qml` share by 0 to 14 ms in total, with no single section above noise:
 the windows, the ground, the minimap, the toolbar and the tags each cost a
 few ms. The wallpaper query, the load pulse and the ground publish are
-asynchronous D-Bus calls or run at the close, and cost nothing here. The
-first open after a session starts is worse (about 290 ms: the QML
-compile and a cold driver). The view cannot be built ahead from QML:
-`QuickSceneEffect` creates its views when it starts and drops them when it
-stops, and keeping it started would draw the full-screen scene and break
-direct scanout all day, which is the cost the idle bob once had.
+asynchronous D-Bus calls or run at the close (read from the code; they were
+not cut out and timed).
+
+The first open after a session starts is slower: 284, 338 and 310 ms in three
+fresh hidden nests (the first `first-paint` line after KWin loaded the
+effect, `Perf` on, real GPU, 5 windows; it is the test harness's open at 1:1,
+not a user's, and three nests is a small sample; the six later opens in each
+nest took 151 to 182 ms). What part of that is the QML compile and what a cold driver was not
+separated.
+
+**Pre-warm: tried once, not shipped.** A throwaway timer that set
+`visible = true` 3 s after the effect loaded and `false` 400 ms later brought
+the first open to 178, 172 and 178 ms in three fresh nests (later opens
+unchanged, 148 to 190 ms), and the closed idle CPU of the nest's
+`kwin_wayland` stayed within noise (0.10 to 0.20% against 0.00 to 0.20% at
+HEAD, three 10 s reads each). So the first-open extra of about 130 ms can be
+warmed from QML. It was not shipped, because what it costs on a desktop is
+not known: it draws the full-screen scene for 400 ms at every effect load
+(a flash at login or on a reload, or not; the hidden nest cannot say), it
+shows the scene without `open()`'s state, and it was not looked at for input
+grabs. It does not touch the per-open `QQuickWindow`/`QRhi` cost, which
+every later open still pays. Keeping the effect started to avoid that cost
+has not been tried: it is reasoned, from the `QuickSceneEffect` API
+(it creates its views when it starts and drops them when it stops), that a
+started effect draws the full-screen scene and would break direct scanout
+all day, which is the cost the idle bob once had.
 
 ## Screen edges
 
