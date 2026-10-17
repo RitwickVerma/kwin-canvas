@@ -120,15 +120,30 @@ function floatStep(f, tx, ty, cx, cy, bl, br, bt, bb, cameraVX, cameraVY, draggi
         f.wasInY = false;
     }
     const w0 = 7, c0 = 14;
+    const px = f.x, py = f.y;
     f.vx += (-w0 * w0 * (f.x - cx) - c0 * f.vx) * dt;
     f.vy += (-w0 * w0 * (f.y - cy) - c0 * f.vy) * dt;
     f.x += f.vx * dt;
     f.y += f.vy * dt;
     // The bounce may overshoot the edge a little, never leave the screen's
-    // neighbourhood: the picture is always findable.
+    // neighbourhood: the picture is always findable. The bound only stops
+    // the picture going further out than it was: a picture let go beyond it
+    // (a window dragged past the edge by a big grab, or one that grew so its
+    // bounds closed in) is already out, and clamping it would throw it back
+    // in one frame instead of letting the spring bring it.
     const pad = 120;
-    f.x = Math.max(bl - pad, Math.min(br + pad, f.x));
-    f.y = Math.max(bt - pad, Math.min(bb + pad, f.y));
+    f.x = Math.max(Math.min(bl - pad, px), Math.min(Math.max(br + pad, px), f.x));
+    f.y = Math.max(Math.min(bt - pad, py), Math.min(Math.max(bb + pad, py), f.y));
+    return f;
+}
+
+// The float's tick over a span of time. The spring is only stable in steps
+// of a frame or less, so a late tick is split into steps of at most maxStep
+// seconds and not stretched into one: a half-second step diverges.
+const floatMaxStep = 0.0167;
+function floatAdvance(f, tx, ty, cx, cy, bl, br, bt, bb, cameraVX, cameraVY, dragging, dt) {
+    const n = Math.max(1, Math.ceil(dt / floatMaxStep));
+    for (let k = 0; k < n; ++k) floatStep(f, tx, ty, cx, cy, bl, br, bt, bb, cameraVX, cameraVY, dragging, dt / n);
     return f;
 }
 

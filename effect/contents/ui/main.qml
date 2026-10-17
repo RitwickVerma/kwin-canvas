@@ -466,11 +466,28 @@ KWin.SceneEffect {
         selectionRev++;
     }
     function clearSelection() { selected = {}; selectionRev++; }
-    // Add every window whose canvas rect meets the rectangle.
+    // Where the eye sees a window, in the plane's coordinates: its canvas spot,
+    // or for a floated one the spot of its picture, which is stored in screen
+    // pixels and rides the screen's edge when the camera has left the window
+    // behind.
+    function pictureAt(e) {
+        const f = floatOf[e.window.internalId];
+        return f ? { x: viewX + f.x / zoom, y: viewY + f.y / zoom } : { x: e.x, y: e.y };
+    }
+    // Whether a floated window's picture is more than a pixel off its
+    // coordinates: the camera has left it behind and the screen's edge holds it.
+    function floatDisplaced(e) {
+        const p = pictureAt(e);
+        return Math.abs(p.x - e.x) * zoom > 1 || Math.abs(p.y - e.y) * zoom > 1;
+    }
+    // Add every window whose drawn rect meets the rectangle: a marquee is
+    // swept over what the eye sees, so a floated window is taken by its
+    // picture and not by the coordinates it is parked at.
     function selectInRect(x, y, w, h) {
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
-            if (e.x < x + w && e.x + e.width > x && e.y < y + h && e.y + e.height > y) selected[e.window.internalId] = true;
+            const p = pictureAt(e);
+            if (p.x < x + w && p.x + e.width > x && p.y < y + h && p.y + e.height > y) selected[e.window.internalId] = true;
         }
         selectionRev++;
     }
@@ -661,7 +678,6 @@ KWin.SceneEffect {
     // a window rule and the canvas all read and write the same flag and
     // nothing here is stored. Keep above and keep below are separate: they
     // are stacking, and a window may be kept above without floating.
-    property var pinned: ({})          // caption -> { sx, sy }, where the hand left it (this session)
     property var floatOf: ({})         // window internalId -> { x, y, vx, vy, wasInX, wasInY }, screen px
     property real floatRev: 0
     property real floatPrevViewX: 0
@@ -692,25 +708,7 @@ KWin.SceneEffect {
             const e = list[i];
             if (!e) continue;
             setPinned(e.window, false);
-            delete pinned[e.window.caption];
         }
-    }
-    // The screen spot that keeps the window wholly inside the screen the
-    // pointer is on, with a margin. The anchor the pin holds, and the place
-    // a bounced window settles. The optional tx/ty override reads a landing
-    // spot instead of the entry's live one (the arrange and the send-to
-    // clamp the destination while the window is still gliding to it).
-    function clampScreen(e, tx, ty) {
-        const g = actionScreen().geometry;
-        const w = e.width * zoom, h = e.height * zoom;
-        const m = 8;
-        let sx = ((tx !== undefined ? tx : e.x) - viewX) * zoom;
-        let sy = ((ty !== undefined ? ty : e.y) - viewY) * zoom;
-        if (w < g.width - 2 * m) sx = Math.max(g.x + m, Math.min(g.x + g.width - w - m, sx));
-        else sx = g.x + m;
-        if (h < g.height - 2 * m) sy = Math.max(g.y + m, Math.min(g.y + g.height - h - m, sy));
-        else sy = g.y + m;
-        return { sx: sx, sy: sy };
     }
     function togglePin() {
         const list = arrangeTargets();
@@ -721,12 +719,13 @@ KWin.SceneEffect {
         revision++;
     }
     // The screen bounds a floating window's picture is kept inside, with a
-    // margin, on the screen the pointer is on.
-    function floatBounds(e) {
-        const sg = (e.window && !e.window.deleted && e.window.screen) || actionScreen();
-        const g = sg.geometry;
+    // margin. At the camera's zoom, or at z for a landing that is made at
+    // another one; the screen is floatScreen's.
+    function floatBounds(e, z, vx, vy) {
+        const g = floatScreen(e, z, vx, vy).geometry;
         const m = 8;
-        const w = e.width * zoom, h = e.height * zoom;
+        const zz = z === undefined ? zoom : z;
+        const w = e.width * zz, h = e.height * zz;
         let l = g.x + m, r = g.x + g.width - w - m, t = g.y + m, b = g.y + g.height - h - m;
         // A window the screen's own size or more (a maximized one) has no
         // margin to keep: it sits flush, top-left aligned when larger, centred
@@ -735,6 +734,25 @@ KWin.SceneEffect {
         if (w >= g.width - 2 * m) l = r = g.x + Math.max(0, (g.width - w) / 2);
         if (h >= g.height - 2 * m) t = b = g.y + Math.max(0, (g.height - h) / 2);
         return { l: l, r: r, t: t, b: b };
+    }
+    // The screen a floated window is held to: the output its unclamped spot
+    // has its centre on, so the window crosses to another output when the
+    // camera or the hand takes it there; failing that (the camera has pushed
+    // the window off every output) the output it was last held to, and failing
+    // that the one the pointer is on. Not the pointer's output alone: a window
+    // floated on the second output was pulled across to the pointer's. (The
+    // window's own `screen` property does not exist in KWin 6; `output` is
+    // where the real window sat before the canvas opened, which is no use once
+    // the hand has carried the picture to another output.)
+    function floatScreen(e, z, vx, vy) {
+        const zz = z === undefined ? zoom : z;
+        const cx = vx === undefined ? viewX : vx, cy = vy === undefined ? viewY : vy;
+        const at = screenAt((e.x - cx) * zz + e.width * zz / 2, (e.y - cy) * zz + e.height * zz / 2);
+        if (at) return at;
+        const f = floatOf[e.window.internalId];
+        const ss = KWin.Workspace.screens;
+        if (f && f.out) for (let i = 0; i < ss.length; ++i) if (ss[i] === f.out) return f.out;
+        return actionScreen();
     }
     // One tick of the float. The picture sits exactly on the window while
     // the window is inside the screen - the coordinates never move, the
@@ -750,21 +768,47 @@ KWin.SceneEffect {
     // place the eye saw a window is where it is written, so a floated window
     // never lands off-screen when the camera leaves it behind. Every way out
     // of the canvas that moves the camera (commit, a slide's landing) runs it.
-    function syncFloatsToEntries() {
-        for (let i = 0; i < entries.length; ++i) if (isPinnedEntry(entries[i])) landFloat(entries[i]);
+    // The camera is the one the windows will be written for: the commit's
+    // target at 1:1, which is not the camera's while the step in is taken at
+    // once from a zoomed-out view (SmoothZoom off).
+    function syncFloatsToEntries(vx, vy, z) {
+        for (let i = 0; i < entries.length; ++i) if (isPinnedEntry(entries[i])) landFloat(entries[i], vx, vy, z);
     }
     // The window takes the spot its picture rests at: the true position held
     // inside the screen. Read from the bounds and not from the float's last
-    // tick, which can trail the camera by a frame (a slide's landing).
-    function landFloat(e) {
-        const b = floatBounds(e);
-        const sx = Math.max(b.l, Math.min(b.r, (e.x - viewX) * zoom));
-        const sy = Math.max(b.t, Math.min(b.b, (e.y - viewY) * zoom));
-        if (Math.abs(sx - (e.x - viewX) * zoom) > 0.4 || Math.abs(sy - (e.y - viewY) * zoom) > 0.4) {
-            e.x = viewX + sx / zoom;
-            e.y = viewY + sy / zoom;
+    // tick, which can trail the camera by a frame (a slide's landing). At the
+    // camera (vx, vy, z) when given, the live one otherwise.
+    function landFloat(e, vx, vy, z) {
+        const cx = vx === undefined ? viewX : vx, cy = vy === undefined ? viewY : vy, zz = z === undefined ? zoom : z;
+        const b = floatBounds(e, zz, cx, cy);
+        const sx = Math.max(b.l, Math.min(b.r, (e.x - cx) * zz));
+        const sy = Math.max(b.t, Math.min(b.b, (e.y - cy) * zz));
+        if (Math.abs(sx - (e.x - cx) * zz) > 0.4 || Math.abs(sy - (e.y - cy) * zz) > 0.4) {
+            e.x = cx + sx / zz;
+            e.y = cy + sy / zz;
             revision++;
         }
+    }
+    // A hand takes a floated window by its picture, so the window's
+    // coordinates are brought to the picture's spot before the drag starts:
+    // the drag moves the coordinates, and the float follows them while the
+    // hand owns the window. Left at coordinates the camera pushed off the
+    // screen, the first move of the hand threw the picture to them (measured:
+    // 1500 px away at a 3000 px push, out from under the pointer).
+    function seatFloat(e) {
+        if (!isPinnedEntry(e)) return;
+        const f = floatOf[e.window.internalId];
+        let sx, sy;
+        if (f) {
+            sx = f.x; sy = f.y;
+        } else {
+            const b = floatBounds(e);
+            sx = Math.max(b.l, Math.min(b.r, (e.x - viewX) * zoom));
+            sy = Math.max(b.t, Math.min(b.b, (e.y - viewY) * zoom));
+        }
+        e.x = viewX + sx / zoom;
+        e.y = viewY + sy / zoom;
+        revision++;
     }
     function floatPinned(dt) {
         // After a stall the last camera position is stale: a fresh start
@@ -793,14 +837,14 @@ KWin.SceneEffect {
             const tx = (e.x - viewX) * zoom, ty = (e.y - viewY) * zoom;
             const cx = Math.max(b.l, Math.min(b.r, tx)), cy = Math.max(b.t, Math.min(b.b, ty));
             let f = floatOf[id];
-            if (!f) { floatOf[id] = f = { x: tx, y: ty, vx: 0, vy: 0, wasInX: true, wasInY: true }; }
+            if (!f) { floatOf[id] = f = { x: tx, y: ty, vx: 0, vy: 0, wasInX: true, wasInY: true, out: null }; }
+            // Remembered for the ticks the window's centre is off every output.
+            const held = screenAt(tx + e.width * zoom / 2, ty + e.height * zoom / 2);
+            if (held) f.out = held;
             const dragging = dragIndex >= 0 && dragRaw[id];
             const camVX = dt > 0.0001 ? -(viewX - floatPrevViewX) / dt * zoom : 0;
             const camVY = dt > 0.0001 ? -(viewY - floatPrevViewY) / dt * zoom : 0;
-            // The spring is only stable in steps of a frame or less: a late
-            // tick is split, not stretched.
-            const n = Math.max(1, Math.ceil(dt / 0.0167));
-            for (let k = 0; k < n; ++k) Logic.floatStep(f, tx, ty, cx, cy, b.l, b.r, b.t, b.b, camVX, camVY, dragging, dt / n);
+            Logic.floatAdvance(f, tx, ty, cx, cy, b.l, b.r, b.t, b.b, camVX, camVY, dragging, dt);
         }
         floatPrevViewX = viewX;
         floatPrevViewY = viewY;
@@ -1168,15 +1212,16 @@ KWin.SceneEffect {
         const rects = [];
         for (let k = 0; k < entries.length; ++k) {
             const e = entries[k];
-            const f = floatOf[e.window.internalId];
+            // A window clamped at the screen's edge must cut the threads
+            // where the eye sees its picture, not where its old canvas spot
+            // was. The threads themselves run between the windows' true
+            // spots (below): the web is the plane's structure, the picture
+            // only rides the screen, so a thread to a displaced floated
+            // window points off the screen toward where the window is.
+            const pic = pictureAt(e);
             rects.push({
-                // The float's picture is stored in screen coordinates, so it
-                // is translated back onto the plane before it occludes: a
-                // window clamped at the screen's edge must cut the threads
-                // where the eye sees its picture, not where its old canvas
-                // spot was.
-                x: f ? viewX + f.x / zoom : e.x,
-                y: f ? viewY + f.y / zoom : e.y,
+                x: pic.x,
+                y: pic.y,
                 w: e.width,
                 h: e.height
             });
@@ -1982,7 +2027,7 @@ KWin.SceneEffect {
             revision++;
             // Activating a window on another activity does not switch to it.
             KWin.Workspace.currentActivity = id;
-            commit(entry.window);
+            commit(entry.window, id);
         });
     }
 
@@ -2984,7 +3029,11 @@ KWin.SceneEffect {
     // and hand input back. A close asked for while a gesture is in hand waits
     // for the buttons to come up, so the canvas never hands a held button to
     // the desktop mid-press.
-    function commit(activate) {
+    // dest is the activity the commit is entering when the caller has just
+    // asked for a switch: KWin reports it asynchronously, so currentActivity
+    // still names the old one while the commit runs. Floats are landed against
+    // dest's target, the frame they are written for; omitted, the current one.
+    function commit(activate, dest) {
         dbg("commit", "entering at zoom " + zoom.toFixed(3) + ", activate=" + activate);
         // A commit on a closed canvas still writes and publishes (the debug
         // channel uses it so), but it is a second ask for a close that has
@@ -2994,7 +3043,7 @@ KWin.SceneEffect {
         finishEntryAnims();
         stopClickPan();
         if (sceneGestures > 0) {
-            deferredClose = function () { commit(activate); };
+            deferredClose = function () { commit(activate, dest); };
             deferredAt = Date.now();
             return;
         }
@@ -3011,8 +3060,12 @@ KWin.SceneEffect {
         // Entering syncs the floated windows to their pictures: the float's
         // clamped spot - the place the eye saw the window - becomes the
         // window's coordinates, so a floated window never lands off-screen
-        // when the camera leaves it behind.
-        syncFloatsToEntries();
+        // when the camera leaves it behind. Landed for the view the commit
+        // writes (the target of the activity being entered, at 1:1): the step
+        // in can be taken at once from a zoomed-out camera, and the switch to
+        // a new activity is not yet reported.
+        const land = targetOf(dest !== undefined && dest !== null ? dest : currentActivity);
+        syncFloatsToEntries(land.x, land.y, 1.0);
         for (const k in targets) {
             targets[k].x = Math.round(targets[k].x);
             targets[k].y = Math.round(targets[k].y);
@@ -3185,8 +3238,10 @@ KWin.SceneEffect {
     // Enter the location under the active screen's centre. The activity
     // whose frame holds that canvas point becomes current, its own when no
     // frame does, and its viewport is placed so that point is at the screen
-    // centre at 1:1: at zoom 1 that is exactly where the camera is.
-    function enterHere() {
+    // centre at 1:1: at zoom 1 that is exactly where the camera is. A window
+    // passed in is focused on arrival: the step into a floated one, which
+    // rides the screen and so is wherever the eye is.
+    function enterHere(activate) {
         const g = actionScreen().geometry;
         const cx = g.x + g.width / 2, cy = g.y + g.height / 2;
         const c = globalToCanvas(cx, cy);
@@ -3203,7 +3258,7 @@ KWin.SceneEffect {
         t.x = Math.round(c.x - cx);
         t.y = Math.round(c.y - cy);
         dbg("enterHere", "c=(" + Math.round(c.x) + "," + Math.round(c.y) + ") -> (" + t.x + "," + t.y + ")");
-        flyEnter(a, t.x, t.y, function () { finishEnter(a); });
+        flyEnter(a, t.x, t.y, function () { finishEnter(a, activate); });
     }
 
     // ---- placing the desk around a window -------------------------------------
@@ -3341,6 +3396,14 @@ KWin.SceneEffect {
     function focusWindow(entry, gx, gy) {
         clickPanEntry = null;
         clickPanTimer.stop();
+        // A floated window whose picture rides the screen's edge, away from
+        // its coordinates, is already where the eye is: stepping in is
+        // entering here and focusing it. Placing the desk around its
+        // coordinates flew the camera to wherever the push had left them, and
+        // the window landed off the screen (measured: frame at x=-1508 after
+        // a 3000 px push). One that sits at its coordinates is placed like
+        // any window.
+        if (isPinnedEntry(entry) && floatDisplaced(entry)) { enterHere(entry.window); return; }
         if (gx === undefined) { const p = cursorScreen(); gx = p.x; gy = p.y; }
         const inFrame = activityAt(entry);
         const a = inFrame !== null ? inFrame : (entry.activity || currentActivity);
@@ -3349,7 +3412,7 @@ KWin.SceneEffect {
             flyEnter(a, t.x, t.y, function () {
                 pendingFocus = entry.window;
                 KWin.Workspace.currentActivity = a;
-                commit(null);
+                commit(null, a);
             });
             return;
         }
@@ -3397,9 +3460,14 @@ KWin.SceneEffect {
     // The camera has arrived: activity a is made current - KWin reports the
     // switch asynchronously - and the commit writes every window relative to
     // the frame it sits in and hands input back.
-    function finishEnter(a) {
-        if (a !== currentActivity) KWin.Workspace.currentActivity = a;
-        commit(null);
+    function finishEnter(a, focus) {
+        if (a !== currentActivity) {
+            if (focus) pendingFocus = focus;
+            KWin.Workspace.currentActivity = a;
+            commit(null, a);
+            return;
+        }
+        commit(focus || null, a);
     }
 
     // gotoActivity: apply with that activity current, flying to its viewport
@@ -3512,7 +3580,10 @@ KWin.SceneEffect {
         dragRaw = {};
         dragIndex = index;
         const set = isSelected(e) ? entries.filter(isSelected) : roomOf(e);
-        for (let i = 0; i < set.length; ++i) dragRaw[set[i].window.internalId] = { x: set[i].x, y: set[i].y };
+        for (let i = 0; i < set.length; ++i) {
+            seatFloat(set[i]);
+            dragRaw[set[i].window.internalId] = { x: set[i].x, y: set[i].y };
+        }
     }
     // A window held by KWin to a screen-locked state - tiled, or maximized -
     // belongs to a room: the other such windows in its cluster. Tiling is
@@ -3541,7 +3612,9 @@ KWin.SceneEffect {
         dragIndex = -1;
         for (let k = 0; k < c.ids.length; ++k) {
             const e = entryById(c.ids[k]);
-            if (e) dragRaw[e.window.internalId] = { x: e.x, y: e.y };
+            if (!e) continue;
+            seatFloat(e);
+            dragRaw[e.window.internalId] = { x: e.x, y: e.y };
         }
     }
     function dragCluster(i, dx, dy) {
@@ -3604,17 +3677,6 @@ KWin.SceneEffect {
 
     // The drag is over: the grip's release, or anything that ends a gesture.
     function endDrag() {
-        // A pinned window's anchor is remembered where the hand let it go:
-        // the float tick reads the entry itself and clamps the picture on
-        // screen, so a drop outside is carried, not snapped.
-        for (let i = 0; i < entries.length; ++i) {
-            const e = entries[i];
-            if (!isPinnedEntry(e) || !dragRaw[e.window.internalId]) continue;
-            const sx0 = (e.x - viewX) * zoom, sy0 = (e.y - viewY) * zoom;
-            const cl = clampScreen(e);
-            if (Math.abs(sx0 - cl.sx) < 0.5 && Math.abs(sy0 - cl.sy) < 0.5)
-                pinned[e.window.caption] = { sx: sx0, sy: sy0 };
-        }
         // The throw: a window let go while still moving fast keeps going, on
         // the glide's own Hermite curve with the hand's velocity as its start,
         // and comes to rest a short way on (the distance a flick would carry
@@ -3640,6 +3702,11 @@ KWin.SceneEffect {
             lastThrow = { dx: ox, dy: oy };
             for (let i = 0; i < set.length; ++i) {
                 const e = set[i];
+                // A floated window is not thrown: it rides the screen and is
+                // kept inside it, so the hand's release spot is where the
+                // eye last saw it and where it stays. A throw toward an edge
+                // would only run the coordinates on while the picture stopped
+                // at the bound.
                 if (isPinnedEntry(e)) continue;
                 animateEntry(e, e.x + ox, e.y + oy, 0, dragVX / zoom, dragVY / zoom);
             }
@@ -3693,7 +3760,7 @@ KWin.SceneEffect {
         if (list.length === 0) return;
         const gap = configuration.ArrangeGap;
         const box = bbox(list);
-        const spots = {}; // internalId -> {x, y}: the landing, for the glide and the pin's clamp
+        const spots = {}; // internalId -> {x, y}: the landing, for the glide
         if (mode === "horizontal") {
             let x = box.x;
             for (let i = 0; i < list.length; ++i) { spots[list[i].window.internalId] = { x: x, y: box.y }; x += list[i].width + gap; }
@@ -3721,14 +3788,6 @@ KWin.SceneEffect {
         for (let i = 0; i < list.length; ++i) {
             const sp = spots[list[i].window.internalId];
             animateEntry(list[i], sp.x, sp.y, i * 35); // the wave: the batch lands in a cascade, not a lockstep
-        }
-        // A pinned window keeps its pin: the arrangement becomes the new
-        // anchor, clamped on screen - read from the landing, not the launch.
-        for (let i = 0; i < list.length; ++i) {
-            if (isPinnedEntry(list[i])) {
-                const sp = spots[list[i].window.internalId];
-                pinned[list[i].window.caption] = clampScreen(list[i], sp.x, sp.y);
-            }
         }
         revision++;
     }
@@ -3763,7 +3822,7 @@ KWin.SceneEffect {
     function sendTo(id) {
         const list = arrangeTargets();
         if (list.length === 0) return;
-        const spots = {}; // internalId -> {x, y}: the landing, for the glide and the pin's clamp
+        const spots = {}; // internalId -> {x, y}: the landing, for the glide
         if (id !== null && id !== undefined) {
             for (let i = 0; i < list.length; ++i) {
                 const e = list[i];
@@ -3807,12 +3866,6 @@ KWin.SceneEffect {
         for (let i = 0; i < list.length; ++i) {
             const sp = spots[list[i].window.internalId];
             animateEntry(list[i], sp.x, sp.y, i * 35); // the wave: the batch lands in a cascade, not a lockstep
-        }
-        for (let i = 0; i < list.length; ++i) {
-            if (isPinnedEntry(list[i])) {
-                const sp = spots[list[i].window.internalId];
-                pinned[list[i].window.caption] = clampScreen(list[i], sp.x, sp.y);
-            }
         }
         revision++;
     }
@@ -5115,7 +5168,7 @@ KWin.SceneEffect {
         case "clearsel": clearSelection(); break;
         case "pin": pinEntries([entries[Number(a[1])]]); break;
         case "unpin": unpinEntries([entries[Number(a[1])]]); break;
-        case "unpinall": pinned = {}; for (let i = 0; i < entries.length; ++i) setPinned(entries[i].window, false); break;
+        case "unpinall": for (let i = 0; i < entries.length; ++i) setPinned(entries[i].window, false); break;
         case "arrange": arrange(a[1], Number(a[2]), Number(a[3])); break;
         case "tidy": tidy(); break;
         case "undo": undo(); break;
