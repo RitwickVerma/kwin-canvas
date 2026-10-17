@@ -1,5 +1,15 @@
 Unreleased:
 
+- `kwin-canvas doctor` checks the install without touching it: whether each
+  installed part (effect, wallpaper, applets, decoration, CLI, plugin) matches
+  the repo, whether the running session is older than the files it loaded
+  (and which of relogin, `make hot` or a plasmashell restart fixes it), global
+  shortcuts bound to a Canvas action and another action at once, the stock
+  Zoom effect, where the fidelity ladder stands, and what is enabled. It exits
+  1 on a FAIL. It only reads, apart from one `Passthrough.load` call that moves
+  the plugin's cpu sample window forward. `kwin-canvas perf` summarizes the effect's timing lines in the
+  journal.
+
 - The window an auto fly lands on is raised. With focus following the mouse,
   raise on hover and click-raise off, KWin raises a window only after the
   pointer has rested on it, and the pointer never moves when a window slides
