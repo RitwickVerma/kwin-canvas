@@ -735,10 +735,7 @@ KWin.SceneEffect {
             const dragging = dragIndex >= 0 && dragRaw[id];
             const camVX = dt > 0.0001 ? -(viewX - floatPrevViewX) / dt * zoom : 0;
             const camVY = dt > 0.0001 ? -(viewY - floatPrevViewY) / dt * zoom : 0;
-            // The spring is only stable in steps of a frame or less: a late
-            // tick is split, not stretched.
-            const n = Math.max(1, Math.ceil(dt / 0.0167));
-            for (let k = 0; k < n; ++k) Logic.floatStep(f, tx, ty, cx, cy, b.l, b.r, b.t, b.b, camVX, camVY, dragging, dt / n);
+            Logic.floatAdvance(f, tx, ty, cx, cy, b.l, b.r, b.t, b.b, camVX, camVY, dragging, dt);
         }
         floatPrevViewX = viewX;
         floatPrevViewY = viewY;

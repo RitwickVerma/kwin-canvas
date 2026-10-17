@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, floatStep, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
+const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -135,6 +135,74 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
     const fs = L.smartPan({ x: 416, y: 0, width: 1920, height: 1080 }, g, -416, 0, 1, 24);
     ok("a fullscreen-sized window aligns margin-free", fs.dx === 416 + 416);
     ok("a screen-sized window aligns to the screen's edge, not the margin", L.smartPan({ x: 24, y: 0, width: 1920, height: 1080 }, g, 0, 0, 1, 24).dx === 24);
+}
+
+// ---- a picture already out of bounds is brought in by the spring, not thrown ----
+{
+    // A window let go past the edge by a big grab: the bounds are 8..812, the
+    // picture sits at 1900 (the hand's last spot).
+    let f = { x: 1900, y: 300, vx: 0, vy: 0, wasInX: false, wasInY: true };
+    const first = L.floatStep(f, 1900, 300, 812, 300, 8, 812, 8, 1050, 0, 0, false, 1 / 60);
+    ok("a picture let go far out does not jump in one frame", Math.abs(first.x - 1900) < 20);
+    let worst = 0, prev = first.x, monotone = true;
+    for (let i = 0; i < 360; ++i) {
+        f = L.floatStep(f, 1900, 300, 812, 300, 8, 812, 8, 1050, 0, 0, false, 1 / 60);
+        worst = Math.max(worst, f.x);
+        if (f.x > prev + 1e-9) monotone = false;
+        prev = f.x;
+    }
+    ok("and never goes further out than it was let go", worst <= 1900);
+    ok("it comes in without bouncing back out", monotone);
+    ok("and settles on the bound", near(f.x, 812, 0.5));
+    // A window that grew while its picture rode the edge: the bounds close in
+    // from 1432 to 812 and the coordinates are further right still.
+    const g = L.floatStep({ x: 1432, y: 300, vx: 0, vy: 0, wasInX: false, wasInY: true }, 1600, 300, 812, 300, 8, 812, 8, 1050, 0, 0, false, 1 / 60);
+    ok("a picture whose bounds closed in glides, it does not jump", Math.abs(g.x - 1432) < 20);
+}
+
+// ---- a late tick is split into steps the spring is stable in ----
+{
+    const start = () => ({ x: 1432, y: 300, vx: 0, vy: 0, wasInX: false, wasInY: true });
+    // One 0.5 s step of the bare spring is unstable: it flings the picture to
+    // the far side of the screen instead of towards the bound at 812.
+    const bare = L.floatStep(start(), 1600, 300, 812, 300, 8, 1900, 8, 1050, 0, 0, false, 0.5);
+    ok("a single half-second step is not stable", bare.x < 812);
+    const split = L.floatAdvance(start(), 1600, 300, 812, 300, 8, 1900, 8, 1050, 0, 0, false, 0.5);
+    ok("the same half second split into frames glides in from the near side", split.x > 812 && split.x < 1432);
+    // Twelve frames of 1/60 s and one advance of 0.2 s land together.
+    let a = start();
+    for (let i = 0; i < 12; ++i) a = L.floatStep(a, 1600, 300, 812, 300, 8, 1900, 8, 1050, 0, 0, false, 1 / 60);
+    const b = L.floatAdvance(start(), 1600, 300, 812, 300, 8, 1900, 8, 1050, 0, 0, false, 0.2);
+    ok("an advance of 0.2 s is twelve frames", near(a.x, b.x, 0.5) && near(a.vx, b.vx, 5));
+    ok("a zero span is one harmless step", near(L.floatAdvance(start(), 1600, 300, 812, 300, 8, 1900, 8, 1050, 0, 0, false, 0).x, 1432, 1e-9));
+}
+
+// ---- the push at every zoom: bounded, finite, settles ----
+{
+    // A 480x420 window at zoom z, the camera pushing it 700 px past the right
+    // bound at 8000 plane px/s and stopping; the frames jitter between 8 and
+    // 40 ms the way a loaded compositor's do.
+    for (const z of [0.25, 0.5, 0.75, 1]) {
+        const w = 480 * z, br = 1920 - w - 8, bl = 8;
+        const cam = 8000 * z;              // screen px/s, before the float's own cap
+        const x0 = 900 * z, pushFor = (br + 700 - x0) / cam;
+        const f = { x: x0, y: 300, vx: 0, vy: 0, wasInX: true, wasInY: true };
+        let x = x0, t = 0, worst = 0, finite = true, seed = 1;
+        const rnd = () => (seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648;
+        while (t < 6) {
+            const dt = 0.008 + rnd() * 0.032;
+            const pushing = t < pushFor;
+            if (pushing) x += cam * dt;
+            const cx = Math.max(bl, Math.min(br, x));
+            L.floatAdvance(f, x, 300, cx, 300, bl, br, 8, 1050, pushing ? -cam : 0, 0, false, dt);
+            if (!isFinite(f.x) || !isFinite(f.vx)) finite = false;
+            worst = Math.max(worst, f.x - br);
+            t += dt;
+        }
+        ok("zoom " + z + ": the push stays finite", finite);
+        ok("zoom " + z + ": the bounce stays within the pad past the bound", worst <= 121);
+        ok("zoom " + z + ": the picture settles on the bound", near(f.x, br, 0.5));
+    }
 }
 
 // ---- the hand owns a dragged float ----
