@@ -3114,8 +3114,10 @@ KWin.SceneEffect {
     // Enter the location under the active screen's centre. The activity
     // whose frame holds that canvas point becomes current, its own when no
     // frame does, and its viewport is placed so that point is at the screen
-    // centre at 1:1: at zoom 1 that is exactly where the camera is.
-    function enterHere() {
+    // centre at 1:1: at zoom 1 that is exactly where the camera is. A window
+    // passed in is focused on arrival: the step into a floated one, which
+    // rides the screen and so is wherever the eye is.
+    function enterHere(activate) {
         const g = actionScreen().geometry;
         const cx = g.x + g.width / 2, cy = g.y + g.height / 2;
         const c = globalToCanvas(cx, cy);
@@ -3132,7 +3134,7 @@ KWin.SceneEffect {
         t.x = Math.round(c.x - cx);
         t.y = Math.round(c.y - cy);
         dbg("enterHere", "c=(" + Math.round(c.x) + "," + Math.round(c.y) + ") -> (" + t.x + "," + t.y + ")");
-        flyEnter(a, t.x, t.y, function () { finishEnter(a); });
+        flyEnter(a, t.x, t.y, function () { finishEnter(a, activate); });
     }
 
     // ---- placing the desk around a window -------------------------------------
@@ -3270,6 +3272,12 @@ KWin.SceneEffect {
     function focusWindow(entry, gx, gy) {
         clickPanEntry = null;
         clickPanTimer.stop();
+        // A floated window rides the screen: its picture is already where the
+        // eye is, so stepping in is entering here and focusing it. Placing the
+        // desk around its coordinates flew the camera to wherever the push
+        // had left them, and the window landed off the screen (measured:
+        // frame at x=-1508 after a 3000 px push).
+        if (isPinnedEntry(entry)) { enterHere(entry.window); return; }
         if (gx === undefined) { const p = cursorScreen(); gx = p.x; gy = p.y; }
         const inFrame = activityAt(entry);
         const a = inFrame !== null ? inFrame : (entry.activity || currentActivity);
@@ -3326,9 +3334,14 @@ KWin.SceneEffect {
     // The camera has arrived: activity a is made current - KWin reports the
     // switch asynchronously - and the commit writes every window relative to
     // the frame it sits in and hands input back.
-    function finishEnter(a) {
-        if (a !== currentActivity) KWin.Workspace.currentActivity = a;
-        commit(null);
+    function finishEnter(a, focus) {
+        if (a !== currentActivity) {
+            if (focus) pendingFocus = focus;
+            KWin.Workspace.currentActivity = a;
+            commit(null);
+            return;
+        }
+        commit(focus || null);
     }
 
     // gotoActivity: apply with that activity current, flying to its viewport
