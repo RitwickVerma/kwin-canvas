@@ -42,16 +42,23 @@ copy the live session loads at login. Tests and the nest use `build/nest-data`
 (`make nest-install`). The plugin in `/usr/lib/qt6/plugins/kwin/plugins` is
 installed by hand with `sudo`.
 
-**Float audit (2026-10-16, hidden nest, scenarios 161-166).** Fixed and tested: a
+**Float audit (2026-10-16, hidden nest, scenarios 161-167).** Fixed and tested: a
 hand on a displaced floated window (161), stepping into one (162), a window that
 grows at the edge (163, with unit tests of `floatStep`/`floatAdvance`), the marquee
 (164), a throw guard (165), and a window on the second output (166, run with
 `NEST_OUTPUTS=2 tests/run.sh 166`; `e.window.screen` does not exist in KWin 6).
+A floated window stepped into another activity (167): `commit` first landed floats
+against `targetOf(currentActivity)`, which is still the old activity while a switch
+the same call asked for is unreported, so the float was written to the activity
+being left (641f745 claimed otherwise); `commit(activate, dest)` now lands them
+against the destination, passed from `finishEnter`, the cross-activity branch of
+`focusWindow` and `activityAdded`. 167 covers `goto` with SmoothZoom off and on and a
+cross-activity `focus`; `newActivityAt` and a real switch with a pointer are not covered.
 Checked and fine: maximize/restore with the canvas open, arrange/tidy/send-to, undo.
 Deliberate, now commented: floats are not thrown; the minimap sheets and the web's
 thread ends sit at the coordinates. Not checked: the resize grip with a real
-pointer, a drag across the seam, SmoothZoom on, a float in another activity's
-frame, vertically stacked outputs, the switcher's Alt+Tab chord on a float.
+pointer, a drag across the seam, SmoothZoom on for anything but 167's goto,
+vertically stacked outputs, the switcher's Alt+Tab chord on a float.
 
 ## Next candidates
 

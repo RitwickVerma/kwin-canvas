@@ -1963,7 +1963,7 @@ KWin.SceneEffect {
             revision++;
             // Activating a window on another activity does not switch to it.
             KWin.Workspace.currentActivity = id;
-            commit(entry.window);
+            commit(entry.window, id);
         });
     }
 
@@ -2956,7 +2956,11 @@ KWin.SceneEffect {
     // and hand input back. A close asked for while a gesture is in hand waits
     // for the buttons to come up, so the canvas never hands a held button to
     // the desktop mid-press.
-    function commit(activate) {
+    // dest is the activity the commit is entering when the caller has just
+    // asked for a switch: KWin reports it asynchronously, so currentActivity
+    // still names the old one while the commit runs. Floats are landed against
+    // dest's target, the frame they are written for; omitted, the current one.
+    function commit(activate, dest) {
         dbg("commit", "entering at zoom " + zoom.toFixed(3) + ", activate=" + activate);
         // A commit on a closed canvas still writes and publishes (the debug
         // channel uses it so), but it is a second ask for a close that has
@@ -2966,7 +2970,7 @@ KWin.SceneEffect {
         finishEntryAnims();
         stopClickPan();
         if (sceneGestures > 0) {
-            deferredClose = function () { commit(activate); };
+            deferredClose = function () { commit(activate, dest); };
             deferredAt = Date.now();
             return;
         }
@@ -2984,9 +2988,10 @@ KWin.SceneEffect {
         // clamped spot - the place the eye saw the window - becomes the
         // window's coordinates, so a floated window never lands off-screen
         // when the camera leaves it behind. Landed for the view the commit
-        // writes (the current activity's target at 1:1): the step in can be
-        // taken at once from a zoomed-out camera.
-        const land = targetOf(currentActivity);
+        // writes (the target of the activity being entered, at 1:1): the step
+        // in can be taken at once from a zoomed-out camera, and the switch to
+        // a new activity is not yet reported.
+        const land = targetOf(dest !== undefined && dest !== null ? dest : currentActivity);
         syncFloatsToEntries(land.x, land.y, 1.0);
         for (const k in targets) {
             targets[k].x = Math.round(targets[k].x);
@@ -3334,7 +3339,7 @@ KWin.SceneEffect {
             flyEnter(a, t.x, t.y, function () {
                 pendingFocus = entry.window;
                 KWin.Workspace.currentActivity = a;
-                commit(null);
+                commit(null, a);
             });
             return;
         }
@@ -3386,10 +3391,10 @@ KWin.SceneEffect {
         if (a !== currentActivity) {
             if (focus) pendingFocus = focus;
             KWin.Workspace.currentActivity = a;
-            commit(null);
+            commit(null, a);
             return;
         }
-        commit(focus || null);
+        commit(focus || null, a);
     }
 
     // gotoActivity: apply with that activity current, flying to its viewport
