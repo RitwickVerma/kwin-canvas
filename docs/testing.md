@@ -375,12 +375,12 @@ recording, point OBS at the nest window while `DEMO_FRAMES=0 make demo` runs.
   running. Polling `c state` inside the 900 ms after a pointer move therefore
   starves the rest. The plugin now leaves a running clock alone when the
   published delay is unchanged (`setHoverDelay`, `plugin/passthrough.cpp`), and
-  `161-hover-clock` pins it: it polls `c state` ten times during a rest and
+  `168-hover-clock` pins it: it polls `c state` ten times during a rest and
   failed before the guard (focus never landed) and passes with it. Even so the
   rest's focus lands 1.5 to 1.9 s after a pointer move here (polled with the
   guard in, so not starvation), later than the 900 ms delay alone suggests, so
   a read at 1.2 s is early (111 read there and failed the same 3 checks in
-  every run tried, with and without the guard). Wait quietly past that, with no `c` calls in the wait,
+  the one run tried, with the guard in). Wait quietly past that, with no `c` calls in the wait,
   then read once (111 waits 2.5 s). Polling for it is now safe only because of
   the guard; `setHoldDelay` has the same pattern and no guard.
 - **A hold read has a deadline.** The debug channel's round trip is about 0.3 s

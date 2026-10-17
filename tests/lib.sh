@@ -28,7 +28,7 @@ PASS=${PASS:-0}; FAIL=${FAIL:-0}; SKIP=${SKIP:-0}
 # An inherited value that is not a plain number would break the $((PASS + 1))
 # arithmetic: anything but digits starts that tally at 0.
 for _t in PASS FAIL SKIP; do
-    case ${!_t:-} in ''|*[!0-9]*) printf -v "$_t" 0 ;; esac
+    case ${!_t:-} in ''|*[!0-9]*) printf -v "$_t" 0 ;; *) printf -v "$_t" %d "$((10#${!_t}))" ;; esac
 done
 unset _t
 LAST_STATE=""

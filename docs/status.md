@@ -34,8 +34,9 @@ low: `source tests/lib.sh` at the top of many scenarios reset the runner's talli
 Activity 2's view target onto Activity 1's (the "tint" and the "Activity 2" failures
 from 20 to 95). Others found and fixed: `117`, `149`, `86` leave Plasma's default
 panel and wallpaper, `159` added three windows, `115` raced its own read, `111`
-read the rest's focus too early (the plugin restarted the hover clock on every
-debug command; fixed in the plugin, `161` pins it), `107` pressed where a dock
+read the rest's focus too early (fixed by a quiet wait past the hover delay; the
+plugin also restarted a running hover clock on every debug command, a separate
+fault fixed in the plugin and pinned by `168`), `107` pressed where a dock
 is inferred to sit. The runner now also resets the activity, a
 leftover panel and window sizes after every scenario and prints
 `desk reset after NAME` for each, which a clean scenario never triggers; today those
@@ -64,7 +65,7 @@ clash (Canvas Home and Mouse Tiler: Change Mode) and a CLI one commit behind.
 **Perf trace.** The `Perf` knob (off by default; off costs a boolean test per
 call site, idle CPU within noise) writes `kwin-canvas perf: EVENT key=value`
 lines to the journal: `open`, `first-paint`, `settle`, `slide`, `hover-fetch`,
-`ticks` (format in `architecture.md` -> *Motion*). Scenario `161-perf` checks it,
+`ticks` (format in `architecture.md` -> *Motion*). Scenario `169-perf` checks it,
 and that off writes none. With it, the open's 150 to 200 ms before the first
 tick was taken apart in the nest: about half is KWin building a fresh
 `QQuickWindow` and `QRhi` for the scene on every open, a quarter is
