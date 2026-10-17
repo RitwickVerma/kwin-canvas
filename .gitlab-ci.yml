@@ -22,7 +22,7 @@ default:
     # The job runs as root in a checkout the runner owns.
     # ORDER MATTERS: pacman installs git, so it must run before the first git call.
     # (Reversed, every job died `git: command not found` -> exit 127 before its script ran.)
-    - pacman -Syu --noconfirm --needed --quiet git make reuse qt6-declarative python python-pillow gcc wayland pkgconf nodejs shellcheck vulture shaderc
+    - pacman -Syu --noconfirm --needed --quiet git make reuse qt6-declarative python python-pillow gcc wayland pkgconf nodejs shellcheck vulture shaderc diffutils
     - git config --global --add safe.directory '*'
 
 reuse:

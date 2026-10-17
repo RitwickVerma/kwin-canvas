@@ -19,13 +19,17 @@
 # directory; qdbus6 needs the bus and nothing else. `open` retries until the
 # effect is loaded, so an autostart entry can run it before KWin is done.
 #
-# doctor and perf only read: no D-Bus call that changes state, no config write,
-# no restart, so they are safe to run mid-game. doctor prints one OK, WARN or
-# FAIL line per check and exits 1 on any FAIL. Tests point it at fixtures with
+# doctor and perf only read: no config write, no restart, no D-Bus call that
+# changes anything on disk or in the session, so they are safe to run mid-game.
+# One exception is worth knowing: doctor calls the plugin's Passthrough.load once,
+# and that call advances the plugin's cpu sample window (the effect's own 2 s
+# ladder reads the busy share since the previous call, so a doctor reading shortens
+# the effect's next window once). Otherwise the call is read-only. doctor prints
+# one OK, WARN, FAIL or INFO line per check (INFO is not counted: it says what
+# cannot be known) and exits 1 on any FAIL. Tests point it at fixtures with
 # DOCTOR_REPO (the source tree), DOCTOR_HOME (stands in for $HOME),
-# DOCTOR_PLUGIN_DIR, DOCTOR_KWIN_START and DOCTOR_PLASMA_START (epoch seconds
-# a session process started) and DOCTOR_LOAD_WAIT (seconds between the two
-# load readings).
+# DOCTOR_PLUGIN_DIR, and DOCTOR_KWIN_START and DOCTOR_PLASMA_START (epoch seconds
+# a session process started). The install comparison needs diff and cmp (diffutils).
 set -euo pipefail
 
 if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
@@ -39,13 +43,13 @@ DOCTOR_OK=0
 DOCTOR_WARN=0
 DOCTOR_FAIL=0
 
-# verdict LEVEL TAG TEXT: one line per check, counted for the summary.
+# verdict LEVEL TAG TEXT: one line per check, counted for the summary (INFO is not counted).
 verdict() {
     case "$1" in
         OK) DOCTOR_OK=$((DOCTOR_OK + 1)) ;;
         WARN) DOCTOR_WARN=$((DOCTOR_WARN + 1)) ;;
         FAIL) DOCTOR_FAIL=$((DOCTOR_FAIL + 1)) ;;
-    esac
+    esac  # INFO is printed and not counted
     printf '%-4s  %-10s %s\n' "$1" "$2" "$3"
 }
 
@@ -140,6 +144,10 @@ doctor_installed() {
         verdict WARN installed "no source tree to compare with (this copy runs outside a checkout): run it from the checkout's tools/ or set DOCTOR_REPO"
         return
     fi
+    if ! command -v diff >/dev/null 2>&1 || ! command -v cmp >/dev/null 2>&1; then
+        verdict WARN installed "diffutils missing, install comparison skipped (diff and cmp are needed; Arch: pacman -S diffutils)"
+        return
+    fi
     doctor_package installed "effect" "$repo/effect" "$data/kwin/effects/kwin-canvas" "$repo/shared/Ground.qml"
     doctor_package installed "wallpaper" "$repo/wallpaper" "$data/plasma/wallpapers/kwin-canvas-ground" "$repo/shared/Ground.qml"
     doctor_package installed "toggle applet" "$repo/applet" "$data/plasma/plasmoids/org.kde.kwin.canvas.toggle"
@@ -199,10 +207,14 @@ doctor_session() {
             if [ "$ui_m" -le "$kstart" ]; then
                 verdict OK session "ui.qml is older than the session"
             else
+                # Whether the effect re-read ui.qml cannot be read from the files. A make hot
+                # bumps HotRev in kwinrc, so a kwinrc older than ui.qml (or HotRev never bumped)
+                # proves no hot reload followed; a newer kwinrc proves nothing, since any
+                # setting change rewrites it.
                 hot=$(ini_get "$cfg/kwinrc" Effect-kwin-canvas HotRev 0)
                 kwinrc_m=$(stat -c %Y "$cfg/kwinrc" 2>/dev/null || echo 0)
                 if [ "${hot:-0}" != 0 ] && [ "$kwinrc_m" -ge "$ui_m" ]; then
-                    verdict OK session "ui.qml is newer than the session but kwinrc was written after it (HotRev $hot): presumably hot-loaded"
+                    verdict INFO session "ui.qml is newer than the session; whether it was hot-loaded is unknown (a heuristic only: kwinrc was written after it and HotRev is $hot, but any setting change does that): make hot to be sure"
                 else
                     verdict WARN session "ui.qml is newer than the session and no hot reload followed it: make hot, or relogin"
                 fi
@@ -301,7 +313,7 @@ shortcut_conflicts() {
 }
 
 doctor_shortcuts() {
-    local cfg=$1 hits key who zoom
+    local cfg=$1 hits key who zoom zoom_src
     if [ ! -f "$cfg/kglobalshortcutsrc" ]; then
         verdict WARN shortcuts "$cfg/kglobalshortcutsrc is missing: nothing to check"
     else
@@ -317,14 +329,23 @@ EOF
         fi
     fi
     # The stock Zoom effect owns Meta+wheel, Meta+= and Meta+-, which the canvas wants too.
+    # When KWin does not answer, kwinrc decides; an unset zoomEnabled counts as on, as KDE
+    # ships the effect enabled.
     zoom=$(qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.isEffectLoaded zoom 2>/dev/null || true)
+    zoom_src="KWin says $zoom"
     if [ -z "$zoom" ] || [ "$zoom" = "no session" ]; then
         zoom=$(ini_get "$cfg/kwinrc" Plugins zoomEnabled "")
+        if [ -z "$zoom" ]; then
+            zoom=true
+            zoom_src="KWin did not answer and kwinrc has no zoomEnabled, so on as KDE ships it"
+        else
+            zoom_src="KWin did not answer; kwinrc zoomEnabled=$zoom"
+        fi
     fi
     if [ "$zoom" = true ]; then
-        verdict WARN shortcuts "KDE's Zoom effect is on and owns Meta+wheel, Meta+= and Meta+-: turn it off in System Settings > Desktop Effects (make enable does)"
+        verdict WARN shortcuts "KDE's Zoom effect is on (${zoom_src}) and owns Meta+wheel, Meta+= and Meta+-: turn it off yourself in System Settings > Desktop Effects (nothing here does)"
     else
-        verdict OK shortcuts "KDE's Zoom effect is not on (zoomEnabled: ${zoom:-unset}), so Meta+wheel, Meta+= and Meta+- are free"
+        verdict OK shortcuts "KDE's Zoom effect is not on (${zoom_src}), so Meta+wheel, Meta+= and Meta+- are free"
     fi
 }
 
@@ -348,10 +369,11 @@ doctor_ladder() {
     local cfg=$1 mode reading cpu gpu mem rc rg rmem rung name gtxt body
     local cr cm cb gr gm gb mr mm mb
     mode=$(ini_get "$cfg/kwinrc" Effect-kwin-canvas QualityMode Auto)
-    # The plugin's cpu is the busy share since its previous call, so the first call only sets
-    # the baseline and the second reads a half-second window of its own.
-    qdbus6 org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.load >/dev/null 2>&1 || true
-    sleep "${DOCTOR_LOAD_WAIT:-0.5}"
+    # One call. load() is not state-free: the plugin's cpu is the busy share since its previous
+    # call (the effect's own, every 2 s while the overworld is open, or anyone's), and this call
+    # moves that sample window forward. Calling it twice would also cut the effect's next window
+    # short twice. So the cpu figure is the average since whoever asked last, and 0 when nobody
+    # had asked since KWin started.
     reading=$(qdbus6 org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.load 2>/dev/null || true)
     case "$reading" in
         cpu=*) ;;
@@ -374,7 +396,7 @@ doctor_ladder() {
     case "$rung" in 0) name=full ;; 1) name=reduced ;; 2) name=minimal ;; *) name=bare ;; esac
     gtxt="gpu $gpu (steps at $gr/$gm/$gb)"
     [ "$gpu" = -1 ] && gtxt="gpu not readable (no NVML)"
-    body="cpu $cpu (steps at $cr/$cm/$cb), $gtxt, mem $mem (steps at $mr/$mm/$mb)"
+    body="cpu $cpu (steps at $cr/$cm/$cb; the average since the plugin was last asked), $gtxt, mem $mem (steps at $mr/$mm/$mb)"
     if [ "$mode" != Auto ]; then
         verdict OK ladder "mode $mode holds its rung whatever the load; live reading: $body"
     elif [ "$rung" -eq 0 ]; then

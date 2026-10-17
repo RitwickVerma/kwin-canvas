@@ -7,6 +7,12 @@
 # with `make unit`; a failing check prints its name and the output it saw.
 set -uo pipefail
 
+# The install comparison and this test both lean on diffutils (CI: the archlinux image
+# needs it in the pacman line).
+for tool in diff cmp; do
+    command -v "$tool" >/dev/null 2>&1 || { echo "cli.test.sh: $tool is missing (Arch: pacman -S diffutils)" >&2; exit 1; }
+done
+
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 CLI="$HERE/tools/kwin-canvas"
 T=$(mktemp -d)
@@ -44,6 +50,15 @@ DATA="$H/.local/share"
 CFG="$H/.config"
 PLUG="$T/plugins"
 mkdir -p "$DATA/kwin/effects" "$DATA/kwin/decorations" "$DATA/plasma/plasmoids" "$DATA/plasma/wallpapers" "$H/.local/bin" "$CFG" "$PLUG" "$T/bin"
+
+# The source tree doctor compares with: links to the checkout's packages and nothing else, so
+# the checkout's own git-ignored build/ (a built plugin on the owner's machine, none in CI) never
+# reaches a check. Tests that need a build make one under $T/repo/build.
+REPO_FIXTURE="$T/repo"
+mkdir -p "$REPO_FIXTURE"
+for d in effect wallpaper applet applet-decor decoration shared tools VERSION; do
+    ln -sfn "$HERE/$d" "$REPO_FIXTURE/$d"
+done
 
 install_fixture() {
     rm -rf "$DATA" "$H/.local/bin/kwin-canvas"
@@ -99,8 +114,8 @@ chmod 755 "$T/bin/qdbus6"
 
 NOW=$(date +%s)
 doctor() { # runs the repo's CLI over the fixture; session started in the future, so nothing is stale
-    out=$(env PATH="$T/bin:$PATH" DOCTOR_REPO="${REPO:-$HERE}" DOCTOR_HOME="$H" DOCTOR_PLUGIN_DIR="$PLUG" \
-        DOCTOR_KWIN_START="${KSTART:-$((NOW + 1000))}" DOCTOR_PLASMA_START="${PSTART:-$((NOW + 1000))}" DOCTOR_LOAD_WAIT=0 \
+    out=$(env PATH="$T/bin:$PATH" DOCTOR_REPO="${REPO:-$REPO_FIXTURE}" DOCTOR_HOME="$H" DOCTOR_PLUGIN_DIR="$PLUG" \
+        DOCTOR_KWIN_START="${KSTART:-$((NOW + 1000))}" DOCTOR_PLASMA_START="${PSTART:-$((NOW + 1000))}" \
         FAKE_LOAD="${FAKE_LOAD-cpu=10 load=0.50 mem=40 gpu=5}" FAKE_ZOOM="${FAKE_ZOOM-false}" FAKE_LOADED="${FAKE_LOADED-true}" \
         bash "$CLI" doctor 2>&1)
     rc=$?
@@ -147,10 +162,6 @@ has "stale file in the installed copy" "WARN  installed  decoration differs from
 install_fixture
 
 # the plugin: a build that is not what is installed
-mkdir -p "$T/repo"
-for d in effect wallpaper applet applet-decor decoration shared tools VERSION; do
-    ln -sfn "$HERE/$d" "$T/repo/$d"
-done
 mkdir -p "$T/repo/build/plugin/bin/kwin/plugins"
 echo different > "$T/repo/build/plugin/bin/kwin/plugins/kwin_canvas_passthrough.so"
 REPO="$T/repo" doctor
@@ -158,15 +169,27 @@ has "plugin: differs from the build" "WARN  installed  the plugin differs from t
 cp "$PLUG/kwin_canvas_passthrough.so" "$T/repo/build/plugin/bin/kwin/plugins/kwin_canvas_passthrough.so"
 REPO="$T/repo" doctor
 has "plugin: matches the build" "OK    installed  the plugin matches the repo's build"
+rm -rf "$T/repo/build"
 rm -f "$PLUG/kwin_canvas_passthrough.so"
 doctor
 has "plugin: absent is a warning" "WARN  installed  the pass-through plugin is not installed"
 : > "$PLUG/kwin_canvas_passthrough.so"
 
+# no diff or cmp on the PATH: said, not a false OK
+mkdir -p "$T/nodiff"
+for tool in awk cat cut date dirname fold find grep head id ps paste pgrep readlink sed sleep sort stat tail tr wc; do
+    ln -sf "$(command -v "$tool")" "$T/nodiff/$tool"
+done
+out=$(env PATH="$T/nodiff:$T/bin" DOCTOR_REPO="$REPO_FIXTURE" DOCTOR_HOME="$H" DOCTOR_PLUGIN_DIR="$PLUG" DOCTOR_KWIN_START=$((NOW + 1000)) DOCTOR_PLASMA_START=$((NOW + 1000)) FAKE_LOAD="cpu=1 load=0 mem=1 gpu=-1" FAKE_ZOOM=false "$BASH" "$CLI" doctor 2>&1)
+rc=$?
+has "no diffutils: warns" "WARN  installed  diffutils missing, install comparison skipped"
+lacks "no diffutils: no false OK on a comparison" "matches the repo"
+exit_is "no diffutils: still not a failure" 0
+
 # a CLI run from outside a checkout has nothing to compare with
 mkdir -p "$T/loose"
 cp "$CLI" "$T/loose/kwin-canvas"
-out=$(env PATH="$T/bin:$PATH" DOCTOR_HOME="$H" DOCTOR_PLUGIN_DIR="$PLUG" DOCTOR_KWIN_START=$((NOW + 1000)) DOCTOR_PLASMA_START=$((NOW + 1000)) DOCTOR_LOAD_WAIT=0 FAKE_LOAD="cpu=1 load=0 mem=1 gpu=-1" bash "$T/loose/kwin-canvas" doctor 2>&1)
+out=$(env PATH="$T/bin:$PATH" DOCTOR_HOME="$H" DOCTOR_PLUGIN_DIR="$PLUG" DOCTOR_KWIN_START=$((NOW + 1000)) DOCTOR_PLASMA_START=$((NOW + 1000)) FAKE_LOAD="cpu=1 load=0 mem=1 gpu=-1" bash "$T/loose/kwin-canvas" doctor 2>&1)
 rc=$?
 has "no checkout: says so" "no source tree to compare with"
 exit_is "no checkout: not a failure" 0
@@ -179,7 +202,10 @@ has "stale: applets" "WARN  session    an applet or the ground wallpaper is newe
 exit_is "stale: warnings are not failures" 0
 write_kwinrc "HotRev=7"
 KSTART=$((NOW - 5000)) doctor
-has "stale: ui.qml hot-loaded" "OK    session    ui.qml is newer than the session but kwinrc was written after it (HotRev 7)"
+has "stale: ui.qml hot-load is unknown, said so" "INFO  session    ui.qml is newer than the session; whether it was hot-loaded is unknown (a heuristic only"
+lacks "stale: ui.qml hot-load is not claimed OK" "OK    session    ui.qml"
+exit_is "stale: INFO is not a failure" 0
+has "stale: INFO is not counted" "0 fail"
 write_kwinrc
 
 # ---- doctor: shortcuts ----
@@ -197,6 +223,14 @@ exit_is "zoom: only a warning" 0
 FAKE_ZOOM="" write_kwinrc "" true "zoomEnabled=true"
 FAKE_ZOOM="" doctor
 has "zoom: kwinrc fallback when KWin does not answer" "WARN  shortcuts  KDE's Zoom effect is on"
+FAKE_ZOOM="" write_kwinrc "" true "zoomEnabled=false"
+FAKE_ZOOM="" doctor
+has "zoom: kwinrc off when KWin does not answer" "OK    shortcuts  KDE's Zoom effect is not on"
+FAKE_ZOOM="" write_kwinrc "" true ""
+FAKE_ZOOM="" doctor
+has "zoom: unset key counts as on when KWin does not answer" "WARN  shortcuts  KDE's Zoom effect is on"
+has "zoom: unset key says why" "kwinrc has no zoomEnabled, so on as KDE ships it"
+lacks "zoom: the warning does not credit make enable" "make enable"
 write_kwinrc
 
 # ---- doctor: the fidelity ladder ----

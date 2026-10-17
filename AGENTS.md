@@ -213,11 +213,13 @@ older tree, not a check: it goes stale with every edit, so confirm a hit with
   commit that makes it true.
 - **Docs and images are GPL-2.0-or-later**, not `CC-BY-SA-4.0`: one licence
   across the tree. Revisit in `REUSE.toml` if that ever matters.
-- **CI has no test job.** `.gitlab-ci.yml` runs in a bare
+- **CI has no scenario job.** `.gitlab-ci.yml` runs in a bare
   `archlinux:latest` with no compositor: it lints (REUSE, QML, shellcheck at
-  error severity, the dead-code census, vulture) and builds, and the scenarios
-  stay local because they need a nested KWin with real windows. `docs/testing.md`
-  says this out loud rather than pretending.
+  error severity, the dead-code census, vulture), runs `make unit` (the pure
+  logic in node, the CLI's doctor and perf in bash against fixtures; the CLI
+  test needs `diffutils`, which is in the job's pacman line) and builds. The
+  scenarios stay local because they need a nested KWin with real windows.
+  `docs/testing.md` says this out loud rather than pretending.
 - **Goldens and fixtures are committed**, and CI checks that `make fixtures`
   reproduces the fixtures byte for byte.
 - **The nest turns the motion knobs off** (`SmoothZoom`, `PanInertia`,

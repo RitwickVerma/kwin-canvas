@@ -221,8 +221,9 @@ them at fixed canvas positions with `placeby`, then sources each
 
 `.gitlab-ci.yml` runs in an `archlinux:latest` container, which has no
 compositor, so it holds the checks that do not need one and skips the rest
-rather than pretending they passed. The six check jobs are the six parts of
-`make lint`, so a red pipeline reproduces here:
+rather than pretending they passed. Six check jobs are the six parts of
+`make lint`, and a seventh, `unit`, runs `make unit` (needs `diffutils`), so a
+red pipeline reproduces here:
 
 ```bash
 make lint            # lint-reuse, lint-qml, lint-shell, lint-deadcode, lint-python
@@ -231,6 +232,7 @@ make lint-qml        # every .qml file, failing on a [syntax] warning
 make lint-shell      # bash -n on every script, then shellcheck at error severity
 make lint-deadcode   # the dead-code census (tools/deadcode.sh)
 make lint-python     # vulture over the Python (tests/fixtures/gen.py)
+make unit            # logic.test.js in node, cli.test.sh (doctor and perf) in bash
 ```
 
 Shellcheck reads `.shellcheckrc` for the standing policy: the shell is bash

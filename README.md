@@ -227,6 +227,10 @@ When the chord does not reach the open canvas, `kwin-canvas exit` from a
 terminal or a virtual terminal steps into the location under the screen
 centre; `cancel`, `open`, `toggle` and `status` are the other subcommands.
 
+It finds the session bus at the user's runtime directory, so it works from
+a VT with no display. The **Canvas** panel applet (`applet/`) is a button
+that fires the Toggle Canvas chord.
+
 **Troubleshooting: `kwin-canvas doctor`.** When something does not behave, run
 `kwin-canvas doctor` first. It only reads, so it is safe to run mid-game, and
 prints one OK, WARN or FAIL line per check: whether each installed part (the
@@ -235,13 +239,14 @@ the plugin) is the same as the repo's, whether the running session is older than
 the files it loaded (`main.qml` and the plugin need a relogin, `ui.qml` a
 `make hot`), whether a global shortcut is bound to a Canvas action and another
 action at once, whether KDE's Zoom effect still owns Meta+wheel, where the
-fidelity ladder stands, and what is enabled. It exits 1 if anything FAILs.
+fidelity ladder stands, and what is enabled. It exits 1 if anything FAILs. It
+changes nothing, with one footnote: reading the ladder calls the plugin's `load`
+once, which moves the plugin's cpu sample window forward (the effect's own
+reading in the next two seconds covers a shorter span), and the `ui.qml` check
+can only say it does not know whether a hot reload happened.
 `kwin-canvas perf [--since WHEN]` summarizes the timings the effect writes to
 the journal, when its `Perf` setting is on (`kwriteconfig6 --file kwinrc --group
 Effect-kwin-canvas --key Perf true`, then reconfigure the effect).
-It finds the session bus at the user's runtime directory, so it works from
-a VT with no display. The **Canvas** panel applet (`applet/`) is a button
-that fires the Toggle Canvas chord.
 
 To start in the overworld at login there are two ways. The `AutoActivate`
 effect setting opens the canvas as soon as the effect loads, at login and

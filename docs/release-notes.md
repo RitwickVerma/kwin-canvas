@@ -6,7 +6,8 @@ Unreleased:
   (and which of relogin, `make hot` or a plasmashell restart fixes it), global
   shortcuts bound to a Canvas action and another action at once, the stock
   Zoom effect, where the fidelity ladder stands, and what is enabled. It exits
-  1 on a FAIL. `kwin-canvas perf` summarizes the effect's timing lines in the
+  1 on a FAIL. It only reads, apart from one `Passthrough.load` call that moves
+  the plugin's cpu sample window forward. `kwin-canvas perf` summarizes the effect's timing lines in the
   journal.
 
 - The window an auto fly lands on is raised. With focus following the mouse,
