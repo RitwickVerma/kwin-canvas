@@ -43,5 +43,8 @@ run_scenario() {
     assert_eq "no pause on the way to the panel panned the camera, x" "$(sget viewx)" "$vx0"
     assert_eq "nor y" "$(sget viewy)" "$vy0"
     c cancel
+    # The default layout seeded above swapped the fixture wallpaper for
+    # Plasma's own and left its panel: put the nest's shape back (see 117).
+    if [ "$seeded" = 1 ]; then shell_shape; sleep 2; fi
     arrange
 }

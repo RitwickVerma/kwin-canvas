@@ -128,5 +128,9 @@ run_scenario() {
     kill "$holdpid" 2>/dev/null
     sleep 0.8
     c cancel
+    # The default layout seeded above replaced every desktop's fixture
+    # wallpaper with Plasma's own and left its panel: put the nest's shape back,
+    # or the next goldens (123) are drawn on the wrong picture.
+    if [ "$seeded" = 1 ]; then shell_shape; sleep 2; fi
     arrange >/dev/null
 }

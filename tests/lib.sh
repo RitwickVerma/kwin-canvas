@@ -19,7 +19,12 @@ OUT=${TEST_OUT:-$HERE/build/test}
 GOLDEN_DIR=$HERE/tests/golden
 UPDATE_GOLDEN=${UPDATE_GOLDEN:-0}
 TOLERANCE=${GOLDEN_TOLERANCE:-0.03}
-PASS=0; FAIL=0; SKIP=0
+# Kept when already set: many scenarios begin with `source tests/lib.sh`, and a
+# plain reset here zeroed the runner's tallies at each of them, so the closing
+# "== pass N fail M" counted only what ran after the last such scenario and the
+# exit status (`[ "$FAIL" = 0 ]`) forgot every earlier failure. The full run
+# that found it printed fail 0 above a FAIL line, and 266 passes for 653 ok lines.
+PASS=${PASS:-0}; FAIL=${FAIL:-0}; SKIP=${SKIP:-0}
 LAST_STATE=""
 mkdir -p "$OUT"
 

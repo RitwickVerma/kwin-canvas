@@ -65,7 +65,9 @@ run_scenario() {
     }')"
     input move "$sx" "$sy"
     sleep 1.2
-    c state
+    # The rest's focus lands a beat after the hover clock fires (110 polls it
+    # the same way): one read at 1.2 s caught the clock still filling.
+    for _ in 1 2 3 4 5 6 7 8 9 10; do c state; [ "$(head -1 <<<"$LAST_STATE" | grep -c 'focus=.*Konsole')" = 1 ] && break; sleep 0.2; done
     assert_eq "the rest focused Konsole" "$(head -1 <<<"$LAST_STATE" | grep -c 'focus=.*Konsole')" 1
     assert_eq "and the hover lifts it above the web" "$(eget Konsole z)" 2000
     assert_eq "and the raise shifted KCalc down one" "$(eget KCalc z)" 1001

@@ -30,7 +30,10 @@ run_scenario() {
     c "zoom 0.4 960 540"
     sleep 0.4; c state
     local vx; vx=$(sget viewx)
-    printf 'down back\nsleep 400\n' | input &
+    # The pointer is put on bare ground first: arrange parks it at the screen's
+    # corner, which a nest with a panel (make test-panel) covers with the dock,
+    # and the dock owns the press, so no hold ever started there.
+    printf 'move 1700 900\nsleep 60\ndown back\nsleep 400\n' | input &
     sleep 0.5
     printf 'down forward\nsleep 60\nup forward\n' | input
     sleep 0.6; c state

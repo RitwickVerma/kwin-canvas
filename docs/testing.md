@@ -324,6 +324,51 @@ recording, point OBS at the nest window while `DEMO_FRAMES=0 make demo` runs.
   is the arbiter: green alone means the desk, not the code. Never re-record
   a golden from a suite shot. (The known polluters 109, 10-open and 96 now
   restore or arrange before they end.)
+- **The runner resets the desk after every scenario, and says so.** Besides
+  the settings, remembered state, pointer and layout, `desk_reset` in
+  `tests/run.sh` puts back what an arrange cannot: the current activity (the
+  first), any extra activity, an open canvas, the panel count (plasmashell
+  shaped again by `shell_shape`) and the windows' sizes (`sizes_off`). Each
+  correction prints `desk reset after NAME: ...` under the scenario that needed
+  it, so the offender is named instead of found by bisecting; a clean run prints
+  none, and a scenario that prints one is a bug to fix at its source. Windows
+  other than the five fixtures, floats, popups and menus are reported the same
+  way but not removed. The leaks it closed, for the record: `113-thread-duck`
+  activates windows it had committed into Activity 2's frame, KWin switches to
+  that activity, and the next scenario's `arrange` (`resetview` acts on the
+  *current* activity) pulled Activity 2's target onto Activity 1's, which
+  tinted every frame wrong from 20 to 61 and made 60 and 95 meet "Activity 2";
+  `117-dock`, `149-dock-approach` and `86-panel-popup` seed Plasma's default
+  layout for its clock, which swaps every wallpaper for Plasma's own and adds a
+  panel (123 drew that); `159-float-close` ran `fixtures` to replace one closed
+  KCalc and added three windows to every desk after it; and `120-tidy`'s commit
+  of the tidied rows leaves the next `arrange` with KCalc and Gwenview 432 high
+  instead of 420 (measured on the frames, so not a stale entry, and not
+  reproduced by moving them with `placeby` and a commit, so the cause is not
+  found), which `arrange` does not undo because the entry already holds 420;
+  `heal_sizes` asks for 400 first, then arranges.
+- **The runner's tallies survive a scenario that sources `tests/lib.sh`.** Many
+  scenarios begin with `source tests/lib.sh`, and `PASS=0; FAIL=0; SKIP=0` there
+  zeroed the counts, so the closing `== pass N fail M` covered only what ran
+  after the last such scenario, and the exit status forgot every earlier
+  failure: a full run printed `fail 0` under a `FAIL` line, 266 passes for 653
+  `ok` lines. Earlier full-run totals in the docs and in commit messages were
+  low by that much; count the `ok`, `FAIL` and `skip` lines when in doubt.
+- **A debug command is a settings write, and a settings write restarts the
+  plugin's hover clock.** Every `c ...` reconfigures the effect, which publishes
+  `HoverDelay` again, and `QTimer::setInterval` restarts a timer that is
+  running. Polling `c state` inside the 900 ms after a pointer move therefore
+  starves the rest (measured: focus never lands; sleep first, then poll, as 110
+  does). A scenario that reads state once at about 1.2 s can also catch the
+  clock before the focus lands (111): poll.
+- **A hold read has a deadline.** The debug channel's round trip is about 0.3 s
+  here, so a read that follows several commands lands later than the sleeps
+  suggest; give an injected hold ample time past the read (115's click came at
+  1.66 s and the read at 1.75, and read the landing flight's zoom).
+- **The pointer is where `arrange` left it, the screen corner, and a panel
+  covers it.** Under `make test-panel` a press with no move first lands on the
+  dock, which owns it. Put the pointer on bare ground in the same injector
+  stream (107).
 - **Never edit what the running suite reads.** `tests/run.sh` sources each
   scenario as it reaches it, and bash reads a script lazily as it executes:
   editing `run.sh`, `lib.sh` or a scenario while a run is in flight can shift

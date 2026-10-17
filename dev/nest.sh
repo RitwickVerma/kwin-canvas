@@ -227,6 +227,17 @@ shell() {
         sleep 0.25
     done
     [ "$ok" = 1 ] || { echo "plasmashell did not come up; see: dev/nest.sh log"; return 1; }
+    shell_shape
+    echo "plasmashell up"
+}
+
+# The shaping half of shell(), callable again on a running plasmashell: a
+# scenario that seeds Plasma's default layout (117-dock, for its clock) replaces
+# every desktop's wallpaper with Plasma's own picture and adds a panel, and no
+# scenario after it sees the fixture wallpaper the goldens were recorded on (123
+# drew the stock picture). The runner calls this when the panel count is not what
+# the nest was started with.
+shell_shape() {
     local wp; wp=$(wallpaper_file 1)
     if [ -n "$wp" ]; then
         # Stock image wallpaper, one per activity in name order: the frame
@@ -264,7 +275,12 @@ shell() {
         # nest, so a panel never sits under a golden's pixels.
         nq org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.loadLookAndFeelDefaultLayout "org.kde.plasma.desktop" >/dev/null
     fi
-    echo "plasmashell up"
+}
+
+# How many panels plasmashell has now (empty when it does not answer).
+panel_count() {
+    nq org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "print('PANELCOUNT:' + panels().length)" 2>/dev/null \
+        | sed -n 's/.*PANELCOUNT:\([0-9]*\).*/\1/p'
 }
 
 up_once() {
