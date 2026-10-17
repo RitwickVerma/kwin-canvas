@@ -413,6 +413,12 @@ KWin.SceneEffect {
         const f = floatOf[e.window.internalId];
         return f ? { x: viewX + f.x / zoom, y: viewY + f.y / zoom } : { x: e.x, y: e.y };
     }
+    // Whether a floated window's picture is more than a pixel off its
+    // coordinates: the camera has left it behind and the screen's edge holds it.
+    function floatDisplaced(e) {
+        const p = pictureAt(e);
+        return Math.abs(p.x - e.x) * zoom > 1 || Math.abs(p.y - e.y) * zoom > 1;
+    }
     // Add every window whose drawn rect meets the rectangle: a marquee is
     // swept over what the eye sees, so a floated window is taken by its
     // picture and not by the coordinates it is parked at.
@@ -649,12 +655,14 @@ KWin.SceneEffect {
         revision++;
     }
     // The screen bounds a floating window's picture is kept inside, with a
-    // margin, on the screen the pointer is on.
-    function floatBounds(e) {
+    // margin, on the screen the pointer is on. At the camera's zoom, or at z
+    // for a landing that is made at another one.
+    function floatBounds(e, z) {
         const sg = (e.window && !e.window.deleted && e.window.screen) || actionScreen();
         const g = sg.geometry;
         const m = 8;
-        const w = e.width * zoom, h = e.height * zoom;
+        const zz = z === undefined ? zoom : z;
+        const w = e.width * zz, h = e.height * zz;
         let l = g.x + m, r = g.x + g.width - w - m, t = g.y + m, b = g.y + g.height - h - m;
         // A window the screen's own size or more (a maximized one) has no
         // margin to keep: it sits flush, top-left aligned when larger, centred
@@ -678,19 +686,24 @@ KWin.SceneEffect {
     // place the eye saw a window is where it is written, so a floated window
     // never lands off-screen when the camera leaves it behind. Every way out
     // of the canvas that moves the camera (commit, a slide's landing) runs it.
-    function syncFloatsToEntries() {
-        for (let i = 0; i < entries.length; ++i) if (isPinnedEntry(entries[i])) landFloat(entries[i]);
+    // The camera is the one the windows will be written for: the commit's
+    // target at 1:1, which is not the camera's while the step in is taken at
+    // once from a zoomed-out view (SmoothZoom off).
+    function syncFloatsToEntries(vx, vy, z) {
+        for (let i = 0; i < entries.length; ++i) if (isPinnedEntry(entries[i])) landFloat(entries[i], vx, vy, z);
     }
     // The window takes the spot its picture rests at: the true position held
     // inside the screen. Read from the bounds and not from the float's last
-    // tick, which can trail the camera by a frame (a slide's landing).
-    function landFloat(e) {
-        const b = floatBounds(e);
-        const sx = Math.max(b.l, Math.min(b.r, (e.x - viewX) * zoom));
-        const sy = Math.max(b.t, Math.min(b.b, (e.y - viewY) * zoom));
-        if (Math.abs(sx - (e.x - viewX) * zoom) > 0.4 || Math.abs(sy - (e.y - viewY) * zoom) > 0.4) {
-            e.x = viewX + sx / zoom;
-            e.y = viewY + sy / zoom;
+    // tick, which can trail the camera by a frame (a slide's landing). At the
+    // camera (vx, vy, z) when given, the live one otherwise.
+    function landFloat(e, vx, vy, z) {
+        const cx = vx === undefined ? viewX : vx, cy = vy === undefined ? viewY : vy, zz = z === undefined ? zoom : z;
+        const b = floatBounds(e, zz);
+        const sx = Math.max(b.l, Math.min(b.r, (e.x - cx) * zz));
+        const sy = Math.max(b.t, Math.min(b.b, (e.y - cy) * zz));
+        if (Math.abs(sx - (e.x - cx) * zz) > 0.4 || Math.abs(sy - (e.y - cy) * zz) > 0.4) {
+            e.x = cx + sx / zz;
+            e.y = cy + sy / zz;
             revision++;
         }
     }
@@ -2949,8 +2962,11 @@ KWin.SceneEffect {
         // Entering syncs the floated windows to their pictures: the float's
         // clamped spot - the place the eye saw the window - becomes the
         // window's coordinates, so a floated window never lands off-screen
-        // when the camera leaves it behind.
-        syncFloatsToEntries();
+        // when the camera leaves it behind. Landed for the view the commit
+        // writes (the current activity's target at 1:1): the step in can be
+        // taken at once from a zoomed-out camera.
+        const land = targetOf(currentActivity);
+        syncFloatsToEntries(land.x, land.y, 1.0);
         for (const k in targets) {
             targets[k].x = Math.round(targets[k].x);
             targets[k].y = Math.round(targets[k].y);
@@ -3281,12 +3297,14 @@ KWin.SceneEffect {
     function focusWindow(entry, gx, gy) {
         clickPanEntry = null;
         clickPanTimer.stop();
-        // A floated window rides the screen: its picture is already where the
-        // eye is, so stepping in is entering here and focusing it. Placing the
-        // desk around its coordinates flew the camera to wherever the push
-        // had left them, and the window landed off the screen (measured:
-        // frame at x=-1508 after a 3000 px push).
-        if (isPinnedEntry(entry)) { enterHere(entry.window); return; }
+        // A floated window whose picture rides the screen's edge, away from
+        // its coordinates, is already where the eye is: stepping in is
+        // entering here and focusing it. Placing the desk around its
+        // coordinates flew the camera to wherever the push had left them, and
+        // the window landed off the screen (measured: frame at x=-1508 after
+        // a 3000 px push). One that sits at its coordinates is placed like
+        // any window.
+        if (isPinnedEntry(entry) && floatDisplaced(entry)) { enterHere(entry.window); return; }
         if (gx === undefined) { const p = cursorScreen(); gx = p.x; gy = p.y; }
         const inFrame = activityAt(entry);
         const a = inFrame !== null ? inFrame : (entry.activity || currentActivity);
