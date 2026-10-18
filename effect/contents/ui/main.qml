@@ -3782,7 +3782,7 @@ KWin.SceneEffect {
                 const r = Math.floor(i / cols), c = i % cols;
                 spots[e.window.internalId] = { x: box.x + c * (cw + gap), y: box.y + r * (ch + gap) };
                 const idx = entries.indexOf(e);
-                if (idx >= 0) requestSize(idx, cw, ch, false, false);
+                if (idx >= 0) requestSize(idx, cw, ch, false, false, true);
             }
         }
         for (let i = 0; i < list.length; ++i) {
@@ -3997,16 +3997,22 @@ KWin.SceneEffect {
     // Command the real window to a size while the canvas is open. Position is
     // untouched. The client answers with whatever size it accepts, and
     // syncSize() copies that back into the entry when the geometry changes.
-    function requestSize(index, w, h, anchorRight, anchorBottom) {
+    // exact: a size asked for by the canvas itself (the arrange grid, a script)
+    // is taken as given. Only a hand's resize snaps its dragged edge to a
+    // neighbour; snapping an arranged cell pulled it up to 12 px off its size,
+    // and the next window then snapped to that.
+    function requestSize(index, w, h, anchorRight, anchorBottom, exact) {
         const e = entries[index];
         if (!e || e.window.deleted) return;
         camStop();
-        // Snap the edge being dragged. Left/top anchors keep the far edge fixed.
-        const ids = {}; ids[e.window.internalId] = true;
-        const cands = snapCandidates(ids, null);
-        const right = e.x + e.width, bottom = e.y + e.height;
-        w += snapEdge1D(anchorRight ? right - w : e.x + w, true, cands) * (anchorRight ? -1 : 1);
-        h += snapEdge1D(anchorBottom ? bottom - h : e.y + h, false, cands) * (anchorBottom ? -1 : 1);
+        if (!exact) {
+            // Snap the edge being dragged. Left/top anchors keep the far edge fixed.
+            const ids = {}; ids[e.window.internalId] = true;
+            const cands = snapCandidates(ids, null);
+            const right = e.x + e.width, bottom = e.y + e.height;
+            w += snapEdge1D(anchorRight ? right - w : e.x + w, true, cands) * (anchorRight ? -1 : 1);
+            h += snapEdge1D(anchorBottom ? bottom - h : e.y + h, false, cands) * (anchorBottom ? -1 : 1);
+        }
         e.anchorRight = anchorRight;
         e.anchorBottom = anchorBottom;
         e.askW = Math.max(50, Math.round(w));
@@ -5082,7 +5088,7 @@ KWin.SceneEffect {
                 const e = entries[i];
                 if (e.window.caption.indexOf(a[1]) === -1) continue;
                 e.x = Number(a[2]); e.y = Number(a[3]);
-                if (a.length >= 6 && numok(4) && numok(5)) requestSize(i, Number(a[4]), Number(a[5]), false, false);
+                if (a.length >= 6 && numok(4) && numok(5)) requestSize(i, Number(a[4]), Number(a[5]), false, false, true);
                 revision++;
                 break;
             }
