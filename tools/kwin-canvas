@@ -11,6 +11,7 @@
 #   kwin-canvas toggle    step out, or in when the canvas is open
 #   kwin-canvas status    whether the effect is loaded and the plugin answers
 #   kwin-canvas doctor    read-only health check: what is installed, loaded, bound, enabled
+#   kwin-canvas plugincheck [--notify] [--after N]   is the pass-through plugin built for the running KWin (exit 1 if not)
 #   kwin-canvas perf [--since WHEN] [--from FILE]   timings the effect wrote to the journal
 #
 # Commands travel the effect's debug channel: DebugCommand and DebugSeq in
@@ -136,6 +137,48 @@ doctor_package() {
     n=$(printf '%s\n' "$diffs" | wc -l)
     first=$(printf '%s\n' "$diffs" | head -n 3 | sed 's/^[a-z]* //' | paste -sd, - | sed 's/,/, /g')
     verdict WARN "$tag" "$name differs from the repo in $n file(s) ($first): make install, then relogin if main.qml is among them"
+}
+
+# plugin_built_for FILE: the KWin version a plugin was built for. KWin stamps its full
+# version into every plugin's factory interface ("PluginFactoryInterface6.8.0") and
+# refuses a plugin whose stamp is not its own, patch releases included.
+plugin_built_for() {
+    grep -a -o 'PluginFactoryInterface[0-9][0-9.]*' "$1" 2>/dev/null | head -1 | sed 's/^PluginFactoryInterface//'
+}
+# running_kwin: the KWin version this session runs (DOCTOR_KWIN_VERSION stands in for tests).
+running_kwin() {
+    if [ -n "${DOCTOR_KWIN_VERSION+x}" ]; then printf '%s' "$DOCTOR_KWIN_VERSION"; return; fi
+    kwin_wayland --version 2>/dev/null | awk 'NR == 1 { print $NF }'
+}
+# plugin_mismatch: prints "BUILT KWIN FILE" and returns 0 when an installed canvas plugin carries
+# a version other than the running KWin's; returns 1 when it matches, is absent, or either version
+# cannot be read (an unknown is never reported as a mismatch).
+plugin_mismatch() {
+    local f found="" built kw
+    for f in "${DOCTOR_PLUGIN_DIR:-/usr/lib/qt6/plugins/kwin/plugins}"/*canvas*.so; do
+        [ -e "$f" ] && found=$f
+    done
+    [ -n "$found" ] || return 1
+    built=$(plugin_built_for "$found"); kw=$(running_kwin)
+    [ -n "$built" ] && [ -n "$kw" ] && [ "$built" != "$kw" ] || return 1
+    printf '%s %s %s' "$built" "$kw" "$found"
+}
+doctor_plugin_version() {
+    local m built kw found
+    if m=$(plugin_mismatch); then
+        read -r built kw found <<<"$m"
+        verdict FAIL plugin "built for KWin $built but this is KWin $kw: KWin refuses it, so the grasp over windows, input pass-through and the pill's pin buttons are off. Rebuild (make plugin), then as root: install -m 755 build/plugin/bin/kwin/plugins/$(basename "$found") $(dirname "$found")/, then relogin"
+    else
+        found=""
+        for f in "${DOCTOR_PLUGIN_DIR:-/usr/lib/qt6/plugins/kwin/plugins}"/*canvas*.so; do [ -e "$f" ] && found=$f; done
+        if [ -z "$found" ]; then
+            verdict INFO plugin "no pass-through plugin installed (optional)"
+        elif [ -z "$(plugin_built_for "$found")" ] || [ -z "$(running_kwin)" ]; then
+            verdict INFO plugin "cannot read the plugin's or the running KWin's version, so no comparison"
+        else
+            verdict OK plugin "built for KWin $(plugin_built_for "$found"), the version running"
+        fi
+    fi
 }
 
 doctor_installed() {
@@ -461,6 +504,7 @@ doctor() {
     fi
     echo "kwin-canvas doctor (read-only): repo ${repo:-none}, home $home"
     doctor_installed "$repo" "$home/.local/share" "$home"
+    doctor_plugin_version
     doctor_session "$home/.local/share" "$home/.config"
     doctor_shortcuts "$home/.config"
     doctor_ladder "$home/.config"
@@ -536,7 +580,32 @@ perf() {
         }'
 }
 
+# plugincheck [--notify] [--after SECONDS]: exit 1, with the reason, when the installed plugin was built for another
+# KWin than the one running. --notify also raises a desktop notification, for a login autostart;
+# --after waits first, so the notification daemon is up by then.
+plugincheck() {
+    local m built kw found msg notify=0
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --notify) notify=1; shift ;;
+            --after) sleep "${2:-0}"; shift 2 ;;
+            *) echo "kwin-canvas: plugincheck takes --notify and --after SECONDS"; return 2 ;;
+        esac
+    done
+    if m=$(plugin_mismatch); then
+        read -r built kw found <<<"$m"
+        msg="The kwin-canvas plugin is built for KWin $built but this is KWin $kw, so KWin refuses it: the grasp over windows and the pill's pin buttons are off. Rebuild it (make plugin), install it as root, and log in again."
+        echo "kwin-canvas: $msg"
+        if [ "$notify" = 1 ] && command -v notify-send >/dev/null 2>&1; then
+            notify-send -a kwin-canvas -i dialog-warning "kwin-canvas plugin out of date" "$msg" || true
+        fi
+        return 1
+    fi
+    echo "kwin-canvas: the plugin matches KWin, or is not installed"
+}
+
 case "${1:-}" in
+    plugincheck) shift; plugincheck "$@"; exit $? ;;
     doctor) shift; doctor "$@"; exit $? ;;
     perf) shift; perf "$@"; exit $? ;;
 esac

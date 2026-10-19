@@ -248,6 +248,8 @@ can only say it does not know whether a hot reload happened.
 the journal, when its `Perf` setting is on (`kwriteconfig6 --file kwinrc --group
 Effect-kwin-canvas --key Perf true`, then reconfigure the effect).
 
+**After a KWin update.** The pass-through plugin is a binary built against one exact KWin version, and KWin refuses it after an update (a minor release such as 6.7 to 6.8 for certain, probably a patch release too). The canvas then runs without pass-through: the grasp over windows and the pill's pin buttons stop working. `kwin-canvas doctor` prints a `FAIL plugin` line naming both versions, `kwin-canvas plugincheck` does the same alone, and `make install` adds a login autostart that raises a desktop notification when they differ. The fix is `make plugin`, then as root `install -m 755 build/plugin/bin/kwin/plugins/kwin_canvas_passthrough.so /usr/lib/qt6/plugins/kwin/plugins/`, then a relogin. Packaged through the AUR, rebuild `kwin-canvas-passthrough` after the kwin upgrade.
+
 To start in the overworld at login there are two ways. The `AutoActivate`
 effect setting opens the canvas as soon as the effect loads, at login and
 when the effect is turned on in a live session. Or an autostart entry runs

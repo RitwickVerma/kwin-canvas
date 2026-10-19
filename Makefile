@@ -13,6 +13,8 @@ DECOR_ID    := kwin-canvas-decoration
 DECOR_DIR    = $(DATA_HOME)/kwin/decorations
 CLI         := tools/kwin-canvas
 BIN_DIR     := $(HOME)/.local/bin
+# The login check that warns when the plugin was built for another KWin.
+AUTOSTART_DIR ?= $(or $(XDG_CONFIG_HOME),$(HOME)/.config)/autostart
 PLUGIN_ID   := kwin_canvas_passthrough
 BUILD       := build
 PLUGIN_BUILD := $(BUILD)/plugin
@@ -102,6 +104,7 @@ install: stage ## Install the effect, the ground wallpaper and the applet as use
 	@$(KPT) --type Plasma/Wallpaper --upgrade $(BUILD)/wallpaper >/dev/null 2>&1 || $(KPT) --type Plasma/Wallpaper --install $(BUILD)/wallpaper >/dev/null
 	@$(MAKE) -s copy-packages DATA_HOME=$(DATA_HOME)
 	@mkdir -p $(BIN_DIR) && install -m 755 $(CLI) $(BIN_DIR)/kwin-canvas
+	@mkdir -p $(AUTOSTART_DIR) && sed 's|@BIN@|$(BIN_DIR)|' packaging/kwin-canvas-plugincheck.desktop > $(AUTOSTART_DIR)/kwin-canvas-plugincheck.desktop
 	@echo "installed for $$USER: $(EFFECT_ID), $(WALL_ID), $(APPLET_ID), $(APPLET_DECOR_ID), $(DECOR_ID), $(BIN_DIR)/kwin-canvas"
 
 # The applets and the decoration, copied into DATA_HOME.
@@ -124,7 +127,7 @@ uninstall: disable ## Turn the effect off and remove the user packages and the C
 	@$(KPT) --type Plasma/Wallpaper --remove $(WALL_ID) >/dev/null 2>&1 && echo "removed: $(WALL_ID)" || echo "not installed: $(WALL_ID)"
 	@rm -rf $(APPLET_DIR)/$(APPLET_ID) && echo "removed: $(APPLET_ID)" || echo "not installed: $(APPLET_ID)"
 	@rm -rf $(APPLET_DIR)/$(APPLET_DECOR_ID) && echo "removed: $(APPLET_DECOR_ID)" || echo "not installed: $(APPLET_DECOR_ID)"
-	@rm -f $(BIN_DIR)/kwin-canvas
+	@rm -f $(BIN_DIR)/kwin-canvas $(AUTOSTART_DIR)/kwin-canvas-plugincheck.desktop
 
 # System-wide layout, the same paths kpackagetool6 --global uses; KPackage
 # finds them through XDG_DATA_DIRS. DESTDIR is for distro packaging.

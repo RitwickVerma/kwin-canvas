@@ -1,5 +1,12 @@
 Unreleased:
 
+- A plugin built for another KWin is reported, not silently lost. KWin refuses
+  a pass-through plugin whose version stamp is not its own, which after an update
+  switches off the grasp over windows and the pill's pin buttons with no message.
+  `kwin-canvas doctor` now fails with both versions, `kwin-canvas plugincheck`
+  reports it alone, and `make install` adds a login autostart
+  (`~/.config/autostart/kwin-canvas-plugincheck.desktop`) that notifies.
+
 - `kwin-canvas doctor` checks the install without touching it: whether each
   installed part (effect, wallpaper, applets, decoration, CLI, plugin) matches
   the repo, whether the running session is older than the files it loaded

@@ -81,7 +81,9 @@ full-screen scene, which would break direct scanout), not tried. Nest timings,
 not the desktop's.
 
 **Installing.** `make install` is the only target that writes `~/.local/share`, the
-copy the live session loads at login. Tests and the nest use `build/nest-data`
+copy the live session loads at login (and the login autostart
+`~/.config/autostart/kwin-canvas-plugincheck.desktop`, which warns when the plugin
+was built for another KWin). Tests and the nest use `build/nest-data`
 (`make nest-install`). The plugin in `/usr/lib/qt6/plugins/kwin/plugins` is
 installed by hand with `sudo`.
 

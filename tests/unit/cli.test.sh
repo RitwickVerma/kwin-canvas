@@ -114,7 +114,7 @@ chmod 755 "$T/bin/qdbus6"
 
 NOW=$(date +%s)
 doctor() { # runs the repo's CLI over the fixture; session started in the future, so nothing is stale
-    out=$(env PATH="$T/bin:$PATH" DOCTOR_REPO="${REPO:-$REPO_FIXTURE}" DOCTOR_HOME="$H" DOCTOR_PLUGIN_DIR="$PLUG" \
+    out=$(env PATH="$T/bin:$PATH" DOCTOR_REPO="${REPO:-$REPO_FIXTURE}" DOCTOR_HOME="$H" DOCTOR_PLUGIN_DIR="$PLUG" DOCTOR_KWIN_VERSION="${KWV-6.8.0}" \
         DOCTOR_KWIN_START="${KSTART:-$((NOW + 1000))}" DOCTOR_PLASMA_START="${PSTART:-$((NOW + 1000))}" \
         FAKE_LOAD="${FAKE_LOAD-cpu=10 load=0.50 mem=40 gpu=5}" FAKE_ZOOM="${FAKE_ZOOM-false}" FAKE_LOADED="${FAKE_LOADED-true}" \
         bash "$CLI" doctor 2>&1)
@@ -309,6 +309,43 @@ exit_is "perf: an unknown option fails" 1
 out=$(bash "$CLI" perf --from "$T/does-not-exist" 2>&1)
 rc=$?
 exit_is "perf: an unreadable file fails" 1
+
+# ---- the plugin's version against the running KWin ----
+# The factory stamp KWin checks is "PluginFactoryInterface<version>" inside the .so.
+printf 'x org.kde.kwin.PluginFactoryInterface6.8.0 y' > "$PLUG/kwin_canvas_passthrough.so"
+doctor
+has "plugin version: matching is OK" "OK    plugin     built for KWin 6.8.0, the version running"
+KWV=6.9.0 doctor
+exit_is "plugin version: mismatch is a FAIL, exit 1" 1
+has "plugin version: FAIL names both versions" "FAIL  plugin     built for KWin 6.8.0 but this is KWin 6.9.0"
+has "plugin version: FAIL names the symptom and the fix" "make plugin"
+KWV= doctor
+has "plugin version: unknown KWin is not a mismatch" "INFO  plugin     cannot read"
+: > "$PLUG/kwin_canvas_passthrough.so"
+doctor
+has "plugin version: an unstamped file is not a mismatch" "INFO  plugin     cannot read"
+rm -f "$PLUG/kwin_canvas_passthrough.so"
+doctor
+has "plugin version: absent plugin is INFO" "INFO  plugin     no pass-through plugin installed"
+unset KWV
+printf 'x org.kde.kwin.PluginFactoryInterface6.8.0 y' > "$PLUG/kwin_canvas_passthrough.so"
+pc() { out=$(env PATH="$T/bin:$PATH" DOCTOR_PLUGIN_DIR="$PLUG" DOCTOR_KWIN_VERSION="$1" bash "$CLI" plugincheck "${@:2}" 2>&1); rc=$?; }
+pc 6.8.0
+exit_is "plugincheck: match exits 0" 0
+pc 6.9.0
+exit_is "plugincheck: mismatch exits 1" 1
+has "plugincheck: says built for and running" "built for KWin 6.8.0 but this is KWin 6.9.0"
+printf '#!/bin/sh\necho "$@" > "%s/notified"\n' "$T" > "$T/bin/notify-send"; chmod 755 "$T/bin/notify-send"
+rm -f "$T/notified"; pc 6.8.0 --notify
+[ ! -e "$T/notified" ]; check "plugincheck: no notification when it matches" $?
+pc 6.9.0 --notify
+[ -s "$T/notified" ]; check "plugincheck: --notify raises one on a mismatch" $?
+pc 6.9.0 --after 0 --notify
+[ -s "$T/notified" ]; check "plugincheck: --after 0 still notifies" $?
+pc 6.9.0 --bogus
+exit_is "plugincheck: an unknown option exits 2" 2
+rm -f "$T/notified" "$T/bin/notify-send"; pc 6.9.0
+[ ! -e "$T/notified" ]; check "plugincheck: no --notify, no notification" $?
 
 echo "cli: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
