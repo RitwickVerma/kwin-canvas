@@ -84,6 +84,11 @@ PlasmoidItem {
         onNewData: (sourceName, data) => {
             disconnectSource(sourceName);
             const out = data.stdout || "";
+            // A button's action just ran: read the state back now, not at the next poll.
+            if (sourceName.indexOf("Passthrough.windowAction") >= 0) {
+                run("qdbus6 org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.state");
+                return;
+            }
             if (sourceName.indexOf("Passthrough.state") >= 0) {
                 const i = out.indexOf(" win=");
                 if (i < 0) {
@@ -114,11 +119,13 @@ PlasmoidItem {
         }
     }
 
-    // The focused window + its states, polled once a second; the native
+    // The focused window + its states, polled four times a second (a change made
+    // elsewhere - KDE's menu, a window rule - shows within a quarter second; a
+    // button's own action reads back at once); the native
     // button order, polled on a slower beat (it only changes when the
     // titlebar buttons KCM is applied).
     Timer {
-        interval: 1000
+        interval: 250
         repeat: true
         running: true
         onTriggered: executable.run("qdbus6 org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.state")
@@ -228,6 +235,9 @@ PlasmoidItem {
                 visible: parent.modelData !== "_"
                 onPaint: {
                     const ctx = getContext("2d");
+                    // Each paint starts from a clear canvas: a filled glyph (the lit pin, the
+                    // keep-above) left its fill behind when it went out.
+                    ctx.clearRect(0, 0, width, height);
                     const code = parent.modelData;
                     const lit = parent.lit;
                     ctx.strokeStyle = lit ? "#2a6ddf" : "#ffffff";
@@ -302,23 +312,11 @@ PlasmoidItem {
                         ctx.stroke();
                     }
                 }
+                // Repaint on the delegate's own lit, which is what onPaint reads, so
+                // the order in which root's properties change cannot paint a stale state.
                 Connections {
-                    target: root
-                    function onWinFloatChanged() {
-                        mark.requestPaint();
-                    }
-                    function onWinMaxChanged() {
-                        mark.requestPaint();
-                    }
-                    function onWinAboveChanged() {
-                        mark.requestPaint();
-                    }
-                    function onWinBelowChanged() {
-                        mark.requestPaint();
-                    }
-                    function onWinCaptureChanged() {
-                        mark.requestPaint();
-                    }
+                    target: mark.parent
+                    function onLitChanged() { mark.requestPaint(); }
                 }
             }
 

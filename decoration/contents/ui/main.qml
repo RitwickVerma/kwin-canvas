@@ -203,6 +203,9 @@ Decoration {
                 visible: parent.modelData !== "_"
                 onPaint: {
                     const ctx = getContext("2d");
+                    // Each paint starts from a clear canvas: a filled glyph (the lit pin, the
+                    // keep-above) left its fill behind when it went out.
+                    ctx.clearRect(0, 0, width, height);
                     const code = parent.modelData;
                     const lit = parent.lit;
                     ctx.strokeStyle = lit ? "#2a6ddf" : "#ffffff";
@@ -288,20 +291,12 @@ Decoration {
                         ctx.fill();
                     }
                 }
+                // Repaint on the delegate's own lit, which is what onPaint reads: a
+                // Connections on root could run before lit re-evaluated, and paint
+                // the old state until something else forced another paint.
                 Connections {
-                    target: root
-                    function onFloatingChanged() {
-                        mark.requestPaint();
-                    }
-                    function onMaximizedChanged() {
-                        mark.requestPaint();
-                    }
-                    function onAboveChanged() {
-                        mark.requestPaint();
-                    }
-                    function onBelowChanged() {
-                        mark.requestPaint();
-                    }
+                    target: mark.parent
+                    function onLitChanged() { mark.requestPaint(); }
                 }
             }
 
