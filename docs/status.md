@@ -46,6 +46,14 @@ lines still name `114`, `115`, `116`, `117` (KCalc and Gwenview 410 high), `120`
 neighbour still standing at its old place (12 px), so `arrange` is not idempotent
 on size; the others show the same signature and were not run (`docs/testing.md`).
 
+**Several monitors.** The design for two cameras on one canvas (Merged and Separate
+modes, every interaction in both, the data model, the build order) is in
+`docs/multimonitor.md`. Built: a focused window is never left on the seam or in dead
+ground (`173`), the chrome sits on the pointer's monitor (`172`), one frame tag per
+activity with no output names. Not built: per-monitor cameras, the Separate mode and
+its animations (stages 1 to 7 there). Tested only in the nest, on two outputs stacked
+and offset as the owner's are.
+
 **Known failing, unexplained.** `112-overlay` fails one check ("the drag never grabbed
 the window": Gwenview at x 3980, expected 4000) every time it runs alone, with and without
 the arrange fix, and passes inside the full run. A trace shows the entry's x reading as 1400
