@@ -578,6 +578,19 @@ perf() {
             flush()
             for (e in counts) if (!(e in has)) printf "%-12s %-6s %5d\n", e, "-", counts[e]
         }'
+    # The late ticks, one per line with the time, so a hitch can be matched to what the machine
+    # was doing then (the cpu, gpu and mem are the effect's last readings, up to 2 s old).
+    stalls=$(printf '%s\n' "$lines" | grep -c '^stall ')
+    if [ "$stalls" -gt 0 ]; then
+        echo
+        echo "late ticks (60 ms or more), $stalls in all; the last 12:"
+        if [ -n "$from" ]; then
+            printf '%s\n' "$lines" | grep '^stall ' | tail -12 | sed 's/^/  /'
+        else
+            journalctl --user -b --since "$since" -g "kwin-canvas perf: stall" -o short-iso --no-pager 2>/dev/null \
+                | sed -n 's/^\([0-9T:-]*\)[-+][0-9:]* [^ ]* [^ ]*: kwin-canvas perf: stall /  \1 /p' | tail -12
+        fi
+    fi
 }
 
 # plugincheck [--notify] [--after SECONDS]: exit 1, with the reason, when the installed plugin was built for another

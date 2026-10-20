@@ -301,7 +301,8 @@ KWin.SceneEffect {
     // when off: every call site checks `perf` before it reads a clock or
     // keeps a number, so a user's "it pauses before it flies" becomes figures
     // instead of a guess. Events: open, first-paint ms, settle ms zoom,
-    // slide dist ms, hover-fetch ms, ticks n p50 p95 max (on the close).
+    // slide dist ms, hover-fetch ms, ticks n p50 p95 max (on the close), stall ms cam
+    // quiet entries ql cpu gpu mem (a tick 60 ms or more late, at most 40 a session).
     property bool perf: configuration.Perf
     function perfLog(ev, kv) {
         console.log("kwin-canvas perf: " + ev + (kv ? " " + kv : ""));
@@ -311,6 +312,7 @@ KWin.SceneEffect {
     property real perfSettleDist: 0   // what the open's flight had to cover, screen px
     property real perfSlideAt: 0      // Date.now() when the slide animation started
     property int perfTickN: 0
+    property int perfStalls: 0        // stall lines written this canvas session (capped)
     property real perfTickMax: 0
     // Tick spacing as a histogram, 1 ms bins (the last takes everything from
     // 250 ms up): constant memory however long the canvas stays open.
@@ -322,6 +324,15 @@ KWin.SceneEffect {
         if (first) {
             if (perfOpenAt > 0) perfLog("first-paint", "ms=" + (now - perfOpenAt));
             return;
+        }
+        // A tick this late is a hitch the eye can see. It is logged on its own
+        // (journald stamps the time) with what the canvas was doing and the
+        // machine's last load readings, so a hitch can be matched to a cause.
+        if (ms >= 60 && perfStalls < 40) {
+            perfStalls++;
+            perfLog("stall", "ms=" + Math.round(ms) + " cam=" + (camHasGoal ? "goal" : (camVX !== 0 || camVY !== 0 ? "fling" : "-"))
+                + " quiet=" + (quiet ? 1 : 0) + " entries=" + entries.length + " ql=" + ql
+                + " cpu=" + Math.round(cpuBusy) + " gpu=" + Math.round(gpuBusy) + " mem=" + Math.round(memBusy));
         }
         const b = Math.min(250, Math.max(0, Math.round(ms)));
         if (perfBins.length === 0) perfBins = new Array(251).fill(0);
@@ -355,6 +366,7 @@ KWin.SceneEffect {
         }
         perfTickN = 0;
         perfTickMax = 0;
+        perfStalls = 0;
         perfBins = [];
     }
     // The map's home, mirrored out of the map item: the effect's own

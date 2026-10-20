@@ -347,5 +347,21 @@ exit_is "plugincheck: an unknown option exits 2" 2
 rm -f "$T/notified" "$T/bin/notify-send"; pc 6.9.0
 [ ! -e "$T/notified" ]; check "plugincheck: no --notify, no notification" $?
 
+# ---- perf: the late ticks ----
+cat > "$T/stall.log" <<'EOF'
+kwin-canvas perf: open
+kwin-canvas perf: stall ms=120 cam=goal quiet=0 entries=5 ql=0 cpu=40 gpu=20 mem=50
+kwin-canvas perf: stall ms=90 cam=- quiet=1 entries=5 ql=0 cpu=41 gpu=21 mem=50
+kwin-canvas perf: ticks n=100 p50=16 p95=30 max=120
+EOF
+out=$(bash "$CLI" perf --from "$T/stall.log" 2>&1); rc=$?
+exit_is "perf stall: exit 0" 0
+has "perf stall: the stall's ms is summarised" "stall        ms"
+has "perf stall: the late-tick list is headed" "late ticks (60 ms or more), 2 in all; the last 12:"
+has "perf stall: a late tick is listed with its cause" "  stall ms=120 cam=goal quiet=0 entries=5 ql=0 cpu=40 gpu=20 mem=50"
+head -3 "$T/stall.log" | sed -n '1p;4p' > "$T/nostall.log"
+out=$(bash "$CLI" perf --from "$T/nostall.log" 2>&1)
+lacks "perf stall: no list without a stall" "late ticks"
+
 echo "cli: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
