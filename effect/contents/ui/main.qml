@@ -302,10 +302,8 @@ KWin.SceneEffect {
     // keeps a number, so a user's "it pauses before it flies" becomes figures
     // instead of a guess. Events: open, first-paint ms, settle ms zoom,
     // slide dist ms, hover-fetch ms, ticks n p50 p95 max (on the close), moved win dx dy
-    // (a real window moved by something else, absorbed into the plane), pulled win dx dy
-    // (KWin pulled a parked window back inside and the canvas put it back), nudged win dx dy
-    // (KWin moved a window toward the screen when it was activated and the canvas undid it), bounced win dx dy dw dh
-    // overlapsDock (a window found away from where a landing wrote it), landed win dx dy
+    // (a real window moved by something else, adopted into the plane), reverted win cls dx dy
+    // (KWin's reachability rule moved a window and the canvas put it back), landed win dx dy
     // (a floated window taking its picture's spot), stall ms cam
     // quiet entries ql cpu gpu mem (a tick 60 ms or more late, at most 40 a session).
     property bool perf: configuration.Perf
@@ -356,50 +354,6 @@ KWin.SceneEffect {
         if (!nearZ || !nearV) return;
         perfSettled = true;
         perfLog("settle", "ms=" + (now - perfOpenAt) + " zoom=" + zoom.toFixed(4));
-    }
-    // After a landing (a commit, a slide) the windows the canvas wrote are read back: one that
-    // is not where it was written has been moved by something else (KWin pushing it out of a
-    // panel's strip, a script, the app), which looks like a window jumping after the fly.
-    // The line says whether the written spot overlapped a panel or dock and how far it went.
-    property var wroteGeo: ({})
-    property int perfBounces: 0
-    function noteWrote(e, fx, fy) {
-        if (!perf) return;
-        wroteGeo[e.window.internalId] = { x: fx, y: fy, w: e.width, h: e.height };
-        perfBounceTimer.restart();
-    }
-    Timer {
-        id: perfBounceTimer
-        interval: 450
-        repeat: false
-        onTriggered: effect.perfBounceCheck()
-    }
-    function perfBounceCheck() {
-        const wrote = wroteGeo;
-        wroteGeo = ({});
-        if (!perf) return;
-        const stack = KWin.Workspace.stackingOrder;
-        const docks = [];
-        for (let i = 0; i < stack.length; ++i) if (!stack[i].deleted && stack[i].dock) docks.push(stack[i].frameGeometry);
-        for (let i = 0; i < stack.length; ++i) {
-            const w = stack[i];
-            const r = wrote[w.internalId];
-            if (!r || w.deleted || perfBounces >= 60) continue;
-            const g = w.frameGeometry;
-            if (Math.abs(g.x - r.x) <= 1 && Math.abs(g.y - r.y) <= 1 && Math.abs(g.width - r.w) <= 1 && Math.abs(g.height - r.h) <= 1) continue;
-            let overlap = 0;
-            for (let k = 0; k < docks.length; ++k) {
-                const d = docks[k];
-                if (r.x < d.x + d.width && r.x + r.w > d.x && r.y < d.y + d.height && r.y + r.h > d.y) overlap = 1;
-            }
-            perfBounces++;
-            perfLog("bounced", "win=" + String(w.caption).replace(/[ =]/g, "_").slice(0, 30)
-                + " dx=" + Math.round(g.x - r.x) + " dy=" + Math.round(g.y - r.y)
-                + " dw=" + Math.round(g.width - r.w) + " dh=" + Math.round(g.height - r.h)
-                + " overlapsDock=" + overlap + " docks=" + docks.length
-                + " max=" + (w.maximizedHorizontally || w.maximizedVertically ? 1 : 0) + " tiled=" + (w.tile ? 1 : 0)
-                + " full=" + (w.fullScreen ? 1 : 0) + " float=" + (w.onAllDesktops ? 1 : 0));
-        }
     }
     function perfTicksReport() {
         if (perfTickN > 0) {
@@ -1226,7 +1180,6 @@ KWin.SceneEffect {
         targets = copyTargets(back.targets);
         const byId = {};
         for (const p of back.layout) byId[p.internalId] = p;
-        const changedActivity = {};
         for (const e of entries) {
             const p = byId[e.window.internalId];
             if (!p) continue;
@@ -1234,7 +1187,6 @@ KWin.SceneEffect {
             e.activity = p.activity;
             if (p.activity && e.window.activities.length > 0 && e.window.activities.indexOf(p.activity) === -1) {
                 e.window.activities = [p.activity];
-                changedActivity[e.window.internalId] = true;
             }
         }
         for (const e of entries) {
@@ -1246,7 +1198,6 @@ KWin.SceneEffect {
             e.frameX = fx;
             e.frameY = fy;
             setReal(e.window, Qt.rect(fx, fy, e.width, e.height));
-            if (changedActivity[e.window.internalId]) expectGeo(e.window, fx, fy, e.width, e.height, "activity");
         }
         revision++;
         toast("Stepped the layout back");
@@ -1444,273 +1395,127 @@ KWin.SceneEffect {
         if (!w || watchedWindows[w.internalId]) return;
         watchedWindows[w.internalId] = true;
         trackFree(w);
-        w.frameGeometryChanged.connect(function (old) { effect.markDirty(w); effect.guardPulledBack(w, old); effect.noteNudge(w, old); effect.guardExpectedGeo(w); });
+        w.frameGeometryChanged.connect(function (old) { effect.frameChanged(w, old); });
         w.desktopsChanged.connect(function () { effect.noteDesktopsChanged(w); });
         w.maximizedChanged.connect(function () { effect.noteReturnedFree(w); });
         w.tileChanged.connect(function () { effect.noteReturnedFree(w); });
     }
-    // ---- KWin's pull-back ----------------------------------------------------
-    // The canvas keeps windows it is not showing far outside every monitor (the plane is
-    // wider than the desktop). KWin pulls a window that is wholly outside back inside whenever
-    // its work area is recalculated: a panel that changes size or is recreated (a plasmashell
-    // restart), a monitor waking or re-plugging, a scale or resolution change, HDR toggled. The
-    // window then sits somewhere the canvas never put it, which is a window jumping to a new
-    // plane coordinate. A window found like that - not being moved by the user, same size,
-    // wholly off every monitor a moment ago and on one now - is put back where it was. "Every
-    // monitor" includes the layout from before a screens change (outputSnap, refreshed 1.5 s
-    // after the last one), so a window on a monitor that was just unplugged is still rescued
-    // onto the ones that remain, as KDE does.
-    property var outputSnap: []
-    property bool pullGuard: true
-    function outputRects() {
-        const out = [], ss = KWin.Workspace.screens;
-        for (let i = 0; i < ss.length; ++i) { const g = ss[i].geometry; out.push({ x: g.x, y: g.y, width: g.width, height: g.height }); }
-        return out;
-    }
-    function touchesOutput(r) {
-        const all = outputRects().concat(outputSnap);
-        for (let i = 0; i < all.length; ++i) {
-            const o = all[i];
-            if (r.x < o.x + o.width && r.x + r.width > o.x && r.y < o.y + o.height && r.y + r.height > o.y) return true;
-        }
-        return false;
-    }
-    function touchesCurrentOutput(r) {
-        const all = outputRects();
-        for (let i = 0; i < all.length; ++i) {
-            const o = all[i];
-            if (r.x < o.x + o.width && r.x + r.width > o.x && r.y < o.y + o.height && r.y + r.height > o.y) return true;
-        }
-        return false;
-    }
-    Timer {
-        id: outputSnapTimer
-        interval: 1500
-        repeat: false
-        onTriggered: effect.outputSnap = effect.outputRects()
-    }
-    // QML gets no work-area signal, so the cause is inferred: a screens change, or a dock or
-    // panel that appeared, went or changed size, within two seconds of the move. A script or a
-    // user moving a parked window with nothing of the kind going on is left alone.
-    property real areaTouchedAt: 0
-    function noteAreaTouched() { areaTouchedAt = Date.now(); }
-    // What happened just before a window moved, for the Perf lines: milliseconds since the last
-    // open, close, activation, dock or screens event, "-" when none in the last five seconds.
-    function perfSince() {
-        const now = Date.now();
-        const f = function (t) { return t > 0 && now - t < 5000 ? String(now - t) : "-"; };
-        let act = 0;
-        for (const k in focusTouched) act = Math.max(act, focusTouched[k]);
-        return "since open=" + f(lastOpenAt) + " close=" + f(lastCloseAt) + " focus=" + f(act) + " area=" + f(areaTouchedAt) + " screens=" + f(lastScreensAt);
-    }
-    property var pullCandidates: ({})
-    function guardPulledBack(w, old) {
-        if (w && w.dock) noteAreaTouched();
-        if (!pullGuard || visible || !old || !w || w.deleted || !w.managed) return;
-        if (w.move || w.resize || w.fullScreen || w.minimized || w.desktopWindow || w.dock || w.popupWindow || w.specialWindow) return;
-        if (w.maximizedHorizontally || w.maximizedVertically || w.tile) return;
-        const g = w.frameGeometry;
-        if (Math.abs(g.width - old.width) > 1 || Math.abs(g.height - old.height) > 1) return;
-        if (Math.abs(g.x - old.x) < 1 && Math.abs(g.y - old.y) < 1) return;
-        if (touchesOutput(old) || !touchesCurrentOutput(g)) return;
-        // The area signal can come before or after the move: decide shortly after both.
-        pullCandidates[w.internalId] = { w: w, old: { x: old.x, y: old.y }, at: Date.now() };
-        pullTimer.restart();
-    }
-    Timer {
-        id: pullTimer
-        interval: 400
-        repeat: false
-        onTriggered: {
-            const cands = effect.pullCandidates;
-            effect.pullCandidates = ({});
-            if (effect.visible) return;
-            for (const id in cands) {
-                const c = cands[id], w = c.w;
-                if (!w || w.deleted || w.move || w.resize) continue;
-                if (Math.abs(c.at - effect.areaTouchedAt) > 2000) continue;
-                const g = w.frameGeometry;
-                if (!effect.touchesCurrentOutput(g)) continue;   // already somewhere else off-screen: not ours to undo
-                if (effect.perf) effect.perfLog("pulled", "win=" + String(w.caption).replace(/[ =]/g, "_").slice(0, 30)
-                    + " dx=" + Math.round(g.x - c.old.x) + " dy=" + Math.round(g.y - c.old.y));
-                effect.dbg("pulled", w.caption + " pulled back by KWin from (" + Math.round(c.old.x) + "," + Math.round(c.old.y) + "): put back");
-                effect.setReal(w, Qt.rect(c.old.x, c.old.y, g.width, g.height));
-            }
-        }
-    }
-    // ---- KWin's activation nudge ---------------------------------------------
-    // Activating a window makes KWin move it toward the screen: a top edge above the screen goes
-    // to y=0, a left edge past the right edge minus 100 px comes back to that line, a top edge
-    // below the screen bottom goes to the bottom minus 28 px (measured in a nest: KCalc at
-    // y=-60 became 0, at x=sw+50 became sw-100, and a write to an already active window or a
-    // plain raise moved nothing). The canvas parks windows off the screen all the time (the plane
-    // is wider than the desktop), and every fly, enter, exit, hover and click activates one, so
-    // the move was absorbed as the window's new plane coordinate: a window the hand never
-    // touched jumped. It happens when a window loses focus too (measured: a window written above the
-    // screen while active moved 2 ms after another window was activated). A same-size move toward the screen right around a window's activation is
-    // undone, wherever it falls: with the canvas open the entry keeps its plane spot (the
-    // landing writes the true real position), closed the real window is put back before the fly
-    // decides anything. With FollowActivation off KDE's own behaviour is left alone.
-    // Every real window the canvas writes goes through here, so the frame-change handlers can tell
-    // the canvas's own write from somebody else's move. The signal is emitted synchronously from the
-    // assignment, so a counter around it is exact.
+    // ---- Frame authority ---------------------------------------------------------
+    // The plane is the truth. A window's plane coordinate belongs to the canvas, and its real
+    // frame is that coordinate seen through the camera's target. Two things may change the plane
+    // coordinate: the hand (an interactive move or resize) and the canvas itself (a landing, a
+    // commit, an undo). Any other change of a real frame is a projection somebody else
+    // disturbed, and the canvas puts it back.
+    //
+    // The somebody is KWin's reachability rule. It keeps a window reachable (some of its width on
+    // a monitor, its title bar not above the top edge or in the last 28 px) and applies the rule
+    // whenever it looks at a window again: its focus changed, its activities changed, the work
+    // area changed (a panel, a monitor, the scale), the scene showed it. The canvas parks windows
+    // beyond every monitor on purpose, so each of those moved a window closer, and the move was
+    // taken for the window's own: it jumped. docs/architecture.md, *Frame authority*.
+    //
+    // One classifier decides, for each frame change the canvas did not write itself:
+    //   not ours, adopt it: a hand on the window, a window state (maximized, tiled, fullscreen,
+    //     minimized), another size, chrome (a dock, a popup), a move from a place that was in reach.
+    //   KWin's rule, revert it: the same size, moved from a place out of reach to one in reach.
+    // "Out of reach" is judged against the monitors as they are and as they were before the last
+    // layout change, so a window KWin rescues from a monitor that was just unplugged is adopted, not
+    // sent back to where nothing shows it. The revert is a plain write, which KWin never clamps. A
+    // window that moves again right after being put back, three times running, is insisting (a rule
+    // or a script forcing a place) and is adopted, so the canvas never fights something that does
+    // not give way.
+    //
+    // Every real window the canvas writes goes through setReal, so the handler can tell the canvas's
+    // own write from somebody else's move. The frame signal is emitted from inside the assignment,
+    // so a counter around it is exact.
     property int selfWriting: 0
     function setReal(w, rect) {
         selfWriting++;
         try { w.frameGeometry = rect; } finally { selfWriting--; }
     }
-    // When a window's focus state last changed, gained or lost: KWin applies its constraint at both.
-    property var focusTouched: ({})
-    property var lastActiveWindow: null
-    property var nudges: ({})
-    property var pendingNudge: ({})
-    function visibleArea(r) {
-        const all = outputRects();
-        let a = 0;
-        for (let i = 0; i < all.length; ++i) {
-            const o = all[i];
-            const w = Math.min(r.x + r.width, o.x + o.width) - Math.max(r.x, o.x);
-            const h = Math.min(r.y + r.height, o.y + o.height) - Math.max(r.y, o.y);
-            if (w > 0 && h > 0) a += w * h;
+    function outputRects() {
+        const out = [], ss = KWin.Workspace.screens;
+        for (let i = 0; i < ss.length; ++i) { const g = ss[i].geometry; out.push({ x: g.x, y: g.y, width: g.width, height: g.height }); }
+        return out;
+    }
+    // In reach of a monitor, by KWin's rule as measured: at least 100 px of the width (or all of a
+    // narrower window) over the monitor, and the top edge from the monitor's top down to 28 px above
+    // its bottom.
+    function inReach(r, rects) {
+        for (let i = 0; i < rects.length; ++i) {
+            const o = rects[i];
+            const across = Math.min(r.x + r.width, o.x + o.width) - Math.max(r.x, o.x);
+            if (across >= Math.min(100, r.width) && r.y >= o.y && r.y <= o.y + o.height - 28) return true;
         }
-        return a;
+        return false;
     }
-    function nudgeShape(w, old, g) {
-        if (!w || w.deleted || !w.managed || !old) return false;
-        if (w.move || w.resize || w.fullScreen || w.minimized || w.desktopWindow || w.dock || w.popupWindow || w.specialWindow) return false;
-        if (w.maximizedHorizontally || w.maximizedVertically || w.tile) return false;
-        if (Math.abs(g.width - old.width) > 1 || Math.abs(g.height - old.height) > 1) return false;
-        if (Math.abs(g.x - old.x) < 1 && Math.abs(g.y - old.y) < 1) return false;
-        return visibleArea(g) > visibleArea(old) + 1;
+    // The monitors before the last layout change, for the rescue rule above; refreshed once the
+    // change has settled.
+    property var layoutBefore: []
+    Timer {
+        id: layoutBeforeTimer
+        interval: 1500
+        repeat: false
+        onTriggered: effect.layoutBefore = effect.outputRects()
     }
-    function noteNudge(w, old) {
-        if (selfWriting > 0 || configuration.FollowActivation === false || !w || w.deleted) return;
-        const g = w.frameGeometry;
-        if (!nudgeShape(w, old, g)) return;
+    function reachable(r) { return inReach(r, outputRects()) || inReach(r, layoutBefore); }
+    // Chrome and managed state, whose frames are not the plane's to keep.
+    function isPlaneWindow(w) {
+        if (!w || w.deleted || !w.managed) return false;
+        if (w.desktopWindow || w.dock || w.popupWindow || w.specialWindow) return false;
+        if (w.move || w.resize || w.fullScreen || w.minimized) return false;
+        return !(w.maximizedHorizontally || w.maximizedVertically || w.tile);
+    }
+    // A fight is a window that moves again right after the canvas put it back, which is what a rule or
+    // a script forcing a place does and what KWin's rule, applied once per look, does not. Each revert
+    // chains to the last one when it follows within FIGHT_MS; the third move of a chain is adopted. A
+    // later move is a new cause (KWin looked at the window again), however soon after the last open.
+    readonly property int fightMs: 500
+    property var revertLog: ({})
+    function mayRevert(w) {
         const id = w.internalId, now = Date.now();
-        const spot = { old: { x: old.x, y: old.y }, now: { x: g.x, y: g.y }, at: now };
-        // The activation signal may still come (KWin moves first, announces after): wait for it.
-        if (now - (focusTouched[id] || 0) > 2000) { pendingNudge[id] = spot; return; }
-        recordNudge(w, spot);
+        let b = revertLog[id];
+        if (!b || now - b.at > fightMs) b = revertLog[id] = { n: 0, at: now };
+        b.at = now;
+        return b.n++ < 2;
     }
-    function recordNudge(w, spot) {
-        const id = w.internalId;
-        delete pendingNudge[id];
-        nudges[id] = spot;
-        if (perf) perfLog("nudged", "win=" + String(w.caption).replace(/[ =]/g, "_").slice(0, 30)
-            + " dx=" + Math.round(spot.now.x - spot.old.x) + " dy=" + Math.round(spot.now.y - spot.old.y)
-            + " open=" + (visible ? 1 : 0) + " quiet=" + (quiet ? 1 : 0));
-        dbg("nudge", w.caption + " nudged by KWin from (" + Math.round(spot.old.x) + "," + Math.round(spot.old.y) + ") to (" + Math.round(spot.now.x) + "," + Math.round(spot.now.y) + ")");
-        if (!visible) { undoNudge(w); return; }
-        const e = entryFor(w);
-        if (!e) return;
-        if (Math.abs(e.frameX - spot.old.x) < 1 && Math.abs(e.frameY - spot.old.y) < 1) {
-            // The entry saw the old frame: its plane spot is right, only the real frame it tracks moved.
-            e.frameX = spot.now.x;
-            e.frameY = spot.now.y;
-        } else if (Math.abs(e.frameX - spot.now.x) < 1 && Math.abs(e.frameY - spot.now.y) < 1) {
-            // The entry was made after the nudge: bring its plane spot back to where the window was.
-            e.x += spot.old.x - spot.now.x;
-            e.y += spot.old.y - spot.now.y;
-            revision++;
-        }
+    // "revert" or "adopt" for a frame that went from `was` to `now`.
+    function classifyFrame(w, was, now) {
+        if (!was || !isPlaneWindow(w)) return "adopt";
+        if (Math.abs(now.width - was.width) > 1 || Math.abs(now.height - was.height) > 1) return "adopt";
+        if (Math.abs(now.x - was.x) < 1 && Math.abs(now.y - was.y) < 1) return "adopt";
+        if (reachable(was) || !inReach(now, outputRects())) return "adopt";
+        // With following the activation turned off, KDE brings the activated window in: leave it.
+        if (configuration.FollowActivation === false && w === KWin.Workspace.activeWindow) return "adopt";
+        return mayRevert(w) ? "revert" : "adopt";
     }
-    // Put a freshly nudged window back (closed canvas only: an open canvas writes the true
-    // position itself when it lands). True when it did.
-    function undoNudge(w) {
-        if (!w || w.deleted || visible) return false;
-        const id = w.internalId;
-        const n = nudges[id];
-        if (!n || Date.now() - n.at > 3000) return false;
+    function revertFrame(w, was) {
         const g = w.frameGeometry;
-        if (Math.abs(g.x - n.now.x) > 1 || Math.abs(g.y - n.now.y) > 1) return false;   // moved on since
-        delete nudges[id];
-        setReal(w, Qt.rect(n.old.x, n.old.y, g.width, g.height));
-        return true;
+        if (perf) perfLog("reverted", "win=" + String(w.caption).replace(/[ =]/g, "_").slice(0, 30)
+            + " cls=" + String(w.resourceClass).replace(/[ =]/g, "_").slice(0, 20)
+            + " dx=" + Math.round(g.x - was.x) + " dy=" + Math.round(g.y - was.y)
+            + " open=" + (visible ? 1 : 0) + " quiet=" + (quiet ? 1 : 0) + " " + perfSince());
+        dbg("revert", w.caption + " moved by something else from (" + Math.round(was.x) + "," + Math.round(was.y) + ") to (" + Math.round(g.x) + "," + Math.round(g.y) + "): put back");
+        setReal(w, Qt.rect(was.x, was.y, g.width, g.height));
     }
-    // The nudge may land between a slide's open and the window's resync: the activation handler
-    // calls this once it has the activation's time.
-    function promotePendingNudge(w) {
-        const id = w.internalId, p = pendingNudge[id];
-        if (p && Date.now() - p.at < 600) recordNudge(w, p);
-        else delete pendingNudge[id];
+    // The one handler of a window's frame changes (watchWindow connects it).
+    function frameChanged(w, was) {
+        markDirty(w);
+        if (w && w.dock) lastDockAt = Date.now();
+        if (selfWriting > 0 || !was) return;
+        if (classifyFrame(w, was, w.frameGeometry) === "revert") revertFrame(w, was);
     }
-    // ---- KWin's pull when a window is shown or changes activity ----------------
-    // KWin looks at a window's position again a moment after the window is shown or given other
-    // activities, and one with less than 100 px of its width on a monitor, or its top above the
-    // screen or in the screen's last 28 px, is moved until it is not (in the nest a frame written
-    // at x=1840 on a 1920 px screen ended at 1820, one at 4000 at 1820, a top at 1200 on a 1080 px
-    // screen at 1052). The triggers measured: setting the window's activities (the commit does,
-    // and writes the frame after it, so the pull always lands after the write), the canvas
-    // opening (the scene's thumbnails show the windows of the other activities), and a switch of
-    // the current activity (their windows are shown). The canvas keeps its windows anywhere on the
-    // plane, so each of those moved a parked window by up to thousands of pixels and its plane
-    // coordinate with it: scenario 112's Gwenview, committed at 4000 over Activity 2's frame, was
-    // 3980 in the next hold. A plain write is never pulled. So the canvas notes where a window
-    // that could be pulled stands at each of those moments (expectGeo), and a same-size move away
-    // from that in the next second and a half that nobody is making is KWin's: it is written back
-    // before anything reads it, at most twice. Windows wholly on a monitor are not noted.
-    property var expectedGeo: ({})
+    // What happened just before a window moved, for the Perf lines only: milliseconds since the last
+    // open, close, activation, dock event and layout change, "-" when none in the last five seconds.
     property real lastOpenAt: 0
     property real lastCloseAt: 0
     property real lastScreensAt: 0
-    function expectGeo(w, x, y, width, height, cause) {
-        expectedGeo[w.internalId] = { x: x, y: y, width: width, height: height, cause: cause, at: Date.now(), tries: 0 };
-        expectedGeoTimer.restart();
-        dbg("expect", cause + ": " + w.caption + " at (" + Math.round(x) + "," + Math.round(y) + ")");
-    }
-    Timer {
-        id: expectedGeoTimer
-        interval: 1600
-        repeat: false
-        onTriggered: effect.expectedGeo = ({})
-    }
-    // KWin moved w away from the spot expected for it: put it back. False when there is nothing
-    // to undo (no expectation, a hand on the window, another size, the time is up).
-    function undoPull(w) {
-        const r = expectedGeo[w.internalId];
-        if (!r || w.deleted || w.move || w.resize) return false;
-        const g = w.frameGeometry;
-        if (Math.abs(g.width - r.width) > 1 || Math.abs(g.height - r.height) > 1) return false;
-        if (Math.abs(g.x - r.x) < 1 && Math.abs(g.y - r.y) < 1) return false;
-        if (Date.now() - r.at > 1500 || r.tries >= 2) { delete expectedGeo[w.internalId]; return false; }
-        r.tries++;
-        if (perf) perfLog("pulled", "win=" + String(w.caption).replace(/[ =]/g, "_").slice(0, 30)
-            + " cls=" + String(w.resourceClass).replace(/[ =]/g, "_").slice(0, 20)
-            + " dx=" + Math.round(g.x - r.x) + " dy=" + Math.round(g.y - r.y) + " cause=" + r.cause + " " + perfSince());
-        dbg("pulled", w.caption + " pulled by KWin (" + r.cause + ") from (" + r.x + "," + r.y + ") to ("
-            + Math.round(g.x) + "," + Math.round(g.y) + "): put back");
-        setReal(w, Qt.rect(r.x, r.y, g.width, g.height));
-        return true;
-    }
-    // The frame-change handler. The canvas's own writes (a landing, a commit, the open canvas
-    // settling a window) take the entry's frame position first, so a move onto it is the canvas's
-    // and becomes the new expectation; any other move of a window with an expectation is undone.
-    // syncEntry asks undoPull too: the scene's handler can reach the entry before this one does.
-    function guardExpectedGeo(w) {
-        const r = expectedGeo[w.internalId];
-        if (!r) return;
-        const e = entryFor(w), g = w.frameGeometry;
-        if (e && Math.abs(g.x - e.frameX) < 1 && Math.abs(g.y - e.frameY) < 1) { r.x = g.x; r.y = g.y; return; }
-        undoPull(w);
-    }
-    // The windows of one activity that sit partly or wholly off every monitor, as KWin is about to
-    // show them: the current activity's switch, or the canvas opening on the others.
-    // others === null watches every window, the current activity's too: the owner's log (one
-    // activity, 180 big moves) has 160 of them within 0.35 s of an open, 3 to 10 ms after the
-    // first paint, in windows of the only activity there is.
-    function expectActivity(id, cause, others) {
-        const stack = KWin.Workspace.stackingOrder;
-        for (let i = 0; i < stack.length; ++i) {
-            const w = stack[i];
-            if (!isCanvasWindow(w, true)) continue;
-            if (others !== null) {
-                if (w.activities.length === 0) continue;
-                if (onActivity(w, id) === others) continue;
-            }
-            const g = w.frameGeometry;
-            if (!wholeOnOneMonitor(g)) expectGeo(w, g.x, g.y, g.width, g.height, cause);
-        }
+    property real lastActivationAt: 0
+    property real lastDockAt: 0
+    function perfSince() {
+        const now = Date.now();
+        const f = function (t) { return t > 0 && now - t < 5000 ? String(now - t) : "-"; };
+        return "since open=" + f(lastOpenAt) + " close=" + f(lastCloseAt) + " focus=" + f(lastActivationAt) + " dock=" + f(lastDockAt) + " screens=" + f(lastScreensAt);
     }
     function watchAllWindows() {
         const all = KWin.Workspace.stackingOrder;
@@ -2958,7 +2763,6 @@ KWin.SceneEffect {
                 pendingFly = null;
                 clickedWindow = null;
                 if (!w || w.deleted || !isFlyableWindow(w)) return;
-                undoNudge(w);
                 const g = w.frameGeometry;
                 if (wholeOnOneMonitor(g)) return;
                 flyToWindow(w);
@@ -3461,9 +3265,6 @@ KWin.SceneEffect {
         } else targets[currentActivity] = { x: viewX, y: viewY };
         ensureTargets();
         entryTargets = copyTargets(targets);
-        // The scene's thumbnails show the other activities' windows, and KWin pulls the ones
-        // that are partly or wholly off a monitor (KWin's pull when a window is shown).
-        expectActivity(currentActivity, "open", null);
         lastOpenAt = Date.now();
         snapshot();
         // A slide or fly keeps a floated window where it is on the screen (floatAnchor).
@@ -3618,8 +3419,7 @@ KWin.SceneEffect {
             let a = activityAt(e);
             if (a === null) a = e.activity;
             // A window on every activity stays on every activity.
-            const changedActivity = a !== e.activity && a && e.window.activities.length > 0;
-            if (changedActivity) e.window.activities = [a];
+            if (a !== e.activity && a && e.window.activities.length > 0) e.window.activities = [a];
             e.activity = a;
             // Take the new frame position first: the write below is this
             // function's own projection of the entry, so the entry must
@@ -3635,9 +3435,6 @@ KWin.SceneEffect {
             e.frameX = fx;
             e.frameY = fy;
             setReal(e.window, Qt.rect(fx, fy, e.width, e.height));
-            noteWrote(e, fx, fy);
-            // KWin checks the position again after the activity change, after this write.
-            if (changedActivity) expectGeo(e.window, fx, fy, e.width, e.height, "activity");
         }
         // Windows not shown (minimized, hidden, other desktops) share the
         // plane: keep them where they were relative to their activity's frames.
@@ -4579,11 +4376,11 @@ KWin.SceneEffect {
         const f = e.window.frameGeometry;
         let changed = false;
         if (f.x !== e.frameX || f.y !== e.frameY) {
-            // KWin pulling a window it has just shown or given other activities is not a move to follow.
-            if (undoPull(e.window)) return false;
-            // Something other than the canvas moved the real window (an app, a rule,
-            // KWin's placement, a tiler): its plane coordinates follow, which is what
-            // a jump of a window the hand never touched looks like. Logged with Perf.
+            // Against the frame the canvas knows: KWin's reachability rule is not a move to follow.
+            const was = { x: e.frameX, y: e.frameY, width: e.width, height: e.height };
+            if (classifyFrame(e.window, was, f) === "revert") { revertFrame(e.window, was); return false; }
+            // Something else moved the real window (an app, a rule, a tiler, the hand): its plane
+            // coordinates follow. Logged with Perf.
             if (perf && perfMoves < 60) {
                 perfMoves++;
                 perfLog("moved", "win=" + String(e.window.caption).replace(/[ =]/g, "_").slice(0, 30)
@@ -5299,7 +5096,6 @@ KWin.SceneEffect {
             if (g.x !== fx || g.y !== fy) {
                 setReal(e.window, Qt.rect(fx, fy, g.width, g.height));
             }
-            noteWrote(e, fx, fy);
         }
         // With separate cameras the windows the canvas does not show stay where they
         // are: they are not on the sliding monitor's desk.
@@ -5461,7 +5257,6 @@ KWin.SceneEffect {
         return g.x >= vs.x && g.y >= vs.y && g.x + g.width <= vs.x + vs.width && g.y + g.height <= vs.y + vs.height;
     }
     function flyToWindow(w) {
-        undoNudge(w);
         const t = peekTarget(activityOf(w));
         const f = w.frameGeometry;
         const rect = { x: f.x + t.x, y: f.y + t.y, width: f.width, height: f.height };
@@ -5505,17 +5300,14 @@ KWin.SceneEffect {
         target: KWin.Workspace
         function onWindowActivated(w) {
             // Remember the focus for the cluster tour's destination.
-            const prev = effect.lastActiveWindow;
-            effect.lastActiveWindow = w || null;
-            if (prev && prev !== w && !prev.deleted) { effect.focusTouched[prev.internalId] = Date.now(); effect.promotePendingNudge(prev); }
-            if (w && !w.deleted) { focusAt[w.internalId] = Date.now(); effect.focusTouched[w.internalId] = Date.now(); effect.promotePendingNudge(w); }
+            effect.lastActivationAt = Date.now();
+            if (w && !w.deleted) { focusAt[w.internalId] = Date.now(); }
             // Open: a raise (pass-through clicks) restacks the thumbnails.
             // The plane transform is only ever live while open, so the
             // on-screen test below always sees geometry as drawn.
             if (effect.visible) { Qt.callLater(effect.resync); return; }
             if (!effect.configuration.FollowActivation) return;
             if (!effect.isFlyableWindow(w)) return;
-            effect.undoNudge(w);
             const g = w.frameGeometry;
             // A focused window must be wholly on one monitor: an intersection is
             // not enough - one hanging off an edge, or across the seam between two
@@ -5534,12 +5326,10 @@ KWin.SceneEffect {
         }
         function onActivitiesChanged(id) { Qt.callLater(effect.activitiesChanged); }
         // App popups come and go with these too; resync() refreshes them.
-        function onWindowAdded(w) { if (w && w.dock) effect.noteAreaTouched(); effect.watchWindow(w); Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
-        function onWindowRemoved(w) { if (w && w.dock) effect.noteAreaTouched(); if (w) { delete effect.focusAt[w.internalId]; delete effect.watchedWindows[w.internalId]; delete effect.planeRestore[w.internalId]; delete effect.holdTrack[w.internalId]; delete effect.dirtyWindows[w.internalId]; } Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
+        function onWindowAdded(w) { if (w && w.dock) effect.lastDockAt = Date.now(); effect.watchWindow(w); Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
+        function onWindowRemoved(w) { if (w && w.dock) effect.lastDockAt = Date.now(); if (w) { delete effect.focusAt[w.internalId]; delete effect.watchedWindows[w.internalId]; delete effect.planeRestore[w.internalId]; delete effect.holdTrack[w.internalId]; delete effect.dirtyWindows[w.internalId]; } Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
         // Switching activities at 1:1 switches viewport: the ground follows.
         function onCurrentActivityChanged(id) {
-            // The windows of the activity just entered are shown now: KWin pulls the ones partly or wholly off a monitor.
-            effect.expectActivity(id, "switch", false);
             if (effect.refreshActivities()) effect.ensureTargets();
             // A focus fly that crossed activities waits for this signal, and
             // the canvas may still be visible (a smooth close is mid-flight):
@@ -5563,11 +5353,10 @@ KWin.SceneEffect {
         function onScreensChanged() {
             effect.screensRev++;
             effect.lastScreensAt = Date.now();
-            effect.noteAreaTouched();
-            outputSnapTimer.restart();
+            layoutBeforeTimer.restart();
             if (effect.visible) Qt.callLater(effect.resync);
         }
-        function onVirtualScreenGeometryChanged() { effect.screensRev++; effect.noteAreaTouched(); outputSnapTimer.restart(); }
+        function onVirtualScreenGeometryChanged() { effect.screensRev++; layoutBeforeTimer.restart(); }
     }
 
     // ---- shortcuts ---------------------------------------------------------
@@ -5917,9 +5706,6 @@ KWin.SceneEffect {
     onVisibleChanged: {
         if (!visible) {
             camStop();
-            // The scene lets go of the other activities' windows, and KWin looks at their
-            // positions again (KWin's pull when a window is shown).
-            expectActivity(currentActivity, "close", null);
             lastCloseAt = Date.now();
             if (perf) perfTicksReport();
         }
@@ -5946,7 +5732,7 @@ KWin.SceneEffect {
         loadHiddenFrames();
         loadClusterState();
         loadBookmarks();
-        outputSnap = outputRects();
+        layoutBefore = outputRects();
         watchAllWindows();
         refreshActivities();
         refreshDesktopWindow();

@@ -667,91 +667,79 @@ and the applet draw their own buttons for them, and the float never sets or
 clears them. The `PinnedWindows` knob is no longer read; it stays declared so
 an old config still loads.
 
-### KWin pulls far windows at every open (the owner's log)
+### Frame authority
 
-The owner's Perf log (one activity, one desktop, Plasma 6.8) holds 180 moves of more than 5 px by
-something other than the canvas; 160 land within 0.35 s of an open, 3 to 10 ms after the first paint,
-in windows 300 to 10000 px from the screen (VS Code, Brave, Discord, Steam). The first fixes did not
-reach them: the activity guard (`expectActivity`) only watched the windows of the other activities,
-and the focus guard (`noteNudge`) needs a recent focus change, which an overview open does not have,
-so a pull at an overview open was absorbed as the window's new coordinate (one burst moved four
-windows at once, Discord by 7075 px). `expectActivity(..., null)` now watches every window that is not
-wholly on one monitor at each open and close, and `undoPull` puts a pulled window back whether the
-canvas is open or closed. Scenario `206` (a pull simulated right after an open, in the overview and
-its cancel and in a quiet fly) fails on the code before this and passes after.
+**The plane is the truth.** A window's plane coordinate belongs to the canvas; its real frame is
+that coordinate seen through the camera's target (closed: plane = real + target). Two things may
+change a plane coordinate: the hand (an interactive move or resize) and the canvas itself (a
+landing, a commit, an undo). Any other change of a real frame is a projection somebody else
+disturbed, and the canvas puts it back. That is the one rule; everything below is how it is
+decided and what it costs.
 
-What triggers the pull in that session is not known: in a nest at the owner's layout (two stacked
-outputs at scale 1.25, focus follows the mouse, windows parked 7000 to 10000 px away, scenario `205`)
-KWin only pulls the window that gets focus. The candidates are the auto-hide and dodge-windows panels,
-KWin scripts (KZones, Remember Window Positions, sticky-window-snapping) and window rules. The `moved`
-and `pulled` Perf lines now carry the window's class and the milliseconds since the last open, close,
-focus change, dock event and screens change, so the next log says which.
+**The somebody is KWin's reachability rule.** KWin keeps a window reachable and applies the rule
+whenever it looks at a window again. Measured in a nest, by writing a frame and reading it back
+(`frameGeometry` itself and a plain write are never clamped):
 
-### KWin nudges a window when its focus changes
+- *The rule:* a window with under 100 px of its width over a monitor goes to exactly 100 px (1840
+  and 4000 on a 1920 px screen both ended at 1820; -400 for a 460 px window ended at -360); a top
+  above the monitor goes to 0 and a top in the last 28 px to the height minus 28 (1060 ended at
+  1052).
+- *When it looks again:* a window's focus changes, gaining or losing (a write to an already active
+  window and a plain raise move nothing; activating another window moves the old one 2 ms later);
+  its activities are set (a few ms after the frame the commit wrote); its activity becomes the
+  current one; the work area changes (a panel resized or recreated, a monitor re-plugged, the scale
+  changed); and the canvas opening or closing, for the windows the scene shows (the other
+  activities' in the nest; in the owner's log, windows of the only activity there is, 160 of 180
+  big moves within 0.35 s of an open).
 
-KWin runs its off-screen constraint on a window whenever its focus state changes, gaining or
-losing: a top edge above the screen goes to y=0, a left edge past the right edge minus 100 px
-comes back to that line, a top edge below the bottom goes to the bottom minus 28 px. Measured in
-a nest with the canvas out of the way: a write to an already active window and a plain raise move
-nothing; activating the window, or activating another one (which drops its focus), moves it, 2 ms
-later. The canvas parks windows off the screen all the time and every fly, enter, exit, hover and
-click changes focus, so the move was absorbed as the window's new plane coordinate: a window the
-hand never touched jumped, KCalc at y=-60 became 0 and one at x=sw+60 became sw-100.
+The canvas parks windows beyond every monitor on purpose, so each of those moved a window closer
+and the move was taken for the window's own: scenario `112`'s Gwenview at plane x 4000 read 3980;
+KCalc at y=-60 became 0 and one at x=sw+60 became sw-100 on a fly; three parked windows were
+scattered by a scale change; Discord moved by 7075 px at an overview open.
 
-`noteNudge` recognises it: same size, moved toward the screen, within two seconds of the window's
-focus change (`focusTouched`, set for the window that gains focus and the one that loses it), not
-an interactive move, not the canvas's own write (every canvas write goes through `setReal`, which
-the handler ignores), and only with FollowActivation on, so KDE's own behaviour stays for people
-who turned following off. With the canvas closed the window is put straight back (`undoNudge`),
-also before a fly reads its geometry; with it open the entry keeps its plane spot and the landing
-writes the true real position. A nudge that arrives before the activation signal waits 600 ms for
-it. Scenario `204`; the Perf line is `nudged`.
+**One classifier decides**, for each frame change that is not the canvas's own write (`frameChanged`,
+and `syncEntry` against the frame the canvas knows, since the scene's handler can reach the entry
+first). Adopt it when: a hand is on the window (`move`, `resize`), it is in a managed state (maximized,
+tiled, fullscreen, minimized) or is chrome (dock, popup), the size changed, or it left a place that was
+in reach. Revert it when the same size moved from a place out of reach to one in reach. Nothing else
+about what came before is consulted: no focus, area, activity or open/close correlation.
 
-### KWin pulls parked windows back inside
+Three edges, each deliberate:
 
-The canvas keeps the windows it is not showing far outside every monitor, because the plane
-is wider than the desktop. KWin pulls a window that is wholly outside back inside whenever
-its work area is recalculated: a panel that changes size or is recreated (a plasmashell
-restart), a monitor waking or re-plugging, a scale or resolution change. Left alone the
-window sits at a spot the canvas never wrote, a jump in its plane coordinates. In a nest,
-KCalc parked at x=4000 ended at 1440 after a panel grew from 46 to 90 px, and three windows
-were scattered by a scale change. `guardPulledBack` watches every window's frame change:
-a non-interactive change, same size, from wholly off every monitor (the layout from before a
-screens change counts, so a window on a just-unplugged monitor is still rescued) to onto one,
-with a screens change or a dock appearing, going or changing size within two seconds, is
-undone 400 ms later. QML has no work-area signal, hence the correlation; a window a script
-or the user moves onto the screen with nothing of the kind going on stays where it was put.
-Scenarios `180` (scale change) and `181` (a real panel resize, `make test-panel`).
+- *Out of reach is judged against the monitors as they are and as they were before the last layout
+  change* (`layoutBefore`, refreshed 1.5 s after a change). A window KWin rescues from a monitor that
+  has just been unplugged is adopted, not sent back to where nothing shows it; a scale change removes
+  no monitor, so its pulls are reverted.
+- *A window that keeps moving right after it is put back is adopted* (`revertLog`): a rule or a script
+  that forces a place insists, and the canvas does not fight it. Reverts chain when each follows the
+  last within 500 ms, and the third move of a chain is adopted. A move later than that is a new cause
+  (KWin looked at the window again at an open, a close, a focus), however soon after the last one, so a
+  quick open, close and open of the canvas reverts all three of KWin's pulls.
+- *With FollowActivation off the active window is adopted*: KDE brings the activated window in, as it
+  does without the canvas.
 
-The pull has three more triggers that need no work-area change, and the first is how a
-committed window moved by 20 px or by thousands with nobody touching it (scenario `112`,
-Gwenview at plane x 4000 read 3980 in the next hold, every time it ran alone). Measured in
-the nest by writing a frame and reading it back after a wait (`frameGeometry` itself is
-never clamped, nor is a plain write to a window of another activity):
+**The decision this makes, and its price.** Because only the hand and the canvas move a window, a
+script, a rule or an app that moves an out-of-reach window onto a monitor is undone, whoever it is. To
+bring a window here, fly to it or drag it; moves between places on the screen are untouched. A tool
+that relies on dragging far windows in by script will not get its way, and the Perf line `reverted`
+says what was undone (the window's class and the milliseconds since the last open, close, focus
+change, dock event and layout change).
 
-- **A window's activities being set.** KWin checks the position a few milliseconds later,
-  after the frame the commit wrote (the commit sets the activity, then writes). A window with
-  under 100 px of its width on a monitor goes to exactly 100 px (1840 and 4000 on a 1920 px
-  screen both ended at 1820; -400 for a 460 px window ended at -360), and a top outside the
-  screen goes to 0 or to the screen's height minus 28 (1060 ended at 1052).
-- **The canvas opening, and closing,** for the windows of the other activities: the scene's
-  thumbnails show them, and a window of the current activity parked at 4000 is left alone.
-  Every open and every close pulled a parked window of Activity 2 to the edge, and the entry
-  followed it (`moved ... open=1` in the Perf log), so the plane coordinate moved for good.
-- **The current activity changing,** for the windows of the activity entered. With
-  FollowActivation the focus fly then measured its destination from the parked spot and
-  landed the window, after the entry had followed the pull, at x=-744: off the screen
-  (scenario `184`).
+**What replaced what.** This section replaced three detectors that grew one after another and keyed
+on a cause each (a work-area correlation, a focus change, an activity change or an open or close),
+with their timers, maps and about twelve call sites. They missed whatever the next cause was: the
+owner's overview opens fell between all three.
 
-`expectGeo` notes where each such window stands at those moments (the commit's written spot,
-the real frame at an open, a close or a switch; windows wholly on one monitor are not
-noted), and `undoPull` writes a same-size move away from it back within 1.5 s, at most
-twice, unless a hand is on the window (`move`, `resize`) or the move is the canvas's own
-write (it takes the entry's frame position first). The scene's frame handler can reach
-`syncEntry` before the guard does, so `syncEntry` asks `undoPull` before it lets an entry
-follow a move. Scenarios `182` (the commit), `183` (open, close, slide), `184` (the switch).
-What it cannot cover: a pull that comes later than 1.5 s, and a script that moves the same
-window in that time (it is fought twice, then left).
+**Not known:** what makes KWin look at a window again at every open in the owner's session. A nest at
+their layout (two stacked outputs at scale 1.25, focus follows the mouse, windows 7000 to 10000 px
+away, scenario `205`) pulls only the window that gets focus. The classifier does not need to know.
+
+Scenarios: `180` (a scale change; a script's move is undone; a move between places on the screen is
+not), `181` (a real panel resize, `make test-panel`), `182` to `184` (the commit, open and close, the
+activity switch), `204` (a fly to a window above or past the screen), `206` (a pull right after an
+open, in the overview and a fly), `207` (the edges above), `205` (a stress at the owner's layout).
+
+### A fly leaves a floated window where it is
 
 A slide or fly (the quiet glide at 1:1) leaves a floated window where it is on the screen:
 `floatAnchor` holds the real spot each floated entry had when the slide opened, the
@@ -856,10 +844,9 @@ growing list.
 | `slide` | `dist`, `ms` | a quiet slide: distance in px and wall-clock time from the animation's start to its landing |
 | `hover-fetch` | `ms` | the rest that made the camera fetch a hovered window (the pointer's rest, which is the fetch's latency) |
 | `ticks` | `n`, `p50`, `p95`, `max` | physics tick spacing in ms over the session, written when the canvas closes |
-| `moved` | `win`, `dx`, `dy`, `open`, `quiet`, `pinned`, `floats` | a real window's position changed by something other than the canvas (an app, a window rule, KWin's placement, a tiler) and was absorbed into the plane; at most 60 a session |
+| `moved` | `win`, `cls`, `dx`, `dy`, `open`, `quiet`, `pinned`, `floats`, `since …` | a real window's position changed by something other than the canvas and was adopted into the plane (a move the classifier did not take for KWin's reachability rule: see *Frame authority*) |
+| `reverted` | `win`, `cls`, `dx`, `dy`, `open`, `quiet`, `since …` | something other than the hand or the canvas moved a window from out of reach to in reach, and the canvas put it back (*Frame authority*); `since` is the milliseconds since the last open, close, focus change, dock event and layout change, `-` when none in five seconds |
 | `landed` | `win`, `dx`, `dy` | a floated window took its picture's spot as its plane coordinates when the canvas was left |
-| `bounced` | `win`, `dx`, `dy`, `dw`, `dh`, `overlapsDock`, `docks`, `max`, `tiled`, `full`, `float` | a window found 450 ms after a landing (commit or slide) away from where the landing wrote it: something else moved it. `overlapsDock` says whether the written spot overlapped a panel or dock; at most 60 a session |
-| `pulled` | `win`, `dx`, `dy`, `cause` | KWin pulled a parked window back inside and the canvas put it back: after its work area changed (no `cause`), or `cause=activity`, `open`, `close` or `switch` for a pull that came with the window's activity being set, the canvas opening or closing, or the current activity changing |
 | `stall` | `ms`, `cam`, `quiet`, `entries`, `ql`, `cpu`, `gpu`, `mem` | a physics tick 60 ms or more late, with what the camera was doing (`goal`, `fling`, `-`) and the effect's last load readings; at most 40 a session; `kwin-canvas perf` lists the last 12 with their times |
 
 **Where an open's first 150 ms go.** `open()` itself takes about 1 ms; the

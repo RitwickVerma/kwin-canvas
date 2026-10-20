@@ -1,42 +1,21 @@
 Unreleased:
 
-- Far-away windows no longer jump closer when the canvas opens or closes. KWin moved windows that sit
-  hundreds or thousands of pixels off the screen toward it at almost every open, in the overview as
-  well as in a fly, and the canvas kept the new place. It now puts such a window back, for every
-  window, not only those of other activities.
-
-- Windows no longer jump when an off-screen window gets focus. KWin moves a window toward the screen
-  when it gains or loses focus (a top edge above the screen to the top, a left edge near the far
-  edge back inside), and the canvas, which keeps windows off the screen on purpose, took that move
-  as the window's new place. A fly to a partly off-screen window, a hover, a click, Alt+Tab or an
-  enter or exit could each move a window the hand never touched. The canvas now undoes the move and
-  keeps the window's coordinate.
-
-- Windows of other activities stay where the canvas put them. KWin moves a window that has
-  less than 100 px of its width on a screen (or its top off the screen) to the screen's edge a
-  moment after its activity is set, when the canvas opens or closes on it, and when its
-  activity becomes the current one. The canvas parks windows anywhere on the plane, so a window
-  moved into another activity's frame by a few pixels, or left in an inactive activity, was
-  taken to the edge of that activity's screen, its coordinates changed with it, and a focus fly
-  to it could land it off the screen. The canvas now puts such a window back before anything
-  reads it. With Perf on these are `pulled` lines with a `cause`.
-
-- Windows no longer drift when KWin recalculates its work area. The canvas parks the
-  windows it is not showing far outside the monitors, and KWin pulls any window that is
-  wholly outside back in whenever a panel changes size or is recreated, a monitor wakes or
-  is re-plugged, or the scale changes: windows landed on coordinates the canvas never wrote
-  and the layout was scrambled. The canvas now puts such a window back.
-- The canvas follows the global animation speed (System Settings, Animations). The slide, the
-  camera spring and the chrome fades are scaled by `AnimationDurationFactor`; at the default of
-  1 nothing changes, at 0 they jump.
+- Windows no longer jump when KWin moves them. KWin keeps every window reachable, and applies that
+  whenever it looks at a window again: its focus changes, its activity changes, a panel or monitor or
+  the scale changes, the canvas opens or closes. The canvas parks windows far off the screen, so each
+  of those moved a window closer and the canvas took the move for the window's own: a fly to a partly
+  off-screen window, an overview open, a scale change or an activity switch could each send windows
+  hundreds or thousands of pixels somewhere they were never put. One rule now covers all of them: only
+  your hand and the canvas move a window, and a move of anything else from out of reach to in reach is
+  undone, as often as KWin does it, even three times in a second. To bring a far window here, fly to it or drag it.
+  A rule or script that keeps forcing a window back onto the screen is let be after two tries. With Perf on,
+  `reverted` lines say what was undone and what came just before it.
 
 - A fly no longer moves a floated window. A slide or an auto fly keeps a floated window
   (PiP, a lyrics window, anything on all desktops) at the same place on the screen; before,
   it rode to an edge as the desk slid and landed there, which looked like the window
   jumping after every fly. In the zoomed-out overview a floated window still rides the
   edge of the screen.
-- With Perf on, a window found away from where a landing wrote it is logged as `bounced`,
-  with whether the spot overlapped a panel (something else moved it).
 
 - A plugin built for another KWin is reported, not silently lost. KWin refuses
   a pass-through plugin whose version stamp is not its own, which after an update

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
 # shellcheck source=../tests/lib.sh
-scenario_desc="a commit that gives a window another activity while little of it is on that activity's screen leaves it where the canvas wrote it: KWin looks at the position again after the activity change and pulls a window with under 100 px of its width on the screen (or its top below the screen's last 28 px) to the edge, and the canvas writes it back, so the plane coordinates never shift; a window with plenty on the screen, and a move by a script after that, are left alone"
+scenario_desc="a commit that gives a window another activity while little of it is on that activity's screen leaves it where the canvas wrote it: KWin looks at the position again after the activity change and pulls a window with under 100 px of its width on the screen (or its top below the screen's last 28 px) to the edge, and the canvas writes it back, so the plane coordinates never shift; a window with plenty on the screen is left alone, and so is a window that a script insists on (207 holds the insisting one)"
 # The real frames of the three windows this scenario places: "KCalc=x,y Konsole=x,y Gwenview=x,y".
 frames3() {
     kwinjs 'var o = []; ["KCalc","Konsole","Gwenview"].forEach(function (k) { workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf(k) >= 0) o.push(k + "=" + Math.round(x.frameGeometry.x) + "," + Math.round(x.frameGeometry.y)); }); }); print("ACTFRAMES " + o.join(" "));' 0.4
@@ -35,10 +35,11 @@ run_scenario() {
     assert_eq "and KCalc at 1060" "$(eget KCalc y)" 1060
     c cancel
     sleep 2.0
-    # A script that moves a parked window after the correction's moment (the guard lasts 1.5 s
-    # from the close) is not undone.
-    kwinjs 'workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("Gwenview") >= 0) x.frameGeometry = {x: 1700, y: 300, width: 460, height: 420}; });' 1.2
-    assert_eq "a script's move after that stays" "$(frames3 | sed 's/.*Gwenview=//')" "1700,300"
+    # A script that brings a parked window (80 px of it on the screen) to 220 px on the screen is
+    # indistinguishable from KWin's pull, which has the same shape: the same size, from out of reach to
+    # in reach. The canvas takes it for KWin's and puts it back; only a script that insists is let be.
+    kwinjs 'workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("Gwenview") >= 0) x.frameGeometry = {x: 1700, y: 300, width: 460, height: 420}; });' 1
+    assert_eq "a move from out of reach to in reach is taken for KWin's and put back" "$(frames3 | sed 's/.*Gwenview=//')" "1840,300"
     c cancel >/dev/null 2>&1
     arrange >/dev/null
 }

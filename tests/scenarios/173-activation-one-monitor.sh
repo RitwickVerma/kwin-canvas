@@ -14,9 +14,14 @@ on_output() {
     read -r ox oy ow oh <<<"$(screenrect "$1")"
     awk -v x="$x" -v y="$y" -v w="$w" -v h="$h" -v ox="$ox" -v oy="$oy" -v ow="$ow" -v oh="$oh" 'BEGIN{print (x >= ox && y >= oy && x + w <= ox + ow && y + h <= oy + oh) ? "yes" : "no"}'
 }
-place() { # X Y: Konsole active first (its own fly, if any, settles), then KCalc to a real position
+place() { # X Y: Konsole active first, then KCalc put at a REAL position by the canvas (a script's move of a
+    # window that is out of reach onto a monitor is KWin's rule to the canvas, and is put back)
     kwinjs 'workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("Konsole") >= 0) workspace.activeWindow = x; });' 2.4
-    kwinjs "var w = null; workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf(\"KCalc\") >= 0) w = x; }); w.frameGeometry = {x: $1, y: $2, width: 480, height: 420};" 0.6
+    c open >/dev/null; sleep 0.5; c state >/dev/null
+    local px py
+    px=$(awk -v x="$1" -v v="$(sget viewx)" 'BEGIN{printf "%d", x + v}')
+    py=$(awk -v y="$2" -v v="$(sget viewy)" 'BEGIN{printf "%d", y + v}')
+    c "placeby KCalc $px $py" >/dev/null; c commit >/dev/null; sleep 0.8
 }
 activate_kcalc() {
     kwinjs 'workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("KCalc") >= 0) workspace.activeWindow = x; });' 2.4

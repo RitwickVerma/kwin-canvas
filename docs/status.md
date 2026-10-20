@@ -56,35 +56,19 @@ on one monitor with the others showing their desk, and a slide that moves one mo
 monitors, the rest of stages 3 to 7. Tested only in the nest, on two outputs stacked
 and offset as the owner's are.
 
-**Far windows pulled at every open (2026-10-20, from the owner's log).** 160 of 180 logged moves land
-within 0.35 s of an open; the repair now covers every window at open and close (`206`; `docs/architecture.md`,
-*KWin pulls far windows at every open*). The trigger in the owner's session is unknown (not reproduced in a
-nest, `205`); the `moved` Perf lines now say how long after an open, close, focus change, dock event or
-screens change each move came. Not checked on the desktop.
-
-**Window coordinates drifting, the main cause (2026-10-20).** KWin moves a window toward the screen
-when its focus changes, and the canvas absorbed that as a plane move (`docs/architecture.md`, *KWin
-nudges a window when its focus changes*; scenario `204`, which fails on the previous code for the
-two fly cases and passes now; its overview and hover cases pass either way). Reproduced in a nest at
-scale 1.25, where windows laid out for 1920x1080 are partly off the smaller screen. Not checked on the
-desktop; the `nudged` Perf lines will show it.
-
-**Window coordinates drifting.** Causes found and fixed: a floated window rode to a screen
-edge on every slide (`178`), KWin pulled parked windows back inside whenever its work area
-changed (`180`, `181`), and KWin pulls a window of another activity that is partly or wholly
-off its screen whenever its activities are set, the canvas opens or closes, or its activity
-becomes current (`182`, `183`, `184`; `docs/architecture.md`, *KWin pulls parked windows back
-inside*). That last one was `112-overlay`'s 3980: the commit wrote Gwenview at 1840, KWin moved
-it to 1820 24 ms later, and the next open read it back as plane 3980. It also moved every
-parked window of an inactive activity by up to thousands of px on each open (`moved ... open=1`),
-and a focus fly into an activity landed its window at x=-744. None of it is checked on the
-desktop yet; the `pulled` (now with `cause=`), `bounced` and `moved` Perf lines will show
-whether anything else moves windows. A plain hold and release moves no window (traced with the
-fix and without it, on a desk whose windows are all on the current activity).
+**Window coordinates drifting (2026-10-20).** Causes found and fixed: a floated window rode to a screen
+edge on every slide (`178`), and KWin's reachability rule moved the windows the canvas parks beyond every
+monitor, every time it looked at one again (focus, activities, work area, an open or close): `112-overlay`'s
+3980, a fly's target landing at the screen edge, parked windows scattered by a scale change, Discord moved
+by 7075 px at an overview open. They are now one classifier with one rule (`docs/architecture.md`, *Frame
+authority*; scenarios `180` to `184`, `204`, `206`, `207`). Its price is stated there: a script that brings
+an out-of-reach window onto a monitor is undone. What makes KWin look again at every open in the owner's
+session is not known and the nest does not reproduce it (`205`); the `moved` and `reverted` Perf lines say how
+long after an open, close, focus change, dock event or layout change each move came. Not checked on the desktop.
 
 **Known failing.** `126-grasp-landing` failed one check intermittently and passed 3 of 3
-later. `30-commit`'s `after-commit-1to1` snapshot fails (rmse 0.046) with and without the
-activity-pull fix. `112-overlay` passes alone now. Why it passed inside the full run before was
+later. `30-commit`'s `after-commit-1to1` snapshot (rmse 0.045) and `91-two-outputs`'s `two-output-corner`
+snapshot (rmse 0.086) fail the same on a clean checkout of the commit before the frame authority. `112-overlay` passes alone now. Why it passed inside the full run before was
 not found (60-activities ahead of it does not hide the fault); probably an earlier scenario
 leaves the second activity's frame where Gwenview at 4000 has more than 100 px on its screen.
 
