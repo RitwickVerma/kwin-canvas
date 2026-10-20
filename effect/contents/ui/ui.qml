@@ -102,6 +102,8 @@ Item {
         id: button
         required property Item viewItem
         property string icon: ""
+        // A short text drawn in place of the icon (the monitor chips' numbers).
+        property string label: ""
         property color hoverColor: "#60ffffff"
         signal clicked()
         width: 18
@@ -109,10 +111,19 @@ Item {
         radius: 3
         color: buttonHover.hovered ? hoverColor : "#30ffffff"
         Kirigami.Icon {
+            visible: button.label === ""
             anchors.fill: parent
             anchors.margins: 2
             source: button.icon
             color: "#ffffff"
+        }
+        Text {
+            visible: button.label !== ""
+            anchors.centerIn: parent
+            text: button.label
+            color: "#ffffff"
+            font.pixelSize: 11
+            font.bold: true
         }
         HoverHandler {
             id: buttonHover
@@ -138,6 +149,11 @@ Item {
         required property var screen
         readonly property bool current: activity === effect.currentActivity
         readonly property bool hidden: effect.isHidden(activity, screen)
+        // With several monitors the activity wears one tag, on the monitor the chrome is on,
+        // and no output names: the monitors are the cameras, not things on the plane. A small
+        // numbered chip per monitor shows or hides that monitor's frame.
+        readonly property bool multi: { effect.screensRev; return KWin.Workspace.screens.length > 1; }
+        readonly property bool mine: !multi || screen === (effect.chromeScr || effect.primaryScreen)
         readonly property color accent: effect.palette[activityIndex % effect.palette.length]
         cursor: Qt.SizeAllCursor
         width: tagRow.implicitWidth + 12
@@ -158,16 +174,29 @@ Item {
             spacing: 6
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: effect.labelOf(tag.activity) + " \u00b7 " + tag.screen.name + "  " + tag.screen.geometry.width + "x" + tag.screen.geometry.height
+                text: tag.multi ? effect.labelOf(tag.activity) : effect.labelOf(tag.activity) + " \u00b7 " + tag.screen.name + "  " + tag.screen.geometry.width + "x" + tag.screen.geometry.height
                 color: effect.textOn(tag.accent)
                 font.pixelSize: 12
                 font.bold: true
             }
             IconButton {
+                visible: !tag.multi
                 anchors.verticalCenter: parent.verticalCenter
                 viewItem: tag.viewItem
                 icon: tag.hidden ? "view-hidden" : "view-visible"
                 onClicked: effect.setHidden(tag.activity, tag.screen, !tag.hidden)
+            }
+            Repeater {
+                model: tag.multi ? KWin.Workspace.screens : []
+                delegate: IconButton {
+                    required property int index
+                    required property var modelData
+                    anchors.verticalCenter: parent.verticalCenter
+                    viewItem: tag.viewItem
+                    label: String(index + 1)
+                    opacity: effect.isHidden(tag.activity, modelData) ? 0.4 : 1
+                    onClicked: effect.setHidden(tag.activity, modelData, !effect.isHidden(tag.activity, modelData))
+                }
             }
             IconButton {
                 visible: tag.activity !== ""
@@ -1542,7 +1571,7 @@ Item {
                 model: { effect.screensRev; return KWin.Workspace.screens; }
                 delegate: FrameTag {
                     required property var modelData
-                    visible: effect.skinReveal > 0.02
+                    visible: effect.skinReveal > 0.02 && mine
                     viewItem: view
                     activity: activityTags.modelData
                     activityIndex: activityTags.index
