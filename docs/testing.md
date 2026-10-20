@@ -439,6 +439,14 @@ recording, point OBS at the nest window while `DEMO_FRAMES=0 make demo` runs.
   `reconfigureEffect` is enough.
 - **Socket name.** The Wayland socket lands in `$XDG_RUNTIME_DIR`, so it must
   not share a name with the harness state directory.
+- **A window parked in another activity is pulled to the screen's edge unless it is written
+  in two steps.** Giving a window other activities makes KWin move it, a few milliseconds
+  later, to keep 100 px of its width on a monitor, and opening or closing the canvas does the
+  same to the windows of the other activities. A scenario that parks one by a script
+  (`183`, `184`) sets `w.activities` in one `kwinjs` and writes the frame in the next; one
+  that parks it with `placeby` and `commit` gets the canvas's own correction (`182`). The
+  symptom in a trace is a plane x that is 20 px short, or a frame that is not the one
+  written, and the Perf log's `pulled ... cause=` lines name the trigger.
 - **A JS exception mid-commit leaves the effect open.** Check the log for
   `TypeError` before trusting a `visible=true` in the state line.
 - **Cursor-anchored zoom does not reset the camera.** `zoom 0.4 960 540` from
