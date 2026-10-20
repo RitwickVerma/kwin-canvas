@@ -56,6 +56,12 @@ on one monitor with the others showing their desk, and a slide that moves one mo
 monitors, the rest of stages 3 to 7. Tested only in the nest, on two outputs stacked
 and offset as the owner's are.
 
+**Window coordinates drifting.** Two causes found and fixed: a floated window rode to a screen
+edge on every slide (`178`), and KWin pulled parked windows back inside whenever its work area
+changed (`180`, `181`; `docs/architecture.md`, *KWin pulls parked windows back inside*). Neither
+is checked on the desktop yet; the `pulled`, `bounced` and `moved` Perf lines will show whether
+anything else moves windows.
+
 **Known failing, unexplained.** `112-overlay` fails one check ("the drag never grabbed
 the window": Gwenview at x 3980, expected 4000) every time it runs alone, with and without
 the arrange fix, and passes inside the full run. A trace shows the entry's x reading as 1400

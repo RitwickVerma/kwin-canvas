@@ -302,7 +302,8 @@ KWin.SceneEffect {
     // keeps a number, so a user's "it pauses before it flies" becomes figures
     // instead of a guess. Events: open, first-paint ms, settle ms zoom,
     // slide dist ms, hover-fetch ms, ticks n p50 p95 max (on the close), moved win dx dy
-    // (a real window moved by something else, absorbed into the plane), bounced win dx dy dw dh
+    // (a real window moved by something else, absorbed into the plane), pulled win dx dy
+    // (KWin pulled a parked window back inside and the canvas put it back), bounced win dx dy dw dh
     // overlapsDock (a window found away from where a landing wrote it), landed win dx dy
     // (a floated window taking its picture's spot), stall ms cam
     // quiet entries ql cpu gpu mem (a tick 60 ms or more late, at most 40 a session).
@@ -1438,10 +1439,90 @@ KWin.SceneEffect {
         if (!w || watchedWindows[w.internalId]) return;
         watchedWindows[w.internalId] = true;
         trackFree(w);
-        w.frameGeometryChanged.connect(function () { effect.markDirty(w); });
+        w.frameGeometryChanged.connect(function (old) { effect.markDirty(w); effect.guardPulledBack(w, old); });
         w.desktopsChanged.connect(function () { effect.noteDesktopsChanged(w); });
         w.maximizedChanged.connect(function () { effect.noteReturnedFree(w); });
         w.tileChanged.connect(function () { effect.noteReturnedFree(w); });
+    }
+    // ---- KWin's pull-back ----------------------------------------------------
+    // The canvas keeps windows it is not showing far outside every monitor (the plane is
+    // wider than the desktop). KWin pulls a window that is wholly outside back inside whenever
+    // its work area is recalculated: a panel that changes size or is recreated (a plasmashell
+    // restart), a monitor waking or re-plugging, a scale or resolution change, HDR toggled. The
+    // window then sits somewhere the canvas never put it, which is a window jumping to a new
+    // plane coordinate. A window found like that - not being moved by the user, same size,
+    // wholly off every monitor a moment ago and on one now - is put back where it was. "Every
+    // monitor" includes the layout from before a screens change (outputSnap, refreshed 1.5 s
+    // after the last one), so a window on a monitor that was just unplugged is still rescued
+    // onto the ones that remain, as KDE does.
+    property var outputSnap: []
+    property bool pullGuard: true
+    function outputRects() {
+        const out = [], ss = KWin.Workspace.screens;
+        for (let i = 0; i < ss.length; ++i) { const g = ss[i].geometry; out.push({ x: g.x, y: g.y, width: g.width, height: g.height }); }
+        return out;
+    }
+    function touchesOutput(r) {
+        const all = outputRects().concat(outputSnap);
+        for (let i = 0; i < all.length; ++i) {
+            const o = all[i];
+            if (r.x < o.x + o.width && r.x + r.width > o.x && r.y < o.y + o.height && r.y + r.height > o.y) return true;
+        }
+        return false;
+    }
+    function touchesCurrentOutput(r) {
+        const all = outputRects();
+        for (let i = 0; i < all.length; ++i) {
+            const o = all[i];
+            if (r.x < o.x + o.width && r.x + r.width > o.x && r.y < o.y + o.height && r.y + r.height > o.y) return true;
+        }
+        return false;
+    }
+    Timer {
+        id: outputSnapTimer
+        interval: 1500
+        repeat: false
+        onTriggered: effect.outputSnap = effect.outputRects()
+    }
+    // QML gets no work-area signal, so the cause is inferred: a screens change, or a dock or
+    // panel that appeared, went or changed size, within two seconds of the move. A script or a
+    // user moving a parked window with nothing of the kind going on is left alone.
+    property real areaTouchedAt: 0
+    function noteAreaTouched() { areaTouchedAt = Date.now(); }
+    property var pullCandidates: ({})
+    function guardPulledBack(w, old) {
+        if (w && w.dock) noteAreaTouched();
+        if (!pullGuard || visible || !old || !w || w.deleted || !w.managed) return;
+        if (w.move || w.resize || w.fullScreen || w.minimized || w.desktopWindow || w.dock || w.popupWindow || w.specialWindow) return;
+        if (w.maximizedHorizontally || w.maximizedVertically || w.tile) return;
+        const g = w.frameGeometry;
+        if (Math.abs(g.width - old.width) > 1 || Math.abs(g.height - old.height) > 1) return;
+        if (Math.abs(g.x - old.x) < 1 && Math.abs(g.y - old.y) < 1) return;
+        if (touchesOutput(old) || !touchesCurrentOutput(g)) return;
+        // The area signal can come before or after the move: decide shortly after both.
+        pullCandidates[w.internalId] = { w: w, old: { x: old.x, y: old.y }, at: Date.now() };
+        pullTimer.restart();
+    }
+    Timer {
+        id: pullTimer
+        interval: 400
+        repeat: false
+        onTriggered: {
+            const cands = effect.pullCandidates;
+            effect.pullCandidates = ({});
+            if (effect.visible) return;
+            for (const id in cands) {
+                const c = cands[id], w = c.w;
+                if (!w || w.deleted || w.move || w.resize) continue;
+                if (Math.abs(c.at - effect.areaTouchedAt) > 2000) continue;
+                const g = w.frameGeometry;
+                if (!effect.touchesCurrentOutput(g)) continue;   // already somewhere else off-screen: not ours to undo
+                if (effect.perf) effect.perfLog("pulled", "win=" + String(w.caption).replace(/[ =]/g, "_").slice(0, 30)
+                    + " dx=" + Math.round(g.x - c.old.x) + " dy=" + Math.round(g.y - c.old.y));
+                effect.dbg("pulled", w.caption + " pulled back by KWin from (" + Math.round(c.old.x) + "," + Math.round(c.old.y) + "): put back");
+                w.frameGeometry = Qt.rect(c.old.x, c.old.y, g.width, g.height);
+            }
+        }
     }
     function watchAllWindows() {
         const all = KWin.Workspace.stackingOrder;
@@ -2770,7 +2851,13 @@ KWin.SceneEffect {
     // flight interrupted mid-way is simply over and the canvas stays open.
     property var camOnArrive: null
     readonly property bool panInertia: configuration.PanInertia !== false
-    readonly property bool smoothZoom: configuration.SmoothZoom !== false
+    // The user's global animation speed (System Settings > Animations, AnimationDurationFactor in
+    // kdeglobals: 1 is normal, below 1 faster, above 1 slower, 0 instant). Kirigami's durations are
+    // that factor times their 200 ms base, so the factor is read back from them; the canvas's own
+    // times (the slide, the camera spring, the chrome fades) are scaled by it, so it is not the one
+    // animation on the desktop that ignores the setting. At 1 every number is what it always was.
+    readonly property real animFactor: Math.max(0, Math.min(4, Kirigami.Units.longDuration / 200))
+    readonly property bool smoothZoom: configuration.SmoothZoom !== false && animFactor > 0.02
     readonly property real panFriction: Math.max(0.1, Number(configuration.PanFriction) || 3)
     readonly property real camSpring: Math.max(1, Number(configuration.CamSpring) || 14)
     // A glide is over below this many screen pixels a second: below it the eye
@@ -2902,7 +2989,7 @@ KWin.SceneEffect {
         // (The Euler spring is only stable while w*dt stays well under 1:
         // above ~32/s a fly with the knobs high diverges - a state read
         // once caught the view at 2.7e253 - so cap at the stability edge.)
-        const w = Math.min(32, camSpring * camRate), k = w * w, c = 2 * w;
+        const w = Math.min(32, camSpring * camRate / Math.max(0.1, animFactor)), k = w * w, c = 2 * w;
         if (camHasGoal) {
             camVZoom += (-k * (zoom - camGoalZoom) - c * camVZoom) * dt;
             if (!camAnchored) {
@@ -3030,7 +3117,7 @@ KWin.SceneEffect {
         target: effect
         property: "chromeFade"
         to: 0
-        duration: 160
+        duration: Math.round(160 * effect.animFactor)
         easing.type: Easing.InOutCubic
     }
     NumberAnimation {
@@ -3038,7 +3125,7 @@ KWin.SceneEffect {
         target: effect
         property: "chromeFade"
         to: 1
-        duration: 160
+        duration: Math.round(160 * effect.animFactor)
         easing.type: Easing.InOutCubic
     }
 
@@ -3070,7 +3157,7 @@ KWin.SceneEffect {
     }
     Timer {
         id: closeTimer
-        interval: 170
+        interval: Math.max(1, Math.round(170 * effect.animFactor))
         repeat: false
         onTriggered: {
             const fn = effect.farewellThen;
@@ -4875,7 +4962,7 @@ KWin.SceneEffect {
     property real slideToX: 0
     property real slideToY: 0
     readonly property int panDuration: Math.max(0, Number(configuration.PanDuration) || 0)
-    readonly property int sceneFadeMs: Math.max(1, Number(configuration.SceneFadeMs) || 90)
+    readonly property int sceneFadeMs: Math.max(1, Math.round((Number(configuration.SceneFadeMs) || 90) * animFactor))
 
     // One pan step in screen pixels: a fraction of the active screen.
     function panStep() {
@@ -4918,7 +5005,7 @@ KWin.SceneEffect {
         const dist = Math.hypot(slideToX - viewX, slideToY - viewY) * zoom;
         const g = actionScreen().geometry;
         const half = Math.max(1, Math.hypot(g.width, g.height) / 2);
-        slideMs = panDuration <= 0 ? 0 : Math.round(Math.max(0.8, Math.min(1.5, 0.8 + 0.7 * Math.sqrt(dist / half))) * panDuration);
+        slideMs = panDuration <= 0 ? 0 : Math.round(Math.max(0.8, Math.min(1.5, 0.8 + 0.7 * Math.sqrt(dist / half))) * panDuration * animFactor);
         slideAnim.restart();
     }
     property int slideMs: panDuration
@@ -5243,8 +5330,8 @@ KWin.SceneEffect {
         }
         function onActivitiesChanged(id) { Qt.callLater(effect.activitiesChanged); }
         // App popups come and go with these too; resync() refreshes them.
-        function onWindowAdded(w) { effect.watchWindow(w); Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
-        function onWindowRemoved(w) { if (w) { delete effect.focusAt[w.internalId]; delete effect.watchedWindows[w.internalId]; delete effect.planeRestore[w.internalId]; delete effect.holdTrack[w.internalId]; delete effect.dirtyWindows[w.internalId]; } Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
+        function onWindowAdded(w) { if (w && w.dock) effect.noteAreaTouched(); effect.watchWindow(w); Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
+        function onWindowRemoved(w) { if (w && w.dock) effect.noteAreaTouched(); if (w) { delete effect.focusAt[w.internalId]; delete effect.watchedWindows[w.internalId]; delete effect.planeRestore[w.internalId]; delete effect.holdTrack[w.internalId]; delete effect.dirtyWindows[w.internalId]; } Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
         // Switching activities at 1:1 switches viewport: the ground follows.
         function onCurrentActivityChanged(id) {
             if (effect.refreshActivities()) effect.ensureTargets();
@@ -5269,9 +5356,11 @@ KWin.SceneEffect {
         // read from has changed.
         function onScreensChanged() {
             effect.screensRev++;
+            effect.noteAreaTouched();
+            outputSnapTimer.restart();
             if (effect.visible) Qt.callLater(effect.resync);
         }
-        function onVirtualScreenGeometryChanged() { effect.screensRev++; }
+        function onVirtualScreenGeometryChanged() { effect.screensRev++; effect.noteAreaTouched(); outputSnapTimer.restart(); }
     }
 
     // ---- shortcuts ---------------------------------------------------------
@@ -5559,7 +5648,7 @@ KWin.SceneEffect {
 
     function logState() {
         let s = "kwin-canvas state visible=" + visible + (quiet ? " quiet" : "") + (grasp ? " grasp" : "") + (passthroughLive ? " passthrough" : "") + (planeLive ? " plane" : "") + " zoom=" + zoom.toFixed(4) + " view=(" + viewX.toFixed(1) + "," + viewY.toFixed(1) + ") activity=" + labelOf(currentActivity) + " entries=" + entries.length
-            + " popups=" + appPopups.length + " menus=" + canvasMenus + " floats=" + pinnedCount + " chrome=" + (chromeScr ? chromeScr.name : "-") + " cams=" + (separate ? "separate:" + (camScreen ? camScreen.name : "-") : "merged") + " floatheld=" + Object.keys(floatOf).length + " nav=" + (navHeld ? "hold" : "-") + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
+            + " popups=" + appPopups.length + " menus=" + canvasMenus + " floats=" + pinnedCount + " anim=" + animFactor.toFixed(2) + " chrome=" + (chromeScr ? chromeScr.name : "-") + " cams=" + (separate ? "separate:" + (camScreen ? camScreen.name : "-") : "merged") + " floatheld=" + Object.keys(floatOf).length + " nav=" + (navHeld ? "hold" : "-") + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
             + " screens=" + KWin.Workspace.screens.length + " backdrop=" + backdropLayers
             + " cam=" + (camHasGoal ? "goal" : (camLive() ? "glide" : "-"))
             + " focus=" + (focusEntry ? JSON.stringify(focusEntry.window.caption) : "-")
@@ -5646,6 +5735,7 @@ KWin.SceneEffect {
         loadHiddenFrames();
         loadClusterState();
         loadBookmarks();
+        outputSnap = outputRects();
         watchAllWindows();
         refreshActivities();
         refreshDesktopWindow();

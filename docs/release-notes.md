@@ -1,5 +1,14 @@
 Unreleased:
 
+- Windows no longer drift when KWin recalculates its work area. The canvas parks the
+  windows it is not showing far outside the monitors, and KWin pulls any window that is
+  wholly outside back in whenever a panel changes size or is recreated, a monitor wakes or
+  is re-plugged, or the scale changes: windows landed on coordinates the canvas never wrote
+  and the layout was scrambled. The canvas now puts such a window back.
+- The canvas follows the global animation speed (System Settings, Animations). The slide, the
+  camera spring and the chrome fades are scaled by `AnimationDurationFactor`; at the default of
+  1 nothing changes, at 0 they jump.
+
 - A fly no longer moves a floated window. A slide or an auto fly keeps a floated window
   (PiP, a lyrics window, anything on all desktops) at the same place on the screen; before,
   it rode to an edge as the desk slid and landed there, which looked like the window

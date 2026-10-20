@@ -662,6 +662,22 @@ and the applet draw their own buttons for them, and the float never sets or
 clears them. The `PinnedWindows` knob is no longer read; it stays declared so
 an old config still loads.
 
+### KWin pulls parked windows back inside
+
+The canvas keeps the windows it is not showing far outside every monitor, because the plane
+is wider than the desktop. KWin pulls a window that is wholly outside back inside whenever
+its work area is recalculated: a panel that changes size or is recreated (a plasmashell
+restart), a monitor waking or re-plugging, a scale or resolution change. Left alone the
+window sits at a spot the canvas never wrote, a jump in its plane coordinates. In a nest,
+KCalc parked at x=4000 ended at 1440 after a panel grew from 46 to 90 px, and three windows
+were scattered by a scale change. `guardPulledBack` watches every window's frame change:
+a non-interactive change, same size, from wholly off every monitor (the layout from before a
+screens change counts, so a window on a just-unplugged monitor is still rescued) to onto one,
+with a screens change or a dock appearing, going or changing size within two seconds, is
+undone 400 ms later. QML has no work-area signal, hence the correlation; a window a script
+or the user moves onto the screen with nothing of the kind going on stays where it was put.
+Scenarios `180` (scale change) and `181` (a real panel resize, `make test-panel`).
+
 A slide or fly (the quiet glide at 1:1) leaves a floated window where it is on the screen:
 `floatAnchor` holds the real spot each floated entry had when the slide opened, the
 thumbnail draws it there, and the landing writes its plane coordinates as the destination
@@ -768,6 +784,7 @@ growing list.
 | `moved` | `win`, `dx`, `dy`, `open`, `quiet`, `pinned`, `floats` | a real window's position changed by something other than the canvas (an app, a window rule, KWin's placement, a tiler) and was absorbed into the plane; at most 60 a session |
 | `landed` | `win`, `dx`, `dy` | a floated window took its picture's spot as its plane coordinates when the canvas was left |
 | `bounced` | `win`, `dx`, `dy`, `dw`, `dh`, `overlapsDock`, `docks`, `max`, `tiled`, `full`, `float` | a window found 450 ms after a landing (commit or slide) away from where the landing wrote it: something else moved it. `overlapsDock` says whether the written spot overlapped a panel or dock; at most 60 a session |
+| `pulled` | `win`, `dx`, `dy` | KWin pulled a parked window (wholly outside every monitor) back inside after its work area changed, and the canvas put it back |
 | `stall` | `ms`, `cam`, `quiet`, `entries`, `ql`, `cpu`, `gpu`, `mem` | a physics tick 60 ms or more late, with what the camera was doing (`goal`, `fling`, `-`) and the effect's last load readings; at most 40 a session; `kwin-canvas perf` lists the last 12 with their times |
 
 **Where an open's first 150 ms go.** `open()` itself takes about 1 ms; the

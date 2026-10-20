@@ -29,6 +29,7 @@
 # NEST_NAME=foo runs a second, independent nest (own socket, bus, config, log).
 # NEST_WALLPAPER=0 keeps the plain grid instead of tiling the fixture wallpaper.
 # NEST_OUTPUTS=2 gives the nest two side-by-side outputs (one frame each).
+# NEST_ANIM=N starts the nest with that global animation speed (AnimationDurationFactor, default 1).
 # NEST_VIRTUAL=1 renders to KWin's virtual framebuffer instead of a window on
 # the live desktop: nothing to look at, but frames keep coming at full rate
 # when the nest would be hidden or covered. The tests use it.
@@ -197,6 +198,7 @@ Theme=breeze-dark
 
 [KDE]
 widgetStyle=Breeze
+AnimationDurationFactor=${NEST_ANIM:-1}
 CFG
     # The nest's activity manager reads these; the state file (XDG_STATE_HOME)
     # names the current one. Rewritten on every up, so an added activity
