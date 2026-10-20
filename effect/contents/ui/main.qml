@@ -1181,8 +1181,8 @@ KWin.SceneEffect {
             if (e.window.deleted) continue;
             const p = byId[e.window.internalId];
             if (!p) continue;
-            const t = targetOf(e.activity);
-            const fx = Math.round(p.x - t.x), fy = Math.round(p.y - t.y);
+            const pj = projectEntry({ x: p.x, y: p.y, width: e.width, height: e.height, out: e.out }, e.activity);
+            const fx = Math.round(pj.x), fy = Math.round(pj.y);
             e.frameX = fx;
             e.frameY = fy;
             e.window.frameGeometry = Qt.rect(fx, fy, e.width, e.height);
@@ -1327,7 +1327,8 @@ KWin.SceneEffect {
     // the window is no longer free and the last free spot is the one kept.
     function trackFree(w) {
         if (!w || w.deleted || holdTrack[w.internalId] || !windowFree(w)) return;
-        const t = targetOf(activityOf(w)), g = w.frameGeometry;
+        const g = w.frameGeometry;
+        const t = separate ? targetOn(activityOf(w), outputAtReal(g.x, g.y, g.width, g.height)) : targetOf(activityOf(w));
         planeRestore[w.internalId] = { x: g.x + t.x, y: g.y + t.y };
     }
     function markDirty(w) {
@@ -1358,8 +1359,9 @@ KWin.SceneEffect {
         if (!w || w.deleted) return;
         delete holdTrack[w.internalId];
         if (!visible && windowFree(w)) {
-            const t = targetOf(activityOf(w)), g = w.frameGeometry;
-            const fx = Math.round(r.x - t.x), fy = Math.round(r.y - t.y);
+            const g = w.frameGeometry;
+            const pj = projectEntry({ x: r.x, y: r.y, width: g.width, height: g.height, out: null }, activityOf(w));
+            const fx = Math.round(pj.x), fy = Math.round(pj.y);
             if (Math.abs(g.x - fx) >= 1 || Math.abs(g.y - fy) >= 1) {
                 dbg("restore", "back to the plane: " + Math.round(g.x) + "," + Math.round(g.y) + " -> " + fx + "," + fy);
                 w.frameGeometry = Qt.rect(fx, fy, g.width, g.height);
@@ -1920,7 +1922,15 @@ KWin.SceneEffect {
         return a[0];
     }
 
+    // The activity's target. With the cameras merged it is the one rigid target
+    // every monitor shares; with them separate it is the target of the monitor
+    // whose camera is the active one (targetOn is the per-monitor form), so every
+    // site that means "the camera's location" keeps meaning that.
     function targetOf(id) {
+        if (separate) return targetOn(id, activeOutput());
+        return targetBase(id);
+    }
+    function targetBase(id) {
         let t = targets[id];
         if (!t) {
             t = { x: viewX, y: viewY };
@@ -1932,9 +1942,109 @@ KWin.SceneEffect {
     // Read-only lookup for bindings, so drawing a frame never fixes a
     // target before ensureTargets() has laid the activity out.
     function peekTarget(id) {
+        if (separate) return peekTargetOn(id, activeOutput());
+        return peekBase(id);
+    }
+    function peekBase(id) {
         const t = targets[id];
         return t ? t : { x: viewX, y: viewY };
     }
+
+    // ---- cameras: a target per activity and monitor -----------------------------
+    // Merged is today's model: one camera over the whole arrangement. Separate gives
+    // each monitor its own desk on the plane: the target of (activity, monitor) says
+    // where that monitor's frame sits, and a window belongs to the frame its centre is
+    // in. The per-monitor targets live in `targets` under "activity|output", so every
+    // copy, undo and cancel of the targets carries them. docs/multimonitor.md.
+    readonly property bool separate: { screensRev; return String(configuration.Cameras) === "separate" && KWin.Workspace.screens.length > 1; }
+    // The monitor whose camera is the active one (the viewX, viewY and zoom): where the
+    // overview was opened.
+    property var camScreen: null
+    function activeOutput() {
+        const ss = KWin.Workspace.screens;
+        for (let i = 0; i < ss.length; ++i) if (ss[i] === camScreen) return camScreen;
+        const p = cursorScreen();
+        return screenAt(p.x, p.y) || primaryScreen;
+    }
+    function outKey(id, screen) { return id + "|" + screen.name; }
+    function targetOn(id, screen) {
+        if (!separate || !screen) return targetBase(id);
+        const k = outKey(id, screen);
+        let t = targets[k];
+        if (!t) { const b = targetBase(id); t = { x: b.x, y: b.y }; targets[k] = t; }
+        return t;
+    }
+    function peekTargetOn(id, screen) {
+        if (separate && screen) { const t = targets[outKey(id, screen)]; if (t) return t; }
+        return peekBase(id);
+    }
+    function rectContains(r, cx, cy) { return cx >= r.x && cx < r.x + r.width && cy >= r.y && cy < r.y + r.height; }
+    function rectDistance(r, cx, cy) {
+        const dx = Math.max(r.x - cx, 0, cx - (r.x + r.width)), dy = Math.max(r.y - cy, 0, cy - (r.y + r.height));
+        return Math.hypot(dx, dy);
+    }
+    // The monitor a real rect sits on: the one holding its centre, else the nearest.
+    function outputAtReal(x, y, w, h) {
+        const ss = KWin.Workspace.screens;
+        const cx = x + w / 2, cy = y + h / 2;
+        let best = null, bestD = Infinity;
+        for (let i = 0; i < ss.length; ++i) {
+            const d = rectDistance(ss[i].geometry, cx, cy);
+            if (d < bestD) { bestD = d; best = ss[i]; }
+        }
+        return best;
+    }
+    // The frame (activity, monitor) as a plane rect.
+    function frameOn(id, screen) {
+        const t = peekTargetOn(id, screen), o = screen.geometry;
+        return { x: t.x + o.x, y: t.y + o.y, width: o.width, height: o.height };
+    }
+    // The monitor whose frame a plane rect belongs to: the one it already had if its
+    // frame still holds the rect's centre, else any frame that holds it, else the
+    // nearest frame.
+    function ownerOnPlane(a, e) {
+        const ss = KWin.Workspace.screens;
+        const cx = e.x + e.width / 2, cy = e.y + e.height / 2;
+        if (e.out) for (let i = 0; i < ss.length; ++i) if (ss[i].name === e.out && rectContains(frameOn(a, ss[i]), cx, cy)) return ss[i];
+        for (let i = 0; i < ss.length; ++i) if (rectContains(frameOn(a, ss[i]), cx, cy)) return ss[i];
+        let best = null, bestD = Infinity;
+        for (let i = 0; i < ss.length; ++i) {
+            const d = rectDistance(frameOn(a, ss[i]), cx, cy);
+            if (d < bestD) { bestD = d; best = ss[i]; }
+        }
+        return best;
+    }
+    // Where a plane rect is written as a real window: { x, y, out, parked }. Merged: the
+    // rigid translation. Separate: relative to the owner's frame; a window in no frame
+    // whose real spot would land on some monitor is parked beyond every monitor, on the
+    // side it lies on, so it shows nowhere (its plane spot is kept in `parked`).
+    function projectEntry(e, a) {
+        if (!separate) { const t = targetOf(a); return { x: e.x - t.x, y: e.y - t.y, out: null, parked: false }; }
+        const S = ownerOnPlane(a, e);
+        const t = targetOn(a, S);
+        let x = e.x - t.x, y = e.y - t.y;
+        const f = frameOn(a, S);
+        const cx = e.x + e.width / 2, cy = e.y + e.height / 2;
+        let parkedNow = false;
+        if (!rectContains(f, cx, cy)) {
+            const ss = KWin.Workspace.screens;
+            let leaks = false;
+            for (let i = 0; i < ss.length && !leaks; ++i) {
+                const o = ss[i].geometry;
+                leaks = x < o.x + o.width && x + e.width > o.x && y < o.y + o.height && y + e.height > o.y;
+            }
+            if (leaks) {
+                const bb = KWin.Workspace.virtualScreenGeometry, margin = 300;
+                const dx = cx - (f.x + f.width / 2), dy = cy - (f.y + f.height / 2);
+                if (Math.abs(dx) >= Math.abs(dy)) x = dx >= 0 ? bb.x + bb.width + margin : bb.x - margin - e.width;
+                else y = dy >= 0 ? bb.y + bb.height + margin : bb.y - margin - e.height;
+                parkedNow = true;
+            }
+        }
+        return { x: x, y: y, out: S.name, parked: parkedNow };
+    }
+    // Windows this effect parked: id -> { x, y (the plane spot), rx, ry (the real spot written) }.
+    property var parked: ({})
 
     function activityIndex(id) {
         const ids = activityIds;
@@ -1971,10 +2081,10 @@ KWin.SceneEffect {
         const out = [];
         const ids = activityIds, screens = KWin.Workspace.screens;
         for (let i = 0; i < ids.length; ++i) {
-            const t = peekTarget(ids[i]);
             for (let j = 0; j < screens.length; ++j) {
                 if (isHidden(ids[i], screens[j])) continue;
                 const g = screens[j].geometry;
+                const t = peekTargetOn(ids[i], screens[j]);
                 out.push({ id: ids[i], screen: screens[j], x: t.x + g.x, y: t.y + g.y, width: g.width, height: g.height });
             }
         }
@@ -2038,7 +2148,7 @@ KWin.SceneEffect {
             const alive = ids.indexOf(e.activity) !== -1;
             const a = activityOf(e.window);
             if (alive && a === e.activity) continue;
-            const t = targetOf(a);
+            const t = separate ? targetOn(a, outputAtReal(e.frameX, e.frameY, e.width, e.height)) : targetOf(a);
             e.activity = a;
             e.x = e.frameX + t.x;
             e.y = e.frameY + t.y;
@@ -2109,6 +2219,7 @@ KWin.SceneEffect {
     // changes on screen at 1:1; off, the frames move over the windows.
     function dragTarget(id, dx, dy) {
         const t = targetOf(id);
+        const tx0 = t.x, ty0 = t.y;
         if (!targetRaw || targetRaw.id !== id) targetRaw = { id: id, x: t.x, y: t.y };
         targetRaw.x += dx / zoom; targetRaw.y += dy / zoom;
         const carry = configuration.FramesCarryWindows !== false;
@@ -2132,14 +2243,38 @@ KWin.SceneEffect {
         }
         t.x = nx;
         t.y = ny;
+        if (separate) {
+            // The tag drags the activity's whole frame group: every monitor's frame.
+            const ss = KWin.Workspace.screens;
+            for (let i = 0; i < ss.length; ++i) {
+                const o = targetOn(id, ss[i]);
+                if (o === t) continue;
+                o.x += nx - tx0;
+                o.y += ny - ty0;
+            }
+        }
         revision++;
     }
 
     function makeEntry(w) {
         const a = activityOf(w);
-        const t = targetOf(a);
         const g = w.frameGeometry;
-        return { window: w, activity: a, x: g.x + t.x, y: g.y + t.y, width: g.width, height: g.height,
+        let px, py, out = null;
+        if (separate) {
+            const pk = parked[w.internalId];
+            const S = outputAtReal(g.x, g.y, g.width, g.height);
+            if (pk && g.x === pk.rx && g.y === pk.ry) { px = pk.x; py = pk.y; }   // parked by us: its plane spot is what we kept
+            else {
+                const t = targetOn(a, S);
+                px = g.x + t.x; py = g.y + t.y;
+                delete parked[w.internalId];
+                out = S ? S.name : null;
+            }
+        } else {
+            const t = targetOf(a);
+            px = g.x + t.x; py = g.y + t.y;
+        }
+        return { window: w, activity: a, out: out, x: px, y: py, width: g.width, height: g.height,
                  frameX: g.x, frameY: g.y, anchorRight: false, anchorBottom: false, askW: 0, askH: 0 };
     }
 
@@ -2958,6 +3093,15 @@ KWin.SceneEffect {
         }
         // Fresh open: the pointer is the hand's until the tick sees the seam.
         seamPark = false;
+        // Separate cameras: the one on the pointer's monitor is the active one, and the
+        // closed view is that monitor's desk.
+        camScreen = null;
+        if (separate) {
+            camScreen = activeOutput();
+            const ct = targetOn(currentActivity, camScreen);
+            viewX = ct.x;
+            viewY = ct.y;
+        }
         entryViewX = viewX;
         entryViewY = viewY;
         zoom = 1.0;
@@ -2976,7 +3120,11 @@ KWin.SceneEffect {
         loadHiddenFrames();
         refreshActivities();
         refreshNames();
-        targets[currentActivity] = { x: viewX, y: viewY };
+        if (separate) {
+            const ct = targetOn(currentActivity, camScreen);
+            ct.x = viewX;
+            ct.y = viewY;
+        } else targets[currentActivity] = { x: viewX, y: viewY };
         ensureTargets();
         entryTargets = copyTargets(targets);
         snapshot();
@@ -3125,12 +3273,17 @@ KWin.SceneEffect {
             // A window on every activity stays on every activity.
             if (a !== e.activity && a && e.window.activities.length > 0) e.window.activities = [a];
             e.activity = a;
-            const t = targetOf(a);
             // Take the new frame position first: the write below is this
             // function's own projection of the entry, so the entry must
             // absorb it as no move (see settle()), not as the user having
             // dragged the window to the new screen position.
-            const fx = Math.round(e.x - t.x), fy = Math.round(e.y - t.y);
+            const pj = projectEntry(e, a);
+            const fx = Math.round(pj.x), fy = Math.round(pj.y);
+            if (separate) {
+                e.out = pj.out;
+                if (pj.parked) parked[e.window.internalId] = { x: e.x, y: e.y, rx: fx, ry: fy };
+                else delete parked[e.window.internalId];
+            }
             e.frameX = fx;
             e.frameY = fy;
             e.window.frameGeometry = Qt.rect(fx, fy, e.width, e.height);
@@ -3143,7 +3296,7 @@ KWin.SceneEffect {
             if (seen[w.internalId] || w.deleted || !w.managed) continue;
             if (w.desktopWindow || w.dock || w.popupWindow || w.specialWindow) continue;
             const a = activityOf(w);
-            const was = entryTargets[a], now = targetOf(a);
+            const was = (separate && entryTargets[outKey(a, activeOutput())]) || entryTargets[a], now = targetOf(a);
             if (!was) continue;
             const dx = was.x - now.x, dy = was.y - now.y;
             if (dx === 0 && dy === 0) continue;
@@ -3158,6 +3311,9 @@ KWin.SceneEffect {
         viewX = cur.x;
         viewY = cur.y;
         zoom = 1.0;
+        // The shared target of the activity follows the active monitor's, so merging
+        // the cameras again starts from where the eye was.
+        if (separate) targets[currentActivity] = { x: cur.x, y: cur.y };
         // Every commit leaves its layout on the undo stack, so Ctrl+Z can
         // step back to the one before it.
         if (wasOpen) {
@@ -4432,8 +4588,8 @@ KWin.SceneEffect {
     function reaches(e, w) {
         if (!e || !e.window || e.window.deleted || w !== e.window) return false;
         if (e.activity !== currentActivity || !onActivity(e.window, currentActivity)) return false;
-        const t = peekTarget(currentActivity), f = e.window.frameGeometry;
-        return Math.abs(e.x - t.x - f.x) < 1 && Math.abs(e.y - t.y - f.y) < 1;
+        const pj = projectEntry(e, currentActivity), f = e.window.frameGeometry;
+        return Math.abs(pj.x - f.x) < 1 && Math.abs(pj.y - f.y) < 1;
     }
 
     // KWin routes the pointer by real geometry, so while the transform is
@@ -4442,11 +4598,11 @@ KWin.SceneEffect {
     // absorbs the write as no move.
     function settle() {
         if (!planeLive) return;
-        const t = peekTarget(currentActivity);
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
             if (!e || !e.window || e.window.deleted || e.activity !== currentActivity || !onActivity(e.window, currentActivity)) continue;
-            const fx = Math.round(e.x - t.x), fy = Math.round(e.y - t.y);
+            const pj = projectEntry(e, currentActivity);
+            const fx = Math.round(pj.x), fy = Math.round(pj.y);
             if (fx === e.frameX && fy === e.frameY) continue;
             e.frameX = fx;
             e.frameY = fy;
@@ -5307,7 +5463,7 @@ KWin.SceneEffect {
 
     function logState() {
         let s = "kwin-canvas state visible=" + visible + (quiet ? " quiet" : "") + (grasp ? " grasp" : "") + (passthroughLive ? " passthrough" : "") + (planeLive ? " plane" : "") + " zoom=" + zoom.toFixed(4) + " view=(" + viewX.toFixed(1) + "," + viewY.toFixed(1) + ") activity=" + labelOf(currentActivity) + " entries=" + entries.length
-            + " popups=" + appPopups.length + " menus=" + canvasMenus + " floats=" + pinnedCount + " chrome=" + (chromeScr ? chromeScr.name : "-") + " floatheld=" + Object.keys(floatOf).length + " nav=" + (navHeld ? "hold" : "-") + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
+            + " popups=" + appPopups.length + " menus=" + canvasMenus + " floats=" + pinnedCount + " chrome=" + (chromeScr ? chromeScr.name : "-") + " cams=" + (separate ? "separate:" + (camScreen ? camScreen.name : "-") : "merged") + " floatheld=" + Object.keys(floatOf).length + " nav=" + (navHeld ? "hold" : "-") + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
             + " screens=" + KWin.Workspace.screens.length + " backdrop=" + backdropLayers
             + " cam=" + (camHasGoal ? "goal" : (camLive() ? "glide" : "-"))
             + " focus=" + (focusEntry ? JSON.stringify(focusEntry.window.caption) : "-")

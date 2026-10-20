@@ -385,6 +385,10 @@
             <label>The names the clusters wear on their badges, as JSON keyed by each cluster's members. A hidden knob: the debug channel's "clustername" command sets a name.</label>
             <default></default>
         </entry>
+        <entry name="Cameras" type="String">
+            <label>How the monitors share the canvas. merged: one camera over the whole arrangement, a larger canvas the size of the desktop (how it has always worked). separate: each monitor has its own camera; the overview opens on the monitor the pointer is on and the others keep showing their desktop. Needs more than one monitor.</label>
+            <default>merged</default>
+        </entry>
         <entry name="FollowActivation" type="Bool">
             <label>Pan the canvas so an activated off-screen window comes on screen.</label>
             <default>true</default>

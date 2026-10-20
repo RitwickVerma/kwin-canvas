@@ -55,5 +55,8 @@ run_scenario() {
     place 700 700
     activate_kcalc
     assert_eq "pointer on the upper monitor: the straddling window comes to it" "$(on_output 1 "$(kframe)")" yes
+    # The nest's default layout back, for the scenarios that follow.
+    run kscreen-doctor output.Virtual-0.position.0,0 output.Virtual-1.position.1920,0 output.Virtual-0.scale.1 output.Virtual-1.scale.1 >/dev/null 2>&1
+    sleep 2.5
     arrange >/dev/null
 }
