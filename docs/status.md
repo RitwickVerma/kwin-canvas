@@ -50,8 +50,9 @@ on size; the others show the same signature and were not run (`docs/testing.md`)
 modes, every interaction in both, the data model, the build order) is in
 `docs/multimonitor.md`. Built: a focused window is never left on the seam or in dead
 ground (`173`), the chrome sits on the pointer's monitor (`172`), one frame tag per
-activity with no output names. Not built: per-monitor cameras, the Separate mode and
-its animations (stages 1 to 7 there). Tested only in the nest, on two outputs stacked
+activity with no output names. Built, off by default (`Cameras=separate`, experimental): a desk per monitor, the overview
+on one monitor with the others showing their desk, and a slide that moves one monitor only
+(`174`, `175`). Not built: input on the other monitors (the plugin), the rest of stages 3 to 7. Tested only in the nest, on two outputs stacked
 and offset as the owner's are.
 
 **Known failing, unexplained.** `112-overlay` fails one check ("the drag never grabbed

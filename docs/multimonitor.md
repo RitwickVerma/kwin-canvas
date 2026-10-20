@@ -183,15 +183,26 @@ frame, so everything below starts from that first frame, never from a held one.
   owner's are, floats, fits, undo, arrange, tidy and step-in behave the same as on
   one output (scenarios `91`, `166`, `89`).
 
+- **Cameras as data (stage 1).** `Cameras` setting (default merged); with separate, a
+  desk per monitor, windows owned by the frame their centre is in, parking for windows in
+  no desk. Merged takes the old paths unchanged. Scenario `174`.
+- **The other monitor stays the desktop (stage 2, scene part).** With the overview open on
+  one monitor, the others draw a replica of their desk: every window at its real place over
+  the wallpaper, no chrome, no input of their own. A quiet slide on one monitor moves only
+  that monitor's windows. Scenario `175`. Missing from the replica: window shadows, panels.
+
 ## Build order
 
 Each stage ships on its own, passes the existing suite on one output unchanged,
 and adds scenarios on two stacked outputs with different scales and offsets.
 
-1. **Cameras as data.** `cams`, `targetFor`, the active-camera mirror, per-view
-   state, the `Cameras` setting. In Merged nothing changes.
-2. **Separate, overview only.** Open, pan, zoom, fit and fly on the active camera;
-   the other monitors quiet. Leaving writes only that monitor's desk.
+1. **Cameras as data** (built). Per-monitor targets, ownership, parking, the `Cameras`
+   setting. In Merged nothing changes.
+2. **Separate, overview only** (scene and leaving built; input not). Open, pan, zoom, fit
+   and fly on the active camera; the other monitors show their desk. Leaving writes only
+   that monitor's desk. Still to do: the pointer plugin must let input through on the
+   other monitors (today they are inert while the overview is open), keyboard focus to the
+   active view, and the ground wallpaper per monitor.
 3. **Separate, at rest.** Quiet slide per monitor, parking and un-parking, hot-plug.
 4. **Window interactions.** Drag across the seam, throw, snap, float on every
    camera, selection, arrange.

@@ -1710,12 +1710,15 @@ KWin.SceneEffect {
     property var chromeScreen: null
     readonly property var chromeScr: {
         const ss = KWin.Workspace.screens;
+        // Separate cameras: the chrome belongs to the camera it controls.
+        if (separate && camScreen) for (let i = 0; i < ss.length; ++i) if (ss[i] === camScreen) return camScreen;
         for (let i = 0; i < ss.length; ++i) if (ss[i] === chromeScreen) return chromeScreen;
         return primaryScreen;
     }
     property var chromeCandidate: null
     property real chromeSince: 0
     function noteChromeScreen() {
+        if (separate) return;
         const p = cursorScreen();
         const s = screenAt(p.x, p.y);
         if (!s || s === chromeScr) { chromeCandidate = null; return; }
@@ -4909,12 +4912,17 @@ KWin.SceneEffect {
             const e = entries[i];
             if (e.window.deleted) continue;
             seen[e.window.internalId] = true;
-            const t = targetOf(e.activity);
             // Take the new frame position first, as commit does: the write
             // below is this function's own projection of the entry, so the
             // entry must absorb it as no move - a floating window's entry is
             // where the float put it, not where the old frame was.
-            const fx = Math.round(e.x - t.x), fy = Math.round(e.y - t.y);
+            const pj = projectEntry(e, e.activity);
+            const fx = Math.round(pj.x), fy = Math.round(pj.y);
+            if (separate) {
+                e.out = pj.out;
+                if (pj.parked) parked[e.window.internalId] = { x: e.x, y: e.y, rx: fx, ry: fy };
+                else delete parked[e.window.internalId];
+            }
             e.frameX = fx;
             e.frameY = fy;
             const g = e.window.frameGeometry;
@@ -4922,7 +4930,9 @@ KWin.SceneEffect {
                 e.window.frameGeometry = Qt.rect(fx, fy, g.width, g.height);
             }
         }
-        if (dx !== 0 || dy !== 0) {
+        // With separate cameras the windows the canvas does not show stay where they
+        // are: they are not on the sliding monitor's desk.
+        if ((dx !== 0 || dy !== 0) && !separate) {
             const all = KWin.Workspace.stackingOrder;
             for (let i = 0; i < all.length; ++i) {
                 const w = all[i];

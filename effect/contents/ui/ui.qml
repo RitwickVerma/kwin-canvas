@@ -240,6 +240,11 @@ Item {
         // the same picture there, and an instant swap is invisible.
         opacity: effect.sceneFade
         property bool spaceHeld: false
+        // Separate cameras: a monitor that is not the one the overview is open on shows its
+        // desk as it really is, the windows at their real places over the wallpaper, and
+        // takes no input of its own. (The effect's flags are read guarded: a hot reload swaps
+        // this file and not the effect's own.)
+        readonly property bool replica: effect.separate === true && effect.camScreen !== null && effect.camScreen !== undefined && screen !== effect.camScreen && effect.visible
         // Whether KWin.DesktopBackground can draw the desktop's wallpaper.
         // It can for Plasma's own picture wallpapers; for a video or a scene
         // (Wallpaper Engine, waywallen) it paints solid black, and the
@@ -310,7 +315,7 @@ Item {
         // Input is live while the overworld is open, and while a grasp holds
         // the canvas quietly at 1:1 - a slide without a grasp stays inert,
         // which is what keeps a slide a brief animation and nothing more.
-        enabled: !effect.quiet || effect.grasp || effect.switcherActive
+        enabled: !replica && (!effect.quiet || effect.grasp || effect.switcherActive)
         focus: true
         Connections {
             target: effect
@@ -389,8 +394,23 @@ Item {
         // tags, the web and the chips - gathered under one item. (They keep
         // their indentation across the wrapper: it is a scope, not a
         // lexical one.)
+        // The desk of a monitor the overview is not open on: every window at its real place.
+        Repeater {
+            model: view.replica ? effect.entries : []
+            delegate: KWin.WindowThumbnail {
+                required property var modelData
+                readonly property var e: modelData
+                client: e.window
+                visible: !e.window.deleted
+                x: { effect.revision; return e.frameX - view.sg.x; }
+                y: { effect.revision; return e.frameY - view.sg.y; }
+                width: { effect.revision; return e.width; }
+                height: { effect.revision; return e.height; }
+            }
+        }
         Item {
             anchors.fill: parent
+            visible: !view.replica
 
         Ground {
             anchors.fill: parent
@@ -1571,7 +1591,7 @@ Item {
                 model: { effect.screensRev; return KWin.Workspace.screens; }
                 delegate: FrameTag {
                     required property var modelData
-                    visible: effect.skinReveal > 0.02 && mine
+                    visible: effect.skinReveal > 0.02 && mine && !view.replica
                     viewItem: view
                     activity: activityTags.modelData
                     activityIndex: activityTags.index
