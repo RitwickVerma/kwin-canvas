@@ -667,6 +667,26 @@ and the applet draw their own buttons for them, and the float never sets or
 clears them. The `PinnedWindows` knob is no longer read; it stays declared so
 an old config still loads.
 
+### KWin pulls far windows at every open (the owner's log)
+
+The owner's Perf log (one activity, one desktop, Plasma 6.8) holds 180 moves of more than 5 px by
+something other than the canvas; 160 land within 0.35 s of an open, 3 to 10 ms after the first paint,
+in windows 300 to 10000 px from the screen (VS Code, Brave, Discord, Steam). The first fixes did not
+reach them: the activity guard (`expectActivity`) only watched the windows of the other activities,
+and the focus guard (`noteNudge`) needs a recent focus change, which an overview open does not have,
+so a pull at an overview open was absorbed as the window's new coordinate (one burst moved four
+windows at once, Discord by 7075 px). `expectActivity(..., null)` now watches every window that is not
+wholly on one monitor at each open and close, and `undoPull` puts a pulled window back whether the
+canvas is open or closed. Scenario `206` (a pull simulated right after an open, in the overview and
+its cancel and in a quiet fly) fails on the code before this and passes after.
+
+What triggers the pull in that session is not known: in a nest at the owner's layout (two stacked
+outputs at scale 1.25, focus follows the mouse, windows parked 7000 to 10000 px away, scenario `205`)
+KWin only pulls the window that gets focus. The candidates are the auto-hide and dodge-windows panels,
+KWin scripts (KZones, Remember Window Positions, sticky-window-snapping) and window rules. The `moved`
+and `pulled` Perf lines now carry the window's class and the milliseconds since the last open, close,
+focus change, dock event and screens change, so the next log says which.
+
 ### KWin nudges a window when its focus changes
 
 KWin runs its off-screen constraint on a window whenever its focus state changes, gaining or

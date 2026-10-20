@@ -1494,6 +1494,15 @@ KWin.SceneEffect {
     // user moving a parked window with nothing of the kind going on is left alone.
     property real areaTouchedAt: 0
     function noteAreaTouched() { areaTouchedAt = Date.now(); }
+    // What happened just before a window moved, for the Perf lines: milliseconds since the last
+    // open, close, activation, dock or screens event, "-" when none in the last five seconds.
+    function perfSince() {
+        const now = Date.now();
+        const f = function (t) { return t > 0 && now - t < 5000 ? String(now - t) : "-"; };
+        let act = 0;
+        for (const k in focusTouched) act = Math.max(act, focusTouched[k]);
+        return "since open=" + f(lastOpenAt) + " close=" + f(lastCloseAt) + " focus=" + f(act) + " area=" + f(areaTouchedAt) + " screens=" + f(lastScreensAt);
+    }
     property var pullCandidates: ({})
     function guardPulledBack(w, old) {
         if (w && w.dock) noteAreaTouched();
@@ -1642,6 +1651,9 @@ KWin.SceneEffect {
     // from that in the next second and a half that nobody is making is KWin's: it is written back
     // before anything reads it, at most twice. Windows wholly on a monitor are not noted.
     property var expectedGeo: ({})
+    property real lastOpenAt: 0
+    property real lastCloseAt: 0
+    property real lastScreensAt: 0
     function expectGeo(w, x, y, width, height, cause) {
         expectedGeo[w.internalId] = { x: x, y: y, width: width, height: height, cause: cause, at: Date.now(), tries: 0 };
         expectedGeoTimer.restart();
@@ -1664,7 +1676,8 @@ KWin.SceneEffect {
         if (Date.now() - r.at > 1500 || r.tries >= 2) { delete expectedGeo[w.internalId]; return false; }
         r.tries++;
         if (perf) perfLog("pulled", "win=" + String(w.caption).replace(/[ =]/g, "_").slice(0, 30)
-            + " dx=" + Math.round(g.x - r.x) + " dy=" + Math.round(g.y - r.y) + " cause=" + r.cause);
+            + " cls=" + String(w.resourceClass).replace(/[ =]/g, "_").slice(0, 20)
+            + " dx=" + Math.round(g.x - r.x) + " dy=" + Math.round(g.y - r.y) + " cause=" + r.cause + " " + perfSince());
         dbg("pulled", w.caption + " pulled by KWin (" + r.cause + ") from (" + r.x + "," + r.y + ") to ("
             + Math.round(g.x) + "," + Math.round(g.y) + "): put back");
         setReal(w, Qt.rect(r.x, r.y, g.width, g.height));
@@ -1683,12 +1696,18 @@ KWin.SceneEffect {
     }
     // The windows of one activity that sit partly or wholly off every monitor, as KWin is about to
     // show them: the current activity's switch, or the canvas opening on the others.
+    // others === null watches every window, the current activity's too: the owner's log (one
+    // activity, 180 big moves) has 160 of them within 0.35 s of an open, 3 to 10 ms after the
+    // first paint, in windows of the only activity there is.
     function expectActivity(id, cause, others) {
         const stack = KWin.Workspace.stackingOrder;
         for (let i = 0; i < stack.length; ++i) {
             const w = stack[i];
-            if (!isCanvasWindow(w, true) || w.activities.length === 0) continue;
-            if (onActivity(w, id) === others) continue;
+            if (!isCanvasWindow(w, true)) continue;
+            if (others !== null) {
+                if (w.activities.length === 0) continue;
+                if (onActivity(w, id) === others) continue;
+            }
             const g = w.frameGeometry;
             if (!wholeOnOneMonitor(g)) expectGeo(w, g.x, g.y, g.width, g.height, cause);
         }
@@ -3444,7 +3463,8 @@ KWin.SceneEffect {
         entryTargets = copyTargets(targets);
         // The scene's thumbnails show the other activities' windows, and KWin pulls the ones
         // that are partly or wholly off a monitor (KWin's pull when a window is shown).
-        expectActivity(currentActivity, "open", true);
+        expectActivity(currentActivity, "open", null);
+        lastOpenAt = Date.now();
         snapshot();
         // A slide or fly keeps a floated window where it is on the screen (floatAnchor).
         floatAnchor = ({});
@@ -4567,9 +4587,10 @@ KWin.SceneEffect {
             if (perf && perfMoves < 60) {
                 perfMoves++;
                 perfLog("moved", "win=" + String(e.window.caption).replace(/[ =]/g, "_").slice(0, 30)
+                    + " cls=" + String(e.window.resourceClass).replace(/[ =]/g, "_").slice(0, 20)
                     + " dx=" + (f.x - e.frameX) + " dy=" + (f.y - e.frameY)
                     + " open=" + (visible ? 1 : 0) + " quiet=" + (quiet ? 1 : 0)
-                    + " pinned=" + (isPinnedEntry(e) ? 1 : 0) + " floats=" + pinnedCount);
+                    + " pinned=" + (isPinnedEntry(e) ? 1 : 0) + " floats=" + pinnedCount + " " + perfSince());
             }
             e.x += f.x - e.frameX;
             e.y += f.y - e.frameY;
@@ -5541,6 +5562,7 @@ KWin.SceneEffect {
         // read from has changed.
         function onScreensChanged() {
             effect.screensRev++;
+            effect.lastScreensAt = Date.now();
             effect.noteAreaTouched();
             outputSnapTimer.restart();
             if (effect.visible) Qt.callLater(effect.resync);
@@ -5897,7 +5919,8 @@ KWin.SceneEffect {
             camStop();
             // The scene lets go of the other activities' windows, and KWin looks at their
             // positions again (KWin's pull when a window is shown).
-            expectActivity(currentActivity, "close", true);
+            expectActivity(currentActivity, "close", null);
+            lastCloseAt = Date.now();
             if (perf) perfTicksReport();
         }
     }

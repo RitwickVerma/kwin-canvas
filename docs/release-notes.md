@@ -1,5 +1,10 @@
 Unreleased:
 
+- Far-away windows no longer jump closer when the canvas opens or closes. KWin moved windows that sit
+  hundreds or thousands of pixels off the screen toward it at almost every open, in the overview as
+  well as in a fly, and the canvas kept the new place. It now puts such a window back, for every
+  window, not only those of other activities.
+
 - Windows no longer jump when an off-screen window gets focus. KWin moves a window toward the screen
   when it gains or loses focus (a top edge above the screen to the top, a left edge near the far
   edge back inside), and the canvas, which keeps windows off the screen on purpose, took that move

@@ -56,6 +56,12 @@ on one monitor with the others showing their desk, and a slide that moves one mo
 monitors, the rest of stages 3 to 7. Tested only in the nest, on two outputs stacked
 and offset as the owner's are.
 
+**Far windows pulled at every open (2026-10-20, from the owner's log).** 160 of 180 logged moves land
+within 0.35 s of an open; the repair now covers every window at open and close (`206`; `docs/architecture.md`,
+*KWin pulls far windows at every open*). The trigger in the owner's session is unknown (not reproduced in a
+nest, `205`); the `moved` Perf lines now say how long after an open, close, focus change, dock event or
+screens change each move came. Not checked on the desktop.
+
 **Window coordinates drifting, the main cause (2026-10-20).** KWin moves a window toward the screen
 when its focus changes, and the canvas absorbed that as a plane move (`docs/architecture.md`, *KWin
 nudges a window when its focus changes*; scenario `204`, which fails on the previous code for the
