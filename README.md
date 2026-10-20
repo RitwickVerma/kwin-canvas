@@ -145,6 +145,48 @@ AUR skeletons, and `plugin` to build the pass-through plugin from a checkout.
 Then pick **Canvas Ground** as the desktop wallpaper in Desktop Settings, and
 disable the stock **Zoom** effect if it owns Meta+wheel.
 
+## Recommended KDE setup
+
+The canvas works with KDE's defaults, and none of this is required. It is the setup the
+author runs and tests against (Plasma 6.8 on Wayland, two monitors, one virtual desktop), and
+each row says what the setting does for the canvas.
+
+| Where | Setting | Why |
+|---|---|---|
+| Window Behavior → Focus | **Focus follows mouse**, delay focus by **150 ms** | Resting on a window hands it the input; the delay keeps a pass-over from stealing focus. |
+| Window Behavior → Focus | **Raise on hover**, delayed **300 ms**; **Click raises active window** off | The canvas raises the window an auto fly lands on itself, so this only has to agree with it. |
+| Screen Edges | The four corners set to **Canvas**; in the Canvas settings, *View when a screen edge or corner opens it* set to **fit** | A corner push shows every window and frame, fitted to the monitor the pointer is on; push again to leave. The wheel on the bare wallpaper opens it too. |
+| Virtual Desktops | **One** desktop | The plane takes the place of desktops; activities are the separate desks on it. |
+| Shortcuts | Unbind KDE's **Walk Through Windows** (Alt+Tab) | The canvas's switcher uses Meta+Tab and Alt+Tab. `kwin-canvas doctor` lists any key that two actions share. |
+| Desktop Effects | Stock **Zoom** off | It owns Meta+wheel, Meta+= and Meta+-. |
+| Animations | Global speed at the **default**, not faster or slower | The slide, the camera and the fades follow it (below 1 is faster); at a quarter of the default KDE's own slide effects blink. |
+| Panels | **Auto hide** or **Dodge windows** | An always-visible panel reserves screen space, and KWin recalculates its work area whenever the panel changes; it then pulls windows parked outside the monitors back in. The canvas puts them back, but a panel that reserves no space never triggers it. |
+| Window Decorations | **Canvas**, with buttons *close, on all desktops, keep above, maximize, minimize* | The pill shows the same five as the panel applet; *on all desktops* is the float. |
+| Window Rules | Picture-in-picture, a lyrics window or a monitor: **Keep above** and **All desktops** | A window that is on all desktops floats: it stays on the screen while you fly. |
+
+The same, from a terminal:
+
+```bash
+kwriteconfig6 --file kwinrc --group Windows --key FocusPolicy FocusFollowsMouse
+kwriteconfig6 --file kwinrc --group Windows --key DelayFocusInterval 150
+kwriteconfig6 --file kwinrc --group Windows --key AutoRaise true
+kwriteconfig6 --file kwinrc --group Windows --key AutoRaiseInterval 300
+kwriteconfig6 --file kwinrc --group Windows --key ClickRaise false
+kwriteconfig6 --file kwinrc --group Effect-kwin-canvas --key BorderActivate 1,3,5,7
+kwriteconfig6 --file kwinrc --group Effect-kwin-canvas --key BorderZoom fit
+kwriteconfig6 --file kdeglobals --group KDE --key AnimationDurationFactor 1
+qdbus6 org.kde.KWin /KWin reconfigure
+```
+
+`BorderActivate` numbers the screen edges from 0 at the top, clockwise to 7 at the top left,
+so `1,3,5,7` is the four corners. The pass-through plugin is built for one exact KWin
+version: after a KWin update the grasp over windows and the pill's buttons stop working until
+it is rebuilt and installed again, and `kwin-canvas doctor` says so.
+
+Also running in the author's session, and not tested against the canvas beyond what the
+test suite covers: KZones, Remember Window Positions and a blur effect. A tile (KZones, a KWin
+tile, a maximized window) moves as a whole room on the plane.
+
 ## Use
 
 | Key | At 1:1 (in a location) | Canvas open (the overworld) |
