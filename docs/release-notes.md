@@ -7,6 +7,15 @@ Unreleased:
   enter or exit could each move a window the hand never touched. The canvas now undoes the move and
   keeps the window's coordinate.
 
+- Windows of other activities stay where the canvas put them. KWin moves a window that has
+  less than 100 px of its width on a screen (or its top off the screen) to the screen's edge a
+  moment after its activity is set, when the canvas opens or closes on it, and when its
+  activity becomes the current one. The canvas parks windows anywhere on the plane, so a window
+  moved into another activity's frame by a few pixels, or left in an inactive activity, was
+  taken to the edge of that activity's screen, its coordinates changed with it, and a focus fly
+  to it could land it off the screen. The canvas now puts such a window back before anything
+  reads it. With Perf on these are `pulled` lines with a `cause`.
+
 - Windows no longer drift when KWin recalculates its work area. The canvas parks the
   windows it is not showing far outside the monitors, and KWin pulls any window that is
   wholly outside back in whenever a panel changes size or is recreated, a monitor wakes or

@@ -403,6 +403,11 @@ Verified against the 6.7.5 source, in `src/`:
   (`scripting/scripting.cpp`). No clamping happens on that path.
   `checkWorkspacePosition` runs on desktop send, output layout change, and
   placement, so those are the moments off-screen windows can be pulled back.
+  Measured in the nest (KWin 6.8.0) it also runs a moment after a window's
+  activities are set, when a window of another activity is shown (the canvas
+  opening or closing on it, its activity becoming current), and the rule it
+  applies is to keep 100 px of the width on a monitor and the top inside
+  `[0, screen height - 28]`: see *KWin pulls parked windows back inside*.
 - `WindowThumbnail` takes `client` and `refOffscreenRendering()`s it, so
   windows that are off-screen or minimized still render live
   (`scripting/windowthumbnailitem.cpp`).
@@ -698,6 +703,36 @@ undone 400 ms later. QML has no work-area signal, hence the correlation; a windo
 or the user moves onto the screen with nothing of the kind going on stays where it was put.
 Scenarios `180` (scale change) and `181` (a real panel resize, `make test-panel`).
 
+The pull has three more triggers that need no work-area change, and the first is how a
+committed window moved by 20 px or by thousands with nobody touching it (scenario `112`,
+Gwenview at plane x 4000 read 3980 in the next hold, every time it ran alone). Measured in
+the nest by writing a frame and reading it back after a wait (`frameGeometry` itself is
+never clamped, nor is a plain write to a window of another activity):
+
+- **A window's activities being set.** KWin checks the position a few milliseconds later,
+  after the frame the commit wrote (the commit sets the activity, then writes). A window with
+  under 100 px of its width on a monitor goes to exactly 100 px (1840 and 4000 on a 1920 px
+  screen both ended at 1820; -400 for a 460 px window ended at -360), and a top outside the
+  screen goes to 0 or to the screen's height minus 28 (1060 ended at 1052).
+- **The canvas opening, and closing,** for the windows of the other activities: the scene's
+  thumbnails show them, and a window of the current activity parked at 4000 is left alone.
+  Every open and every close pulled a parked window of Activity 2 to the edge, and the entry
+  followed it (`moved ... open=1` in the Perf log), so the plane coordinate moved for good.
+- **The current activity changing,** for the windows of the activity entered. With
+  FollowActivation the focus fly then measured its destination from the parked spot and
+  landed the window, after the entry had followed the pull, at x=-744: off the screen
+  (scenario `184`).
+
+`expectGeo` notes where each such window stands at those moments (the commit's written spot,
+the real frame at an open, a close or a switch; windows wholly on one monitor are not
+noted), and `undoPull` writes a same-size move away from it back within 1.5 s, at most
+twice, unless a hand is on the window (`move`, `resize`) or the move is the canvas's own
+write (it takes the entry's frame position first). The scene's frame handler can reach
+`syncEntry` before the guard does, so `syncEntry` asks `undoPull` before it lets an entry
+follow a move. Scenarios `182` (the commit), `183` (open, close, slide), `184` (the switch).
+What it cannot cover: a pull that comes later than 1.5 s, and a script that moves the same
+window in that time (it is fought twice, then left).
+
 A slide or fly (the quiet glide at 1:1) leaves a floated window where it is on the screen:
 `floatAnchor` holds the real spot each floated entry had when the slide opened, the
 thumbnail draws it there, and the landing writes its plane coordinates as the destination
@@ -804,7 +839,7 @@ growing list.
 | `moved` | `win`, `dx`, `dy`, `open`, `quiet`, `pinned`, `floats` | a real window's position changed by something other than the canvas (an app, a window rule, KWin's placement, a tiler) and was absorbed into the plane; at most 60 a session |
 | `landed` | `win`, `dx`, `dy` | a floated window took its picture's spot as its plane coordinates when the canvas was left |
 | `bounced` | `win`, `dx`, `dy`, `dw`, `dh`, `overlapsDock`, `docks`, `max`, `tiled`, `full`, `float` | a window found 450 ms after a landing (commit or slide) away from where the landing wrote it: something else moved it. `overlapsDock` says whether the written spot overlapped a panel or dock; at most 60 a session |
-| `pulled` | `win`, `dx`, `dy` | KWin pulled a parked window (wholly outside every monitor) back inside after its work area changed, and the canvas put it back |
+| `pulled` | `win`, `dx`, `dy`, `cause` | KWin pulled a parked window back inside and the canvas put it back: after its work area changed (no `cause`), or `cause=activity`, `open`, `close` or `switch` for a pull that came with the window's activity being set, the canvas opening or closing, or the current activity changing |
 | `stall` | `ms`, `cam`, `quiet`, `entries`, `ql`, `cpu`, `gpu`, `mem` | a physics tick 60 ms or more late, with what the camera was doing (`goal`, `fling`, `-`) and the effect's last load readings; at most 40 a session; `kwin-canvas perf` lists the last 12 with their times |
 
 **Where an open's first 150 ms go.** `open()` itself takes about 1 ms; the

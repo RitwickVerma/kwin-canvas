@@ -63,17 +63,24 @@ two fly cases and passes now; its overview and hover cases pass either way). Rep
 scale 1.25, where windows laid out for 1920x1080 are partly off the smaller screen. Not checked on the
 desktop; the `nudged` Perf lines will show it.
 
-**Window coordinates drifting.** Two causes found and fixed: a floated window rode to a screen
-edge on every slide (`178`), and KWin pulled parked windows back inside whenever its work area
-changed (`180`, `181`; `docs/architecture.md`, *KWin pulls parked windows back inside*). Neither
-is checked on the desktop yet; the `pulled`, `bounced` and `moved` Perf lines will show whether
-anything else moves windows.
+**Window coordinates drifting.** Causes found and fixed: a floated window rode to a screen
+edge on every slide (`178`), KWin pulled parked windows back inside whenever its work area
+changed (`180`, `181`), and KWin pulls a window of another activity that is partly or wholly
+off its screen whenever its activities are set, the canvas opens or closes, or its activity
+becomes current (`182`, `183`, `184`; `docs/architecture.md`, *KWin pulls parked windows back
+inside*). That last one was `112-overlay`'s 3980: the commit wrote Gwenview at 1840, KWin moved
+it to 1820 24 ms later, and the next open read it back as plane 3980. It also moved every
+parked window of an inactive activity by up to thousands of px on each open (`moved ... open=1`),
+and a focus fly into an activity landed its window at x=-744. None of it is checked on the
+desktop yet; the `pulled` (now with `cause=`), `bounced` and `moved` Perf lines will show
+whether anything else moves windows. A plain hold and release moves no window (traced with the
+fix and without it, on a desk whose windows are all on the current activity).
 
-**Known failing, unexplained.** `112-overlay` fails one check ("the drag never grabbed
-the window": Gwenview at x 3980, expected 4000) every time it runs alone, with and without
-the arrange fix, and passes inside the full run. A trace shows the entry's x reading as 1400
-early in the hold and 3980 later, so the coordinates shift under the quiet hold; not traced
-further. `126-grasp-landing` failed one check intermittently and passed 3 of 3 later.
+**Known failing.** `126-grasp-landing` failed one check intermittently and passed 3 of 3
+later. `30-commit`'s `after-commit-1to1` snapshot fails (rmse 0.046) with and without the
+activity-pull fix. `112-overlay` passes alone now. Why it passed inside the full run before was
+not found (60-activities ahead of it does not hide the fault); probably an earlier scenario
+leaves the second activity's frame where Gwenview at 4000 has more than 100 px on its screen.
 
 **Not verified:** KZones, `sticky-window-snapping` and `rememberwindowpositions`
 against the canvas (not in the nest); a Wallpaper Engine wallpaper in the nest;

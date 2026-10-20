@@ -1226,13 +1226,16 @@ KWin.SceneEffect {
         targets = copyTargets(back.targets);
         const byId = {};
         for (const p of back.layout) byId[p.internalId] = p;
+        const changedActivity = {};
         for (const e of entries) {
             const p = byId[e.window.internalId];
             if (!p) continue;
             animateEntry(e, p.x, p.y); // the undo glides home - the reverse of the move
             e.activity = p.activity;
-            if (p.activity && e.window.activities.length > 0 && e.window.activities.indexOf(p.activity) === -1)
+            if (p.activity && e.window.activities.length > 0 && e.window.activities.indexOf(p.activity) === -1) {
                 e.window.activities = [p.activity];
+                changedActivity[e.window.internalId] = true;
+            }
         }
         for (const e of entries) {
             if (e.window.deleted) continue;
@@ -1243,6 +1246,7 @@ KWin.SceneEffect {
             e.frameX = fx;
             e.frameY = fy;
             setReal(e.window, Qt.rect(fx, fy, e.width, e.height));
+            if (changedActivity[e.window.internalId]) expectGeo(e.window, fx, fy, e.width, e.height, "activity");
         }
         revision++;
         toast("Stepped the layout back");
@@ -1440,7 +1444,7 @@ KWin.SceneEffect {
         if (!w || watchedWindows[w.internalId]) return;
         watchedWindows[w.internalId] = true;
         trackFree(w);
-        w.frameGeometryChanged.connect(function (old) { effect.markDirty(w); effect.guardPulledBack(w, old); effect.noteNudge(w, old); });
+        w.frameGeometryChanged.connect(function (old) { effect.markDirty(w); effect.guardPulledBack(w, old); effect.noteNudge(w, old); effect.guardExpectedGeo(w); });
         w.desktopsChanged.connect(function () { effect.noteDesktopsChanged(w); });
         w.maximizedChanged.connect(function () { effect.noteReturnedFree(w); });
         w.tileChanged.connect(function () { effect.noteReturnedFree(w); });
@@ -1621,6 +1625,73 @@ KWin.SceneEffect {
         const id = w.internalId, p = pendingNudge[id];
         if (p && Date.now() - p.at < 600) recordNudge(w, p);
         else delete pendingNudge[id];
+    }
+    // ---- KWin's pull when a window is shown or changes activity ----------------
+    // KWin looks at a window's position again a moment after the window is shown or given other
+    // activities, and one with less than 100 px of its width on a monitor, or its top above the
+    // screen or in the screen's last 28 px, is moved until it is not (in the nest a frame written
+    // at x=1840 on a 1920 px screen ended at 1820, one at 4000 at 1820, a top at 1200 on a 1080 px
+    // screen at 1052). The triggers measured: setting the window's activities (the commit does,
+    // and writes the frame after it, so the pull always lands after the write), the canvas
+    // opening (the scene's thumbnails show the windows of the other activities), and a switch of
+    // the current activity (their windows are shown). The canvas keeps its windows anywhere on the
+    // plane, so each of those moved a parked window by up to thousands of pixels and its plane
+    // coordinate with it: scenario 112's Gwenview, committed at 4000 over Activity 2's frame, was
+    // 3980 in the next hold. A plain write is never pulled. So the canvas notes where a window
+    // that could be pulled stands at each of those moments (expectGeo), and a same-size move away
+    // from that in the next second and a half that nobody is making is KWin's: it is written back
+    // before anything reads it, at most twice. Windows wholly on a monitor are not noted.
+    property var expectedGeo: ({})
+    function expectGeo(w, x, y, width, height, cause) {
+        expectedGeo[w.internalId] = { x: x, y: y, width: width, height: height, cause: cause, at: Date.now(), tries: 0 };
+        expectedGeoTimer.restart();
+        dbg("expect", cause + ": " + w.caption + " at (" + Math.round(x) + "," + Math.round(y) + ")");
+    }
+    Timer {
+        id: expectedGeoTimer
+        interval: 1600
+        repeat: false
+        onTriggered: effect.expectedGeo = ({})
+    }
+    // KWin moved w away from the spot expected for it: put it back. False when there is nothing
+    // to undo (no expectation, a hand on the window, another size, the time is up).
+    function undoPull(w) {
+        const r = expectedGeo[w.internalId];
+        if (!r || w.deleted || w.move || w.resize) return false;
+        const g = w.frameGeometry;
+        if (Math.abs(g.width - r.width) > 1 || Math.abs(g.height - r.height) > 1) return false;
+        if (Math.abs(g.x - r.x) < 1 && Math.abs(g.y - r.y) < 1) return false;
+        if (Date.now() - r.at > 1500 || r.tries >= 2) { delete expectedGeo[w.internalId]; return false; }
+        r.tries++;
+        if (perf) perfLog("pulled", "win=" + String(w.caption).replace(/[ =]/g, "_").slice(0, 30)
+            + " dx=" + Math.round(g.x - r.x) + " dy=" + Math.round(g.y - r.y) + " cause=" + r.cause);
+        dbg("pulled", w.caption + " pulled by KWin (" + r.cause + ") from (" + r.x + "," + r.y + ") to ("
+            + Math.round(g.x) + "," + Math.round(g.y) + "): put back");
+        setReal(w, Qt.rect(r.x, r.y, g.width, g.height));
+        return true;
+    }
+    // The frame-change handler. The canvas's own writes (a landing, a commit, the open canvas
+    // settling a window) take the entry's frame position first, so a move onto it is the canvas's
+    // and becomes the new expectation; any other move of a window with an expectation is undone.
+    // syncEntry asks undoPull too: the scene's handler can reach the entry before this one does.
+    function guardExpectedGeo(w) {
+        const r = expectedGeo[w.internalId];
+        if (!r) return;
+        const e = entryFor(w), g = w.frameGeometry;
+        if (e && Math.abs(g.x - e.frameX) < 1 && Math.abs(g.y - e.frameY) < 1) { r.x = g.x; r.y = g.y; return; }
+        undoPull(w);
+    }
+    // The windows of one activity that sit partly or wholly off every monitor, as KWin is about to
+    // show them: the current activity's switch, or the canvas opening on the others.
+    function expectActivity(id, cause, others) {
+        const stack = KWin.Workspace.stackingOrder;
+        for (let i = 0; i < stack.length; ++i) {
+            const w = stack[i];
+            if (!isCanvasWindow(w, true) || w.activities.length === 0) continue;
+            if (onActivity(w, id) === others) continue;
+            const g = w.frameGeometry;
+            if (!wholeOnOneMonitor(g)) expectGeo(w, g.x, g.y, g.width, g.height, cause);
+        }
     }
     function watchAllWindows() {
         const all = KWin.Workspace.stackingOrder;
@@ -3371,6 +3442,9 @@ KWin.SceneEffect {
         } else targets[currentActivity] = { x: viewX, y: viewY };
         ensureTargets();
         entryTargets = copyTargets(targets);
+        // The scene's thumbnails show the other activities' windows, and KWin pulls the ones
+        // that are partly or wholly off a monitor (KWin's pull when a window is shown).
+        expectActivity(currentActivity, "open", true);
         snapshot();
         // A slide or fly keeps a floated window where it is on the screen (floatAnchor).
         floatAnchor = ({});
@@ -3524,7 +3598,8 @@ KWin.SceneEffect {
             let a = activityAt(e);
             if (a === null) a = e.activity;
             // A window on every activity stays on every activity.
-            if (a !== e.activity && a && e.window.activities.length > 0) e.window.activities = [a];
+            const changedActivity = a !== e.activity && a && e.window.activities.length > 0;
+            if (changedActivity) e.window.activities = [a];
             e.activity = a;
             // Take the new frame position first: the write below is this
             // function's own projection of the entry, so the entry must
@@ -3541,6 +3616,8 @@ KWin.SceneEffect {
             e.frameY = fy;
             setReal(e.window, Qt.rect(fx, fy, e.width, e.height));
             noteWrote(e, fx, fy);
+            // KWin checks the position again after the activity change, after this write.
+            if (changedActivity) expectGeo(e.window, fx, fy, e.width, e.height, "activity");
         }
         // Windows not shown (minimized, hidden, other desktops) share the
         // plane: keep them where they were relative to their activity's frames.
@@ -4482,6 +4559,8 @@ KWin.SceneEffect {
         const f = e.window.frameGeometry;
         let changed = false;
         if (f.x !== e.frameX || f.y !== e.frameY) {
+            // KWin pulling a window it has just shown or given other activities is not a move to follow.
+            if (undoPull(e.window)) return false;
             // Something other than the canvas moved the real window (an app, a rule,
             // KWin's placement, a tiler): its plane coordinates follow, which is what
             // a jump of a window the hand never touched looks like. Logged with Perf.
@@ -5438,6 +5517,8 @@ KWin.SceneEffect {
         function onWindowRemoved(w) { if (w && w.dock) effect.noteAreaTouched(); if (w) { delete effect.focusAt[w.internalId]; delete effect.watchedWindows[w.internalId]; delete effect.planeRestore[w.internalId]; delete effect.holdTrack[w.internalId]; delete effect.dirtyWindows[w.internalId]; } Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
         // Switching activities at 1:1 switches viewport: the ground follows.
         function onCurrentActivityChanged(id) {
+            // The windows of the activity just entered are shown now: KWin pulls the ones partly or wholly off a monitor.
+            effect.expectActivity(id, "switch", false);
             if (effect.refreshActivities()) effect.ensureTargets();
             // A focus fly that crossed activities waits for this signal, and
             // the canvas may still be visible (a smooth close is mid-flight):
@@ -5814,6 +5895,9 @@ KWin.SceneEffect {
     onVisibleChanged: {
         if (!visible) {
             camStop();
+            // The scene lets go of the other activities' windows, and KWin looks at their
+            // positions again (KWin's pull when a window is shown).
+            expectActivity(currentActivity, "close", true);
             if (perf) perfTicksReport();
         }
     }
