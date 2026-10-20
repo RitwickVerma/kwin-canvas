@@ -18,6 +18,7 @@
 namespace KWin
 {
 class Window;
+class LogicalOutput;
 class SurfaceInterface;
 }
 
@@ -67,6 +68,13 @@ public Q_SLOTS:
      * the canvas point each activity's frames put at global (0,0).
      */
     Q_SCRIPTABLE void setCamera(double viewX, double viewY, double zoom, const QString &currentActivity, const QString &targetsJson);
+    /**
+     * Separate cameras: the output the canvas is open on ("" with the cameras merged).
+     * A pointer on any other output is the real desktop - the windows at their real
+     * places, the hover immediate - because the effect draws that output as a replica of
+     * its desk. targetsJson of setCamera then also holds "activity|output" targets.
+     */
+    Q_SCRIPTABLE void setSeparate(const QString &activeOutput);
     /**
      * The mouse buttons the canvas owns while they are down (its PanHold
      * buttons, the middle button). A press of one of them is never handed to a
@@ -143,6 +151,12 @@ public:
 private:
     QPointF toCanvas(const QPointF &screen) const;
     QPointF targetOf(KWin::Window *window) const;
+    /** The output holding a global point, or null. */
+    KWin::LogicalOutput *outputAt(const QPointF &point) const;
+    /** The output a window's frame sits on (its centre's, else the nearest). */
+    KWin::LogicalOutput *outputOfWindow(KWin::Window *window) const;
+    /** The target of the current activity on one output, for a pointer on a replica output. */
+    QPointF replicaTarget(const KWin::LogicalOutput *output) const;
     bool drawn(KWin::Window *window) const;
     KWin::Window *windowAt(const QPointF &canvas) const;
     /** The topmost client window under a real screen point: the click candidate at 1:1. */
@@ -176,6 +190,15 @@ private:
     double m_zoom = 1;
     QString m_current;
     QHash<QString, QPointF> m_targets;
+    /** Separate cameras: the output the canvas is open on, or empty when merged. */
+    bool m_separate = false;
+    QString m_camOutput;
+    /**
+     * The output a pointer event is on when that output is not the camera's (a replica
+     * of its desk): set by toCanvas for the event being handled, null otherwise. It makes
+     * targetOf and drawn read that output's desk at 1:1 for the whole handler.
+     */
+    mutable const KWin::LogicalOutput *m_replica = nullptr;
     /** The trace flag (setVerbose): log every decision this filter takes. */
     bool m_verbose = false;
     /** The zoom door (WheelDoor): the wheel over the ground opens the canvas. */

@@ -188,8 +188,14 @@ frame, so everything below starts from that first frame, never from a held one.
   no desk. Merged takes the old paths unchanged. Scenario `174`.
 - **The other monitor stays the desktop (stage 2, scene part).** With the overview open on
   one monitor, the others draw a replica of their desk: every window at its real place over
-  the wallpaper, no chrome, no input of their own. A quiet slide on one monitor moves only
-  that monitor's windows. Scenario `175`. Missing from the replica: window shadows, panels.
+  the wallpaper, no chrome. A quiet slide on one monitor moves only that monitor's windows.
+  Scenario `175`. Missing from the replica: window shadows, panels.
+- **Input on the other monitors (stage 2, plugin part).** The pointer plugin takes the active
+  monitor's camera from `setSeparate` and treats a pointer on any other monitor as the real
+  desktop: windows at their real places, the hover immediate, clicks, wheel and keys to the
+  window under it. Scenario `176`. Needs the rebuilt plugin installed as root, then a relogin.
+  Not yet: panels and docks on those monitors (not drawn, and not interactive while the
+  overview is open elsewhere).
 
 ## Build order
 
@@ -200,9 +206,8 @@ and adds scenarios on two stacked outputs with different scales and offsets.
    setting. In Merged nothing changes.
 2. **Separate, overview only** (scene and leaving built; input not). Open, pan, zoom, fit
    and fly on the active camera; the other monitors show their desk. Leaving writes only
-   that monitor's desk. Still to do: the pointer plugin must let input through on the
-   other monitors (today they are inert while the overview is open), keyboard focus to the
-   active view, and the ground wallpaper per monitor.
+   that monitor's desk. Still to do: panels and docks on the other monitors, keyboard
+   focus to the active view, and the ground wallpaper per monitor.
 3. **Separate, at rest.** Quiet slide per monitor, parking and un-parking, hot-plug.
 4. **Window interactions.** Drag across the seam, throw, snap, float on every
    camera, selection, arrange.

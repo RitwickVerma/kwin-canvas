@@ -52,7 +52,8 @@ modes, every interaction in both, the data model, the build order) is in
 ground (`173`), the chrome sits on the pointer's monitor (`172`), one frame tag per
 activity with no output names. Built, off by default (`Cameras=separate`, experimental): a desk per monitor, the overview
 on one monitor with the others showing their desk, and a slide that moves one monitor only
-(`174`, `175`). Not built: input on the other monitors (the plugin), the rest of stages 3 to 7. Tested only in the nest, on two outputs stacked
+(`174`, `175`). Input on the other monitors needs the rebuilt plugin (`176`). Not built: panels on the other
+monitors, the rest of stages 3 to 7. Tested only in the nest, on two outputs stacked
 and offset as the owner's are.
 
 **Known failing, unexplained.** `112-overlay` fails one check ("the drag never grabbed

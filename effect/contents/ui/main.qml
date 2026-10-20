@@ -4287,6 +4287,13 @@ KWin.SceneEffect {
         method: "setCamera"
     }
     KWin.DBusCall {
+        id: separateCall
+        service: "org.kde.KWin"
+        path: "/KWinCanvas"
+        dbusInterface: "org.kde.kwin.canvas.Passthrough"
+        method: "setSeparate"
+    }
+    KWin.DBusCall {
         id: navCall
         service: "org.kde.KWin"
         path: "/KWinCanvas"
@@ -4421,6 +4428,10 @@ KWin.SceneEffect {
         if (!passthroughLive) return;
         cameraCall.arguments = [viewX, viewY, zoom, currentActivity, JSON.stringify(targets)];
         cameraCall.call();
+        // Separate cameras: the plugin lets the other monitors' input through to their desk.
+        // A plugin without this method ignores the call.
+        separateCall.arguments = [separate && camScreen ? String(camScreen.name) : ""];
+        separateCall.call();
     }
     // The buttons the plugin leaves to the canvas whatever is drawn under the
     // pointer: the same mask the shim reads (planeNavButtons). Told when the
@@ -4472,6 +4483,8 @@ KWin.SceneEffect {
         passthroughLive = false;
         activeCall.arguments = [false];
         activeCall.call();
+        separateCall.arguments = [""];
+        separateCall.call();
     }
     onViewXChanged: if (passthroughLive) Qt.callLater(publishCamera)
     onViewYChanged: if (passthroughLive) Qt.callLater(publishCamera)

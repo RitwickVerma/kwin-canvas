@@ -183,6 +183,13 @@ void CanvasPassthrough::setCamera(double viewX, double viewY, double zoom, const
     }
 }
 
+void CanvasPassthrough::setSeparate(const QString &activeOutput)
+{
+    m_separate = !activeOutput.isEmpty();
+    m_camOutput = activeOutput;
+    m_replica = nullptr;
+}
+
 void CanvasPassthrough::setCanvasState(const QString &state)
 {
     // The shader channel: the effect pushes the plane's remembered state at
@@ -506,8 +513,58 @@ int CanvasPassthrough::modifiers() const
 
 // ---- the plane ---------------------------------------------------------------
 
+LogicalOutput *CanvasPassthrough::outputAt(const QPointF &point) const
+{
+    const QList<LogicalOutput *> outputs = workspace()->outputs();
+    for (LogicalOutput *o : outputs) {
+        const Rect g = o->geometry();
+        if (point.x() >= g.x() && point.x() < g.x() + g.width() && point.y() >= g.y() && point.y() < g.y() + g.height()) {
+            return o;
+        }
+    }
+    return nullptr;
+}
+
+LogicalOutput *CanvasPassthrough::outputOfWindow(Window *window) const
+{
+    const QRectF f = window->frameGeometry();
+    const QPointF c = f.center();
+    if (LogicalOutput *o = outputAt(c)) {
+        return o;
+    }
+    LogicalOutput *best = nullptr;
+    qreal bestD = 0;
+    const QList<LogicalOutput *> outputs = workspace()->outputs();
+    for (LogicalOutput *o : outputs) {
+        const Rect g = o->geometry();
+        const qreal dx = std::max({qreal(g.x()) - c.x(), qreal(0), c.x() - (g.x() + g.width())});
+        const qreal dy = std::max({qreal(g.y()) - c.y(), qreal(0), c.y() - (g.y() + g.height())});
+        const qreal d = std::hypot(dx, dy);
+        if (!best || d < bestD) {
+            best = o;
+            bestD = d;
+        }
+    }
+    return best;
+}
+
+QPointF CanvasPassthrough::replicaTarget(const LogicalOutput *output) const
+{
+    return m_targets.value(m_current + QLatin1Char('|') + output->name(), m_targets.value(m_current, QPointF(m_viewX, m_viewY)));
+}
+
 QPointF CanvasPassthrough::toCanvas(const QPointF &screen) const
 {
+    m_replica = nullptr;
+    if (m_separate) {
+        const LogicalOutput *o = outputAt(screen);
+        if (o && o->name() != m_camOutput) {
+            // Not the camera's monitor: the real desktop, the plane at 1:1 on this
+            // monitor's own desk.
+            m_replica = o;
+            return screen + replicaTarget(o);
+        }
+    }
     return QPointF(m_viewX + screen.x() / m_zoom, m_viewY + screen.y() / m_zoom);
 }
 
@@ -520,6 +577,19 @@ QPointF CanvasPassthrough::targetOf(Window *window) const
         const QStringList a = window->activities();
         if (!a.isEmpty()) {
             id = a.first();
+        }
+    }
+    if (m_replica) {
+        return replicaTarget(m_replica);
+    }
+    if (m_separate) {
+        // Each monitor has its own desk: a window maps to the plane through the desk of
+        // the monitor it sits on, the way the effect's entries do.
+        if (const LogicalOutput *o = outputOfWindow(window)) {
+            const auto it = m_targets.constFind(id + QLatin1Char('|') + o->name());
+            if (it != m_targets.constEnd()) {
+                return *it;
+            }
         }
     }
     return m_targets.value(id, QPointF(m_viewX, m_viewY));
@@ -538,7 +608,8 @@ bool CanvasPassthrough::drawn(Window *window) const
     if (window->isMinimized() || window->isHidden() || !window->isOnCurrentDesktop()) {
         return false;
     }
-    if (m_zoom < 0.999) {
+    // A replica monitor is the real desktop at 1:1: only this activity's windows.
+    if (!m_replica && m_zoom < 0.999) {
         return true;
     }
     return window->isOnAllActivities() || window->isOnActivity(m_current);
@@ -811,6 +882,13 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
         return false;
     }
     Window *w = windowAt(canvas);
+    if (w && m_replica) {
+        // A monitor the overview is not open on is the real desktop: the hover is
+        // immediate, as it is when the canvas is closed.
+        m_hoverCandidate = w;
+        m_hoverTimer.stop();
+        return enter(w, canvas);
+    }
     if (w) {
         // The rest, not the pass-over: a new window under the pointer
         // restarts the hover clock, and only the timeout hands the input
