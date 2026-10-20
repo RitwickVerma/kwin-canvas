@@ -301,7 +301,9 @@ KWin.SceneEffect {
     // when off: every call site checks `perf` before it reads a clock or
     // keeps a number, so a user's "it pauses before it flies" becomes figures
     // instead of a guess. Events: open, first-paint ms, settle ms zoom,
-    // slide dist ms, hover-fetch ms, ticks n p50 p95 max (on the close), stall ms cam
+    // slide dist ms, hover-fetch ms, ticks n p50 p95 max (on the close), moved win dx dy
+    // (a real window moved by something else, absorbed into the plane), landed win dx dy
+    // (a floated window taking its picture's spot), stall ms cam
     // quiet entries ql cpu gpu mem (a tick 60 ms or more late, at most 40 a session).
     property bool perf: configuration.Perf
     function perfLog(ev, kv) {
@@ -312,6 +314,7 @@ KWin.SceneEffect {
     property real perfSettleDist: 0   // what the open's flight had to cover, screen px
     property real perfSlideAt: 0      // Date.now() when the slide animation started
     property int perfTickN: 0
+    property int perfMoves: 0         // moved lines written this session (capped)
     property int perfStalls: 0        // stall lines written this canvas session (capped)
     property real perfTickMax: 0
     // Tick spacing as a histogram, 1 ms bins (the last takes everything from
@@ -367,6 +370,7 @@ KWin.SceneEffect {
         perfTickN = 0;
         perfTickMax = 0;
         perfStalls = 0;
+        perfMoves = 0;
         perfBins = [];
     }
     // The map's home, mirrored out of the map item: the effect's own
@@ -796,6 +800,8 @@ KWin.SceneEffect {
         const sx = Math.max(b.l, Math.min(b.r, (e.x - cx) * zz));
         const sy = Math.max(b.t, Math.min(b.b, (e.y - cy) * zz));
         if (Math.abs(sx - (e.x - cx) * zz) > 0.4 || Math.abs(sy - (e.y - cy) * zz) > 0.4) {
+            if (perf) perfLog("landed", "win=" + String(e.window.caption).replace(/[ =]/g, "_").slice(0, 30)
+                + " dx=" + Math.round(cx + sx / zz - e.x) + " dy=" + Math.round(cy + sy / zz - e.y));
             e.x = cx + sx / zz;
             e.y = cy + sy / zz;
             revision++;
@@ -4039,6 +4045,16 @@ KWin.SceneEffect {
         const f = e.window.frameGeometry;
         let changed = false;
         if (f.x !== e.frameX || f.y !== e.frameY) {
+            // Something other than the canvas moved the real window (an app, a rule,
+            // KWin's placement, a tiler): its plane coordinates follow, which is what
+            // a jump of a window the hand never touched looks like. Logged with Perf.
+            if (perf && perfMoves < 60) {
+                perfMoves++;
+                perfLog("moved", "win=" + String(e.window.caption).replace(/[ =]/g, "_").slice(0, 30)
+                    + " dx=" + (f.x - e.frameX) + " dy=" + (f.y - e.frameY)
+                    + " open=" + (visible ? 1 : 0) + " quiet=" + (quiet ? 1 : 0)
+                    + " pinned=" + (isPinnedEntry(e) ? 1 : 0) + " floats=" + pinnedCount);
+            }
             e.x += f.x - e.frameX;
             e.y += f.y - e.frameY;
             e.frameX = f.x;

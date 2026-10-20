@@ -757,6 +757,8 @@ growing list.
 | `slide` | `dist`, `ms` | a quiet slide: distance in px and wall-clock time from the animation's start to its landing |
 | `hover-fetch` | `ms` | the rest that made the camera fetch a hovered window (the pointer's rest, which is the fetch's latency) |
 | `ticks` | `n`, `p50`, `p95`, `max` | physics tick spacing in ms over the session, written when the canvas closes |
+| `moved` | `win`, `dx`, `dy`, `open`, `quiet`, `pinned`, `floats` | a real window's position changed by something other than the canvas (an app, a window rule, KWin's placement, a tiler) and was absorbed into the plane; at most 60 a session |
+| `landed` | `win`, `dx`, `dy` | a floated window took its picture's spot as its plane coordinates when the canvas was left |
 | `stall` | `ms`, `cam`, `quiet`, `entries`, `ql`, `cpu`, `gpu`, `mem` | a physics tick 60 ms or more late, with what the camera was doing (`goal`, `fling`, `-`) and the effect's last load readings; at most 40 a session; `kwin-canvas perf` lists the last 12 with their times |
 
 **Where an open's first 150 ms go.** `open()` itself takes about 1 ms; the
