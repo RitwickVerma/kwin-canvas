@@ -1283,7 +1283,7 @@ Item {
             // The corner lens: the world shrunk into a chip for a glance at
             // the plane while working. The overlay is gone - the world is
             // the map - so the lens is the only map surface left.
-            readonly property bool asMinimap: ((effect.canvasOpen && !effect.quiet && (effect.zoom < 0.9 || effect.navHeld) && !effect.grasp) || (effect.visible && effect.quiet && effect.grasp)) && view.screen === effect.primaryScreen
+            readonly property bool asMinimap: ((effect.canvasOpen && !effect.quiet && (effect.zoom < 0.9 || effect.navHeld) && !effect.grasp) || (effect.visible && effect.quiet && effect.grasp)) && view.screen === (effect.chromeScr || effect.primaryScreen)
             // Mirrored into the effect's own flags: logState and the other
             // effect functions cannot see this item's id, so the map
             // publishes its home for them.
@@ -1721,7 +1721,7 @@ Item {
         // or jumped-to view).
         Rectangle {
             z: 100001
-            visible: view.screen === effect.primaryScreen && effect.toastText !== ""
+            visible: view.screen === (effect.chromeScr || effect.primaryScreen) && effect.toastText !== ""
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
             anchors.bottomMargin: Kirigami.Units.largeSpacing * 3
@@ -1746,7 +1746,7 @@ Item {
         // content in place.
         Rectangle {
             z: 100002
-            visible: { effect.switcherActive; return view.screen === effect.primaryScreen && effect.switcherActive; }
+            visible: { effect.switcherActive; return view.screen === (effect.chromeScr || effect.primaryScreen) && effect.switcherActive; }
             opacity: effect.switcherRise
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.top: hud.bottom
@@ -1802,7 +1802,7 @@ Item {
         Rectangle {
             id: hud
             z: 100000
-            visible: view.screen === effect.primaryScreen && (!effect.quiet || effect.skinReveal > 0.5)
+            visible: view.screen === (effect.chromeScr || effect.primaryScreen) && (!effect.quiet || effect.skinReveal > 0.5)
             opacity: effect.chromeFade * (effect.quiet ? Math.max(0, Math.min(1, (effect.skinReveal - 0.5) * 2)) : 1)
             readonly property string pos: String(effect.configuration.HudPosition || "Top").toLowerCase()
             readonly property bool atBottom: pos.indexOf("bottom") === 0

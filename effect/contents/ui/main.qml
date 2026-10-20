@@ -1701,6 +1701,33 @@ KWin.SceneEffect {
     // The primary display: first in the order plasmashell set, else the first screen.
     readonly property var primaryScreen: KWin.Workspace.screenOrder.length > 0 ? KWin.Workspace.screenOrder[0] : KWin.Workspace.screens[0]
 
+    // The screen the chrome (toolbar, toast, switcher, minimap) sits on: where the pointer
+    // is, not the primary display. It is set when the canvas opens and follows the pointer
+    // once it has rested on another screen for a moment, so a quick pass across the seam does
+    // not move the toolbar. Falls back to the primary screen.
+    property var chromeScreen: null
+    readonly property var chromeScr: {
+        const ss = KWin.Workspace.screens;
+        for (let i = 0; i < ss.length; ++i) if (ss[i] === chromeScreen) return chromeScreen;
+        return primaryScreen;
+    }
+    property var chromeCandidate: null
+    property real chromeSince: 0
+    function noteChromeScreen() {
+        const p = cursorScreen();
+        const s = screenAt(p.x, p.y);
+        if (!s || s === chromeScr) { chromeCandidate = null; return; }
+        const now = Date.now();
+        if (chromeCandidate !== s) { chromeCandidate = s; chromeSince = now; return; }
+        if (now - chromeSince >= 450) { chromeScreen = s; chromeCandidate = null; }
+    }
+    Timer {
+        interval: 120
+        repeat: true
+        running: effect.visible && KWin.Workspace.screens.length > 1
+        onTriggered: effect.noteChromeScreen()
+    }
+
     readonly property real zoomMin: configuration.ZoomMin
     readonly property real zoomStep: configuration.ZoomStep
     // ---- hold to navigate ---------------------------------------------------
@@ -2909,6 +2936,7 @@ KWin.SceneEffect {
         refreshGroundWallpaper();
         if (visible) return;
         tickFresh = true;
+        { const cp = cursorScreen(); chromeScreen = screenAt(cp.x, cp.y) || null; chromeCandidate = null; }
         if (perf) {
             perfOpenAt = Date.now();
             perfSettled = false;
@@ -5263,7 +5291,7 @@ KWin.SceneEffect {
 
     function logState() {
         let s = "kwin-canvas state visible=" + visible + (quiet ? " quiet" : "") + (grasp ? " grasp" : "") + (passthroughLive ? " passthrough" : "") + (planeLive ? " plane" : "") + " zoom=" + zoom.toFixed(4) + " view=(" + viewX.toFixed(1) + "," + viewY.toFixed(1) + ") activity=" + labelOf(currentActivity) + " entries=" + entries.length
-            + " popups=" + appPopups.length + " menus=" + canvasMenus + " floats=" + pinnedCount + " floatheld=" + Object.keys(floatOf).length + " nav=" + (navHeld ? "hold" : "-") + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
+            + " popups=" + appPopups.length + " menus=" + canvasMenus + " floats=" + pinnedCount + " chrome=" + (chromeScr ? chromeScr.name : "-") + " floatheld=" + Object.keys(floatOf).length + " nav=" + (navHeld ? "hold" : "-") + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
             + " screens=" + KWin.Workspace.screens.length + " backdrop=" + backdropLayers
             + " cam=" + (camHasGoal ? "goal" : (camLive() ? "glide" : "-"))
             + " focus=" + (focusEntry ? JSON.stringify(focusEntry.window.caption) : "-")
