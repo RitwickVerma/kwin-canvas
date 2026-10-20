@@ -113,10 +113,10 @@ Decoration {
         Behavior on y {
             SpringAnimation { spring: 2.6; damping: 0.8; epsilon: 0.01 }
         }
-        // The capsule hugs its glyphs: the four-glyph pill is the
-        // familiar 136, fewer buttons make a shorter pill, and a
+        // The capsule hugs its glyphs: the capsule is 28 px a glyph, the
+        // same as the panel applet's, so the two rows line up; fewer buttons make a shorter pill, and a
         // configuration with none of the four hides it entirely.
-        width: 24 + root.pillButtons.length * 30 - (root.pillButtons.length > 0 ? 8 : 0)
+        width: 24 + root.pillButtons.length * 28 - (root.pillButtons.length > 0 ? 6 : 0)
         height: 30
         visible: root.pillButtons.length > 0
 
@@ -137,7 +137,7 @@ Decoration {
 
         Row {
             anchors.centerIn: parent
-            spacing: 8
+            spacing: 6
 
             Repeater {
                 model: root.pillButtons

@@ -46,6 +46,12 @@ lines still name `114`, `115`, `116`, `117` (KCalc and Gwenview 410 high), `120`
 neighbour still standing at its old place (12 px), so `arrange` is not idempotent
 on size; the others show the same signature and were not run (`docs/testing.md`).
 
+**Known failing, unexplained.** `112-overlay` fails one check ("the drag never grabbed
+the window": Gwenview at x 3980, expected 4000) every time it runs alone, with and without
+the arrange fix, and passes inside the full run. A trace shows the entry's x reading as 1400
+early in the hold and 3980 later, so the coordinates shift under the quiet hold; not traced
+further. `126-grasp-landing` failed one check intermittently and passed 3 of 3 later.
+
 **Not verified:** KZones, `sticky-window-snapping` and `rememberwindowpositions`
 against the canvas (not in the nest); a Wallpaper Engine wallpaper in the nest;
 the raise after a fly with focus-follows-mouse and no click-raise (reasoned from

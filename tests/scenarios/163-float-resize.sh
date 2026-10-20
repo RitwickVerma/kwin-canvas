@@ -17,7 +17,11 @@ run_scenario() {
     # was at the old bound, 620 px beyond the new one.
     c "resize $k 1100 700" >/dev/null
     read -r px py pw ph <<<"$(float_picture)"
-    assert_true "the first look after the resize is mid-glide, not already at the bound" "$(awk -v x="$px" 'BEGIN{print (x > 1000)}')" = 1
+    # The glide is a critically damped spring (about 7/s): a state read takes up to
+    # a second on a loaded machine, by which time it is within a few px of the bound,
+    # so "mid-glide" is anything clear of the bound by 12 px, where a jump would be
+    # exactly on it.
+    assert_true "the first look after the resize is not already at the bound (a jump would be at 812)" "$(awk -v x="$px" 'BEGIN{print (x > 824)}')" = 1
     sleep 1.5
     read -r px py pw ph <<<"$(float_picture)"
     assert_eq "and it settles on the new bound" "$px" "812.0"
