@@ -2497,8 +2497,7 @@ KWin.SceneEffect {
                 clickedWindow = null;
                 if (!w || w.deleted || !isFlyableWindow(w)) return;
                 const g = w.frameGeometry;
-                const vs = KWin.Workspace.virtualScreenGeometry;
-                if (g.x >= vs.x && g.y >= vs.y && g.x + g.width <= vs.x + vs.width && g.y + g.height <= vs.y + vs.height) return;
+                if (wholeOnOneMonitor(g)) return;
                 flyToWindow(w);
             });
         }
@@ -4906,6 +4905,23 @@ KWin.SceneEffect {
         if (!w || w.deleted) return;
         KWin.Workspace.raiseWindow(w);
     }
+    // Is the rect wholly inside a single monitor? The virtual desktop's bounding box
+    // is not the test: it holds the seam between monitors, and with monitors of
+    // different sizes or offsets it holds ground no monitor covers at all (a window
+    // there is on no screen). A rect larger than every monitor cannot be on one, so
+    // for it the bounding box is the best there is.
+    function wholeOnOneMonitor(g) {
+        const ss = KWin.Workspace.screens;
+        let couldFit = false;
+        for (let i = 0; i < ss.length; ++i) {
+            const o = ss[i].geometry;
+            if (g.x >= o.x && g.y >= o.y && g.x + g.width <= o.x + o.width && g.y + g.height <= o.y + o.height) return true;
+            if (g.width <= o.width && g.height <= o.height) couldFit = true;
+        }
+        if (couldFit) return false;
+        const vs = KWin.Workspace.virtualScreenGeometry;
+        return g.x >= vs.x && g.y >= vs.y && g.x + g.width <= vs.x + vs.width && g.y + g.height <= vs.y + vs.height;
+    }
     function flyToWindow(w) {
         const t = peekTarget(activityOf(w));
         const f = w.frameGeometry;
@@ -4958,11 +4974,11 @@ KWin.SceneEffect {
             if (!effect.configuration.FollowActivation) return;
             if (!effect.isFlyableWindow(w)) return;
             const g = w.frameGeometry;
-            // A focused window must be wholly on screen: an intersection is
-            // not enough - one hanging off an edge is exactly what a focus
-            // must not leave behind. Fully inside, nothing moves.
-            const vs = KWin.Workspace.virtualScreenGeometry;
-            if (g.x >= vs.x && g.y >= vs.y && g.x + g.width <= vs.x + vs.width && g.y + g.height <= vs.y + vs.height) return;
+            // A focused window must be wholly on one monitor: an intersection is
+            // not enough - one hanging off an edge, or across the seam between two
+            // monitors, is exactly what a focus must not leave behind. Wholly on
+            // one, nothing moves.
+            if (wholeOnOneMonitor(g)) return;
             // The hand is on the pointer: remember the window, and the release
             // handler flies once the buttons are up - the opening canvas would
             // grab the gesture mid-click. A click on an already-active window
