@@ -302,7 +302,8 @@ KWin.SceneEffect {
     // keeps a number, so a user's "it pauses before it flies" becomes figures
     // instead of a guess. Events: open, first-paint ms, settle ms zoom,
     // slide dist ms, hover-fetch ms, ticks n p50 p95 max (on the close), moved win dx dy
-    // (a real window moved by something else, absorbed into the plane), landed win dx dy
+    // (a real window moved by something else, absorbed into the plane), bounced win dx dy dw dh
+    // overlapsDock (a window found away from where a landing wrote it), landed win dx dy
     // (a floated window taking its picture's spot), stall ms cam
     // quiet entries ql cpu gpu mem (a tick 60 ms or more late, at most 40 a session).
     property bool perf: configuration.Perf
@@ -353,6 +354,50 @@ KWin.SceneEffect {
         if (!nearZ || !nearV) return;
         perfSettled = true;
         perfLog("settle", "ms=" + (now - perfOpenAt) + " zoom=" + zoom.toFixed(4));
+    }
+    // After a landing (a commit, a slide) the windows the canvas wrote are read back: one that
+    // is not where it was written has been moved by something else (KWin pushing it out of a
+    // panel's strip, a script, the app), which looks like a window jumping after the fly.
+    // The line says whether the written spot overlapped a panel or dock and how far it went.
+    property var wroteGeo: ({})
+    property int perfBounces: 0
+    function noteWrote(e, fx, fy) {
+        if (!perf) return;
+        wroteGeo[e.window.internalId] = { x: fx, y: fy, w: e.width, h: e.height };
+        perfBounceTimer.restart();
+    }
+    Timer {
+        id: perfBounceTimer
+        interval: 450
+        repeat: false
+        onTriggered: effect.perfBounceCheck()
+    }
+    function perfBounceCheck() {
+        const wrote = wroteGeo;
+        wroteGeo = ({});
+        if (!perf) return;
+        const stack = KWin.Workspace.stackingOrder;
+        const docks = [];
+        for (let i = 0; i < stack.length; ++i) if (!stack[i].deleted && stack[i].dock) docks.push(stack[i].frameGeometry);
+        for (let i = 0; i < stack.length; ++i) {
+            const w = stack[i];
+            const r = wrote[w.internalId];
+            if (!r || w.deleted || perfBounces >= 60) continue;
+            const g = w.frameGeometry;
+            if (Math.abs(g.x - r.x) <= 1 && Math.abs(g.y - r.y) <= 1 && Math.abs(g.width - r.w) <= 1 && Math.abs(g.height - r.h) <= 1) continue;
+            let overlap = 0;
+            for (let k = 0; k < docks.length; ++k) {
+                const d = docks[k];
+                if (r.x < d.x + d.width && r.x + r.w > d.x && r.y < d.y + d.height && r.y + r.h > d.y) overlap = 1;
+            }
+            perfBounces++;
+            perfLog("bounced", "win=" + String(w.caption).replace(/[ =]/g, "_").slice(0, 30)
+                + " dx=" + Math.round(g.x - r.x) + " dy=" + Math.round(g.y - r.y)
+                + " dw=" + Math.round(g.width - r.w) + " dh=" + Math.round(g.height - r.h)
+                + " overlapsDock=" + overlap + " docks=" + docks.length
+                + " max=" + (w.maximizedHorizontally || w.maximizedVertically ? 1 : 0) + " tiled=" + (w.tile ? 1 : 0)
+                + " full=" + (w.fullScreen ? 1 : 0) + " float=" + (w.onAllDesktops ? 1 : 0));
+        }
     }
     function perfTicksReport() {
         if (perfTickN > 0) {
@@ -694,6 +739,12 @@ KWin.SceneEffect {
     // a window rule and the canvas all read and write the same flag and
     // nothing here is stored. Keep above and keep below are separate: they
     // are stacking, and a window may be kept above without floating.
+    // A quiet slide or fly leaves a floated window where it is on the screen: its place is
+    // the real position it had when the slide began, and its plane coordinates follow the
+    // camera. id -> { x, y } in screen px; empty outside a slide. Without it the window's
+    // picture rode to the screen edge as the plane slid away and the window landed there,
+    // which read as the window jumping after every fly.
+    property var floatAnchor: ({})
     property var floatOf: ({})         // window internalId -> { x, y, vx, vy, wasInX, wasInY }, screen px
     property real floatRev: 0
     property real floatPrevViewX: 0
@@ -788,7 +839,10 @@ KWin.SceneEffect {
     // target at 1:1, which is not the camera's while the step in is taken at
     // once from a zoomed-out view (SmoothZoom off).
     function syncFloatsToEntries(vx, vy, z) {
-        for (let i = 0; i < entries.length; ++i) if (isPinnedEntry(entries[i])) landFloat(entries[i], vx, vy, z);
+        for (let i = 0; i < entries.length; ++i) {
+            const e = entries[i];
+            if (isPinnedEntry(e) && !floatAnchor[e.window.internalId]) landFloat(e, vx, vy, z);
+        }
     }
     // The window takes the spot its picture rests at: the true position held
     // inside the screen. Read from the bounds and not from the float's last
@@ -843,6 +897,7 @@ KWin.SceneEffect {
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
             const id = e.window.internalId;
+            if (floatAnchor[id]) { if (floatOf[id]) { delete floatOf[id]; floatRev++; } continue; }
             if (!isPinnedEntry(e)) {
                 // Unfloated while its picture rode the screen's edge (the
                 // button, a rule, KDE's menu): the window stays where the eye
@@ -3131,6 +3186,15 @@ KWin.SceneEffect {
         ensureTargets();
         entryTargets = copyTargets(targets);
         snapshot();
+        // A slide or fly keeps a floated window where it is on the screen (floatAnchor).
+        floatAnchor = ({});
+        floatOf = ({});
+        if (quiet && !grasp) {
+            for (let i = 0; i < entries.length; ++i) {
+                const e = entries[i];
+                if (isPinnedEntry(e)) floatAnchor[e.window.internalId] = { x: e.frameX, y: e.frameY };
+            }
+        }
         canvasMenus = 0;
         settled = false;
         openFrames = {};
@@ -3290,6 +3354,7 @@ KWin.SceneEffect {
             e.frameX = fx;
             e.frameY = fy;
             e.window.frameGeometry = Qt.rect(fx, fy, e.width, e.height);
+            noteWrote(e, fx, fy);
         }
         // Windows not shown (minimized, hidden, other desktops) share the
         // plane: keep them where they were relative to their activity's frames.
@@ -4136,7 +4201,7 @@ KWin.SceneEffect {
     function entryAtScreen(sx, sy) {
         for (let i = entries.length - 1; i >= 0; --i) {
             const e = entries[i];
-            const f = floatOf[e.window.internalId];
+            const f = floatAnchor[e.window.internalId] || floatOf[e.window.internalId];
             const x = f ? f.x : (e.x - viewX) * zoom;
             const y = f ? f.y : (e.y - viewY) * zoom;
             if (sx >= x && sx < x + e.width * zoom && sy >= y && sy < y + e.height * zoom) return e;
@@ -4915,6 +4980,12 @@ KWin.SceneEffect {
             quiet = false;
             return;
         }
+        // A floated window kept its screen spot through the slide: its plane spot is the
+        // destination view plus that spot, so the write below is the spot it already had.
+        for (let i = 0; i < entries.length; ++i) {
+            const a = floatAnchor[entries[i].window.internalId];
+            if (a) { entries[i].x = entryViewX + dx + a.x; entries[i].y = entryViewY + dy + a.y; }
+        }
         syncFloatsToEntries();
         targets = copyTargets(entryTargets);
         const cur = targetOf(currentActivity);
@@ -4942,6 +5013,7 @@ KWin.SceneEffect {
             if (g.x !== fx || g.y !== fy) {
                 e.window.frameGeometry = Qt.rect(fx, fy, g.width, g.height);
             }
+            noteWrote(e, fx, fy);
         }
         // With separate cameras the windows the canvas does not show stay where they
         // are: they are not on the sliding monitor's desk.
@@ -4976,6 +5048,7 @@ KWin.SceneEffect {
         repeat: false
         onTriggered: {
             if (!effect.quiet) return;
+            effect.floatAnchor = ({});
             effect.visible = false;
             effect.quiet = false;
         }

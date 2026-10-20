@@ -1,5 +1,13 @@
 Unreleased:
 
+- A fly no longer moves a floated window. A slide or an auto fly keeps a floated window
+  (PiP, a lyrics window, anything on all desktops) at the same place on the screen; before,
+  it rode to an edge as the desk slid and landed there, which looked like the window
+  jumping after every fly. In the zoomed-out overview a floated window still rides the
+  edge of the screen.
+- With Perf on, a window found away from where a landing wrote it is logged as `bounced`,
+  with whether the spot overlapped a panel (something else moved it).
+
 - A plugin built for another KWin is reported, not silently lost. KWin refuses
   a pass-through plugin whose version stamp is not its own, which after an update
   switches off the grasp over windows and the pill's pin buttons with no message.

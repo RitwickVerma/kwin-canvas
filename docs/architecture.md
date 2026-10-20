@@ -662,6 +662,14 @@ and the applet draw their own buttons for them, and the float never sets or
 clears them. The `PinnedWindows` knob is no longer read; it stays declared so
 an old config still loads.
 
+A slide or fly (the quiet glide at 1:1) leaves a floated window where it is on the screen:
+`floatAnchor` holds the real spot each floated entry had when the slide opened, the
+thumbnail draws it there, and the landing writes its plane coordinates as the destination
+view plus that spot, so the window never moves. Without it the picture rode to the screen
+edge as the plane slid away and the window landed there (a floated window at (100,120)
+ended at (8,8) after a slide and at (1432,8) after a far fly, `178`). In the overview the
+float is the edge-riding picture described below.
+
 The float's semantics: the window's coordinates on the plane never change -
 only the hand moves them, and a 1:1 KWin move is a move of the coordinates,
 since the entry is read from the geometry at every snapshot. The picture is
@@ -759,6 +767,7 @@ growing list.
 | `ticks` | `n`, `p50`, `p95`, `max` | physics tick spacing in ms over the session, written when the canvas closes |
 | `moved` | `win`, `dx`, `dy`, `open`, `quiet`, `pinned`, `floats` | a real window's position changed by something other than the canvas (an app, a window rule, KWin's placement, a tiler) and was absorbed into the plane; at most 60 a session |
 | `landed` | `win`, `dx`, `dy` | a floated window took its picture's spot as its plane coordinates when the canvas was left |
+| `bounced` | `win`, `dx`, `dy`, `dw`, `dh`, `overlapsDock`, `docks`, `max`, `tiled`, `full`, `float` | a window found 450 ms after a landing (commit or slide) away from where the landing wrote it: something else moved it. `overlapsDock` says whether the written spot overlapped a panel or dock; at most 60 a session |
 | `stall` | `ms`, `cam`, `quiet`, `entries`, `ql`, `cpu`, `gpu`, `mem` | a physics tick 60 ms or more late, with what the camera was doing (`goal`, `fling`, `-`) and the effect's last load readings; at most 40 a session; `kwin-canvas perf` lists the last 12 with their times |
 
 **Where an open's first 150 ms go.** `open()` itself takes about 1 ms; the
