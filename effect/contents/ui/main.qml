@@ -303,7 +303,8 @@ KWin.SceneEffect {
     // instead of a guess. Events: open, first-paint ms, settle ms zoom,
     // slide dist ms, hover-fetch ms, ticks n p50 p95 max (on the close), moved win dx dy
     // (a real window moved by something else, absorbed into the plane), pulled win dx dy
-    // (KWin pulled a parked window back inside and the canvas put it back), bounced win dx dy dw dh
+    // (KWin pulled a parked window back inside and the canvas put it back), nudged win dx dy
+    // (KWin moved a window toward the screen when it was activated and the canvas undid it), bounced win dx dy dw dh
     // overlapsDock (a window found away from where a landing wrote it), landed win dx dy
     // (a floated window taking its picture's spot), stall ms cam
     // quiet entries ql cpu gpu mem (a tick 60 ms or more late, at most 40 a session).
@@ -1241,7 +1242,7 @@ KWin.SceneEffect {
             const fx = Math.round(pj.x), fy = Math.round(pj.y);
             e.frameX = fx;
             e.frameY = fy;
-            e.window.frameGeometry = Qt.rect(fx, fy, e.width, e.height);
+            setReal(e.window, Qt.rect(fx, fy, e.width, e.height));
         }
         revision++;
         toast("Stepped the layout back");
@@ -1420,7 +1421,7 @@ KWin.SceneEffect {
             const fx = Math.round(pj.x), fy = Math.round(pj.y);
             if (Math.abs(g.x - fx) >= 1 || Math.abs(g.y - fy) >= 1) {
                 dbg("restore", "back to the plane: " + Math.round(g.x) + "," + Math.round(g.y) + " -> " + fx + "," + fy);
-                w.frameGeometry = Qt.rect(fx, fy, g.width, g.height);
+                setReal(w, Qt.rect(fx, fy, g.width, g.height));
             }
         }
         trackFree(w);
@@ -1439,7 +1440,7 @@ KWin.SceneEffect {
         if (!w || watchedWindows[w.internalId]) return;
         watchedWindows[w.internalId] = true;
         trackFree(w);
-        w.frameGeometryChanged.connect(function (old) { effect.markDirty(w); effect.guardPulledBack(w, old); });
+        w.frameGeometryChanged.connect(function (old) { effect.markDirty(w); effect.guardPulledBack(w, old); effect.noteNudge(w, old); });
         w.desktopsChanged.connect(function () { effect.noteDesktopsChanged(w); });
         w.maximizedChanged.connect(function () { effect.noteReturnedFree(w); });
         w.tileChanged.connect(function () { effect.noteReturnedFree(w); });
@@ -1520,9 +1521,106 @@ KWin.SceneEffect {
                 if (effect.perf) effect.perfLog("pulled", "win=" + String(w.caption).replace(/[ =]/g, "_").slice(0, 30)
                     + " dx=" + Math.round(g.x - c.old.x) + " dy=" + Math.round(g.y - c.old.y));
                 effect.dbg("pulled", w.caption + " pulled back by KWin from (" + Math.round(c.old.x) + "," + Math.round(c.old.y) + "): put back");
-                w.frameGeometry = Qt.rect(c.old.x, c.old.y, g.width, g.height);
+                effect.setReal(w, Qt.rect(c.old.x, c.old.y, g.width, g.height));
             }
         }
+    }
+    // ---- KWin's activation nudge ---------------------------------------------
+    // Activating a window makes KWin move it toward the screen: a top edge above the screen goes
+    // to y=0, a left edge past the right edge minus 100 px comes back to that line, a top edge
+    // below the screen bottom goes to the bottom minus 28 px (measured in a nest: KCalc at
+    // y=-60 became 0, at x=sw+50 became sw-100, and a write to an already active window or a
+    // plain raise moved nothing). The canvas parks windows off the screen all the time (the plane
+    // is wider than the desktop), and every fly, enter, exit, hover and click activates one, so
+    // the move was absorbed as the window's new plane coordinate: a window the hand never
+    // touched jumped. It happens when a window loses focus too (measured: a window written above the
+    // screen while active moved 2 ms after another window was activated). A same-size move toward the screen right around a window's activation is
+    // undone, wherever it falls: with the canvas open the entry keeps its plane spot (the
+    // landing writes the true real position), closed the real window is put back before the fly
+    // decides anything. With FollowActivation off KDE's own behaviour is left alone.
+    // Every real window the canvas writes goes through here, so the frame-change handlers can tell
+    // the canvas's own write from somebody else's move. The signal is emitted synchronously from the
+    // assignment, so a counter around it is exact.
+    property int selfWriting: 0
+    function setReal(w, rect) {
+        selfWriting++;
+        try { w.frameGeometry = rect; } finally { selfWriting--; }
+    }
+    // When a window's focus state last changed, gained or lost: KWin applies its constraint at both.
+    property var focusTouched: ({})
+    property var lastActiveWindow: null
+    property var nudges: ({})
+    property var pendingNudge: ({})
+    function visibleArea(r) {
+        const all = outputRects();
+        let a = 0;
+        for (let i = 0; i < all.length; ++i) {
+            const o = all[i];
+            const w = Math.min(r.x + r.width, o.x + o.width) - Math.max(r.x, o.x);
+            const h = Math.min(r.y + r.height, o.y + o.height) - Math.max(r.y, o.y);
+            if (w > 0 && h > 0) a += w * h;
+        }
+        return a;
+    }
+    function nudgeShape(w, old, g) {
+        if (!w || w.deleted || !w.managed || !old) return false;
+        if (w.move || w.resize || w.fullScreen || w.minimized || w.desktopWindow || w.dock || w.popupWindow || w.specialWindow) return false;
+        if (w.maximizedHorizontally || w.maximizedVertically || w.tile) return false;
+        if (Math.abs(g.width - old.width) > 1 || Math.abs(g.height - old.height) > 1) return false;
+        if (Math.abs(g.x - old.x) < 1 && Math.abs(g.y - old.y) < 1) return false;
+        return visibleArea(g) > visibleArea(old) + 1;
+    }
+    function noteNudge(w, old) {
+        if (selfWriting > 0 || configuration.FollowActivation === false || !w || w.deleted) return;
+        const g = w.frameGeometry;
+        if (!nudgeShape(w, old, g)) return;
+        const id = w.internalId, now = Date.now();
+        const spot = { old: { x: old.x, y: old.y }, now: { x: g.x, y: g.y }, at: now };
+        // The activation signal may still come (KWin moves first, announces after): wait for it.
+        if (now - (focusTouched[id] || 0) > 2000) { pendingNudge[id] = spot; return; }
+        recordNudge(w, spot);
+    }
+    function recordNudge(w, spot) {
+        const id = w.internalId;
+        delete pendingNudge[id];
+        nudges[id] = spot;
+        if (perf) perfLog("nudged", "win=" + String(w.caption).replace(/[ =]/g, "_").slice(0, 30)
+            + " dx=" + Math.round(spot.now.x - spot.old.x) + " dy=" + Math.round(spot.now.y - spot.old.y)
+            + " open=" + (visible ? 1 : 0) + " quiet=" + (quiet ? 1 : 0));
+        dbg("nudge", w.caption + " nudged by KWin from (" + Math.round(spot.old.x) + "," + Math.round(spot.old.y) + ") to (" + Math.round(spot.now.x) + "," + Math.round(spot.now.y) + ")");
+        if (!visible) { undoNudge(w); return; }
+        const e = entryFor(w);
+        if (!e) return;
+        if (Math.abs(e.frameX - spot.old.x) < 1 && Math.abs(e.frameY - spot.old.y) < 1) {
+            // The entry saw the old frame: its plane spot is right, only the real frame it tracks moved.
+            e.frameX = spot.now.x;
+            e.frameY = spot.now.y;
+        } else if (Math.abs(e.frameX - spot.now.x) < 1 && Math.abs(e.frameY - spot.now.y) < 1) {
+            // The entry was made after the nudge: bring its plane spot back to where the window was.
+            e.x += spot.old.x - spot.now.x;
+            e.y += spot.old.y - spot.now.y;
+            revision++;
+        }
+    }
+    // Put a freshly nudged window back (closed canvas only: an open canvas writes the true
+    // position itself when it lands). True when it did.
+    function undoNudge(w) {
+        if (!w || w.deleted || visible) return false;
+        const id = w.internalId;
+        const n = nudges[id];
+        if (!n || Date.now() - n.at > 3000) return false;
+        const g = w.frameGeometry;
+        if (Math.abs(g.x - n.now.x) > 1 || Math.abs(g.y - n.now.y) > 1) return false;   // moved on since
+        delete nudges[id];
+        setReal(w, Qt.rect(n.old.x, n.old.y, g.width, g.height));
+        return true;
+    }
+    // The nudge may land between a slide's open and the window's resync: the activation handler
+    // calls this once it has the activation's time.
+    function promotePendingNudge(w) {
+        const id = w.internalId, p = pendingNudge[id];
+        if (p && Date.now() - p.at < 600) recordNudge(w, p);
+        else delete pendingNudge[id];
     }
     function watchAllWindows() {
         const all = KWin.Workspace.stackingOrder;
@@ -2770,6 +2868,7 @@ KWin.SceneEffect {
                 pendingFly = null;
                 clickedWindow = null;
                 if (!w || w.deleted || !isFlyableWindow(w)) return;
+                undoNudge(w);
                 const g = w.frameGeometry;
                 if (wholeOnOneMonitor(g)) return;
                 flyToWindow(w);
@@ -3440,7 +3539,7 @@ KWin.SceneEffect {
             }
             e.frameX = fx;
             e.frameY = fy;
-            e.window.frameGeometry = Qt.rect(fx, fy, e.width, e.height);
+            setReal(e.window, Qt.rect(fx, fy, e.width, e.height));
             noteWrote(e, fx, fy);
         }
         // Windows not shown (minimized, hidden, other desktops) share the
@@ -3456,7 +3555,7 @@ KWin.SceneEffect {
             const dx = was.x - now.x, dy = was.y - now.y;
             if (dx === 0 && dy === 0) continue;
             const g = w.frameGeometry;
-            w.frameGeometry = Qt.rect(g.x + dx, g.y + dy, g.width, g.height);
+            setReal(w, Qt.rect(g.x + dx, g.y + dy, g.width, g.height));
         }
         // The frames now sit relative to these targets, so a later commit
         // (the chord, a stale click, an activity switch) must measure the
@@ -4374,7 +4473,7 @@ KWin.SceneEffect {
         e.askW = Math.max(50, Math.round(w));
         e.askH = Math.max(50, Math.round(h));
         const f = e.window.frameGeometry;
-        e.window.frameGeometry = Qt.rect(f.x, f.y, e.askW, e.askH);
+        setReal(e.window, Qt.rect(f.x, f.y, e.askW, e.askH));
     }
 
     // Absorb a window's real frame change into its entry. Returns true if anything moved.
@@ -4777,7 +4876,7 @@ KWin.SceneEffect {
             // A size requestSize() asked for may not have arrived yet; ask for
             // it again rather than the old size.
             const g = e.window.frameGeometry;
-            e.window.frameGeometry = Qt.rect(fx, fy, e.askW || g.width, e.askH || g.height);
+            setReal(e.window, Qt.rect(fx, fy, e.askW || g.width, e.askH || g.height));
             settled = true;
         }
     }
@@ -4794,7 +4893,7 @@ KWin.SceneEffect {
             if (!o) continue;
             const g = w.frameGeometry;
             if (g.x !== o.x || g.y !== o.y) {
-                w.frameGeometry = Qt.rect(o.x, o.y, g.width, g.height);
+                setReal(w, Qt.rect(o.x, o.y, g.width, g.height));
             }
         }
     }
@@ -4941,7 +5040,7 @@ KWin.SceneEffect {
             const w = all[i];
             if (!isViewportWindow(w)) continue;
             const g = w.frameGeometry;
-            w.frameGeometry = Qt.rect(g.x + dx, g.y + dy, g.width, g.height);
+            setReal(w, Qt.rect(g.x + dx, g.y + dy, g.width, g.height));
         }
         const t = targetOf(currentActivity);
         t.x -= dx;
@@ -5098,7 +5197,7 @@ KWin.SceneEffect {
             e.frameY = fy;
             const g = e.window.frameGeometry;
             if (g.x !== fx || g.y !== fy) {
-                e.window.frameGeometry = Qt.rect(fx, fy, g.width, g.height);
+                setReal(e.window, Qt.rect(fx, fy, g.width, g.height));
             }
             noteWrote(e, fx, fy);
         }
@@ -5110,7 +5209,7 @@ KWin.SceneEffect {
                 const w = all[i];
                 if (seen[w.internalId] || !isViewportWindow(w)) continue;
                 const g = w.frameGeometry;
-                w.frameGeometry = Qt.rect(g.x - dx, g.y - dy, g.width, g.height);
+                setReal(w, Qt.rect(g.x - dx, g.y - dy, g.width, g.height));
             }
         }
         viewX = cur.x;
@@ -5262,6 +5361,7 @@ KWin.SceneEffect {
         return g.x >= vs.x && g.y >= vs.y && g.x + g.width <= vs.x + vs.width && g.y + g.height <= vs.y + vs.height;
     }
     function flyToWindow(w) {
+        undoNudge(w);
         const t = peekTarget(activityOf(w));
         const f = w.frameGeometry;
         const rect = { x: f.x + t.x, y: f.y + t.y, width: f.width, height: f.height };
@@ -5305,13 +5405,17 @@ KWin.SceneEffect {
         target: KWin.Workspace
         function onWindowActivated(w) {
             // Remember the focus for the cluster tour's destination.
-            if (w && !w.deleted) { focusAt[w.internalId] = Date.now(); }
+            const prev = effect.lastActiveWindow;
+            effect.lastActiveWindow = w || null;
+            if (prev && prev !== w && !prev.deleted) { effect.focusTouched[prev.internalId] = Date.now(); effect.promotePendingNudge(prev); }
+            if (w && !w.deleted) { focusAt[w.internalId] = Date.now(); effect.focusTouched[w.internalId] = Date.now(); effect.promotePendingNudge(w); }
             // Open: a raise (pass-through clicks) restacks the thumbnails.
             // The plane transform is only ever live while open, so the
             // on-screen test below always sees geometry as drawn.
             if (effect.visible) { Qt.callLater(effect.resync); return; }
             if (!effect.configuration.FollowActivation) return;
             if (!effect.isFlyableWindow(w)) return;
+            effect.undoNudge(w);
             const g = w.frameGeometry;
             // A focused window must be wholly on one monitor: an intersection is
             // not enough - one hanging off an edge, or across the seam between two

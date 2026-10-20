@@ -1,5 +1,12 @@
 Unreleased:
 
+- Windows no longer jump when an off-screen window gets focus. KWin moves a window toward the screen
+  when it gains or loses focus (a top edge above the screen to the top, a left edge near the far
+  edge back inside), and the canvas, which keeps windows off the screen on purpose, took that move
+  as the window's new place. A fly to a partly off-screen window, a hover, a click, Alt+Tab or an
+  enter or exit could each move a window the hand never touched. The canvas now undoes the move and
+  keeps the window's coordinate.
+
 - Windows no longer drift when KWin recalculates its work area. The canvas parks the
   windows it is not showing far outside the monitors, and KWin pulls any window that is
   wholly outside back in whenever a panel changes size or is recreated, a monitor wakes or

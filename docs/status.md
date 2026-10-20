@@ -56,6 +56,13 @@ on one monitor with the others showing their desk, and a slide that moves one mo
 monitors, the rest of stages 3 to 7. Tested only in the nest, on two outputs stacked
 and offset as the owner's are.
 
+**Window coordinates drifting, the main cause (2026-10-20).** KWin moves a window toward the screen
+when its focus changes, and the canvas absorbed that as a plane move (`docs/architecture.md`, *KWin
+nudges a window when its focus changes*; scenario `204`, which fails on the previous code for the
+two fly cases and passes now; its overview and hover cases pass either way). Reproduced in a nest at
+scale 1.25, where windows laid out for 1920x1080 are partly off the smaller screen. Not checked on the
+desktop; the `nudged` Perf lines will show it.
+
 **Window coordinates drifting.** Two causes found and fixed: a floated window rode to a screen
 edge on every slide (`178`), and KWin pulled parked windows back inside whenever its work area
 changed (`180`, `181`; `docs/architecture.md`, *KWin pulls parked windows back inside*). Neither

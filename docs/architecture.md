@@ -662,6 +662,26 @@ and the applet draw their own buttons for them, and the float never sets or
 clears them. The `PinnedWindows` knob is no longer read; it stays declared so
 an old config still loads.
 
+### KWin nudges a window when its focus changes
+
+KWin runs its off-screen constraint on a window whenever its focus state changes, gaining or
+losing: a top edge above the screen goes to y=0, a left edge past the right edge minus 100 px
+comes back to that line, a top edge below the bottom goes to the bottom minus 28 px. Measured in
+a nest with the canvas out of the way: a write to an already active window and a plain raise move
+nothing; activating the window, or activating another one (which drops its focus), moves it, 2 ms
+later. The canvas parks windows off the screen all the time and every fly, enter, exit, hover and
+click changes focus, so the move was absorbed as the window's new plane coordinate: a window the
+hand never touched jumped, KCalc at y=-60 became 0 and one at x=sw+60 became sw-100.
+
+`noteNudge` recognises it: same size, moved toward the screen, within two seconds of the window's
+focus change (`focusTouched`, set for the window that gains focus and the one that loses it), not
+an interactive move, not the canvas's own write (every canvas write goes through `setReal`, which
+the handler ignores), and only with FollowActivation on, so KDE's own behaviour stays for people
+who turned following off. With the canvas closed the window is put straight back (`undoNudge`),
+also before a fly reads its geometry; with it open the entry keeps its plane spot and the landing
+writes the true real position. A nudge that arrives before the activation signal waits 600 ms for
+it. Scenario `204`; the Perf line is `nudged`.
+
 ### KWin pulls parked windows back inside
 
 The canvas keeps the windows it is not showing far outside every monitor, because the plane
