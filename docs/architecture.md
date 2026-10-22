@@ -689,7 +689,7 @@ whenever it looks at a window again. Measured in a nest, by writing a frame and 
   its activities are set (a few ms after the frame the commit wrote); its activity becomes the
   current one; the work area changes (a panel resized or recreated, a monitor re-plugged, the scale
   changed); and the canvas opening or closing, for the windows the scene shows (the other
-  activities' in the nest; in the owner's log, windows of the only activity there is, 160 of 180
+  activities' in the nest; in the maintainer's log, windows of the only activity there is, 160 of 180
   big moves within 0.35 s of an open).
 
 The canvas parks windows beyond every monitor on purpose, so each of those moved a window closer
@@ -728,16 +728,16 @@ change, dock event and layout change).
 **What replaced what.** This section replaced three detectors that grew one after another and keyed
 on a cause each (a work-area correlation, a focus change, an activity change or an open or close),
 with their timers, maps and about twelve call sites. They missed whatever the next cause was: the
-owner's overview opens fell between all three.
+maintainer's overview opens fell between all three.
 
-**Not known:** what makes KWin look at a window again at every open in the owner's session. A nest at
+**Not known:** what makes KWin look at a window again at every open in the maintainer's session. A nest at
 their layout (two stacked outputs at scale 1.25, focus follows the mouse, windows 7000 to 10000 px
 away, scenario `205`) pulls only the window that gets focus. The classifier does not need to know.
 
 Scenarios: `180` (a scale change; a script's move is undone; a move between places on the screen is
 not), `181` (a real panel resize, `make test-panel`), `182` to `184` (the commit, open and close, the
 activity switch), `204` (a fly to a window above or past the screen), `206` (a pull right after an
-open, in the overview and a fly), `207` (the edges above), `205` (a stress at the owner's layout).
+open, in the overview and a fly), `207` (the edges above), `205` (a stress at the maintainer's layout).
 
 ### A fly leaves a floated window where it is
 

@@ -90,8 +90,8 @@ desktop window itself, live - a slideshow or a picture of the day keeps going
 in it - and it costs nothing while the camera sits at 1:1 on the desk, where
 it would be invisible anyway. `Backdrop=grid` is the old plane.
 
-> Proven in a nested KWin 6.7.5 session and on a live Plasma 6.7 desktop,
-> with about seventy scenarios and golden screenshots - but still a fork's
+> Proven in a nested KWin 6.8 session and on a live Plasma 6.8 desktop,
+> with over a hundred scenarios and golden screenshots - but still a fork's
 > work in flight, not an upstream release.
 
 ## Parts
@@ -230,7 +230,7 @@ tile, a maximized window) moves as a whole room on the plane.
 | hold MB4, wheel out, release | on the desktop: the location becomes the canvas | the grasp's keyhole: the world itself is the map as the camera zooms out - the windows shrink live into its sheets, the cluster chips float on the plane, a click on a window flies it to 1:1, and the hint strip names the release; zoomed in, the release commits the location instead |
 | [ / ] | | fly the camera to the next / previous cluster of nearby windows, in reading order on the plane |
 | the switcher chord (`SwitcherShortcut`, Meta+Tab, and `SwitcherAltShortcut`, Alt+Tab - bind them over KWin's Tabbox) | | Meta+Tab fits the whole plane, Alt+Tab the cluster the eye is on; Tab and Shift+Tab step the highlighted window, the release or Enter enters it, Esc steps back out |
-| Float (a window's arrange menu) | | the window keeps its coordinates on the plane - only the hand moves them - and when the camera pushes it partly off the screen its picture floats at the edge, bouncing off it with real physics; move the camera back and the picture is the window again. The same flag as "on all desktops", so it follows you across virtual desktops too |
+| Float (a window's arrange menu) | | the window keeps its coordinates on the plane - only the hand moves them - and when the camera pushes it partly off the screen its picture floats at the edge, bouncing off it with real physics; move the camera back and the picture is the window again. The same flag as "on all desktops", so it follows you across virtual desktops too, and anything that sets that flag floats the window: a rule, an app, or a script that restores it (Remember Window Positions does, for a window it saw pinned once). If a window never follows the canvas, check that first |
 
 Activating a window from the task manager - or anything else that focuses it,
 Alt-Tab included - **slides the desktop to it through the canvas**: the plane

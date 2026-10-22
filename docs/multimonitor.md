@@ -180,7 +180,7 @@ frame, so everything below starts from that first frame, never from a held one.
   display (`chromeScr`). Scenario `172`.
 - **One frame tag per activity, no output names**, with numbered chips.
 - **A differential test of the rest.** With two outputs stacked and offset as the
-  owner's are, floats, fits, undo, arrange, tidy and step-in behave the same as on
+  maintainer's are, floats, fits, undo, arrange, tidy and step-in behave the same as on
   one output (scenarios `91`, `166`, `89`).
 
 - **Cameras as data (stage 1).** `Cameras` setting (default merged); with separate, a
@@ -216,7 +216,7 @@ and adds scenarios on two stacked outputs with different scales and offsets.
 6. **Animations.** The staggered open, the merge and split.
 7. **The plugin.** One plane transform per output; optionally view caching.
 
-## Open questions for the owner
+## Open questions
 
 - Should Separate be the default, with Merged as the toolbar toggle?
 - In Separate, a window wholly visible in two cameras: stay on the monitor it is

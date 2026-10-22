@@ -9,8 +9,7 @@ what a user sees in [release-notes.md](release-notes.md).
 ## Where it stands (2026-10-15)
 
 Everything below was measured in the hidden nest (`NEST_VIRTUAL=1`) and, for what
-is marked seen live, on the user's desktop after a relogin ("looks sexy", "pretty
-tight").
+is marked seen live, on the maintainer's desktop after a relogin.
 
 **Working, verified in the nest and seen live:** the quiet slide and the auto fly
 (ease-out with a hair of carry, length by distance, raised on landing), bookmarks
@@ -54,7 +53,7 @@ activity with no output names. Built, off by default (`Cameras=separate`, experi
 on one monitor with the others showing their desk, and a slide that moves one monitor only
 (`174`, `175`). Input on the other monitors needs the rebuilt plugin (`176`). Not built: panels on the other
 monitors, the rest of stages 3 to 7. Tested only in the nest, on two outputs stacked
-and offset as the owner's are.
+and offset as the maintainer's are.
 
 **Window coordinates drifting (2026-10-20).** Causes found and fixed: a floated window rode to a screen
 edge on every slide (`178`), and KWin's reachability rule moved the windows the canvas parks beyond every
@@ -62,7 +61,7 @@ monitor, every time it looked at one again (focus, activities, work area, an ope
 3980, a fly's target landing at the screen edge, parked windows scattered by a scale change, Discord moved
 by 7075 px at an overview open. They are now one classifier with one rule (`docs/architecture.md`, *Frame
 authority*; scenarios `180` to `184`, `204`, `206`, `207`). Its price is stated there: a script that brings
-an out-of-reach window onto a monitor is undone. What makes KWin look again at every open in the owner's
+an out-of-reach window onto a monitor is undone. What makes KWin look again at every open in the maintainer's
 session is not known and the nest does not reproduce it (`205`); the `moved` and `reverted` Perf lines say how
 long after an open, close, focus change, dock event or layout change each move came. Not checked on the desktop.
 

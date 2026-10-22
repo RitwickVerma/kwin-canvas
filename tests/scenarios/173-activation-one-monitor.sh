@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
 # shellcheck source=../tests/lib.sh
-scenario_desc="two outputs stacked and offset (the owner's layout): activating a window that sits across the seam between monitors, or in the dead corner where no monitor is, brings it wholly onto the monitor the pointer is on; a window already wholly on one monitor is left alone"
+scenario_desc="two outputs stacked and offset (the maintainer's layout): activating a window that sits across the seam between monitors, or in the dead corner where no monitor is, brings it wholly onto the monitor the pointer is on; a window already wholly on one monitor is left alone"
 # KCalc's real frame, and the verdict against each output.
 kframe() {
     kwinjs 'var w = null; workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("KCalc") >= 0) w = x; }); var g = w.frameGeometry; print("ONEMON " + Math.round(g.x) + " " + Math.round(g.y) + " " + Math.round(g.width) + " " + Math.round(g.height));' 0.5

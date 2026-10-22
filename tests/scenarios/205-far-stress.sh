@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
 # shellcheck source=../tests/lib.sh
-scenario_desc="windows parked thousands of pixels away keep their plane coordinate through the operations the owner uses all day: the overview opened and cancelled, an auto fly to another window, step in, on the owner's layout (two stacked outputs at scale 1.25) with focus following the mouse"
+scenario_desc="windows parked thousands of pixels away keep their plane coordinate through the operations the maintainer uses all day: the overview opened and cancelled, an auto fly to another window, step in, on the maintainer's layout (two stacked outputs at scale 1.25) with focus following the mouse"
 WINS="KCalc Konsole sample.txt Dolphin Gwenview"
 plane() { # prints "Name=x,y ..." in PLANE coordinates (real frame + the closed camera)
     kwinjs 'var o = []; workspace.stackingOrder.forEach(function (x) { var n = String(x.caption); ["KCalc","Konsole","sample.txt","Dolphin","Gwenview"].forEach(function (k) { if (n.indexOf(k) >= 0) o.push(k + "=" + x.frameGeometry.x + "," + x.frameGeometry.y); }); }); print("FSPOS " + o.join(" "));' 0.45

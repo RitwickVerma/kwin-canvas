@@ -23,7 +23,7 @@ run_scenario() {
     sleep 1
     kwinjs 'workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("KCalc") >= 0) x.frameGeometry = {x: 500, y: 250, width: 480, height: 420}; });' 1.2
     assert_eq "a parked window moved onto the screen by a script is put back" "$(pos3 | sed 's/.*KCalc=//')" "4000,100"
-    # A window that is already on the screen moved to another place on it is the owner's to move
+    # A window that is already on the screen moved to another place on it is the maintainer's to move
     # (Gwenview stays where arrange put it; the three above are the parked ones).
     kwinjs 'workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("Gwenview") >= 0) x.frameGeometry = {x: 300, y: 200, width: 460, height: 420}; });' 0.8
     kwinjs 'workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("Gwenview") >= 0) x.frameGeometry = {x: 500, y: 250, width: 460, height: 420}; });' 0.8

@@ -52,7 +52,7 @@ PLUG="$T/plugins"
 mkdir -p "$DATA/kwin/effects" "$DATA/kwin/decorations" "$DATA/plasma/plasmoids" "$DATA/plasma/wallpapers" "$H/.local/bin" "$CFG" "$PLUG" "$T/bin"
 
 # The source tree doctor compares with: links to the checkout's packages and nothing else, so
-# the checkout's own git-ignored build/ (a built plugin on the owner's machine, none in CI) never
+# the checkout's own git-ignored build/ (a built plugin on the maintainer's machine, none in CI) never
 # reaches a check. Tests that need a build make one under $T/repo/build.
 REPO_FIXTURE="$T/repo"
 mkdir -p "$REPO_FIXTURE"

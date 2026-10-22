@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
 # shellcheck source=../tests/lib.sh
-scenario_desc="a window of the current activity parked far away that something pulls toward the screen right after the canvas opens (the owner's log: 160 such moves within 0.35 s of an open, on one activity) keeps its plane coordinate: in the overview and its cancel, and in a quiet fly"
+scenario_desc="a window of the current activity parked far away that something pulls toward the screen right after the canvas opens (the maintainer's log: 160 such moves within 0.35 s of an open, on one activity) keeps its plane coordinate: in the overview and its cancel, and in a quiet fly"
 real() { # CAPTION -> "x y"
     kwinjs "workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf(\"$1\") >= 0) print(\"OPNPOS \" + x.frameGeometry.x + \" \" + x.frameGeometry.y); });" 0.35
     grep -a "OPNPOS " "$STATE/kwin.log" | tail -1 | sed 's/.*OPNPOS //'

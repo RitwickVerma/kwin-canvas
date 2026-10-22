@@ -876,8 +876,8 @@ at the deep zoom is the noise the max could not beat), 127-rest-cue
 
 ### 2026-10-13 — the tilt leaves: the plane is flat again
 
-The user's verdict on the 3D after the tuning rounds: "nope. kill 3d. go
-back this is shit." The tilt, the lift, the fog, the grid boost and the
+The maintainer's verdict on the 3D after the tuning rounds: remove it and go
+back to the flat plane. The tilt, the lift, the fog, the grid boost and the
 whole Depth3D machinery are gone - main.qml, the plugin and the config
 are the pre-3D state (d741a45), the depth scenario and the depth goldens
 with them, and the docs no longer mention the tilt. Four fixes from the

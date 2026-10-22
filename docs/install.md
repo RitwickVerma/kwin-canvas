@@ -1,6 +1,6 @@
 # Installing kwin-canvas
 
-For KDE Plasma 6 on Wayland. Tested on Plasma 6.7.5. Nothing is compiled;
+For KDE Plasma 6 on Wayland. Tested on Plasma 6.8. Nothing is compiled;
 the effect, the wallpaper and the applet are QML packages, and the CLI is a
 shell script.
 
