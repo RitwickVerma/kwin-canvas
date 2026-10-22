@@ -15,10 +15,13 @@ from PIL import Image, ImageDraw, ImageFont
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
+FONTS = ("/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
+         "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
+         "/usr/share/fonts/noto/NotoSans-Bold.ttf")
+
+
 def font(size):
-    for path in ("/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
-                 "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
-                 "/usr/share/fonts/noto/NotoSans-Bold.ttf"):
+    for path in FONTS:
         if os.path.exists(path):
             return ImageFont.truetype(path, size)
     return ImageFont.load_default()
@@ -86,15 +89,15 @@ def write_if_changed(path, data):
         fh.write(data)
 
 
-def texts():
+def texts(out=HERE):
     sample = "kwin-canvas fixture text\n" + "=" * 40 + "\n\n"
     for i in range(1, 41):
         sample += f"line {i:02d}  the quick brown fox jumps over the lazy dog\n"
-    write_if_changed(os.path.join(HERE, "sample.txt"), sample)
+    write_if_changed(os.path.join(out, "sample.txt"), sample)
     konsole = "kwin-canvas fixture konsole\n"
     for i in range(1, 25):
         konsole += f"{i:02d}  " + "#" * (i * 2) + "\n"
-    write_if_changed(os.path.join(HERE, "konsole.txt"), konsole)
+    write_if_changed(os.path.join(out, "konsole.txt"), konsole)
 
 
 def save_if_changed(img, path):
@@ -111,13 +114,44 @@ def cleanup():
             os.remove(os.path.join(HERE, name))
 
 
-if __name__ == "__main__":
-    out = sys.argv[1] if len(sys.argv) > 1 else HERE
+def generate(out):
     os.makedirs(out, exist_ok=True)
-    cleanup()
     for label, tint in SPACES:
         wallpaper(os.path.join(out, f"wallpaper-{label}.png"), tint, label)
     wallpaper(os.path.join(out, "wallpaper.png"), *SPACES[0][1:], SPACES[0][0])
     tile(os.path.join(out, "tile.png"))
-    texts()
+    texts(out)
+
+
+def same(a, b):
+    """Pictures are the same when their pixels are: the bytes of a PNG follow the
+    zlib it was written with, so two machines draw one picture into different files."""
+    if a.endswith(".png"):
+        with Image.open(a) as x, Image.open(b) as y:
+            return x.size == y.size and x.convert("RGBA").tobytes() == y.convert("RGBA").tobytes()
+    with open(a, "rb") as x, open(b, "rb") as y:
+        return x.read() == y.read()
+
+
+def check():
+    """Generate into a scratch directory and compare with the committed fixtures.
+    Prints the files that differ and returns 1, or returns 0."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        generate(tmp)
+        stale = sorted(n for n in os.listdir(tmp) if not same(os.path.join(tmp, n), os.path.join(HERE, n)))
+    for n in stale:
+        print("fixture differs from the generator's:", n)
+    if stale and not any(os.path.exists(f) for f in FONTS):
+        print("no bold DejaVu or Noto font is installed (Arch: ttf-dejavu), so the labels were drawn in "
+              "PIL's built-in font")
+    return 1 if stale else 0
+
+
+if __name__ == "__main__":
+    if "--check" in sys.argv:
+        sys.exit(check())
+    out = sys.argv[1] if len(sys.argv) > 1 else HERE
+    cleanup()
+    generate(out)
     print("fixtures written to", out)

@@ -251,9 +251,12 @@ JSON and XML KWin parses, `VERSION` and the text fixtures. `qmllint` returns 0
 for everything by default and an unresolvable import is expected off KDE, so the
 QML job fails only on a `[syntax]` warning, and it calls
 `/usr/lib/qt6/bin/qmllint` by path because the Qt5 build in `/usr/bin` answers
-to the same name. The build job runs `make tools` and `make fixtures` and then
-`git diff` on `tests/fixtures`, so the committed fixtures have to match the
-generator.
+to the same name. The build job runs `make tools` and `make fixtures-check`, which draws the
+fixtures into a scratch directory and compares them with the committed ones
+pixel for pixel (the bytes of a PNG follow the zlib that wrote it, so a byte
+comparison fails on a machine with another one). The labels are drawn in DejaVu
+Sans Bold, so the CI image installs `ttf-dejavu`; without a font the generator
+falls back to PIL's own and the check says so.
 
 The scenarios, the demo, the plugin and the shim stay local: they need a
 nested KWin with real windows and virtual outputs, or KWin's headers to build

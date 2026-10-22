@@ -34,7 +34,7 @@ QMLLINT     := /usr/lib/qt6/bin/qmllint
 .DEFAULT_GOAL := help
 .PHONY: help deps deps-install install uninstall install-system uninstall-system reload enable disable status hot \
         lint lint-reuse lint-qml lint-shell lint-shader lint-deadcode lint-python \
-        tools fixtures play nest nest-down nest-clients nest-fixtures nest-reload nest-shot nest-log nest-clean nest-cmd \
+        tools fixtures fixtures-check play nest nest-down nest-clients nest-fixtures nest-reload nest-shot nest-log nest-clean nest-cmd \
         tutorial test test-panel test-decor test-two-outputs test-shim golden unit demo video clean stage dist pkgbuild aur aur-passthrough release tour \
         plugin plugin-try plugin-install-system plugin-status
 
@@ -226,6 +226,9 @@ tools: ## Build the fake-input client used by tests and demos (build/tools/fakei
 
 fixtures: ## Generate the test fixtures (wallpaper, tile, text files)
 	$(PYTHON) tests/fixtures/gen.py
+
+fixtures-check: ## Fail if the committed fixtures differ, pixel for pixel, from what the generator draws
+	$(PYTHON) tests/fixtures/gen.py --check
 
 # ---- nested compositor ------------------------------------------------------
 nest: ## Start the nested KWin with the effect and plasmashell inside (own D-Bus bus and config)
