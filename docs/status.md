@@ -65,11 +65,22 @@ an out-of-reach window onto a monitor is undone. What makes KWin look again at e
 session is not known and the nest does not reproduce it (`205`); the `moved` and `reverted` Perf lines say how
 long after an open, close, focus change, dock event or layout change each move came. Not checked on the desktop.
 
-**Known failing.** `126-grasp-landing` failed one check intermittently and passed 3 of 3
-later. `30-commit`'s `after-commit-1to1` snapshot (rmse 0.045) and `91-two-outputs`'s `two-output-corner`
-snapshot (rmse 0.086) fail the same on a clean checkout of the commit before the frame authority. `112-overlay` passes alone now. Why it passed inside the full run before was
-not found (60-activities ahead of it does not hide the fault); probably an earlier scenario
-leaves the second activity's frame where Gwenview at 4000 has more than 100 px on its screen.
+**Known failing (full run of 106 scenarios on 2026-10-21, KWin 6.8.1: 765 checks pass, 5 fail, 10 skip by design).**
+Four of the five are golden snapshots a little over the 0.03 threshold (`10-open-identity` `open-1to1`, `50-resize`
+`resized`, `80-input` `input-dragged`, `93-backdrop` `backdrop-slide`: rmse 0.032 to 0.044), and `30-commit`'s
+`after-commit-1to1` (0.045) and `91-two-outputs`'s `two-output-corner` (0.086) fail the same way on other
+runs. Not the canvas: the diff is Konsole and Dolphin. Konsole's window is about 10 px narrower than the
+golden's, because a terminal's size snaps to its cell grid and this machine's monospace font has other
+metrics, and Dolphin's breadcrumb shows the checkout's whole path (`Stuff > Projects > kwin-canvas > tests >
+fixtures`) where the golden shows `fixtures`. So the goldens depend on the host's fonts and on where the
+checkout lives. Pinning both in the nest (a fixed fontconfig, the fixtures reached through a fixed path)
+would make them portable; until then `make golden` records them for one machine. They also fail on the
+commit before the frame authority, so the consolidation did not cause them.
+`127-rest-cue` failed its last check in that run: it still asserted the rest cue ends at the handoff, and
+the cue has stayed full while the window holds the pointer since the 2026-10-07 "window wears the hand" change. It
+now asserts that, and that the line goes when the pointer leaves (7 checks pass).
+`126-grasp-landing` failed one check intermittently once and passed on the later runs. `112-overlay` passes
+alone; why it once failed inside a full run was not found.
 
 **Not verified:** KZones, `sticky-window-snapping` and `rememberwindowpositions`
 against the canvas (not in the nest); a Wallpaper Engine wallpaper in the nest;

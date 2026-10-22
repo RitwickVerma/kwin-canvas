@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
-scenario_desc="the pass-through's rest is anticipated: while the pointer waits out the hover delay over a window, a thin line fills along its top edge, and the handoff that follows ends it"
+scenario_desc="the pass-through's rest is anticipated: while the pointer waits out the hover delay over a window, a thin line fills along its top edge; the handoff completes it and the line stays full while the window holds the pointer (the window wears the hand), and it goes when the pointer leaves"
 
 region_rmse() {
     magick "$1" -crop "$3" +repage "$OUT/rc-a.png"
@@ -38,17 +38,21 @@ run_scenario() {
     shot "$OUT/mid.png" >/dev/null 2>&1
     assert_eq "the cue fills the window's edge" "$(changed "$(region_rmse "$OUT/pre.png" "$OUT/mid.png" "200x3+640+120")")" 1
 
-    # Past the delay the handoff happens: the rest ends and the window is
-    # the pointer's.
+    # Past the delay the handoff happens: the rest ends, the window is the
+    # pointer's, and the line stays full along its top edge.
     sleep 1.0
     c state
     assert_eq "the handoff ends the rest" "$(grep -o ' rest=[01]' <<<"$(head -1 <<<"$LAST_STATE")" | cut -d= -f2)" 0
     assert_eq "and the window takes the pointer" "$(pt_state | grep -c 'hover=sample.txt')" 1
     shot "$OUT/post.png" >/dev/null 2>&1
-    assert_eq "the cue is gone with it" "$(changed "$(region_rmse "$OUT/mid.png" "$OUT/post.png" "200x3+640+120")")" 1
+    assert_eq "the line stays full while the window holds the pointer" "$(changed "$(region_rmse "$OUT/mid.png" "$OUT/post.png" "200x3+640+120")")" 0
 
+    # The pointer leaves the window: the line goes with the hand.
     input move 1700 1000
-    sleep 0.5
+    sleep 1.0
+    c state
+    shot "$OUT/gone.png" >/dev/null 2>&1
+    assert_eq "the line goes when the pointer leaves" "$(changed "$(region_rmse "$OUT/post.png" "$OUT/gone.png" "200x3+640+120")")" 1
     c cancel
     kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key HoverDelay --delete
     arrange
