@@ -40,6 +40,9 @@ Log out and back in, then press **Meta+Ctrl+Alt+Space** (or push a screen
 corner) to step out. Full install notes, the optional plugin and every key are
 below.
 
+The full history is about 100 MB, mostly earlier versions of the golden screenshots;
+`git clone --depth 1` brings 17 MB, and `git fetch --unshallow` the rest later.
+
 <details>
 <summary>The longer demo: the hover's glow, the clusters' web, the switcher</summary>
 
