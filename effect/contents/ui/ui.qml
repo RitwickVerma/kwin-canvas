@@ -228,7 +228,7 @@ Item {
     // scene's keys to the QuickView's active focus item, and a static
     // focus binding inside a loaded item never takes it - the split's
     // own regression. The force is the only form that registers.
-    Component.onCompleted: { console.log("kwin-canvas ui: loaded"); view.forceActiveFocus(); view.checkWallpaper(); }
+    Component.onCompleted: { console.log("kwin-canvas ui: loaded"); if (view.chromeWanted) chromeLoader.active = true; view.forceActiveFocus(); view.checkWallpaper(); }
         id: view
         readonly property var screen: KWin.SceneView.screen
         readonly property rect sg: KWin.SceneView.screen.geometry
@@ -720,6 +720,7 @@ Item {
                     }
                 }
                 Component.onCompleted: {
+                    effect.noteBuilt("thumb");
                     thumb.seen = thumb.entry;
                     if (thumb.entry.born && !effect.quiet && Date.now() - thumb.entry.born < 500) {
                         thumb.enterFade = 0;
@@ -1093,6 +1094,7 @@ Item {
             model: effect.clusters.length
             delegate: Item {
                 required property int index
+                Component.onCompleted: effect.noteBuilt("badge")
                 // The cluster list is replaced wholesale by every recluster,
                 // and a delegate can outlive the list it was built for by a
                 // frame: the read must never throw on the stale index.
@@ -1192,54 +1194,46 @@ Item {
             }
         }
 
+        // The web, woven by the effect when the layout changes (the stack, the
+        // clusters, the hover, the selection, the focus, the active window) and never
+        // by the camera, as a few layers: every span between the same two windows of
+        // the stack shares one path (Logic.webLayers). The Repeater counts the layers,
+        // so a re-weave that keeps their number (a drag, a hover) updates the paths of
+        // the existing items instead of destroying and building every one, and a
+        // dozen windows' web is a dozen or so items, not hundreds.
         Repeater {
-            model: {
-                effect.revision; effect.clusterRev; effect.hoverRev;
-                effect.focusEntry; effect.selectionRev; effect.travelCluster;
-                effect.quiet; effect.ql;
-                // Minimal fidelity and below: the web stays off entirely - its
-                // weave is the canvas's most expensive decoration and the
-                // first thing a busy machine should not be paying for.
-                if (effect.ql >= 2) return [];
-                return effect.clusterThreads();
-            }
+            model: effect.threadData.length
             delegate: Item {
-                required property var modelData
-                // The span's geometry is the plane's own coordinates; the
-                // camera is a uniform translate-plus-scale, applied here once
-                // per thread per frame. The O(N^2) clipping in clusterThreads
-                // runs only when the layout changes, so camera motion is a
-                // cheap transform instead of a full re-weave.
+                id: layer
+                required property int index
+                readonly property var t: effect.threadData[index] || ({ z: 0, lit: false, co: 0, d: "" })
+                // The paths are in the plane's own coordinates; the camera is a
+                // uniform translate-plus-scale, applied here once per layer per frame.
                 x: -(effect.viewX * effect.zoom) - view.sg.x
                 y: -(effect.viewY * effect.zoom) - view.sg.y
                 scale: effect.zoom
                 transformOrigin: Item.TopLeft
-                z: modelData.z
+                z: t.z
+                // The unlit constellation fades out with the zoom, dissolving
+                // between 0.45 and 0.5 instead of cutting out at half zoom, while a
+                // lit thread (the cluster the focus is in) draws at every zoom; a
+                // quiet hold carries no web at all.
+                readonly property real want: (t.lit ? Math.max(0.3, 0.55 * t.co) * Math.min(1, Math.max(0, (1 - effect.zoom) * 4)) : (effect.ql >= 2 ? 0 : 0.22 * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20)) * t.co)) * effect.skinReveal
+                property real show: 0
+                opacity: show
+                Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
+                onWantChanged: show = want
+                Component.onCompleted: { show = want; effect.noteBuilt("web"); }
                 Shape {
-                    // The web is overworld chrome: the unlit constellation
-                    // fades out with the zoom, dissolving between 0.45 and 0.5
-                    // instead of cutting out at half zoom - while a lit thread
-                    // (the cluster the focus is in) draws at every zoom; a 1:1
-                    // view is the desktop alone because a quiet hold carries no
-                    // web at all.
-                    readonly property real want: (modelData.lit ? Math.max(0.3, 0.55 * modelData.co) * Math.min(1, Math.max(0, (1 - effect.zoom) * 4)) : (effect.ql >= 2 ? 0 : 0.22 * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20)) * modelData.co)) * effect.skinReveal
-                    property real show: 0
-                    opacity: show
-                    Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
-                    onWantChanged: show = want
-                    Component.onCompleted: show = want
+                    // The strokes divide by the zoom so the wrapper's scale keeps
+                    // them at a constant screen width.
                     ShapePath {
-                        // The strokes divide by the zoom so the wrapper's scale
-                        // keeps them at a constant screen width, exactly as
-                        // they were when the geometry was camera-space.
                         strokeWidth: 5 / effect.zoom
                         strokeColor: Qt.rgba(1, 1, 1, 0.10)
                         fillColor: "transparent"
                         capStyle: ShapePath.RoundCap
                         joinStyle: ShapePath.RoundJoin
-                        PathSvg {
-                            path: "M " + modelData.x1.toFixed(1) + " " + modelData.y1.toFixed(1) + " L " + modelData.x2.toFixed(1) + " " + modelData.y2.toFixed(1)
-                        }
+                        PathSvg { path: layer.t.d }
                     }
                     ShapePath {
                         strokeWidth: 1.6 / effect.zoom
@@ -1247,9 +1241,7 @@ Item {
                         fillColor: "transparent"
                         capStyle: ShapePath.RoundCap
                         joinStyle: ShapePath.RoundJoin
-                        PathSvg {
-                            path: "M " + modelData.x1.toFixed(1) + " " + modelData.y1.toFixed(1) + " L " + modelData.x2.toFixed(1) + " " + modelData.y2.toFixed(1)
-                        }
+                        PathSvg { path: layer.t.d }
                     }
                 }
             }
@@ -1266,6 +1258,7 @@ Item {
             model: effect.chipCount
             delegate: Item {
                 required property int index
+                Component.onCompleted: effect.noteBuilt("chip")
                 readonly property var c: effect.clusters[index] || null
                 x: { effect.revision; effect.clusterRev; effect.viewX; effect.viewY; effect.zoom; return c ? -(effect.viewX * effect.zoom) - view.sg.x + (c.cx - 12) * effect.zoom : 0; }
                 y: { effect.revision; effect.clusterRev; effect.viewX; effect.viewY; effect.zoom; return c ? -(effect.viewY * effect.zoom) - view.sg.y + (c.cy - 12) * effect.zoom : 0; }
@@ -1424,12 +1417,13 @@ Item {
         // first frame, a quick slide or fly included, which shows none of it. It is built
         // asynchronously once wanted, so the windows' first frame never waits for it, and it
         // stays until the scene goes away with the close.
-        property bool chromeOn: false
         readonly property bool chromeWanted: !effect.quiet || effect.grasp || effect.switcherActive || !!effect.toastText
-        onChromeWantedChanged: if (chromeWanted) chromeOn = true
+        onChromeWantedChanged: if (chromeWanted) chromeLoader.active = true
         Loader {
+            id: chromeLoader
             anchors.fill: parent
-            active: view.chromeOn || view.chromeWanted
+            // Set, never bound: once built the chrome stays for the scene's life.
+            active: false
             asynchronous: true
             sourceComponent: Component {
                 Item {

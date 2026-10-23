@@ -304,7 +304,10 @@ KWin.SceneEffect {
     // slide dist ms, hover-fetch ms, ticks n p50 p95 max (on the close), moved win dx dy
     // (a real window moved by something else, adopted into the plane), reverted win cls dx dy
     // (KWin's reachability rule moved a window and the canvas put it back), landed win dx dy
-    // (a floated window taking its picture's spot), stall ms cam
+    // (a floated window taking its picture's spot), built n moving (scene items
+    // created this session, and how many of them while the camera or a drag was
+    // moving: anything above 0 there is a rebuild on the frame path; a re-weave of
+    // the cluster web counts as one, "weave"), stall ms cam
     // quiet entries ql cpu gpu mem (a tick 60 ms or more late, at most 40 a session).
     property bool perf: configuration.Perf
     function perfLog(ev, kv) {
@@ -318,6 +321,18 @@ KWin.SceneEffect {
     property int perfMoves: 0         // moved lines written this session (capped)
     property int perfStalls: 0        // stall lines written this canvas session (capped)
     property real perfTickMax: 0
+    property int perfBuilt: 0         // scene items created this session (thumbnails, web spans, chips)
+    property int perfBuiltMoving: 0   // of those, created while the camera or a drag was moving
+    property var perfBuiltKinds: ({}) // kind -> count, of the ones created while moving
+    // A heavy delegate of `kind` was created: counted with Perf, free without.
+    function noteBuilt(kind) {
+        if (!perf) return;
+        perfBuilt++;
+        if (camLive() || dragIndex >= 0) {
+            perfBuiltMoving++;
+            perfBuiltKinds[kind] = (perfBuiltKinds[kind] || 0) + 1;
+        }
+    }
     // Tick spacing as a histogram, 1 ms bins (the last takes everything from
     // 250 ms up): constant memory however long the canvas stays open.
     property var perfBins: []
@@ -368,6 +383,12 @@ KWin.SceneEffect {
             };
             perfLog("ticks", "n=" + perfTickN + " p50=" + at(0.5) + " p95=" + at(0.95) + " max=" + Math.round(perfTickMax));
         }
+        let kinds = "";
+        for (const k in perfBuiltKinds) kinds += " " + k + "=" + perfBuiltKinds[k];
+        perfLog("built", "n=" + perfBuilt + " moving=" + perfBuiltMoving + kinds);
+        perfBuilt = 0;
+        perfBuiltMoving = 0;
+        perfBuiltKinds = ({});
         perfTickN = 0;
         perfTickMax = 0;
         perfStalls = 0;
@@ -957,7 +978,10 @@ KWin.SceneEffect {
             const e = entries[i];
             rects.push({ x: e.x, y: e.y, width: e.width, height: e.height, id: e.window.internalId });
         }
-        const r = Logic.recluster(rects, clusterOf, threadRank, configuration.ClusterGap);
+        // The ranks object is updated in place by the clustering, so the comparison is
+        // against a copy of the last published one.
+        const r = Logic.recluster(rects, clusterOf, Object.assign({}, threadRank), configuration.ClusterGap);
+        if (Logic.sameClustering(r, { clusters: clusters, clusterOf: clusterOf, ranks: threadRank })) return;
         clusters = r.clusters;
         clusterOf = r.clusterOf;
         threadRank = r.ranks;
@@ -1233,6 +1257,42 @@ KWin.SceneEffect {
     // segment-rect cuts are invariant under it, so the O(N^2) clipping runs
     // only when the layout changes (the stack, the clusters, the
     // hover) and the delegates apply the camera per frame.
+    // The web every view draws, woven once by the effect and published here. The
+    // triggers are explicit (below) and coalesced to one weave per turn of the event
+    // loop: a binding in each view re-ran clusterThreads whenever anything it read
+    // changed (KWin's active window, a window's flags, the configuration), once per
+    // output, and each clustering published four properties, each a separate re-run.
+    property var threadData: []
+    property bool weavePending: false
+    function scheduleWeave() {
+        if (weavePending) return;
+        weavePending = true;
+        Qt.callLater(weaveIfPending);
+    }
+    // A weave queued before a synchronous one (the open's) has nothing left to do.
+    function weaveIfPending() { if (weavePending) reweave(); }
+    function reweave() {
+        weavePending = false;
+        // Minimal fidelity and below: the web stays off entirely - its weave is the
+        // canvas's most expensive decoration and the first thing a busy machine
+        // should not be paying for.
+        if (!visible || ql >= 2) { if (threadData.length) threadData = []; return; }
+        // A re-weave while only the camera moves is a dependency on the frame path:
+        // counted as built work (a drag changes the layout, so its re-weaves are not).
+        if (dragIndex < 0) noteBuilt("weave");
+        const zs = [];
+        for (let i = 0; i < entries.length; ++i) zs.push(windowZ(entries[i]));
+        threadData = Logic.webLayers(clusterThreads(), zs);
+    }
+    onClusterRevChanged: scheduleWeave()
+    onHoverRevChanged: scheduleWeave()
+    onFocusEntryChanged: scheduleWeave()
+    onSelectionRevChanged: scheduleWeave()
+    onTravelClusterChanged: scheduleWeave()
+    onQuietChanged: scheduleWeave()
+    onQlChanged: scheduleWeave()
+    // And KWin's active window, which picks the lit cluster: scheduled from the
+    // activation handler further down.
     function clusterThreads() {
         if (quiet) return [];
         // The windows as occlusion rects in the plane's coordinates, each at
@@ -3260,6 +3320,10 @@ KWin.SceneEffect {
         entryTargets = copyTargets(targets);
         lastOpenAt = Date.now();
         snapshot();
+        // The clusters and their web now, not a tick later: the scene is built from them
+        // below, and clustering after the first frame built the badges, the chips and the
+        // web's spans mid-flight.
+        recluster();
         // A slide or fly keeps a floated window where it is on the screen (floatAnchor).
         floatAnchor = ({});
         floatOf = ({});
@@ -3274,6 +3338,8 @@ KWin.SceneEffect {
         openFrames = {};
         for (let i = 0; i < entries.length; ++i) openFrames[entries[i].window.internalId] = { x: entries[i].frameX, y: entries[i].frameY };
         visible = true;
+        // The web with the scene's first frame, not a turn later mid-flight.
+        reweave();
         let moved = false;
         if (!quiet) moved = openView(spec);
         // Where the opening view put the camera: a close that finds it still
@@ -4770,7 +4836,7 @@ KWin.SceneEffect {
             settled = true;
         }
     }
-    onRevisionChanged: { if (planeLive) Qt.callLater(settle); Qt.callLater(recluster); }
+    onRevisionChanged: { if (planeLive) Qt.callLater(settle); Qt.callLater(recluster); scheduleWeave(); }
 
     // Cancel puts every window settle() moved back where it was at open.
     function unsettle() {
@@ -5294,6 +5360,8 @@ KWin.SceneEffect {
         function onWindowActivated(w) {
             // Remember the focus for the cluster tour's destination.
             effect.lastActivationAt = Date.now();
+            // The lit cluster follows the active window.
+            effect.scheduleWeave();
             if (w && !w.deleted) { focusAt[w.internalId] = Date.now(); }
             // Open: a raise (pass-through clicks) restacks the thumbnails.
             // The plane transform is only ever live while open, so the
@@ -5676,6 +5744,8 @@ KWin.SceneEffect {
         }
         for (let i = 0; i < entries.length; ++i) {
             const e = entries[i];
+            // A window closed since the last snapshot has no geometry to report.
+            if (!e.window || e.window.deleted || !e.window.frameGeometry) continue;
             const g = e.window.frameGeometry;
             const f = floatOf[e.window.internalId];
             const fx = f ? (f.x - (e.x - viewX) * zoom) : 0, fy = f ? (f.y - (e.y - viewY) * zoom) : 0;

@@ -1,5 +1,16 @@
 Unreleased:
 
+- The zoomed-out overview is smooth again. With a floated window on the desk (a pinned window, a
+  picture-in-picture) a zoom-to-fit open ran at about 1.5 frames a second and took three seconds to
+  settle: the cluster web was rebuilt on every frame. The web is now woven only when the layout
+  changes, drawn as a few layered paths instead of hundreds of separate lines, and a window drag
+  in the overview no longer rebuilds it on every pointer move. In the test nest a drag's worst frame
+  went from 654 ms to under 40.
+- Slides and auto flies start faster: the overview's toolbar, help, switcher, map and menus are
+  built only when the overview needs them, which halved the time to a slide's first frame.
+- `kwin-canvas doctor` reads the canvas's frame timings from the journal (with the Perf setting on)
+  and warns when recent sessions had slow frames or rebuilt the scene while moving.
+
 - Windows no longer jump when KWin moves them. KWin keeps every window reachable, and applies that
   whenever it looks at a window again: its focus changes, its activity changes, a panel or monitor or
   the scale changes, the canvas opens or closes. The canvas parks windows far off the screen, so each

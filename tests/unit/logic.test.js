@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
+const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -25,6 +25,36 @@ ok("the dynamic gap is half the pair's scale",
     L.clusterGapFor(rect(1, 0, 0, 480, 420), rect(2, 0, 0, 500, 400), 0) === 205);
 ok("the dynamic gap reads the same scaled up",
     L.clusterGapFor(rect(1, 0, 0, 1500, 900), rect(2, 0, 0, 1700, 900), 0) === 450);
+
+// ---- the same clustering, published once ----
+{
+    const desk = [rect(1, 0, 0, 400, 300), rect(2, 420, 0, 400, 300), rect(3, 5000, 0, 400, 300)];
+    const a = L.recluster(desk, {}, {}, 0);
+    const b = L.recluster(desk, a.clusterOf, Object.assign({}, a.ranks), 0);
+    ok("an unchanged desk clusters the same", L.sameClustering(a, b));
+    const moved = [rect(1, 0, 0, 400, 300), rect(2, 440, 0, 400, 300), rect(3, 5000, 0, 400, 300)];
+    const c = L.recluster(moved, a.clusterOf, Object.assign({}, a.ranks), 0);
+    ok("a moved window changes the centroid, so the clustering differs", !L.sameClustering(a, c));
+    const apart = [rect(1, 0, 0, 400, 300), rect(2, 3000, 0, 400, 300), rect(3, 5000, 0, 400, 300)];
+    const d = L.recluster(apart, {}, {}, 0);
+    ok("a window leaving its cluster differs", !L.sameClustering(a, d));
+    ok("nothing is never the same", !L.sameClustering(a, null));
+}
+
+// ---- the web's layers ----
+{
+    const zs = [1000, 1001, 1002, 2000];
+    const sp = function (x1, z, lit, co) { return { x1: x1, y1: 0, x2: x1 + 10, y2: 0, z: z, lit: lit, co: co }; };
+    const ls = L.webLayers([sp(0, 1000.2, false, 1), sp(20, 1000.7, false, 1), sp(40, 1001.5, false, 1), sp(60, 1000.3, true, 1)], zs);
+    ok("spans between the same two windows share a layer", ls.filter(function (l) { return !l.lit && l.z === 1000.5; }).length === 1
+        && ls.find(function (l) { return !l.lit && l.z === 1000.5; }).d === "M 0.0 0.0 L 10.0 0.0 M 20.0 0.0 L 30.0 0.0");
+    ok("a span above the next window gets the next band", ls.some(function (l) { return l.z === 1001.5; }));
+    ok("lit spans keep their own layer", ls.some(function (l) { return l.lit && l.z === 1000.5; }));
+    ok("four spans make three layers", ls.length === 3);
+    ok("layers come in z order", ls.every(function (l, i) { return i === 0 || ls[i - 1].z <= l.z; }));
+    ok("a span under every window sits below the lowest", L.webLayers([sp(0, 900, false, 1)], zs)[0].z === 999.5);
+    ok("no spans, no layers", L.webLayers([], zs).length === 0);
+}
 
 // ---- the distance ----
 ok("touching windows are zero apart", L.clusterDist(rect(1, 0, 0, 100, 100), rect(2, 100, 0, 100, 100)) === 0);

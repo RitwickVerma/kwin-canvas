@@ -117,7 +117,7 @@ doctor() { # runs the repo's CLI over the fixture; session started in the future
     out=$(env PATH="$T/bin:$PATH" DOCTOR_REPO="${REPO:-$REPO_FIXTURE}" DOCTOR_HOME="$H" DOCTOR_PLUGIN_DIR="$PLUG" DOCTOR_KWIN_VERSION="${KWV-6.8.0}" \
         DOCTOR_KWIN_START="${KSTART:-$((NOW + 1000))}" DOCTOR_PLASMA_START="${PSTART:-$((NOW + 1000))}" \
         FAKE_LOAD="${FAKE_LOAD-cpu=10 load=0.50 mem=40 gpu=5}" FAKE_ZOOM="${FAKE_ZOOM-false}" FAKE_LOADED="${FAKE_LOADED-true}" \
-        bash "$CLI" doctor 2>&1)
+        DOCTOR_PERF_FILE="${PERF-$T/perf-none}" bash "$CLI" doctor 2>&1)
     rc=$?
 }
 
@@ -136,6 +136,21 @@ has "clean: zoom off" "OK    shortcuts  KDE's Zoom effect is not on"
 has "clean: ladder full" "OK    ladder     Auto mode, full fidelity now: cpu 10"
 has "clean: summary" "0 fail"
 lacks "clean: no FAIL line" "FAIL "
+
+# ---- doctor: the frame timings ----
+: > "$T/perf-none"
+has "frames: none logged is information only" "INFO  frames     no frame timings in the journal"
+printf '%s\n' "kwin-canvas perf: ticks n=200 p50=16 p95=20 max=40" "kwin-canvas perf: built n=30 moving=0" > "$T/perf-good"
+PERF="$T/perf-good" doctor
+has "frames: on time and nothing built while moving" "OK    frames     1 canvas sessions since boot kept their frames on time"
+printf '%s\n' "kwin-canvas perf: ticks n=50 p50=250 p95=250 max=718" "kwin-canvas perf: built n=30 moving=0" > "$T/perf-slow"
+PERF="$T/perf-slow" doctor
+has "frames: a 718 ms frame warns" "WARN  frames     1 of 1 canvas sessions since boot had a frame of 250 ms"
+printf '%s\n' "kwin-canvas perf: ticks n=200 p50=16 p95=20 max=40" "kwin-canvas perf: built n=300 moving=79 weave=79" > "$T/perf-built"
+PERF="$T/perf-built" doctor
+has "frames: a rebuild while moving warns" "WARN  frames     1 canvas sessions since boot created scene items while"
+exit_is "frames: a warning is not a failure" 0
+unset PERF
 
 # ---- doctor: installed against the repo ----
 echo "// drift" >> "$DATA/kwin/effects/kwin-canvas/contents/ui/main.qml"

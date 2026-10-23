@@ -55,6 +55,17 @@ on one monitor with the others showing their desk, and a slide that moves one mo
 monitors, the rest of stages 3 to 7. Tested only in the nest, on two outputs stacked
 and offset as the maintainer's are.
 
+**The frame path (2026-10-23).** The owner's zoom-to-fit opens ran at about 650 ms a frame at zoom 0.34,
+steady after the camera settled: with a floated window the cluster web's model changed every frame and
+rebuilt hundreds of path items. Fixed, and checked live after `make hot` (two fit opens: 16 to 17 ms
+frames, worst 49, no stall, settled in 0.5 to 0.8 s instead of 3). Then the general cure
+(`docs/architecture.md`, *The frame path*): the web woven once by the effect from explicit triggers and
+drawn as layers (26 items a session instead of about 480 in `208`), clusters published only when they
+change, the clusters and web computed at the open, the chrome built only when the overview needs it,
+the `built` Perf line, `208-frame-budget`, and a `frames` check in the doctor. In the nest, with the web
+drawn, the previous commit's fit open had a p95 of 61 ms and a drag one frame of 654 ms; now 18 ms and
+35 ms at most on one output. The nest's frame times are a software renderer's and vary with the host.
+
 **Window coordinates drifting (2026-10-20).** Causes found and fixed: a floated window rode to a screen
 edge on every slide (`178`), and KWin's reachability rule moved the windows the canvas parks beyond every
 monitor, every time it looked at one again (focus, activities, work area, an open or close): `112-overlay`'s

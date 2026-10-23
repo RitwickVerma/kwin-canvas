@@ -844,10 +844,41 @@ growing list.
 | `slide` | `dist`, `ms` | a quiet slide: distance in px and wall-clock time from the animation's start to its landing |
 | `hover-fetch` | `ms` | the rest that made the camera fetch a hovered window (the pointer's rest, which is the fetch's latency) |
 | `ticks` | `n`, `p50`, `p95`, `max` | physics tick spacing in ms over the session, written when the canvas closes |
+| `built` | `n`, `moving`, and a count per kind (`thumb`, `web`, `badge`, `chip`, `weave`) | scene items created in the session, written when the canvas closes; `moving` counts those created while the camera or a drag was moving, which should be 0 (a re-weave of the cluster web counts as `weave`) |
 | `moved` | `win`, `cls`, `dx`, `dy`, `open`, `quiet`, `pinned`, `floats`, `since …` | a real window's position changed by something other than the canvas and was adopted into the plane (a move the classifier did not take for KWin's reachability rule: see *Frame authority*) |
 | `reverted` | `win`, `cls`, `dx`, `dy`, `open`, `quiet`, `since …` | something other than the hand or the canvas moved a window from out of reach to in reach, and the canvas put it back (*Frame authority*); `since` is the milliseconds since the last open, close, focus change, dock event and layout change, `-` when none in five seconds |
 | `landed` | `win`, `dx`, `dy` | a floated window took its picture's spot as its plane coordinates when the canvas was left |
 | `stall` | `ms`, `cam`, `quiet`, `entries`, `ql`, `cpu`, `gpu`, `mem` | a physics tick 60 ms or more late, with what the camera was doing (`goal`, `fling`, `-`) and the effect's last load readings; at most 40 a session; `kwin-canvas perf` lists the last 12 with their times |
+
+### The frame path
+
+Nothing on the canvas may create scene items, or redo work that only the layout decides, because the
+camera moved. Per frame only the camera's own numbers change (`viewX`, `viewY`, `zoom`) and the float's
+`floatRev`; a Repeater model or a heavy computation that depends on them runs at the frame rate. That
+is how a zoomed-out overview once ran at 650 ms a frame on the maintainer's desktop: the cluster web's
+model depended on `floatRev`, so with one floated window every thread was re-woven and every one of its
+hundreds of path items rebuilt on every frame.
+
+The rules that follow from it:
+
+- A Repeater's model is a count, and its delegates read their data by index from an array the effect
+  publishes (`entries`, `threadData`, `clusters`). A new array with the same length updates the items
+  in place; only a change of length creates or destroys them.
+- Derived data is computed once by the effect, from an explicit list of triggers, coalesced to one
+  computation per turn of the event loop (`scheduleWeave`), not by a binding in each view: a binding
+  re-runs on whatever it happens to read, once per output.
+- A computation publishes only when its result changed (`recluster` with `Logic.sameClustering`).
+- Whatever the first frame needs is computed in `open()` before the scene is built (the clusters and
+  the web), so nothing is built a turn later in mid-flight.
+- Many small items that differ only in position become one item per layer (`Logic.webLayers`: the
+  web's spans grouped by the stack band they sit in).
+
+`208-frame-budget` holds this on a desk shaped like the maintainer's (two stacked outputs at scale 1.25,
+eleven windows in clusters, two floated): a zoom-to-fit open, a slide and a window drag must create no
+item while moving and keep their frames inside a budget. The nest renders in software, so its frame
+limits catch a rebuild on the frame path, not the speed of a GPU; the `built ... moving=` count is exact
+everywhere. On the real desktop `kwin-canvas doctor` reads the same Perf lines from the journal and
+warns about sessions that built while moving or had a frame of 250 ms or more.
 
 **Where an open's first 150 ms go.** `open()` itself takes about 1 ms; the
 first physics tick comes 150 to 200 ms after it because `visible = true`

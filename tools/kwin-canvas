@@ -490,6 +490,39 @@ doctor_enabled() {
     fi
 }
 
+# doctor_frames: the canvas's own frame timings, which the effect writes to the journal while
+# its Perf setting is on: whether the canvas sessions since boot kept their frames on time and
+# created no scene item while the camera or a drag was moving (a rebuild on the frame path, the
+# kind that once made a zoomed-out overview run at 1.5 frames a second). DOCTOR_PERF_FILE reads
+# a saved dump instead of the journal.
+doctor_frames() {
+    local src="" lines sessions slow built
+    if [ -n "${DOCTOR_PERF_FILE:-}" ]; then
+        src=$(cat "$DOCTOR_PERF_FILE" 2>/dev/null)
+    elif command -v journalctl >/dev/null 2>&1; then
+        src=$(journalctl --user -b -g "kwin-canvas perf: (ticks|built)" -o cat --no-pager 2>/dev/null)
+    fi
+    lines=$(printf '%s\n' "$src" | sed -n 's/.*kwin-canvas perf: //p')
+    if [ -z "$lines" ]; then
+        verdict INFO frames "no frame timings in the journal since boot (the effect writes them with its Perf setting on)"
+        return
+    fi
+    sessions=$(printf '%s\n' "$lines" | grep -c '^ticks ')
+    # Slow: a frame of 250 ms or more, or a p95 of 100 ms. A short session's p95 is nearly its
+    # max, and one late frame in fifteen is not what this is for.
+    slow=$(printf '%s\n' "$lines" | awk '/^ticks / { p = 0; m = 0
+        for (i = 2; i <= NF; i++) { split($i, kv, "="); if (kv[1] == "p95") p = kv[2] + 0; if (kv[1] == "max") m = kv[2] + 0 }
+        if (p >= 100 || m >= 250) n++ } END { print n + 0 }')
+    built=$(printf '%s\n' "$lines" | awk '/^built / { for (i = 2; i <= NF; i++) { split($i, kv, "="); if (kv[1] == "moving" && kv[2] + 0 > 0) n++ } } END { print n + 0 }')
+    if [ "$built" -gt 0 ]; then
+        verdict WARN frames "$built canvas sessions since boot created scene items while the camera or a drag was moving: a rebuild on the frame path (kwin-canvas perf --since today shows the built line's kinds)"
+    elif [ "$slow" -gt 0 ]; then
+        verdict WARN frames "$slow of $sessions canvas sessions since boot had a frame of 250 ms or more, or a p95 of 100 ms (kwin-canvas perf --since today lists the late ticks)"
+    else
+        verdict OK frames "$sessions canvas sessions since boot kept their frames on time and built nothing while moving"
+    fi
+}
+
 doctor() {
     set +e +o pipefail
     local home repo self cand
@@ -509,6 +542,7 @@ doctor() {
     doctor_shortcuts "$home/.config"
     doctor_ladder "$home/.config"
     doctor_enabled "$home/.config"
+    doctor_frames
     echo "kwin-canvas doctor: $DOCTOR_OK ok, $DOCTOR_WARN warn, $DOCTOR_FAIL fail"
     [ "$DOCTOR_FAIL" -eq 0 ]
 }

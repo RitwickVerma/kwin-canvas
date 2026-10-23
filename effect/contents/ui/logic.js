@@ -85,6 +85,48 @@ function recluster(rects, prevOf, ranks, gapCfg) {
     return { clusters: out, clusterOf: of, ranks: ranks };
 }
 
+// The web's spans as drawing layers. A span only has to sit above the windows
+// whose z is lower and below those whose z is higher, so every span between the
+// same two windows of the stack can share one path: the span's z is replaced by
+// the band it falls in (just above the highest window below it), and spans of the
+// same band, lit state and cohesion become one layer with one SVG path. A dozen
+// windows' web is then a dozen or so items instead of hundreds of one-line paths.
+// windowZs: every window's z. Returns [{ z, lit, co, d }], d an SVG path of
+// "M x y L x y" segments, in plane coordinates.
+function webLayers(spans, windowZs) {
+    const zs = windowZs.slice().sort(function (a, b) { return a - b; });
+    const band = function (z) {
+        let lo = 0, hi = zs.length;
+        while (lo < hi) { const m = (lo + hi) >> 1; if (zs[m] < z) lo = m + 1; else hi = m; }
+        return lo === 0 ? (zs.length ? zs[0] - 0.5 : 0) : zs[lo - 1] + 0.5;
+    };
+    const byKey = {};
+    const out = [];
+    for (let i = 0; i < spans.length; ++i) {
+        const sp = spans[i];
+        const z = band(sp.z);
+        const key = z + "|" + (sp.lit ? 1 : 0) + "|" + sp.co;
+        let l = byKey[key];
+        if (!l) { l = byKey[key] = { z: z, lit: !!sp.lit, co: sp.co, d: "" }; out.push(l); }
+        l.d += (l.d ? " " : "") + "M " + sp.x1.toFixed(1) + " " + sp.y1.toFixed(1) + " L " + sp.x2.toFixed(1) + " " + sp.y2.toFixed(1);
+    }
+    out.sort(function (a, b) { return a.z - b.z || (a.lit === b.lit ? 0 : a.lit ? 1 : -1) || a.co - b.co; });
+    return out;
+}
+
+// Whether two recluster results describe the same clustering: the same
+// clusters (members, order, centroids, size, cohesion), the same window to
+// cluster map and the same thread ranks. The effect publishes a result only
+// when it differs, because everything bound to the clusters (the web, the
+// badges, the chips) re-evaluates on every publish, and the clustering runs
+// on every layout and configuration change, mostly to the same answer.
+function sameClustering(a, b) {
+    if (!a || !b) return false;
+    return JSON.stringify(a.clusters) === JSON.stringify(b.clusters)
+        && JSON.stringify(a.clusterOf) === JSON.stringify(b.clusterOf)
+        && JSON.stringify(a.ranks) === JSON.stringify(b.ranks);
+}
+
 // One step of the float's physics. f is { x, y, vx, vy, wasInX, wasInY }
 // (screen px), (tx, ty) the window's screen spot, (cx, cy) the clamped
 // spot, (bl, br, bt, bb) the screen bounds the picture is kept inside,
