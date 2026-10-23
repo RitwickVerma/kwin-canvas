@@ -1194,7 +1194,7 @@ Item {
 
         Repeater {
             model: {
-                effect.revision; effect.clusterRev; effect.floatRev; effect.hoverRev;
+                effect.revision; effect.clusterRev; effect.hoverRev;
                 effect.focusEntry; effect.selectionRev; effect.travelCluster;
                 effect.quiet; effect.ql;
                 // Minimal fidelity and below: the web stays off entirely - its
@@ -1321,288 +1321,6 @@ Item {
             border.color: Kirigami.Theme.highlightColor
         }
 
-        // The corner lens: the world shrunk into a chip for a glance at
-        // the plane while working. The overlay is gone - the world is the
-        // map - so the lens is the only map surface left.
-        Item {
-            id: planeMap
-            z: 80000
-            readonly property int mw: Math.round(view.sg.width * 0.16)
-            readonly property int mh: Math.round(view.sg.height * 0.2)
-            // The corner lens: the world shrunk into a chip for a glance at
-            // the plane while working. The overlay is gone - the world is
-            // the map - so the lens is the only map surface left.
-            readonly property bool asMinimap: ((effect.canvasOpen && !effect.quiet && (effect.zoom < 0.9 || effect.navHeld) && !effect.grasp) || (effect.visible && effect.quiet && effect.grasp)) && view.screen === (effect.chromeScr || effect.primaryScreen)
-            // Mirrored into the effect's own flags: logState and the other
-            // effect functions cannot see this item's id, so the map
-            // publishes its home for them.
-            onAsMinimapChanged: effect.mapMinimap = asMinimap
-            // The lens hugs the bottom-right corner, but never the toolbar:
-            // when the HUD holds the bottom or the right edge, the chip
-            // steps clear of it (the map's z would otherwise draw over the
-            // toolbar, and a glance-map must never cover the controls).
-            readonly property rect home: Qt.rect(
-                hud.visible && hud.atRight ? hud.x - mw - Kirigami.Units.largeSpacing : view.sg.width - mw - Kirigami.Units.largeSpacing * 2,
-                hud.visible && hud.atBottom ? hud.y - mh - Kirigami.Units.largeSpacing : view.sg.height - mh - Kirigami.Units.largeSpacing * 2,
-                mw, mh)
-            visible: asMinimap
-            property bool morphReady: false
-            Component.onCompleted: {
-                x = home.x; y = home.y; width = home.width; height = home.height;
-                morphReady = true;
-            }
-            onHomeChanged: {
-                if (!morphReady) return;
-                x = home.x; y = home.y; width = home.width; height = home.height;
-            }
-            Behavior on x { enabled: planeMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
-            Behavior on y { enabled: planeMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
-            Behavior on width { enabled: planeMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
-            Behavior on height { enabled: planeMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
-            opacity: visible ? 1 : 0
-            Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-            // The map lives: every binding depends on the revision and the
-            // camera explicitly - a function's reads do not register as
-            // dependencies, so without these the map would be a still.
-            readonly property rect wb: { effect.revision; effect.screensRev; return effect.worldBounds(); }
-            readonly property real sc: { effect.revision; return Math.min((width - 12) / wb.width, (height - 12) / wb.height); }
-            readonly property real ox: { effect.revision; return (width - wb.width * sc) / 2; }
-            readonly property real oy: { effect.revision; return (height - wb.height * sc) / 2; }
-            function mx(cx) { return ox + (cx - wb.x) * sc; }
-            function my(cy) { return oy + (cy - wb.y) * sc; }
-            scale: 1.0
-            // The map's content: the sheets, the outlines and the dim,
-            // behind the lens's glass.
-            Item {
-                anchors.fill: parent
-                // The quiet grasp never runs the chrome's fade-in, and a normal
-                // exit leaves it at 0: the hold's map must not inherit that.
-                opacity: effect.grasp ? 1 : effect.chromeFade
-            // The dim behind the lens, and the tint over it: the tint is
-            // what makes the white sheets read as cards instead of a
-            // negative reflection over the desktop.
-            Rectangle {
-                anchors.fill: parent
-                radius: 16
-                color: Qt.rgba(0.07, 0.07, 0.09, 0.42)
-                // The minimap's dark region bleeds into the plane instead of
-                // ending at a line: the edge is a soft falloff. The ladder
-                // sheds the edge's blur at the same rung as the backdrop's.
-                layer.enabled: effect.ql < 2
-                layer.effect: GaussianBlur {
-                    radius: 5
-                    samples: 17
-                    transparentBorder: false
-                }
-            }
-            Rectangle {
-                anchors.fill: parent
-                radius: 16
-                color: "transparent"
-                border.width: 1
-                border.color: "#3affffff"
-            }
-
-            Repeater {
-                model: { effect.revision; effect.screensRev; return effect.frames().length; }
-                delegate: Rectangle {
-                    required property int index
-                    readonly property var f: { effect.revision; effect.screensRev; return effect.frames()[index]; }
-                    visible: planeMap.asMinimap
-                    x: { effect.revision; effect.screensRev; planeMap.width; planeMap.height; return planeMap.mx(f.x); }
-                    y: { effect.revision; effect.screensRev; planeMap.width; planeMap.height; return planeMap.my(f.y); }
-                    width: { effect.revision; planeMap.width; planeMap.height; return f.width * planeMap.sc; }
-                    height: { effect.revision; planeMap.width; planeMap.height; return f.height * planeMap.sc; }
-                    readonly property color accent: effect.palette[index % effect.palette.length]
-                    color: Qt.rgba(accent.r, accent.g, accent.b, 0.30)
-                    border.width: 1
-                    border.color: Qt.rgba(accent.r, accent.g, accent.b, 0.75)
-                    opacity: 0.9
-                }
-            }
-            Repeater {
-                model: effect.entries.length
-                delegate: Rectangle {
-                    required property int index
-                    readonly property var e: effect.entries[index]
-                    // The map is of the plane, so a floated window's sheet
-                    // sits at its coordinates, where it is parked, and not
-                    // where its picture rides the screen's edge: the glance
-                    // shows where the window is, and the camera rectangle
-                    // shows how far the eye has gone from it.
-                    x: { effect.revision; return planeMap.mx(e.x); }
-                    y: { effect.revision; return planeMap.my(e.y); }
-                    width: { effect.revision; return Math.max(1.6, e.width * planeMap.sc); }
-                    height: { effect.revision; return Math.max(1.6, e.height * planeMap.sc); }
-                    radius: 1
-                    color: Qt.rgba(1, 1, 1, 0.5)
-                    border.width: 0.6
-                    border.color: effect.isSelected(e) ? "#b8ffffff" : "#4affffff"
-                    // The lens is a glance, not a surface: its taps belong
-                    // to the world beneath it, never to the sheets.
-                }
-            }
-            // The map is the navigation surface: a left drag anywhere on it
-            // pans the camera, and it must never fall through to the window
-            // drawn under the pointer - a drag that started on a sheet or
-            // on the map's empty ground would otherwise grab that window
-            // and drag the canvas with it. The sheets and the camera
-            // rectangle sit above this and keep their own gestures.
-            Item {
-                anchors.fill: parent
-                DragHandler {
-                    target: null
-                    acceptedButtons: Qt.LeftButton
-                    enabled: planeMap.asMinimap && !effect.chromeHover
-                    property point last: Qt.point(0, 0)
-                    onActiveChanged: {
-                        effect.sceneGestures += active ? 1 : -1;
-                        if (active) {
-                            effect.noteGesture(true);
-                            last = Qt.point(0, 0);
-                        }
-                    }
-                    onActiveTranslationChanged: {
-                        const t = activeTranslation;
-                        effect.panBy(t.x - last.x, t.y - last.y);
-                        last = t;
-                    }
-                }
-            }
-            // The camera's viewport on the map: the rectangle that IS the
-            // screen. It floats - a soft halo under a rounded glass chip -
-            // melts away when the view dominates the map, and expands to
-            // take the map the moment a step in begins, while the map's
-            // content fades with the chrome.
-            Item {
-                id: cameraRect
-                // The camera can wander past the world's edge, and the
-                // rect must never wander past the map's: it hugs the
-                // chip's border there, and a view bigger than the world
-                // fills the chip exactly instead of sticking out.
-                readonly property real rectW: { effect.zoom; effect.revision; planeMap.width; return Math.min(Math.max(3, view.sg.width / effect.zoom * planeMap.sc), planeMap.width); }
-                readonly property real rectH: { effect.zoom; effect.revision; planeMap.height; return Math.min(Math.max(3, view.sg.height / effect.zoom * planeMap.sc), planeMap.height); }
-                width: rectW
-                height: rectH
-                x: { effect.revision; effect.viewX; effect.zoom; planeMap.width; planeMap.height; const raw = planeMap.mx(effect.viewX + view.sg.x / effect.zoom); return Math.max(0, Math.min(raw, planeMap.width - rectW)); }
-                y: { effect.revision; effect.viewY; effect.zoom; planeMap.width; planeMap.height; const raw = planeMap.my(effect.viewY + view.sg.y / effect.zoom); return Math.max(0, Math.min(raw, planeMap.height - rectH)); }
-                // The graceful extreme: a view that covers most of the map
-                // melts instead of becoming a huge slab.
-                readonly property real cover: Math.min(1, (width * height) / Math.max(1, planeMap.width * planeMap.height))
-                readonly property real fade: 0.35 + 0.65 * (1 - Math.min(1, Math.max(0, (cover - 0.55) / 0.45)))
-                // The step in: the world's window expands to take the map.
-                readonly property real expansion: effect.entering ? Math.max(1, planeMap.width / Math.max(1, width)) : 1
-                scale: expansion
-                transformOrigin: Item.Center
-                Behavior on scale { SpringAnimation { spring: 2.8; damping: 0.55; epsilon: 0.01 } }
-                // The halo, under the chip: the float.
-                Rectangle {
-                    anchors.fill: parent
-                    anchors.margins: -7
-                    radius: 8
-                    color: Qt.rgba(1, 1, 1, 0.08)
-                }
-                Rectangle {
-                    anchors.fill: parent
-                    radius: 3
-                    color: Qt.rgba(1, 1, 1, 0.12)
-                    border.width: 1
-                    border.color: "#e8ffffff"
-                    opacity: cameraRect.fade
-                    // The rectangle itself pans the camera: drag the
-                    // viewport across the map and the view follows. The
-                    // drag counts as a scene gesture so a release asked
-                    // for mid-drag waits for the hand to come up.
-                    DragHandler {
-                        enabled: !effect.chromeHover
-                        property point last: Qt.point(0, 0)
-                        onActiveChanged: {
-                            effect.sceneGestures += active ? 1 : -1;
-                            if (active) {
-                                effect.noteGesture(true);
-                                last = Qt.point(0, 0);
-                            }
-                        }
-                        onActiveTranslationChanged: {
-                            const t = activeTranslation;
-                            effect.panBy(t.x - last.x, t.y - last.y);
-                            last = t;
-                        }
-                    }
-                }
-            }
-            }
-            // The minimap's own click flies the camera to the point; the
-            // lens never steals the pointer from the windows beneath it.
-            TapHandler {
-                enabled: planeMap.asMinimap && !effect.chromeHover
-                onTapped: (eventPoint) => {
-                    const wb = effect.worldBounds();
-                    const cx = wb.x + (eventPoint.position.x - planeMap.ox) / planeMap.sc;
-                    const cy = wb.y + (eventPoint.position.y - planeMap.oy) / planeMap.sc;
-                    const g = effect.actionScreen().geometry;
-                    effect.camGo(effect.zoom, cx - (g.x + g.width / 2) / effect.zoom, cy - (g.y + g.height / 2) / effect.zoom);
-                }
-            }
-        }
-        // The grasp teaches itself: one line, while the hold is zoomed out
-        // enough for the world to be the map, naming what the hand can do.
-        Item {
-            z: 80000
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: 12
-            width: hintRow.implicitWidth + 20
-            height: 26
-            visible: effect.grasp && effect.skinReveal > 0.5 && !effect.switcherActive
-            opacity: effect.skinReveal
-            Rectangle {
-                anchors.fill: parent
-                radius: 13
-                color: "#cc1e2126"
-                border.width: 1
-                border.color: "#33ffffff"
-            }
-            Row {
-                id: hintRow
-                anchors.centerIn: parent
-                spacing: 9
-                Text { text: "click to fly"; color: "#ffffff"; font.pixelSize: 11 }
-                Text { text: "·"; color: "#77ffffff"; font.pixelSize: 11 }
-                Text { text: "drag to pan"; color: "#ffffff"; font.pixelSize: 11 }
-                Text { text: "·"; color: "#77ffffff"; font.pixelSize: 11 }
-                Text { text: "wheel to zoom"; color: "#ffffff"; font.pixelSize: 11 }
-                Text { text: "·"; color: "#77ffffff"; font.pixelSize: 11 }
-                // The last word flips exactly where the release's outcome
-                // flips: above 0.72 the release lands, below it the release
-                // widens into the overworld. The grasp's two outcomes read
-                // before the hold ends.
-                Text { text: { effect.zoom; return effect.zoom < 0.72 ? "release to open the world" : "release to land" } color: "#ffffff"; font.pixelSize: 11 }
-            }
-        }
-
-        // Frame tags, above the windows so they can always be grabbed.
-        Repeater {
-            model: effect.activityIds
-            delegate: Repeater {
-                id: activityTags
-                required property string modelData
-                required property int index
-                model: { effect.screensRev; return KWin.Workspace.screens; }
-                delegate: FrameTag {
-                    required property var modelData
-                    visible: effect.skinReveal > 0.02 && mine && !view.replica
-                    viewItem: view
-                    activity: activityTags.modelData
-                    activityIndex: activityTags.index
-                    screen: modelData
-                    x: { effect.revision; return (effect.peekTarget(activity).x + screen.geometry.x - effect.viewX) * effect.zoom - view.sg.x; }
-                    y: { effect.revision; return (effect.peekTarget(activity).y + screen.geometry.y - effect.viewY) * effect.zoom - view.sg.y - height - 2; }
-                    z: 60000
-                }
-            }
-        }
-
         Keys.onPressed: (event) => {
             const k = event.key;
             // Ctrl+Z steps the layout back one commit, wherever the canvas
@@ -1700,373 +1418,673 @@ Item {
             }
         }
 
-        // Arrange menu for the selection, opened by the context gesture on a window.
-        Connections {
-            target: effect
-            function onContextRequested(entry) {
-                // Attached properties resolve against this Connections object, so go through the view.
-                // One menu, on the screen the pointer is on: every screen's view
-                // is connected to this signal, and the pointer's screen is where
-                // the gesture was made, not the focused window's.
-                if (view.screen !== effect.actionScreen()) return;
-                const p = effect.cursorScreen();
-                arrangeMenu.x = p.x - view.sg.x;
-                arrangeMenu.y = p.y - view.sg.y;
-                arrangeMenu.open();
-            }
-        }
-        PC3.Menu {
-            id: arrangeMenu
-            z: 100001
-            title: "Arrange"
-            onOpened: effect.canvasMenus++
-            onClosed: effect.canvasMenus = Math.max(0, effect.canvasMenus - 1)
-            // The Plasma menu background assumes the desktop blur behind it;
-            // over the canvas there is none, so the menu is drawn opaque.
-            background: MenuBackground { }
-            PC3.MenuItem { text: "Arrange horizontally"; icon.name: "view-split-left-right"; onTriggered: effect.arrange("horizontal") }
-            PC3.MenuItem { text: "Arrange vertically";   icon.name: "view-split-top-bottom"; onTriggered: effect.arrange("vertical") }
-            PC3.MenuItem { text: "Tile";                 icon.name: "view-grid";             onTriggered: effect.arrange("tile") }
-            PC3.Menu {
-                title: "Grid"
-                icon.name: "view-grid"
-                background: MenuBackground { }
-                Repeater {
-                    model: ["1x2", "2x1", "2x2", "3x1", "1x3", "3x2", "2x3", "3x3", "4x2", "2x4"]
-                    delegate: PC3.MenuItem {
-                        required property string modelData
-                        text: modelData.replace("x", " × ") + "  (rows × columns)"
-                        onTriggered: { const p = modelData.split("x"); effect.arrange("grid", Number(p[0]), Number(p[1])); }
-                    }
-                }
-            }
-            PC3.MenuItem { text: "Cascade";              icon.name: "window-duplicate";      onTriggered: effect.arrange("cascade") }
-            PC3.MenuItem { text: "Tidy this activity";    icon.name: "view-sort-ascending";   onTriggered: effect.tidy() }
-            PC3.MenuSeparator {}
-            PC3.Menu {
-                title: "Send to"
-                icon.name: "activities"
-                background: MenuBackground { }
-                Repeater {
-                    model: effect.activityIds
-                    delegate: PC3.MenuItem {
-                        required property string modelData
-                        required property int index
-                        text: effect.labelOf(modelData)
-                        onTriggered: effect.sendTo(modelData)
-                        Rectangle { anchors.verticalCenter: parent.verticalCenter; anchors.right: parent.right; anchors.rightMargin: Kirigami.Units.smallSpacing; width: 12; height: 12; radius: 3; color: effect.palette[index % effect.palette.length] }
-                    }
-                }
-                PC3.MenuSeparator {}
-                PC3.MenuItem { text: "Plane, outside every activity"; icon.name: "edit-none"; onTriggered: effect.sendTo(null) }
-            }
-            PC3.MenuSeparator {}
-            PC3.MenuItem { text: "Clear selection";      icon.name: "edit-select-none";      onTriggered: effect.clearSelection() }
-            PC3.MenuSeparator {}
-            PC3.MenuItem { text: effect.pinTargetsPinned() ? "Unfloat" : "Float"; icon.name: "window-pin"; onTriggered: effect.togglePin() }
-        }
-
-        // The toast: a brief glass chip naming what just happened (a saved
-        // or jumped-to view).
-        Rectangle {
-            z: 100001
-            visible: view.screen === (effect.chromeScr || effect.primaryScreen) && effect.toastText !== ""
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: Kirigami.Units.largeSpacing * 3
-            width: toastLabel.implicitWidth + Kirigami.Units.largeSpacing * 2
-            height: toastLabel.implicitHeight + Kirigami.Units.smallSpacing * 2
-            radius: Kirigami.Units.cornerRadius
-            color: Qt.rgba(Kirigami.Theme.backgroundColor.r, Kirigami.Theme.backgroundColor.g, Kirigami.Theme.backgroundColor.b, 0.78)
-            border.width: 1
-            border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.2)
-            opacity: { effect.toastRev; return effect.toastText !== "" ? 1 : 0; }
-            Behavior on opacity { NumberAnimation { duration: 180 } }
-            PC3.Label {
-                id: toastLabel
-                anchors.centerIn: parent
-                text: effect.toastText
-            }
-        }
-
-        // The switcher's pick: the chosen window's name, its live picture
-        // and the cluster it belongs to. It rides the switcher's z-rise, so
-        // the card and the pile settle together, and each step swaps the
-        // content in place.
-        Rectangle {
-            z: 100002
-            visible: { effect.switcherActive; return view.screen === (effect.chromeScr || effect.primaryScreen) && effect.switcherActive; }
-            opacity: effect.switcherRise
-            anchors.horizontalCenter: parent.horizontalCenter
-            anchors.top: hud.bottom
-            anchors.topMargin: Kirigami.Units.largeSpacing
-            width: switchRow.implicitWidth + Kirigami.Units.largeSpacing * 2
-            height: switchRow.implicitHeight + Kirigami.Units.largeSpacing * 2
-            radius: 16
-            color: Qt.rgba(0.05, 0.05, 0.08, 0.72)
-            border.width: 1
-            border.color: "#33ffffff"
-            Row {
-                id: switchRow
-                anchors.centerIn: parent
-                spacing: Kirigami.Units.largeSpacing
+        // The chrome (the lens, the grasp's hint, the frame tags, the arrange menu, the toast, the
+        // switcher, the toolbar and the help) is built only when it can be seen: the scene is
+        // created afresh on every open, and building all of it cost about half of each open's
+        // first frame, a quick slide or fly included, which shows none of it. It is built
+        // asynchronously once wanted, so the windows' first frame never waits for it, and it
+        // stays until the scene goes away with the close.
+        property bool chromeOn: false
+        readonly property bool chromeWanted: !effect.quiet || effect.grasp || effect.switcherActive || !!effect.toastText
+        onChromeWantedChanged: if (chromeWanted) chromeOn = true
+        Loader {
+            anchors.fill: parent
+            active: view.chromeOn || view.chromeWanted
+            asynchronous: true
+            sourceComponent: Component {
                 Item {
-                    width: 220
-                    height: 124
-                    visible: effect.ql < 2
-                    KWin.WindowThumbnail {
-                        anchors.fill: parent
-                        client: effect.switcherPick() ? effect.switcherPick().window : null
-                    }
-                }
-                Column {
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: Kirigami.Units.smallSpacing
-                    PC3.Label {
-                        text: {
-                            effect.selectionRev; effect.revision;
-                            const p = effect.switcherPick();
-                            return p ? p.window.caption : "";
+                    // The corner lens: the world shrunk into a chip for a glance at
+                    // the plane while working. The overlay is gone - the world is the
+                    // map - so the lens is the only map surface left.
+                    Item {
+                        id: planeMap
+                        z: 80000
+                        readonly property int mw: Math.round(view.sg.width * 0.16)
+                        readonly property int mh: Math.round(view.sg.height * 0.2)
+                        // The corner lens: the world shrunk into a chip for a glance at
+                        // the plane while working. The overlay is gone - the world is
+                        // the map - so the lens is the only map surface left.
+                        readonly property bool asMinimap: ((effect.canvasOpen && !effect.quiet && (effect.zoom < 0.9 || effect.navHeld) && !effect.grasp) || (effect.visible && effect.quiet && effect.grasp)) && view.screen === (effect.chromeScr || effect.primaryScreen)
+                        // Mirrored into the effect's own flags: logState and the other
+                        // effect functions cannot see this item's id, so the map
+                        // publishes its home for them.
+                        onAsMinimapChanged: effect.mapMinimap = asMinimap
+                        // The lens hugs the bottom-right corner, but never the toolbar:
+                        // when the HUD holds the bottom or the right edge, the chip
+                        // steps clear of it (the map's z would otherwise draw over the
+                        // toolbar, and a glance-map must never cover the controls).
+                        readonly property rect home: Qt.rect(
+                            hud.visible && hud.atRight ? hud.x - mw - Kirigami.Units.largeSpacing : view.sg.width - mw - Kirigami.Units.largeSpacing * 2,
+                            hud.visible && hud.atBottom ? hud.y - mh - Kirigami.Units.largeSpacing : view.sg.height - mh - Kirigami.Units.largeSpacing * 2,
+                            mw, mh)
+                        visible: asMinimap
+                        property bool morphReady: false
+                        Component.onCompleted: {
+                            x = home.x; y = home.y; width = home.width; height = home.height;
+                            morphReady = true;
                         }
-                        font.pointSize: 15
-                        font.weight: Font.DemiBold
-                        color: "#ffffff"
-                    }
-                    PC3.Label {
-                        text: {
-                            effect.selectionRev; effect.revision; effect.clusterRev;
-                            const p = effect.switcherPick();
-                            const ci = p ? effect.clusterIndexOfEntry(p) : -1;
-                            return ci >= 0 ? ("cluster #" + (ci + 1) + " · " + effect.clusters[ci].n + " windows") : "";
+                        onHomeChanged: {
+                            if (!morphReady) return;
+                            x = home.x; y = home.y; width = home.width; height = home.height;
                         }
-                        font.pointSize: 10
-                        color: "#99ffffff"
+                        Behavior on x { enabled: planeMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
+                        Behavior on y { enabled: planeMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
+                        Behavior on width { enabled: planeMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
+                        Behavior on height { enabled: planeMap.morphReady; SpringAnimation { spring: 2.4; damping: 0.62; epsilon: 0.5 } }
+                        opacity: visible ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                        // The map lives: every binding depends on the revision and the
+                        // camera explicitly - a function's reads do not register as
+                        // dependencies, so without these the map would be a still.
+                        readonly property rect wb: { effect.revision; effect.screensRev; return effect.worldBounds(); }
+                        readonly property real sc: { effect.revision; return Math.min((width - 12) / wb.width, (height - 12) / wb.height); }
+                        readonly property real ox: { effect.revision; return (width - wb.width * sc) / 2; }
+                        readonly property real oy: { effect.revision; return (height - wb.height * sc) / 2; }
+                        function mx(cx) { return ox + (cx - wb.x) * sc; }
+                        function my(cy) { return oy + (cy - wb.y) * sc; }
+                        scale: 1.0
+                        // The map's content: the sheets, the outlines and the dim,
+                        // behind the lens's glass.
+                        Item {
+                            anchors.fill: parent
+                            // The quiet grasp never runs the chrome's fade-in, and a normal
+                            // exit leaves it at 0: the hold's map must not inherit that.
+                            opacity: effect.grasp ? 1 : effect.chromeFade
+                        // The dim behind the lens, and the tint over it: the tint is
+                        // what makes the white sheets read as cards instead of a
+                        // negative reflection over the desktop.
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 16
+                            color: Qt.rgba(0.07, 0.07, 0.09, 0.42)
+                            // The minimap's dark region bleeds into the plane instead of
+                            // ending at a line: the edge is a soft falloff. The ladder
+                            // sheds the edge's blur at the same rung as the backdrop's.
+                            layer.enabled: effect.ql < 2
+                            layer.effect: GaussianBlur {
+                                radius: 5
+                                samples: 17
+                                transparentBorder: false
+                            }
+                        }
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 16
+                            color: "transparent"
+                            border.width: 1
+                            border.color: "#3affffff"
+                        }
+
+                        Repeater {
+                            model: { effect.revision; effect.screensRev; return effect.frames().length; }
+                            delegate: Rectangle {
+                                required property int index
+                                readonly property var f: { effect.revision; effect.screensRev; return effect.frames()[index]; }
+                                visible: planeMap.asMinimap
+                                x: { effect.revision; effect.screensRev; planeMap.width; planeMap.height; return planeMap.mx(f.x); }
+                                y: { effect.revision; effect.screensRev; planeMap.width; planeMap.height; return planeMap.my(f.y); }
+                                width: { effect.revision; planeMap.width; planeMap.height; return f.width * planeMap.sc; }
+                                height: { effect.revision; planeMap.width; planeMap.height; return f.height * planeMap.sc; }
+                                readonly property color accent: effect.palette[index % effect.palette.length]
+                                color: Qt.rgba(accent.r, accent.g, accent.b, 0.30)
+                                border.width: 1
+                                border.color: Qt.rgba(accent.r, accent.g, accent.b, 0.75)
+                                opacity: 0.9
+                            }
+                        }
+                        Repeater {
+                            model: effect.entries.length
+                            delegate: Rectangle {
+                                required property int index
+                                readonly property var e: effect.entries[index]
+                                // The map is of the plane, so a floated window's sheet
+                                // sits at its coordinates, where it is parked, and not
+                                // where its picture rides the screen's edge: the glance
+                                // shows where the window is, and the camera rectangle
+                                // shows how far the eye has gone from it.
+                                x: { effect.revision; return planeMap.mx(e.x); }
+                                y: { effect.revision; return planeMap.my(e.y); }
+                                width: { effect.revision; return Math.max(1.6, e.width * planeMap.sc); }
+                                height: { effect.revision; return Math.max(1.6, e.height * planeMap.sc); }
+                                radius: 1
+                                color: Qt.rgba(1, 1, 1, 0.5)
+                                border.width: 0.6
+                                border.color: effect.isSelected(e) ? "#b8ffffff" : "#4affffff"
+                                // The lens is a glance, not a surface: its taps belong
+                                // to the world beneath it, never to the sheets.
+                            }
+                        }
+                        // The map is the navigation surface: a left drag anywhere on it
+                        // pans the camera, and it must never fall through to the window
+                        // drawn under the pointer - a drag that started on a sheet or
+                        // on the map's empty ground would otherwise grab that window
+                        // and drag the canvas with it. The sheets and the camera
+                        // rectangle sit above this and keep their own gestures.
+                        Item {
+                            anchors.fill: parent
+                            DragHandler {
+                                target: null
+                                acceptedButtons: Qt.LeftButton
+                                enabled: planeMap.asMinimap && !effect.chromeHover
+                                property point last: Qt.point(0, 0)
+                                onActiveChanged: {
+                                    effect.sceneGestures += active ? 1 : -1;
+                                    if (active) {
+                                        effect.noteGesture(true);
+                                        last = Qt.point(0, 0);
+                                    }
+                                }
+                                onActiveTranslationChanged: {
+                                    const t = activeTranslation;
+                                    effect.panBy(t.x - last.x, t.y - last.y);
+                                    last = t;
+                                }
+                            }
+                        }
+                        // The camera's viewport on the map: the rectangle that IS the
+                        // screen. It floats - a soft halo under a rounded glass chip -
+                        // melts away when the view dominates the map, and expands to
+                        // take the map the moment a step in begins, while the map's
+                        // content fades with the chrome.
+                        Item {
+                            id: cameraRect
+                            // The camera can wander past the world's edge, and the
+                            // rect must never wander past the map's: it hugs the
+                            // chip's border there, and a view bigger than the world
+                            // fills the chip exactly instead of sticking out.
+                            readonly property real rectW: { effect.zoom; effect.revision; planeMap.width; return Math.min(Math.max(3, view.sg.width / effect.zoom * planeMap.sc), planeMap.width); }
+                            readonly property real rectH: { effect.zoom; effect.revision; planeMap.height; return Math.min(Math.max(3, view.sg.height / effect.zoom * planeMap.sc), planeMap.height); }
+                            width: rectW
+                            height: rectH
+                            x: { effect.revision; effect.viewX; effect.zoom; planeMap.width; planeMap.height; const raw = planeMap.mx(effect.viewX + view.sg.x / effect.zoom); return Math.max(0, Math.min(raw, planeMap.width - rectW)); }
+                            y: { effect.revision; effect.viewY; effect.zoom; planeMap.width; planeMap.height; const raw = planeMap.my(effect.viewY + view.sg.y / effect.zoom); return Math.max(0, Math.min(raw, planeMap.height - rectH)); }
+                            // The graceful extreme: a view that covers most of the map
+                            // melts instead of becoming a huge slab.
+                            readonly property real cover: Math.min(1, (width * height) / Math.max(1, planeMap.width * planeMap.height))
+                            readonly property real fade: 0.35 + 0.65 * (1 - Math.min(1, Math.max(0, (cover - 0.55) / 0.45)))
+                            // The step in: the world's window expands to take the map.
+                            readonly property real expansion: effect.entering ? Math.max(1, planeMap.width / Math.max(1, width)) : 1
+                            scale: expansion
+                            transformOrigin: Item.Center
+                            Behavior on scale { SpringAnimation { spring: 2.8; damping: 0.55; epsilon: 0.01 } }
+                            // The halo, under the chip: the float.
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: -7
+                                radius: 8
+                                color: Qt.rgba(1, 1, 1, 0.08)
+                            }
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 3
+                                color: Qt.rgba(1, 1, 1, 0.12)
+                                border.width: 1
+                                border.color: "#e8ffffff"
+                                opacity: cameraRect.fade
+                                // The rectangle itself pans the camera: drag the
+                                // viewport across the map and the view follows. The
+                                // drag counts as a scene gesture so a release asked
+                                // for mid-drag waits for the hand to come up.
+                                DragHandler {
+                                    enabled: !effect.chromeHover
+                                    property point last: Qt.point(0, 0)
+                                    onActiveChanged: {
+                                        effect.sceneGestures += active ? 1 : -1;
+                                        if (active) {
+                                            effect.noteGesture(true);
+                                            last = Qt.point(0, 0);
+                                        }
+                                    }
+                                    onActiveTranslationChanged: {
+                                        const t = activeTranslation;
+                                        effect.panBy(t.x - last.x, t.y - last.y);
+                                        last = t;
+                                    }
+                                }
+                            }
+                        }
+                        }
+                        // The minimap's own click flies the camera to the point; the
+                        // lens never steals the pointer from the windows beneath it.
+                        TapHandler {
+                            enabled: planeMap.asMinimap && !effect.chromeHover
+                            onTapped: (eventPoint) => {
+                                const wb = effect.worldBounds();
+                                const cx = wb.x + (eventPoint.position.x - planeMap.ox) / planeMap.sc;
+                                const cy = wb.y + (eventPoint.position.y - planeMap.oy) / planeMap.sc;
+                                const g = effect.actionScreen().geometry;
+                                effect.camGo(effect.zoom, cx - (g.x + g.width / 2) / effect.zoom, cy - (g.y + g.height / 2) / effect.zoom);
+                            }
+                        }
                     }
-                }
-            }
-        }
-
-        // HUD: a Plasma toolbar, top centre. Camera state, the actions, help
-        // with the bindings, and the settings pages that own them.
-        Rectangle {
-            id: hud
-            z: 100000
-            visible: view.screen === (effect.chromeScr || effect.primaryScreen) && (!effect.quiet || effect.skinReveal > 0.5)
-            opacity: effect.chromeFade * (effect.quiet ? Math.max(0, Math.min(1, (effect.skinReveal - 0.5) * 2)) : 1)
-            readonly property string pos: String(effect.configuration.HudPosition || "Top").toLowerCase()
-            readonly property bool atBottom: pos.indexOf("bottom") === 0
-            readonly property bool atLeft: pos === "left" || pos === "topleft" || pos === "bottomleft"
-            readonly property bool atRight: pos === "right" || pos === "topright" || pos === "bottomright"
-            readonly property bool centredV: pos === "left" || pos === "right"
-            readonly property bool inCorner: pos === "topleft" || pos === "topright" || pos === "bottomleft" || pos === "bottomright"
-            // Shape: auto follows the position (square in a corner, vertical on
-            // a side, horizontal on the top or bottom), or forced by config.
-            readonly property string shape: {
-                const want = String(effect.configuration.HudShape || "auto").toLowerCase();
-                if (want === "horizontal" || want === "vertical" || want === "square") return want;
-                return inCorner ? "square" : (centredV ? "vertical" : "horizontal");
-            }
-            readonly property bool vertical: shape === "vertical"
-            readonly property bool square: shape === "square"
-            readonly property int squareColumns: 4
-            anchors.top: atBottom || centredV ? undefined : parent.top
-            anchors.bottom: atBottom ? parent.bottom : undefined
-            anchors.verticalCenter: centredV ? parent.verticalCenter : undefined
-            anchors.left: atLeft ? parent.left : undefined
-            anchors.right: atRight ? parent.right : undefined
-            anchors.horizontalCenter: !atLeft && !atRight ? parent.horizontalCenter : undefined
-            anchors.margins: Kirigami.Units.largeSpacing
-            width: hudRow.implicitWidth + Kirigami.Units.largeSpacing * 2
-            height: hudRow.implicitHeight + Kirigami.Units.smallSpacing * 2
-            radius: Kirigami.Units.cornerRadius
-            color: Qt.rgba(0.05, 0.05, 0.08, 0.72)
-            border.width: 1
-            border.color: "#33ffffff"
-            Kirigami.Theme.inherit: false
-            Kirigami.Theme.colorSet: Kirigami.Theme.Window
-
-            HoverHandler {
-                enabled: !effect.chromeHover
-                onHoveredChanged: view.hoverCount += hovered ? 1 : -1
-                Component.onDestruction: if (hovered) view.hoverCount -= 1
-            }
-
-            GridLayout {
-                id: hudRow
-                anchors.centerIn: parent
-                flow: hud.vertical ? GridLayout.TopToBottom : GridLayout.LeftToRight
-                rows: hud.vertical ? -1 : (hud.square ? -1 : 1)
-                columns: hud.vertical ? 1 : (hud.square ? hud.squareColumns : -1)
-                rowSpacing: Kirigami.Units.smallSpacing
-                columnSpacing: Kirigami.Units.smallSpacing
-
-                // Separators only in the linear shapes; a square reads as rows.
-                component Sep : Kirigami.Separator {
-                    visible: !hud.square
-                    Layout.fillHeight: !hud.vertical
-                    Layout.fillWidth: hud.vertical
-                    Layout.margins: Kirigami.Units.smallSpacing
-                }
-
-                Kirigami.Icon {
-                    visible: !hud.square
-                    source: "activities"
-                    Layout.preferredWidth: Kirigami.Units.iconSizes.small
-                    Layout.preferredHeight: Kirigami.Units.iconSizes.small
-                    Layout.alignment: Qt.AlignCenter
-                }
-                PC3.Label {
-                    text: hud.vertical ? effect.labelOf(effect.currentActivity) + "\n" + Math.round(effect.zoom * 100) + "%"
-                                       : effect.labelOf(effect.currentActivity) + "   " + Math.round(effect.zoom * 100) + "%"
-                    horizontalAlignment: Text.AlignHCenter
-                    Layout.alignment: Qt.AlignCenter
-                    Layout.columnSpan: hud.square ? hud.squareColumns : 1
-                    Layout.rightMargin: hud.vertical || hud.square ? 0 : Kirigami.Units.smallSpacing
-                }
-                // One swatch per activity in its frame colour; click to zoom to it.
-                Repeater {
-                    model: effect.activityIds
-                    delegate: Rectangle {
-                        required property string modelData
-                        required property int index
-                        readonly property bool current: modelData === effect.currentActivity
-                        width: Kirigami.Units.iconSizes.small
-                        height: Kirigami.Units.iconSizes.small
-                        radius: 3
-                        color: effect.palette[index % effect.palette.length]
-                        border.width: current ? 2 : 0
-                        border.color: "#ffffff"
-                        Layout.alignment: Qt.AlignCenter
-                        PC3.ToolTip.text: effect.labelOf(modelData)
-                        PC3.ToolTip.visible: swatchHover.hovered
-                        HoverHandler { id: swatchHover; cursorShape: Qt.PointingHandCursor }
-                        TapHandler { acceptedButtons: Qt.LeftButton; onTapped: effect.zoomToActivity(modelData) }
+                    // The grasp teaches itself: one line, while the hold is zoomed out
+                    // enough for the world to be the map, naming what the hand can do.
+                    Item {
+                        z: 80000
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 12
+                        width: hintRow.implicitWidth + 20
+                        height: 26
+                        visible: effect.grasp && effect.skinReveal > 0.5 && !effect.switcherActive
+                        opacity: effect.skinReveal
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 13
+                            color: "#cc1e2126"
+                            border.width: 1
+                            border.color: "#33ffffff"
+                        }
+                        Row {
+                            id: hintRow
+                            anchors.centerIn: parent
+                            spacing: 9
+                            Text { text: "click to fly"; color: "#ffffff"; font.pixelSize: 11 }
+                            Text { text: "·"; color: "#77ffffff"; font.pixelSize: 11 }
+                            Text { text: "drag to pan"; color: "#ffffff"; font.pixelSize: 11 }
+                            Text { text: "·"; color: "#77ffffff"; font.pixelSize: 11 }
+                            Text { text: "wheel to zoom"; color: "#ffffff"; font.pixelSize: 11 }
+                            Text { text: "·"; color: "#77ffffff"; font.pixelSize: 11 }
+                            // The last word flips exactly where the release's outcome
+                            // flips: above 0.72 the release lands, below it the release
+                            // widens into the overworld. The grasp's two outcomes read
+                            // before the hold ends.
+                            Text { text: { effect.zoom; return effect.zoom < 0.72 ? "release to open the world" : "release to land" } color: "#ffffff"; font.pixelSize: 11 }
+                        }
                     }
-                }
-                Sep {}
-                // The hand dot: whose is the pointer? Filled = the window's,
-                // hollow = the canvas's. Polled from the plugin's own state.
-                Rectangle {
-                    visible: effect.passthroughLive
-                    width: 10
-                    height: 10
-                    radius: 5
-                    color: effect.handOnWindow ? "#2a6ddf" : "transparent"
-                    border.width: 1
-                    border.color: "#80ffffff"
-                    Layout.alignment: Qt.AlignCenter
-                    PC3.ToolTip.text: effect.handOnWindow ? "The pointer is the window's" : "The pointer is the canvas's"
-                    PC3.ToolTip.visible: handDotHover.hovered
-                    HoverHandler { id: handDotHover; cursorShape: Qt.PointingHandCursor }
-                }
-                // The fidelity rung: a quiet dot appears only when the canvas
-                // has stepped down for the machine's load, coloured by how far.
-                Rectangle {
-                    visible: effect.ql > 0
-                    width: 10
-                    height: 10
-                    radius: 5
-                    color: effect.ql === 1 ? "#d9a441" : (effect.ql === 2 ? "#d97a41" : "#d95050")
-                    border.width: 1
-                    border.color: "#80ffffff"
-                    Layout.alignment: Qt.AlignCenter
-                    PC3.ToolTip.text: effect.ql === 1 ? "The canvas is reduced: the machine is busy" : (effect.ql === 2 ? "The canvas is minimal: the machine is loaded" : "The canvas is bare: only the rectangles work")
-                        + (effect.configuration.QualityMode === "Auto" ? " (cpu " + Math.round(effect.cpuBusy) + "%, gpu " + Math.round(effect.gpuBusy) + "%, memory " + Math.round(effect.memBusy) + "%)" : " (fixed by the Quality setting)")
-                    PC3.ToolTip.visible: rungHover.hovered
-                    HoverHandler { id: rungHover; cursorShape: Qt.PointingHandCursor }
-                }
-                Sep {}
-                PC3.ToolButton { icon.name: "zoom-fit-best";   text: "Fit";    display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Zoom to fit (" + effect.keyLabel(effect.configuration.KeyFit) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.zoomExtents(true) }
-                PC3.ToolButton { icon.name: "go-home";         text: "Home";   display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Look through this activity's frames (" + effect.keyLabel(effect.configuration.KeyHome) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.home() }
-                PC3.ToolButton { icon.name: "zoom-in";         text: "In";     display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Zoom in (" + effect.keyLabel(effect.configuration.KeyZoomIn) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.camZoomTo(effect.zoom * effect.zoomStep, view.sg.x + view.sg.width / 2, view.sg.y + view.sg.height / 2) }
-                PC3.ToolButton { icon.name: "zoom-out";        text: "Out";    display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Zoom out (" + effect.keyLabel(effect.configuration.KeyZoomOut) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.camZoomTo(effect.zoom / effect.zoomStep, view.sg.x + view.sg.width / 2, view.sg.y + view.sg.height / 2) }
-                Sep {}
-                PC3.ToolButton { icon.name: "snap-bounding-box-edges";   text: "Edges";   display: PC3.AbstractButton.IconOnly; checkable: true; checked: effect.snapEdges;   onToggled: effect.snapEdges = checked;   PC3.ToolTip.text: "Snap to edges";   PC3.ToolTip.visible: hovered }
-                PC3.ToolButton { icon.name: "snap-bounding-box-corners"; text: "Corners"; display: PC3.AbstractButton.IconOnly; checkable: true; checked: effect.snapCorners; onToggled: effect.snapCorners = checked; PC3.ToolTip.text: "Snap to corners"; PC3.ToolTip.visible: hovered }
-                PC3.ToolButton { icon.name: "snap-grid";                 text: "Grid";    display: PC3.AbstractButton.IconOnly; checkable: true; checked: effect.snapGrid;    onToggled: effect.snapGrid = checked;    PC3.ToolTip.text: "Snap to grid (" + effect.configuration.SnapGridSize + " px)"; PC3.ToolTip.visible: hovered }
-                Sep {}
-                PC3.ToolButton { icon.name: "dialog-ok-apply"; text: "Enter";  display: hud.vertical || hud.square ? PC3.AbstractButton.IconOnly : PC3.AbstractButton.TextBesideIcon; PC3.ToolTip.text: "Enter the location under the screen centre (" + effect.keyLabel(effect.configuration.KeyApply) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.enterHere() }
-                PC3.ToolButton { icon.name: "dialog-cancel";   text: "Cancel"; display: hud.vertical || hud.square ? PC3.AbstractButton.IconOnly : PC3.AbstractButton.TextBesideIcon; PC3.ToolTip.text: "Back to where you were, nothing moved (" + effect.keyLabel(effect.configuration.KeyCancel) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.cancel() }
-                Sep {}
-                PC3.ToolButton { icon.name: "help-contextual"; text: "Help"; display: PC3.AbstractButton.IconOnly; checkable: true; checked: effect.helpOpen; onToggled: effect.helpOpen = checked; PC3.ToolTip.text: "Controls"; PC3.ToolTip.visible: hovered }
-                PC3.ToolButton {
-                    icon.name: "configure"; text: "Settings"; display: PC3.AbstractButton.IconOnly
-                    PC3.ToolTip.text: "Settings"; PC3.ToolTip.visible: hovered
-                    onClicked: settingsMenu.open()
+
+                    // Frame tags, above the windows so they can always be grabbed.
+                    Repeater {
+                        model: effect.activityIds
+                        delegate: Repeater {
+                            id: activityTags
+                            required property string modelData
+                            required property int index
+                            model: { effect.screensRev; return KWin.Workspace.screens; }
+                            delegate: FrameTag {
+                                required property var modelData
+                                visible: effect.skinReveal > 0.02 && mine && !view.replica
+                                viewItem: view
+                                activity: activityTags.modelData
+                                activityIndex: activityTags.index
+                                screen: modelData
+                                x: { effect.revision; return (effect.peekTarget(activity).x + screen.geometry.x - effect.viewX) * effect.zoom - view.sg.x; }
+                                y: { effect.revision; return (effect.peekTarget(activity).y + screen.geometry.y - effect.viewY) * effect.zoom - view.sg.y - height - 2; }
+                                z: 60000
+                            }
+                        }
+                    }
+
+                    // Arrange menu for the selection, opened by the context gesture on a window.
+                    Connections {
+                        target: effect
+                        function onContextRequested(entry) {
+                            // Attached properties resolve against this Connections object, so go through the view.
+                            // One menu, on the screen the pointer is on: every screen's view
+                            // is connected to this signal, and the pointer's screen is where
+                            // the gesture was made, not the focused window's.
+                            if (view.screen !== effect.actionScreen()) return;
+                            const p = effect.cursorScreen();
+                            arrangeMenu.x = p.x - view.sg.x;
+                            arrangeMenu.y = p.y - view.sg.y;
+                            arrangeMenu.open();
+                        }
+                    }
                     PC3.Menu {
-                        id: settingsMenu
+                        id: arrangeMenu
+                        z: 100001
+                        title: "Arrange"
                         onOpened: effect.canvasMenus++
                         onClosed: effect.canvasMenus = Math.max(0, effect.canvasMenus - 1)
+                        // The Plasma menu background assumes the desktop blur behind it;
+                        // over the canvas there is none, so the menu is drawn opaque.
                         background: MenuBackground { }
-                        x: hud.vertical ? (hud.atRight ? -width : parent.width) : 0
-                        y: hud.vertical ? 0 : parent.height
-                        PC3.MenuItem { text: "Effect settings…";  icon.name: "preferences-desktop-effects"; onTriggered: KCM.KCMLauncher.openSystemSettings("kcm_kwin_effects") }
-                        PC3.MenuItem { text: "Shortcuts…";        icon.name: "preferences-desktop-keyboard"; onTriggered: KCM.KCMLauncher.openSystemSettings("kcm_keys") }
-                        PC3.MenuItem { text: "Screen edges…";     icon.name: "preferences-desktop-screen-edges"; onTriggered: KCM.KCMLauncher.openSystemSettings("kcm_kwinscreenedges") }
-                        PC3.MenuItem { text: "Activities…";       icon.name: "activities"; onTriggered: KCM.KCMLauncher.openSystemSettings("kcm_activities") }
+                        PC3.MenuItem { text: "Arrange horizontally"; icon.name: "view-split-left-right"; onTriggered: effect.arrange("horizontal") }
+                        PC3.MenuItem { text: "Arrange vertically";   icon.name: "view-split-top-bottom"; onTriggered: effect.arrange("vertical") }
+                        PC3.MenuItem { text: "Tile";                 icon.name: "view-grid";             onTriggered: effect.arrange("tile") }
+                        PC3.Menu {
+                            title: "Grid"
+                            icon.name: "view-grid"
+                            background: MenuBackground { }
+                            Repeater {
+                                model: ["1x2", "2x1", "2x2", "3x1", "1x3", "3x2", "2x3", "3x3", "4x2", "2x4"]
+                                delegate: PC3.MenuItem {
+                                    required property string modelData
+                                    text: modelData.replace("x", " × ") + "  (rows × columns)"
+                                    onTriggered: { const p = modelData.split("x"); effect.arrange("grid", Number(p[0]), Number(p[1])); }
+                                }
+                            }
+                        }
+                        PC3.MenuItem { text: "Cascade";              icon.name: "window-duplicate";      onTriggered: effect.arrange("cascade") }
+                        PC3.MenuItem { text: "Tidy this activity";    icon.name: "view-sort-ascending";   onTriggered: effect.tidy() }
+                        PC3.MenuSeparator {}
+                        PC3.Menu {
+                            title: "Send to"
+                            icon.name: "activities"
+                            background: MenuBackground { }
+                            Repeater {
+                                model: effect.activityIds
+                                delegate: PC3.MenuItem {
+                                    required property string modelData
+                                    required property int index
+                                    text: effect.labelOf(modelData)
+                                    onTriggered: effect.sendTo(modelData)
+                                    Rectangle { anchors.verticalCenter: parent.verticalCenter; anchors.right: parent.right; anchors.rightMargin: Kirigami.Units.smallSpacing; width: 12; height: 12; radius: 3; color: effect.palette[index % effect.palette.length] }
+                                }
+                            }
+                            PC3.MenuSeparator {}
+                            PC3.MenuItem { text: "Plane, outside every activity"; icon.name: "edit-none"; onTriggered: effect.sendTo(null) }
+                        }
+                        PC3.MenuSeparator {}
+                        PC3.MenuItem { text: "Clear selection";      icon.name: "edit-select-none";      onTriggered: effect.clearSelection() }
+                        PC3.MenuSeparator {}
+                        PC3.MenuItem { text: effect.pinTargetsPinned() ? "Unfloat" : "Float"; icon.name: "window-pin"; onTriggered: effect.togglePin() }
+                    }
+
+                    // The toast: a brief glass chip naming what just happened (a saved
+                    // or jumped-to view).
+                    Rectangle {
+                        z: 100001
+                        visible: view.screen === (effect.chromeScr || effect.primaryScreen) && effect.toastText !== ""
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: Kirigami.Units.largeSpacing * 3
+                        width: toastLabel.implicitWidth + Kirigami.Units.largeSpacing * 2
+                        height: toastLabel.implicitHeight + Kirigami.Units.smallSpacing * 2
+                        radius: Kirigami.Units.cornerRadius
+                        color: Qt.rgba(Kirigami.Theme.backgroundColor.r, Kirigami.Theme.backgroundColor.g, Kirigami.Theme.backgroundColor.b, 0.78)
+                        border.width: 1
+                        border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.2)
+                        opacity: { effect.toastRev; return effect.toastText !== "" ? 1 : 0; }
+                        Behavior on opacity { NumberAnimation { duration: 180 } }
+                        PC3.Label {
+                            id: toastLabel
+                            anchors.centerIn: parent
+                            text: effect.toastText
+                        }
+                    }
+
+                    // The switcher's pick: the chosen window's name, its live picture
+                    // and the cluster it belongs to. It rides the switcher's z-rise, so
+                    // the card and the pile settle together, and each step swaps the
+                    // content in place.
+                    Rectangle {
+                        z: 100002
+                        visible: { effect.switcherActive; return view.screen === (effect.chromeScr || effect.primaryScreen) && effect.switcherActive; }
+                        opacity: effect.switcherRise
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.top: hud.bottom
+                        anchors.topMargin: Kirigami.Units.largeSpacing
+                        width: switchRow.implicitWidth + Kirigami.Units.largeSpacing * 2
+                        height: switchRow.implicitHeight + Kirigami.Units.largeSpacing * 2
+                        radius: 16
+                        color: Qt.rgba(0.05, 0.05, 0.08, 0.72)
+                        border.width: 1
+                        border.color: "#33ffffff"
+                        Row {
+                            id: switchRow
+                            anchors.centerIn: parent
+                            spacing: Kirigami.Units.largeSpacing
+                            Item {
+                                width: 220
+                                height: 124
+                                visible: effect.ql < 2
+                                KWin.WindowThumbnail {
+                                    anchors.fill: parent
+                                    client: effect.switcherPick() ? effect.switcherPick().window : null
+                                }
+                            }
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: Kirigami.Units.smallSpacing
+                                PC3.Label {
+                                    text: {
+                                        effect.selectionRev; effect.revision;
+                                        const p = effect.switcherPick();
+                                        return p ? p.window.caption : "";
+                                    }
+                                    font.pointSize: 15
+                                    font.weight: Font.DemiBold
+                                    color: "#ffffff"
+                                }
+                                PC3.Label {
+                                    text: {
+                                        effect.selectionRev; effect.revision; effect.clusterRev;
+                                        const p = effect.switcherPick();
+                                        const ci = p ? effect.clusterIndexOfEntry(p) : -1;
+                                        return ci >= 0 ? ("cluster #" + (ci + 1) + " · " + effect.clusters[ci].n + " windows") : "";
+                                    }
+                                    font.pointSize: 10
+                                    color: "#99ffffff"
+                                }
+                            }
+                        }
+                    }
+
+                    // HUD: a Plasma toolbar, top centre. Camera state, the actions, help
+                    // with the bindings, and the settings pages that own them.
+                    Rectangle {
+                        id: hud
+                        z: 100000
+                        visible: view.screen === (effect.chromeScr || effect.primaryScreen) && (!effect.quiet || effect.skinReveal > 0.5)
+                        opacity: effect.chromeFade * (effect.quiet ? Math.max(0, Math.min(1, (effect.skinReveal - 0.5) * 2)) : 1)
+                        readonly property string pos: String(effect.configuration.HudPosition || "Top").toLowerCase()
+                        readonly property bool atBottom: pos.indexOf("bottom") === 0
+                        readonly property bool atLeft: pos === "left" || pos === "topleft" || pos === "bottomleft"
+                        readonly property bool atRight: pos === "right" || pos === "topright" || pos === "bottomright"
+                        readonly property bool centredV: pos === "left" || pos === "right"
+                        readonly property bool inCorner: pos === "topleft" || pos === "topright" || pos === "bottomleft" || pos === "bottomright"
+                        // Shape: auto follows the position (square in a corner, vertical on
+                        // a side, horizontal on the top or bottom), or forced by config.
+                        readonly property string shape: {
+                            const want = String(effect.configuration.HudShape || "auto").toLowerCase();
+                            if (want === "horizontal" || want === "vertical" || want === "square") return want;
+                            return inCorner ? "square" : (centredV ? "vertical" : "horizontal");
+                        }
+                        readonly property bool vertical: shape === "vertical"
+                        readonly property bool square: shape === "square"
+                        readonly property int squareColumns: 4
+                        anchors.top: atBottom || centredV ? undefined : parent.top
+                        anchors.bottom: atBottom ? parent.bottom : undefined
+                        anchors.verticalCenter: centredV ? parent.verticalCenter : undefined
+                        anchors.left: atLeft ? parent.left : undefined
+                        anchors.right: atRight ? parent.right : undefined
+                        anchors.horizontalCenter: !atLeft && !atRight ? parent.horizontalCenter : undefined
+                        anchors.margins: Kirigami.Units.largeSpacing
+                        width: hudRow.implicitWidth + Kirigami.Units.largeSpacing * 2
+                        height: hudRow.implicitHeight + Kirigami.Units.smallSpacing * 2
+                        radius: Kirigami.Units.cornerRadius
+                        color: Qt.rgba(0.05, 0.05, 0.08, 0.72)
+                        border.width: 1
+                        border.color: "#33ffffff"
+                        Kirigami.Theme.inherit: false
+                        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+
+                        HoverHandler {
+                            enabled: !effect.chromeHover
+                            onHoveredChanged: view.hoverCount += hovered ? 1 : -1
+                            Component.onDestruction: if (hovered) view.hoverCount -= 1
+                        }
+
+                        GridLayout {
+                            id: hudRow
+                            anchors.centerIn: parent
+                            flow: hud.vertical ? GridLayout.TopToBottom : GridLayout.LeftToRight
+                            rows: hud.vertical ? -1 : (hud.square ? -1 : 1)
+                            columns: hud.vertical ? 1 : (hud.square ? hud.squareColumns : -1)
+                            rowSpacing: Kirigami.Units.smallSpacing
+                            columnSpacing: Kirigami.Units.smallSpacing
+
+                            // Separators only in the linear shapes; a square reads as rows.
+                            component Sep : Kirigami.Separator {
+                                visible: !hud.square
+                                Layout.fillHeight: !hud.vertical
+                                Layout.fillWidth: hud.vertical
+                                Layout.margins: Kirigami.Units.smallSpacing
+                            }
+
+                            Kirigami.Icon {
+                                visible: !hud.square
+                                source: "activities"
+                                Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                                Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                                Layout.alignment: Qt.AlignCenter
+                            }
+                            PC3.Label {
+                                text: hud.vertical ? effect.labelOf(effect.currentActivity) + "\n" + Math.round(effect.zoom * 100) + "%"
+                                                   : effect.labelOf(effect.currentActivity) + "   " + Math.round(effect.zoom * 100) + "%"
+                                horizontalAlignment: Text.AlignHCenter
+                                Layout.alignment: Qt.AlignCenter
+                                Layout.columnSpan: hud.square ? hud.squareColumns : 1
+                                Layout.rightMargin: hud.vertical || hud.square ? 0 : Kirigami.Units.smallSpacing
+                            }
+                            // One swatch per activity in its frame colour; click to zoom to it.
+                            Repeater {
+                                model: effect.activityIds
+                                delegate: Rectangle {
+                                    required property string modelData
+                                    required property int index
+                                    readonly property bool current: modelData === effect.currentActivity
+                                    width: Kirigami.Units.iconSizes.small
+                                    height: Kirigami.Units.iconSizes.small
+                                    radius: 3
+                                    color: effect.palette[index % effect.palette.length]
+                                    border.width: current ? 2 : 0
+                                    border.color: "#ffffff"
+                                    Layout.alignment: Qt.AlignCenter
+                                    PC3.ToolTip.text: effect.labelOf(modelData)
+                                    PC3.ToolTip.visible: swatchHover.hovered
+                                    HoverHandler { id: swatchHover; cursorShape: Qt.PointingHandCursor }
+                                    TapHandler { acceptedButtons: Qt.LeftButton; onTapped: effect.zoomToActivity(modelData) }
+                                }
+                            }
+                            Sep {}
+                            // The hand dot: whose is the pointer? Filled = the window's,
+                            // hollow = the canvas's. Polled from the plugin's own state.
+                            Rectangle {
+                                visible: effect.passthroughLive
+                                width: 10
+                                height: 10
+                                radius: 5
+                                color: effect.handOnWindow ? "#2a6ddf" : "transparent"
+                                border.width: 1
+                                border.color: "#80ffffff"
+                                Layout.alignment: Qt.AlignCenter
+                                PC3.ToolTip.text: effect.handOnWindow ? "The pointer is the window's" : "The pointer is the canvas's"
+                                PC3.ToolTip.visible: handDotHover.hovered
+                                HoverHandler { id: handDotHover; cursorShape: Qt.PointingHandCursor }
+                            }
+                            // The fidelity rung: a quiet dot appears only when the canvas
+                            // has stepped down for the machine's load, coloured by how far.
+                            Rectangle {
+                                visible: effect.ql > 0
+                                width: 10
+                                height: 10
+                                radius: 5
+                                color: effect.ql === 1 ? "#d9a441" : (effect.ql === 2 ? "#d97a41" : "#d95050")
+                                border.width: 1
+                                border.color: "#80ffffff"
+                                Layout.alignment: Qt.AlignCenter
+                                PC3.ToolTip.text: effect.ql === 1 ? "The canvas is reduced: the machine is busy" : (effect.ql === 2 ? "The canvas is minimal: the machine is loaded" : "The canvas is bare: only the rectangles work")
+                                    + (effect.configuration.QualityMode === "Auto" ? " (cpu " + Math.round(effect.cpuBusy) + "%, gpu " + Math.round(effect.gpuBusy) + "%, memory " + Math.round(effect.memBusy) + "%)" : " (fixed by the Quality setting)")
+                                PC3.ToolTip.visible: rungHover.hovered
+                                HoverHandler { id: rungHover; cursorShape: Qt.PointingHandCursor }
+                            }
+                            Sep {}
+                            PC3.ToolButton { icon.name: "zoom-fit-best";   text: "Fit";    display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Zoom to fit (" + effect.keyLabel(effect.configuration.KeyFit) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.zoomExtents(true) }
+                            PC3.ToolButton { icon.name: "go-home";         text: "Home";   display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Look through this activity's frames (" + effect.keyLabel(effect.configuration.KeyHome) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.home() }
+                            PC3.ToolButton { icon.name: "zoom-in";         text: "In";     display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Zoom in (" + effect.keyLabel(effect.configuration.KeyZoomIn) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.camZoomTo(effect.zoom * effect.zoomStep, view.sg.x + view.sg.width / 2, view.sg.y + view.sg.height / 2) }
+                            PC3.ToolButton { icon.name: "zoom-out";        text: "Out";    display: PC3.AbstractButton.IconOnly; PC3.ToolTip.text: "Zoom out (" + effect.keyLabel(effect.configuration.KeyZoomOut) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.camZoomTo(effect.zoom / effect.zoomStep, view.sg.x + view.sg.width / 2, view.sg.y + view.sg.height / 2) }
+                            Sep {}
+                            PC3.ToolButton { icon.name: "snap-bounding-box-edges";   text: "Edges";   display: PC3.AbstractButton.IconOnly; checkable: true; checked: effect.snapEdges;   onToggled: effect.snapEdges = checked;   PC3.ToolTip.text: "Snap to edges";   PC3.ToolTip.visible: hovered }
+                            PC3.ToolButton { icon.name: "snap-bounding-box-corners"; text: "Corners"; display: PC3.AbstractButton.IconOnly; checkable: true; checked: effect.snapCorners; onToggled: effect.snapCorners = checked; PC3.ToolTip.text: "Snap to corners"; PC3.ToolTip.visible: hovered }
+                            PC3.ToolButton { icon.name: "snap-grid";                 text: "Grid";    display: PC3.AbstractButton.IconOnly; checkable: true; checked: effect.snapGrid;    onToggled: effect.snapGrid = checked;    PC3.ToolTip.text: "Snap to grid (" + effect.configuration.SnapGridSize + " px)"; PC3.ToolTip.visible: hovered }
+                            Sep {}
+                            PC3.ToolButton { icon.name: "dialog-ok-apply"; text: "Enter";  display: hud.vertical || hud.square ? PC3.AbstractButton.IconOnly : PC3.AbstractButton.TextBesideIcon; PC3.ToolTip.text: "Enter the location under the screen centre (" + effect.keyLabel(effect.configuration.KeyApply) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.enterHere() }
+                            PC3.ToolButton { icon.name: "dialog-cancel";   text: "Cancel"; display: hud.vertical || hud.square ? PC3.AbstractButton.IconOnly : PC3.AbstractButton.TextBesideIcon; PC3.ToolTip.text: "Back to where you were, nothing moved (" + effect.keyLabel(effect.configuration.KeyCancel) + ")"; PC3.ToolTip.visible: hovered; onClicked: effect.cancel() }
+                            Sep {}
+                            PC3.ToolButton { icon.name: "help-contextual"; text: "Help"; display: PC3.AbstractButton.IconOnly; checkable: true; checked: effect.helpOpen; onToggled: effect.helpOpen = checked; PC3.ToolTip.text: "Controls"; PC3.ToolTip.visible: hovered }
+                            PC3.ToolButton {
+                                icon.name: "configure"; text: "Settings"; display: PC3.AbstractButton.IconOnly
+                                PC3.ToolTip.text: "Settings"; PC3.ToolTip.visible: hovered
+                                onClicked: settingsMenu.open()
+                                PC3.Menu {
+                                    id: settingsMenu
+                                    onOpened: effect.canvasMenus++
+                                    onClosed: effect.canvasMenus = Math.max(0, effect.canvasMenus - 1)
+                                    background: MenuBackground { }
+                                    x: hud.vertical ? (hud.atRight ? -width : parent.width) : 0
+                                    y: hud.vertical ? 0 : parent.height
+                                    PC3.MenuItem { text: "Effect settings…";  icon.name: "preferences-desktop-effects"; onTriggered: KCM.KCMLauncher.openSystemSettings("kcm_kwin_effects") }
+                                    PC3.MenuItem { text: "Shortcuts…";        icon.name: "preferences-desktop-keyboard"; onTriggered: KCM.KCMLauncher.openSystemSettings("kcm_keys") }
+                                    PC3.MenuItem { text: "Screen edges…";     icon.name: "preferences-desktop-screen-edges"; onTriggered: KCM.KCMLauncher.openSystemSettings("kcm_kwinscreenedges") }
+                                    PC3.MenuItem { text: "Activities…";       icon.name: "activities"; onTriggered: KCM.KCMLauncher.openSystemSettings("kcm_activities") }
+                                }
+                            }
+                        }
+                    }
+
+                    // Help: the bindings, read from the same config the actions use.
+                    Rectangle {
+                        z: 100000
+                        visible: effect.helpOpen && hud.visible
+                        opacity: effect.chromeFade
+                        anchors.top: hud.vertical ? hud.top : (hud.atBottom ? undefined : hud.bottom)
+                        anchors.bottom: !hud.vertical && hud.atBottom ? hud.top : undefined
+                        anchors.left: hud.vertical ? (hud.atLeft ? hud.right : undefined) : (hud.atLeft ? hud.left : undefined)
+                        anchors.right: hud.vertical ? (hud.atRight ? hud.left : undefined) : (hud.atRight ? hud.right : undefined)
+                        anchors.horizontalCenter: !hud.vertical && !hud.atLeft && !hud.atRight ? hud.horizontalCenter : undefined
+                        anchors.margins: Kirigami.Units.smallSpacing
+                        width: helpGrid.implicitWidth + Kirigami.Units.largeSpacing * 2
+                        height: helpGrid.implicitHeight + Kirigami.Units.largeSpacing * 2
+                        radius: Kirigami.Units.cornerRadius
+                        color: Qt.rgba(Kirigami.Theme.backgroundColor.r, Kirigami.Theme.backgroundColor.g, Kirigami.Theme.backgroundColor.b, 0.92)
+                        border.width: 1
+                        border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.15)
+                        Kirigami.Theme.inherit: false
+                        Kirigami.Theme.colorSet: Kirigami.Theme.Window
+                        HoverHandler {
+                            onHoveredChanged: view.hoverCount += hovered ? 1 : -1
+                            Component.onDestruction: if (hovered) view.hoverCount -= 1
+                        }
+                        GridLayout {
+                            id: helpGrid
+                            anchors.centerIn: parent
+                            columns: 2
+                            columnSpacing: Kirigami.Units.largeSpacing
+                            rowSpacing: Kirigami.Units.smallSpacing
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: "drag ground / " + effect.keyLabel(effect.configuration.KeyPan) + "+drag / middle-drag" } PC3.Label { text: "pan" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: "hold " + effect.holdLabel(effect.configuration.PanHold) + " or middle" } PC3.Label { text: "the canvas takes the pointer: drag the ground to pan, drag a window to move it" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: "hold it / to a screen edge" }                        PC3.Label { text: "the canvas keeps panning; a window in hand comes along" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: "hold " + effect.holdLabel(effect.configuration.CanvasHold) } PC3.Label { text: "on the desktop: the location itself becomes the canvas; drags and the wheel work, release applies" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: "hold it, tap " + effect.holdLabel(effect.configuration.SwapButton) } PC3.Label { text: "tour the clusters - the plane's desktops - the camera hops to the next one" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: "click a window / rest on it" }                        PC3.Label { text: "the camera pans the least that fits it wholly into view" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: "wheel / " + effect.keyLabel(effect.configuration.KeyZoomIn) + " / " + effect.keyLabel(effect.configuration.KeyZoomOut) } PC3.Label { text: "zoom at the cursor" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: "drag window" }                                       PC3.Label { text: "move it on the plane" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: "drag window edge or corner" }                        PC3.Label { text: "resize it" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: "drag frame tag or edge" }                            PC3.Label { text: "move that activity's screens" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: "eye on a frame tag" }                                PC3.Label { text: "hide or show that frame; a hidden frame takes no windows" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseSelect) + " window" }        PC3.Label { text: "select it" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseSelectAdd) + " window, or +drag ground" } PC3.Label { text: "add to the selection, or select by rectangle" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseSelectToggle) + " window" }  PC3.Label { text: "toggle its selection; a selected window drags the whole selection" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseContextMenu) + " window" }   PC3.Label { text: "arrange the selection: horizontal, vertical, tile, grid, cascade" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseFocusWindow) + " window" }   PC3.Label { text: effect.focusHelp() }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseZoomToActivity) + " frame" }  PC3.Label { text: "zoom to that activity" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseGotoActivity) + " frame" }    PC3.Label { text: "apply with that activity current" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseNewActivityAt) + " window outside frames" } PC3.Label { text: "new activity centred on it" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyNext) + " / " + effect.keyLabel(effect.configuration.KeyPrev) } PC3.Label { text: "step the selection through the windows; the camera follows" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyPanLeft) + " / " + effect.keyLabel(effect.configuration.KeyPanRight) + " / " + effect.keyLabel(effect.configuration.KeyPanUp) + " / " + effect.keyLabel(effect.configuration.KeyPanDown) } PC3.Label { text: "pan the camera one step" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: "1..9" }                                          PC3.Label { text: "jump straight to that cluster - its number on the badge; the camera returns to the spot you left it at" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: "Ctrl+1..9 / Alt+1..9" }                    PC3.Label { text: "keep this view in that slot / fly back to it - the camera's place and how far out" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: "the dot in the toolbar" }                          PC3.Label { text: "whose hand is on the pointer: filled - the window's, hollow - the canvas's" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyApply) }      PC3.Label { text: "enter the location under the screen centre; with a window selected, enter it focused" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyCancel) }     PC3.Label { text: "back to where you were, nothing moved" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyHome) }       PC3.Label { text: "look through this activity's frames" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyOrigin) }     PC3.Label { text: "camera to the canvas origin" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyFit) }        PC3.Label { text: "zoom to fit" }
+                        }
                     }
                 }
-            }
-        }
-
-        // Help: the bindings, read from the same config the actions use.
-        Rectangle {
-            z: 100000
-            visible: effect.helpOpen && hud.visible
-            opacity: effect.chromeFade
-            anchors.top: hud.vertical ? hud.top : (hud.atBottom ? undefined : hud.bottom)
-            anchors.bottom: !hud.vertical && hud.atBottom ? hud.top : undefined
-            anchors.left: hud.vertical ? (hud.atLeft ? hud.right : undefined) : (hud.atLeft ? hud.left : undefined)
-            anchors.right: hud.vertical ? (hud.atRight ? hud.left : undefined) : (hud.atRight ? hud.right : undefined)
-            anchors.horizontalCenter: !hud.vertical && !hud.atLeft && !hud.atRight ? hud.horizontalCenter : undefined
-            anchors.margins: Kirigami.Units.smallSpacing
-            width: helpGrid.implicitWidth + Kirigami.Units.largeSpacing * 2
-            height: helpGrid.implicitHeight + Kirigami.Units.largeSpacing * 2
-            radius: Kirigami.Units.cornerRadius
-            color: Qt.rgba(Kirigami.Theme.backgroundColor.r, Kirigami.Theme.backgroundColor.g, Kirigami.Theme.backgroundColor.b, 0.92)
-            border.width: 1
-            border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.15)
-            Kirigami.Theme.inherit: false
-            Kirigami.Theme.colorSet: Kirigami.Theme.Window
-            HoverHandler {
-                onHoveredChanged: view.hoverCount += hovered ? 1 : -1
-                Component.onDestruction: if (hovered) view.hoverCount -= 1
-            }
-            GridLayout {
-                id: helpGrid
-                anchors.centerIn: parent
-                columns: 2
-                columnSpacing: Kirigami.Units.largeSpacing
-                rowSpacing: Kirigami.Units.smallSpacing
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "drag ground / " + effect.keyLabel(effect.configuration.KeyPan) + "+drag / middle-drag" } PC3.Label { text: "pan" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "hold " + effect.holdLabel(effect.configuration.PanHold) + " or middle" } PC3.Label { text: "the canvas takes the pointer: drag the ground to pan, drag a window to move it" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "hold it / to a screen edge" }                        PC3.Label { text: "the canvas keeps panning; a window in hand comes along" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "hold " + effect.holdLabel(effect.configuration.CanvasHold) } PC3.Label { text: "on the desktop: the location itself becomes the canvas; drags and the wheel work, release applies" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "hold it, tap " + effect.holdLabel(effect.configuration.SwapButton) } PC3.Label { text: "tour the clusters - the plane's desktops - the camera hops to the next one" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "click a window / rest on it" }                        PC3.Label { text: "the camera pans the least that fits it wholly into view" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "wheel / " + effect.keyLabel(effect.configuration.KeyZoomIn) + " / " + effect.keyLabel(effect.configuration.KeyZoomOut) } PC3.Label { text: "zoom at the cursor" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "drag window" }                                       PC3.Label { text: "move it on the plane" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "drag window edge or corner" }                        PC3.Label { text: "resize it" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "drag frame tag or edge" }                            PC3.Label { text: "move that activity's screens" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "eye on a frame tag" }                                PC3.Label { text: "hide or show that frame; a hidden frame takes no windows" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseSelect) + " window" }        PC3.Label { text: "select it" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseSelectAdd) + " window, or +drag ground" } PC3.Label { text: "add to the selection, or select by rectangle" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseSelectToggle) + " window" }  PC3.Label { text: "toggle its selection; a selected window drags the whole selection" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseContextMenu) + " window" }   PC3.Label { text: "arrange the selection: horizontal, vertical, tile, grid, cascade" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseFocusWindow) + " window" }   PC3.Label { text: effect.focusHelp() }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseZoomToActivity) + " frame" }  PC3.Label { text: "zoom to that activity" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseGotoActivity) + " frame" }    PC3.Label { text: "apply with that activity current" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseNewActivityAt) + " window outside frames" } PC3.Label { text: "new activity centred on it" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyNext) + " / " + effect.keyLabel(effect.configuration.KeyPrev) } PC3.Label { text: "step the selection through the windows; the camera follows" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyPanLeft) + " / " + effect.keyLabel(effect.configuration.KeyPanRight) + " / " + effect.keyLabel(effect.configuration.KeyPanUp) + " / " + effect.keyLabel(effect.configuration.KeyPanDown) } PC3.Label { text: "pan the camera one step" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "1..9" }                                          PC3.Label { text: "jump straight to that cluster - its number on the badge; the camera returns to the spot you left it at" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "Ctrl+1..9 / Alt+1..9" }                    PC3.Label { text: "keep this view in that slot / fly back to it - the camera's place and how far out" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: "the dot in the toolbar" }                          PC3.Label { text: "whose hand is on the pointer: filled - the window's, hollow - the canvas's" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyApply) }      PC3.Label { text: "enter the location under the screen centre; with a window selected, enter it focused" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyCancel) }     PC3.Label { text: "back to where you were, nothing moved" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyHome) }       PC3.Label { text: "look through this activity's frames" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyOrigin) }     PC3.Label { text: "camera to the canvas origin" }
-                PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyFit) }        PC3.Label { text: "zoom to fit" }
             }
         }
 

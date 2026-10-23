@@ -1231,30 +1231,23 @@ KWin.SceneEffect {
     // any window that covers a middle stretch. The geometry lives in the
     // plane's own coordinates: the camera is a uniform transform and the
     // segment-rect cuts are invariant under it, so the O(N^2) clipping runs
-    // only when the layout changes (the stack, the clusters, the float, the
+    // only when the layout changes (the stack, the clusters, the
     // hover) and the delegates apply the camera per frame.
     function clusterThreads() {
         if (quiet) return [];
-        // The windows as occlusion rects in the plane's coordinates (the
-        // float's picture included, since that is what the eye sees), each
-        // at its stack z: the threads cross them like a wire through the
-        // stack, above the lower and beneath the higher.
+        // The windows as occlusion rects in the plane's coordinates, each at
+        // its stack z: the threads cross them like a wire through the stack,
+        // above the lower and beneath the higher. A floated window counts at
+        // its plane spot, not at its picture riding the screen's edge: the
+        // picture moves on every frame the camera does, and cutting the web
+        // where it is re-wove every thread (and rebuilt every thread's item)
+        // on every frame of a zoomed-out overview, about 650 ms a frame with
+        // a dozen windows. The web is the plane's structure; the threads run
+        // between the windows' true spots anyway.
         const rects = [];
         for (let k = 0; k < entries.length; ++k) {
             const e = entries[k];
-            // A window clamped at the screen's edge must cut the threads
-            // where the eye sees its picture, not where its old canvas spot
-            // was. The threads themselves run between the windows' true
-            // spots (below): the web is the plane's structure, the picture
-            // only rides the screen, so a thread to a displaced floated
-            // window points off the screen toward where the window is.
-            const pic = pictureAt(e);
-            rects.push({
-                x: pic.x,
-                y: pic.y,
-                w: e.width,
-                h: e.height
-            });
+            rects.push({ x: e.x, y: e.y, w: e.width, h: e.height });
         }
         const out = [];
         for (let i = 0; i < clusters.length; ++i) {
