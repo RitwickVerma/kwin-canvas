@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Shared helpers for .claude/hooks/guard-bash.sh. Sourced, never run.
 #
 # cmd_segments    stdin: a shell command line. Prints one simple command per line with

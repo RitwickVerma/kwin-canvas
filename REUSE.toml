@@ -94,3 +94,16 @@ SPDX-License-Identifier = "GPL-2.0-or-later"
 path = ["REUSE.toml"]
 SPDX-FileCopyrightText = "2026 Ritwick Verma <verma1997@gmail.com>"
 SPDX-License-Identifier = "GPL-2.0-or-later"
+
+[[annotations]]
+# Written in this fork: the Claude Code settings (JSON cannot carry a header).
+# The OpenSpec trial adds the generated skills and commands, the project config
+# and the empty-directory markers; this tree has one licence, so they follow it.
+path = [
+    ".claude/settings.json",
+    ".claude/skills/**",
+    ".claude/commands/**",
+    "openspec/**",
+]
+SPDX-FileCopyrightText = "2026 Ritwick Verma <verma1997@gmail.com>"
+SPDX-License-Identifier = "GPL-2.0-or-later"

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
+# SPDX-License-Identifier: GPL-2.0-or-later
 # PreToolUse(Bash) guard for kwin-canvas. AGENTS.md rule 1: never test in the live session.
 # Reads the hook JSON on stdin, exits 2 (stderr goes to Claude) when a command would drive,
 # install into, reload or capture the user's live KWin/Plasma session.

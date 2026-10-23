@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
+# SPDX-License-Identifier: GPL-2.0-or-later
 # PostToolUse(Edit|Write|MultiEdit): qmllint (syntax only, as make lint-qml), bash -n + shellcheck at error severity (as make lint-shell).
 # Only the edited file, only inside this repo. Exit 0 when clean or when the tool is missing;
 # exit 2 (output goes to Claude) only on a real error in that file.

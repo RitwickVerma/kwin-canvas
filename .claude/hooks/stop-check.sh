@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
+# SPDX-License-Identifier: GPL-2.0-or-later
 # Stop hook: run the repo's fast check once per turn, only when the tree differs from HEAD.
 # Exit 2 hands the failure back to Claude so it fixes it before finishing.
 # stop_hook_active is true when Claude is already continuing because of this hook: exit 0 then,
