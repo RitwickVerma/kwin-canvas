@@ -1415,8 +1415,9 @@ Item {
         // switcher, the toolbar and the help) is built only when it can be seen: the scene is
         // created afresh on every open, and building all of it cost about half of each open's
         // first frame, a quick slide or fly included, which shows none of it. It is built
-        // asynchronously once wanted, so the windows' first frame never waits for it, and it
-        // stays until the scene goes away with the close.
+        // synchronously once wanted (an asynchronous build cannot resolve this file's inline
+        // components, Grip and the rest, and gained nothing in KWin's scene), and it stays
+        // until the scene goes away with the close.
         readonly property bool chromeWanted: !effect.quiet || effect.grasp || effect.switcherActive || !!effect.toastText
         onChromeWantedChanged: if (chromeWanted) chromeLoader.active = true
         Loader {
@@ -1424,7 +1425,6 @@ Item {
             anchors.fill: parent
             // Set, never bound: once built the chrome stays for the scene's life.
             active: false
-            asynchronous: true
             sourceComponent: Component {
                 Item {
                     // The corner lens: the world shrunk into a chip for a glance at
