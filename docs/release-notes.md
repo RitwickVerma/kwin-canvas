@@ -1,5 +1,9 @@
 Unreleased:
 
+- New windows open where you are looking. A window that appears wholly off every monitor, put back
+  at a spot from another day by a script (Remember Window Positions) or by the app, is moved to the
+  middle of the monitor under the pointer. `NewWindowsInView` turns it off.
+
 - Game mode. While a fullscreen window (a game, a video) has the focus and the canvas is closed, the
   canvas stands aside: the screen corners are released, an activation does not fly, and the
   canvas's hold buttons and the wheel on the wallpaper go to the window, so a game gets the mouse's

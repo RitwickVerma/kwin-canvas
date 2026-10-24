@@ -5431,6 +5431,42 @@ KWin.SceneEffect {
     // different sizes or offsets it holds ground no monitor covers at all (a window
     // there is on no screen). A rect larger than every monitor cannot be on one, so
     // for it the bounding box is the best there is.
+    // A new window opens where you are looking. KWin places a new window on a monitor, but a
+    // script that restores positions (Remember Window Positions) or an app's own memory can put
+    // it back at a spot from another day, which on an infinite plane is anywhere: the window
+    // opened somewhere nobody is looking. A new normal window still wholly off every monitor a
+    // moment after it appears (the restore has run by then) is centred on the monitor under
+    // the pointer. NewWindowsInView turns it off; a window on another activity is left alone.
+    property var newWindows: []
+    function noteNewWindow(w) {
+        if (!w || configuration.NewWindowsInView === false) return;
+        newWindows.push(w);
+        newWindowTimer.restart();
+    }
+    Timer {
+        id: newWindowTimer
+        interval: 900
+        onTriggered: {
+            const list = effect.newWindows;
+            effect.newWindows = [];
+            for (let i = 0; i < list.length; ++i) effect.bringNewWindowIntoView(list[i]);
+        }
+    }
+    function bringNewWindowIntoView(w) {
+        if (!w || w.deleted || !w.managed || !w.normalWindow || w.minimized || w.fullScreen) return;
+        if (!isViewportWindow(w) || windowPinned(w)) return;
+        const g = w.frameGeometry;
+        if (inReach(g, outputRects())) return;
+        const c = cursorScreen();
+        const s = screenAt(c.x, c.y) || KWin.Workspace.activeScreen;
+        if (!s) return;
+        const sg = s.geometry;
+        const x = Math.round(sg.x + Math.max(0, (sg.width - g.width) / 2));
+        const y = Math.round(sg.y + Math.max(0, (sg.height - g.height) / 2));
+        dbg("newwindow", w.caption + " opened at (" + Math.round(g.x) + "," + Math.round(g.y) + "), off every monitor: centred on " + s.name);
+        setReal(w, Qt.rect(x, y, g.width, g.height));
+        if (visible) markDirty(w);
+    }
     function wholeOnOneMonitor(g) {
         const ss = KWin.Workspace.screens;
         let couldFit = false;
@@ -5516,7 +5552,7 @@ KWin.SceneEffect {
         }
         function onActivitiesChanged(id) { Qt.callLater(effect.activitiesChanged); }
         // App popups come and go with these too; resync() refreshes them.
-        function onWindowAdded(w) { if (w && w.dock) effect.lastDockAt = Date.now(); effect.watchWindow(w); Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
+        function onWindowAdded(w) { if (w && w.dock) effect.lastDockAt = Date.now(); effect.watchWindow(w); effect.noteNewWindow(w); Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
         function onWindowRemoved(w) { if (w && w.dock) effect.lastDockAt = Date.now(); if (w) { delete effect.focusAt[w.internalId]; delete effect.watchedWindows[w.internalId]; delete effect.planeRestore[w.internalId]; delete effect.holdTrack[w.internalId]; delete effect.dirtyWindows[w.internalId]; } Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
         // Switching activities at 1:1 switches viewport: the ground follows.
         function onCurrentActivityChanged(id) {
