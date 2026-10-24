@@ -3230,6 +3230,40 @@ KWin.SceneEffect {
         camGo(1, 0, 0);
     }
 
+    // Recentre the plane on where you are: every plane coordinate the canvas keeps (each
+    // activity's target, the view, the bookmarks, the rooms' homes, the undo stack) moves by
+    // the same offset, so the current view becomes (0, 0). The real windows do not move at
+    // all - a real frame is a plane coordinate seen through the target, and both shift - so
+    // nothing on the screen changes. For a plane whose numbers have drifted hundreds of
+    // thousands of pixels from the origin. Only with the canvas closed.
+    function recentre() {
+        if (visible) { dbg("recentre", "refused: the canvas is open"); return false; }
+        const t = targetOf(currentActivity);
+        const dx = Math.round(t.x), dy = Math.round(t.y);
+        if (!Number.isFinite(dx) || !Number.isFinite(dy) || (dx === 0 && dy === 0)) return true;
+        const shift = function (p) { if (p && Number.isFinite(p.x) && Number.isFinite(p.y)) { p.x -= dx; p.y -= dy; } };
+        for (const k in targets) shift(targets[k]);
+        viewX -= dx;
+        viewY -= dy;
+        const b = Object.assign({}, bookmarks);
+        for (const n in b) { b[n] = Object.assign({}, b[n]); shift(b[n]); }
+        bookmarks = b;
+        configuration.Bookmarks = JSON.stringify(b);
+        for (const fp in clusterHomes) shift(clusterHomes[fp]);
+        for (let i = 0; i < undoStack.length; ++i) {
+            for (const k in undoStack[i].targets) shift(undoStack[i].targets[k]);
+            for (let j = 0; j < undoStack[i].layout.length; ++j) shift(undoStack[i].layout[j]);
+        }
+        saveClusterState();
+        configuration.ViewX = Math.round(viewX);
+        configuration.ViewY = Math.round(viewY);
+        configuration.writeConfig();
+        publishGround();
+        revision++;
+        dbg("recentre", "plane moved by (" + (-dx) + "," + (-dy) + ")");
+        return true;
+    }
+
     // Fit every window and every frame into the screen the pointer is on (the
     // active screen's, when there is no pointer), at once for a script and on
     // the spring for the toolbar and the key.
@@ -5520,6 +5554,7 @@ KWin.SceneEffect {
             break;
         }
         case "origin": origin(); break;
+        case "recentre": recentre(); break;
         case "extents": zoomExtents(); break;
         case "pan": if (numok(1) && numok(2)) panBy(Number(a[1]), Number(a[2])); break;
         case "panpx": if (numok(1) && numok(2)) { viewX -= Number(a[1]) / zoom; viewY -= Number(a[2]) / zoom; } break; // screen pixels at the current zoom, no torch: the tests' exact pan

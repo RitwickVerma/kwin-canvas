@@ -10,6 +10,7 @@
 #   kwin-canvas open      step out to the overworld (waits up to 10 s for the effect at login)
 #   kwin-canvas toggle    step out, or in when the canvas is open
 #   kwin-canvas status    whether the effect is loaded and the plugin answers
+#   kwin-canvas reset     recentre the plane on where you are (canvas closed): the view becomes (0, 0), no window moves
 #   kwin-canvas doctor    read-only health check: what is installed, loaded, bound, enabled
 #   kwin-canvas plugincheck [--notify] [--after N]   is the pass-through plugin built for the running KWin (exit 1 if not)
 #   kwin-canvas perf [--since WHEN] [--from FILE]   timings the effect wrote to the journal
@@ -777,7 +778,8 @@ case "${1:-}" in
     cancel) send cancel "back to where you were, nothing moved" ;;
     open)   send open   "stepping out to the overworld" 10 ;;
     toggle) send toggle "toggled" ;;
+    reset)  send recentre "the plane recentred on where you are: the view is (0, 0) now, no window moved" ;;
     status) echo "kwin-canvas: effect loaded: $(loaded); pass-through plugin: $(plugin)" ;;
-    -h|--help|help) sed -n '8,14p' "$0"; exit 0 ;;
-    *) sed -n '8,14p' "$0"; exit 1 ;;
+    -h|--help|help) sed -n 's/^#   \(kwin-canvas \)/\1/p' "$0"; exit 0 ;;
+    *) sed -n 's/^#   \(kwin-canvas \)/\1/p' "$0"; exit 1 ;;
 esac

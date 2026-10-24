@@ -1,5 +1,9 @@
 Unreleased:
 
+- `kwin-canvas reset` recentres a plane whose coordinates have drifted far from the origin: the
+  view becomes (0, 0) and every target, bookmark and room home moves with it, while no window
+  moves on the screen. `kwin-canvas help` lists every command again (it showed the first six).
+
 - A broken canvas says so. The login check (`kwin-canvas check`, run by the autostart `make install`
   adds) now also reads the journal for QML errors from the effect and raises a notification naming
   the first, and `kwin-canvas doctor` has a `qml` line. A plugin left behind by a KWin update is
