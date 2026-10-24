@@ -5503,7 +5503,7 @@ KWin.SceneEffect {
     // the pointer. NewWindowsInView turns it off; a window on another activity is left alone.
     property var newWindows: []
     function noteNewWindow(w) {
-        if (!w || configuration.NewWindowsInView === false) return;
+        if (!w) return;
         newWindows.push(w);
         newWindowTimer.restart();
     }
@@ -5516,9 +5516,54 @@ KWin.SceneEffect {
             for (let i = 0; i < list.length; ++i) effect.bringNewWindowIntoView(list[i]);
         }
     }
+    // An app's home: a plane spot an app's new windows open at, set from the arrange menu
+    // ("Open new windows of this app here"). Keyed by the window's desktop file, else its class;
+    // saved in AppHomes. A new window of that app is put there and, when that is out of view,
+    // the camera slides to it.
+    property var appHomes: ({})
+    property int appHomesRev: 0
+    function loadAppHomes() {
+        let h = {};
+        try { h = JSON.parse(configuration.AppHomes || "{}"); } catch (err) { h = {}; }
+        appHomes = h;
+        appHomesRev++;
+    }
+    function saveAppHomes() {
+        configuration.AppHomes = JSON.stringify(appHomes);
+        configuration.writeConfig();
+        appHomesRev++;
+    }
+    function appKey(w) { return w ? String(w.desktopFileName || w.resourceClass || "") : ""; }
+    function appName(w) { return w ? String(w.resourceClass || w.desktopFileName || "this app") : "this app"; }
+    // The window the menu acts on: the first of the selection, or the one the menu opened on.
+    function homeEntry() { const l = arrangeTargets(); return l.length ? l[0] : null; }
+    function hasAppHome() { appHomesRev; const e = homeEntry(); return !!e && appHomes[appKey(e.window)] !== undefined; }
+    function setAppHome() {
+        const e = homeEntry();
+        if (!e || !appKey(e.window)) return;
+        appHomes[appKey(e.window)] = { x: Math.round(e.x), y: Math.round(e.y) };
+        saveAppHomes();
+        toast("New " + appName(e.window) + " windows open here");
+    }
+    function forgetAppHome() {
+        const e = homeEntry();
+        if (!e) return;
+        delete appHomes[appKey(e.window)];
+        saveAppHomes();
+        toast(appName(e.window) + " windows open where KDE puts them again");
+    }
     function bringNewWindowIntoView(w) {
         if (!w || w.deleted || !w.managed || !w.normalWindow || w.minimized || w.fullScreen) return;
         if (!isViewportWindow(w) || windowPinned(w)) return;
+        const home = appHomes[appKey(w)];
+        if (home && !visible) {
+            const t = targetOf(currentActivity), g0 = w.frameGeometry;
+            dbg("newwindow", w.caption + " opens at its app's home (" + home.x + "," + home.y + ")");
+            setReal(w, Qt.rect(home.x - t.x, home.y - t.y, g0.width, g0.height));
+            if (!wholeOnOneMonitor(w.frameGeometry)) flyToWindow(w);
+            return;
+        }
+        if (configuration.NewWindowsInView === false) return;
         const g = w.frameGeometry;
         if (inReach(g, outputRects())) return;
         const c = cursorScreen();
@@ -5747,7 +5792,9 @@ KWin.SceneEffect {
     case "release": sceneGestures = 0; break; // the stuck-gesture emergency: the parked close fires at once
         case "toggle": toggle(); break;
         case "home": home(); break;
-        case "reloadstate": loadClusterState(); loadBookmarks(); break;
+        case "reloadstate": loadClusterState(); loadBookmarks(); loadAppHomes(); break;
+        // apphome set|forget: the arrange menu's two items, on the selection.
+        case "apphome": if (a[1] === "set") setAppHome(); else if (a[1] === "forget") forgetAppHome(); break;
         case "bookmark": {
             // bookmark set N | bookmark go N: the keys' two verbs, for a script.
             if (a[1] === "set" && numok(2)) bookmarkSet(Number(a[2]));
@@ -6045,6 +6092,7 @@ KWin.SceneEffect {
         readSwipeFingers();
         loadHiddenFrames();
         loadClusterState();
+        loadAppHomes();
         loadBookmarks();
         layoutBefore = outputRects();
         watchAllWindows();

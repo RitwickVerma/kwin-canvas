@@ -1,5 +1,9 @@
 Unreleased:
 
+- App homes. "Open new windows of this app here" in a window's arrange menu remembers that app's
+  spot on the plane; its next windows open there and the camera slides to them. The same item
+  forgets it again.
+
 - Windows out of view are marked. In the open overview every window no monitor shows has a small
   chip with its icon at the screen's edge, on the side it lies; a click flies to it.
 

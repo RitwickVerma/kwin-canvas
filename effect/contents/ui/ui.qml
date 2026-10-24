@@ -1863,6 +1863,12 @@ Item {
                         PC3.MenuItem { text: "Clear selection";      icon.name: "edit-select-none";      onTriggered: effect.clearSelection() }
                         PC3.MenuSeparator {}
                         PC3.MenuItem { text: effect.pinTargetsPinned() ? "Unfloat" : "Float"; icon.name: "window-pin"; onTriggered: effect.togglePin() }
+                        PC3.MenuSeparator {}
+                        PC3.MenuItem {
+                            text: effect.hasAppHome && effect.hasAppHome() ? "Open new windows of this app where KDE puts them" : "Open new windows of this app here"
+                            icon.name: "go-home"
+                            onTriggered: effect.hasAppHome() ? effect.forgetAppHome() : effect.setAppHome()
+                        }
                     }
 
                     // The toast: a brief glass chip naming what just happened (a saved
