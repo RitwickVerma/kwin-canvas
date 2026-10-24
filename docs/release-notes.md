@@ -1,5 +1,10 @@
 Unreleased:
 
+- Game mode. While a fullscreen window (a game, a video) has the focus and the canvas is closed, the
+  canvas stands aside: the screen corners are released, an activation does not fly, and the
+  canvas's hold buttons and the wheel on the wallpaper go to the window, so a game gets the mouse's
+  side buttons. `FullscreenPause` turns it off.
+
 - `kwin-canvas setup` checks the recommended KDE settings (focus follows mouse, the corners, KDE's
   Zoom effect, the animation speed) and asks before changing each; `--check` only lists them.
 

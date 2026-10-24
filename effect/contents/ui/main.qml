@@ -4773,8 +4773,18 @@ KWin.SceneEffect {
     // effect loads, on every reconfigure, and again whenever the plugin
     // answers its probe.
     readonly property int holdButtons: bindings.hold || 0
+    // Game mode: a fullscreen window has the focus and the canvas is closed. The canvas then
+    // stands fully aside: the corners are released to the game, an activation does not fly,
+    // and the plugin is told to let the canvas's hold buttons and the wheel's door through,
+    // so a game gets every button and the wheel (a mouse's side buttons are a game's too).
+    // FullscreenPause turns it off.
+    readonly property bool gameMode: {
+        const w = KWin.Workspace.activeWindow;
+        return configuration.FullscreenPause !== false && !visible && !!w && !w.deleted && w.fullScreen === true;
+    }
+    onGameModeChanged: { dbg("game", gameMode ? "a fullscreen window has the focus: standing aside" : "back"); publishHold(); }
     function publishHold() {
-        holdCall.arguments = [holdButtons];
+        holdCall.arguments = [gameMode ? 0 : holdButtons];
         holdCall.call();
         const delay = Number(configuration.HoldDelay) || 300;
         // The | 0 is load-bearing: QML numbers are doubles, and QDBus does
@@ -4792,7 +4802,7 @@ KWin.SceneEffect {
     // own copy once at load - so the effect publishes the setting at every
     // reconfigure (the same moments publishHold runs).
     function publishDoor() {
-        doorCall.arguments = [configuration.WheelDoor !== false];
+        doorCall.arguments = [configuration.WheelDoor !== false && !gameMode];
         doorCall.call();
     }
     // The trace flag reaches the plugin too, so its side of every decision
@@ -5486,6 +5496,7 @@ KWin.SceneEffect {
             // on-screen test below always sees geometry as drawn.
             if (effect.visible) { Qt.callLater(effect.resync); return; }
             if (!effect.configuration.FollowActivation) return;
+            if (effect.gameMode) return;
             if (!effect.isFlyableWindow(w)) return;
             const g = w.frameGeometry;
             // A focused window must be wholly on one monitor: an intersection is
@@ -5600,7 +5611,7 @@ KWin.SceneEffect {
         model: effect.configuration.BorderActivate
         delegate: KWin.ScreenEdgeHandler {
             required property int modelData
-            enabled: true
+            enabled: !effect.gameMode
             edge: modelData
             // A held pan button parks the pointer at the edge on purpose:
             // pushing into the border to pan the canvas must not toggle it.
@@ -5613,7 +5624,7 @@ KWin.SceneEffect {
         model: effect.configuration.TouchBorderActivate
         delegate: KWin.ScreenEdgeHandler {
             required property int modelData
-            enabled: true
+            enabled: !effect.gameMode
             mode: KWin.ScreenEdgeHandler.Touch
             edge: modelData
             onActivated: effect.toggle()
@@ -5854,6 +5865,7 @@ KWin.SceneEffect {
             + " snaps=" + snapCatches
             + " throw=" + (lastThrow ? Math.round(lastThrow.dx) + "," + Math.round(lastThrow.dy) : "-")
             + " bookmarks=" + Object.keys(bookmarks).length
+            + " game=" + (gameMode ? 1 : 0)
             + " search=" + (searchActive ? "\"" + searchText + "\"" + ":" + searchHits.length : "-")
             + " deskwin=" + Object.keys(desktopWindows).length
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
