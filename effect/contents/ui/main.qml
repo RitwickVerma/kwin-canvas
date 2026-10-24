@@ -1310,7 +1310,37 @@ KWin.SceneEffect {
         revision++;
         toast("Stepped the layout back");
     }
+    // The small undo: inside an open overview every drag and resize leaves the windows' spots
+    // and sizes from before it, and Ctrl+Z steps those back one at a time before it reaches the
+    // commits. A resize is one step however many pointer moves it took (a pause of half a second
+    // starts a new one). Emptied at every open.
+    property var moveHistory: []
+    property var sizeNotedAt: ({})
+    function noteBeforeChange(list) {
+        const snap = [];
+        for (let i = 0; i < list.length; ++i) {
+            const e = list[i];
+            if (e && e.window && !e.window.deleted) snap.push({ id: e.window.internalId, x: e.x, y: e.y, w: e.width, h: e.height });
+        }
+        if (snap.length === 0) return;
+        moveHistory.push(snap);
+        if (moveHistory.length > 50) moveHistory.shift();
+    }
+    function stepBackMove() {
+        const snap = moveHistory.pop();
+        for (let i = 0; i < snap.length; ++i) {
+            const s = snap[i];
+            const e = entryById(s.id);
+            if (!e) continue;
+            if (Math.abs(e.width - s.w) > 0.5 || Math.abs(e.height - s.h) > 0.5)
+                requestSize(entries.indexOf(e), s.w, s.h, false, false, true);
+            animateEntry(e, s.x, s.y, 0);
+        }
+        revision++;
+        toast(snap.length > 1 ? "Moved " + snap.length + " windows back" : "Moved the window back");
+    }
     function undo() {
+        if (visible && !quiet && moveHistory.length > 0) { stepBackMove(); return; }
         // The top of the stack is the commit just made; the undo restores
         // the layout beneath it. The first commit ever made leaves nothing
         // to step back to.
@@ -3449,6 +3479,8 @@ KWin.SceneEffect {
         ensureTargets();
         entryTargets = copyTargets(targets);
         lastOpenAt = Date.now();
+        moveHistory = [];
+        sizeNotedAt = ({});
         snapshot();
         // The clusters and their web now, not a tick later: the scene is built from them
         // below, and clustering after the first frame built the badges, the chips and the
@@ -4118,6 +4150,7 @@ KWin.SceneEffect {
         dragRaw = {};
         dragIndex = index;
         const set = isSelected(e) ? entries.filter(isSelected) : roomOf(e);
+        noteBeforeChange(set);
         for (let i = 0; i < set.length; ++i) {
             seatFloat(set[i]);
             dragRaw[set[i].window.internalId] = { x: set[i].x, y: set[i].y };
@@ -4544,6 +4577,9 @@ KWin.SceneEffect {
         if (!e || e.window.deleted) return;
         camStop();
         if (!exact) {
+            const id = e.window.internalId, now = Date.now();
+            if (now - (sizeNotedAt[id] || 0) > 500) noteBeforeChange([e]);
+            sizeNotedAt[id] = now;
             // Snap the edge being dragged. Left/top anchors keep the far edge fixed.
             const ids = {}; ids[e.window.internalId] = true;
             const cands = snapCandidates(ids, null);

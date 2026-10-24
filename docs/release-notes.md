@@ -1,5 +1,8 @@
 Unreleased:
 
+- A smaller undo. In the open overview Ctrl+Z steps back the last drag or resize, one gesture at a
+  time, before it steps back a whole commit.
+
 - Safe mode. When the canvas's scene fails to load (a QML error), the canvas closes and stays
   closed instead of covering the desktop with a black overlay or freezing a slide; the desktop is
   plain KWin until a fixed build loads (`make hot` or a relogin). A chrome that fails to build
