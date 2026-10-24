@@ -13,7 +13,7 @@
 #   kwin-canvas reset     recentre the plane on where you are (canvas closed): the view becomes (0, 0), no window moves
 #   kwin-canvas doctor    read-only health check: what is installed, loaded, bound, enabled
 #   kwin-canvas plugincheck [--notify] [--after N]   is the pass-through plugin built for the running KWin (exit 1 if not)
-#   kwin-canvas perf [--since WHEN] [--from FILE]   timings the effect wrote to the journal
+#   kwin-canvas perf [--since WHEN] [--from FILE] [--week]   timings the effect wrote to the journal (--week: a line a day)
 #   kwin-canvas check [--notify] [--after N]   the plugin check plus the effect's QML errors since boot (exit 1 on either)
 #   kwin-canvas fix-plugin   rebuild the pass-through plugin in the checkout and install it (asks sudo)
 #   kwin-canvas setup [--check]   the recommended KDE settings, one question each before any change (--check only lists)
@@ -551,10 +551,11 @@ doctor() {
 # event and key. --from reads a saved journal dump instead of asking journalctl.
 perf() {
     set +e +o pipefail
-    local since="1 hour ago" from="" out lines other
+    local since="1 hour ago" from="" out lines other boot="-b"
     while [ $# -gt 0 ]; do
         case "$1" in
-            --since) since=${2:-}; [ -n "$since" ] || { echo "kwin-canvas: --since needs a value, like '30 min ago'"; exit 1; }; shift 2 ;;
+            --week) perf_week "${2:-}"; return $? ;;
+            --since) since=${2:-}; [ -n "$since" ] || { echo "kwin-canvas: --since needs a value, like '30 min ago'"; exit 1; }; boot=""; shift 2 ;;
             --from) from=${2:-}; [ -n "$from" ] || { echo "kwin-canvas: --from needs a file"; exit 1; }; shift 2 ;;
             *) echo "kwin-canvas: perf takes --since WHEN or --from FILE, not '$1'"; exit 1 ;;
         esac
@@ -565,7 +566,8 @@ perf() {
         since="the start of $from"
     else
         command -v journalctl >/dev/null 2>&1 || { echo "kwin-canvas: journalctl is missing"; exit 1; }
-        out=$(journalctl --user -b --since "$since" -g "kwin-canvas perf" -o cat --no-pager 2>&1)
+        # An explicit --since may reach past the last boot; the default hour stays in this one.
+        out=$(journalctl --user $boot --since "$since" -g "kwin-canvas perf" -o cat --no-pager 2>&1)
     fi
     lines=$(printf '%s\n' "$out" | sed -n 's/.*kwin-canvas perf: //p')
     other=$(printf '%s\n' "$out" | grep -v 'kwin-canvas perf: ' | grep -v '^-- No entries --$' | grep -v '^$')
@@ -624,6 +626,46 @@ perf() {
                 | sed -n 's/^\([0-9T:-]*\)[-+][0-9:]* [^ ]* [^ ]*: kwin-canvas perf: stall /  \1 /p' | tail -12
         fi
     fi
+}
+
+# perf_week [FILE]: the last seven days, a line a day: canvas sessions, the median first paint,
+# the sessions with a frame of 250 ms or more, and the sessions that built scene items while
+# moving. FILE (journalctl -o short-iso output) instead of the journal, for the tests.
+perf_week() {
+    set +e +o pipefail
+    local src
+    if [ -n "${1:-}" ]; then src=$(cat "$1" 2>/dev/null)
+    else src=$(journalctl --user --since "7 days ago" -g "kwin-canvas perf: (first-paint|ticks|built)" -o short-iso --no-pager 2>/dev/null)
+    fi
+    if ! printf '%s\n' "$src" | grep -q "kwin-canvas perf: "; then
+        echo "kwin-canvas perf: no perf lines in the last seven days (the effect writes them with its Perf setting on)"
+        return 0
+    fi
+    printf '%s\n' "$src" | awk '
+        /kwin-canvas perf: / {
+            day = substr($1, 1, 10)
+            ev = $0; sub(/.*kwin-canvas perf: /, "", ev)
+            split(ev, f, " ")
+            if (!(day in seen)) { seen[day] = 1; days[++nd] = day }
+            if (f[1] == "first-paint") { split(f[2], kv, "="); fp[day, ++nfp[day]] = kv[2] + 0 }
+            else if (f[1] == "ticks") {
+                ses[day]++; p = 0; m = 0
+                for (i = 2; i in f; i++) { split(f[i], kv, "="); if (kv[1] == "p95") p = kv[2] + 0; if (kv[1] == "max") m = kv[2] + 0 }
+                if (p >= 100 || m >= 250) slow[day]++
+            } else if (f[1] == "built") {
+                for (i = 2; i in f; i++) { split(f[i], kv, "="); if (kv[1] == "moving" && kv[2] + 0 > 0) bm[day]++ }
+            }
+        }
+        END {
+            printf "%-10s %8s %16s %6s %14s\n", "day", "sessions", "first paint p50", "slow", "built moving"
+            for (d = 1; d <= nd; d++) {
+                day = days[d]; n = nfp[day]
+                for (i = 1; i <= n; i++) v[i] = fp[day, i]
+                for (i = 2; i <= n; i++) { x = v[i]; j = i - 1; while (j > 0 && v[j] > x) { v[j + 1] = v[j]; j-- } v[j + 1] = x }
+                med = n ? v[int((n + 1) / 2)] " ms" : "-"
+                printf "%-10s %8d %16s %6d %14d\n", day, ses[day], med, slow[day], bm[day]
+            }
+        }'
 }
 
 # plugincheck [--notify] [--after SECONDS]: exit 1, with the reason, when the installed plugin was built for another

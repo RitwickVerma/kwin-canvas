@@ -415,6 +415,25 @@ has "setup: counts what it changed" "kwin-canvas setup: 1 changed"
 su "" 
 grep -q "AutoRaise=" "$SC/kwinrc"; [ $? -ne 0 ]; check "setup: no answer (end of input) changes nothing" $?
 
+# ---- perf --week ----
+cat > "$T/week.log" <<'EOF'
+2026-10-22T10:00:00-0700 host kwin_wayland[1]: kwin-canvas perf: first-paint ms=90
+2026-10-22T10:00:01-0700 host kwin_wayland[1]: kwin-canvas perf: ticks n=50 p50=250 p95=250 max=718
+2026-10-22T10:00:01-0700 host kwin_wayland[1]: kwin-canvas perf: built n=300 moving=79 weave=79
+2026-10-23T10:00:00-0700 host kwin_wayland[1]: kwin-canvas perf: first-paint ms=40
+2026-10-23T10:00:00-0700 host kwin_wayland[1]: kwin-canvas perf: first-paint ms=50
+2026-10-23T10:00:00-0700 host kwin_wayland[1]: kwin-canvas perf: first-paint ms=60
+2026-10-23T10:00:01-0700 host kwin_wayland[1]: kwin-canvas perf: ticks n=200 p50=16 p95=20 max=40
+2026-10-23T10:00:01-0700 host kwin_wayland[1]: kwin-canvas perf: built n=30 moving=0
+EOF
+out=$(bash "$CLI" perf --week "$T/week.log" 2>&1); rc=$?
+exit_is "perf --week: exit 0" 0
+has "perf --week: a slow day shows its slow and rebuilding session" "2026-10-22        1            90 ms      1              1"
+has "perf --week: a good day shows the median first paint" "2026-10-23        1            50 ms      0              0"
+: > "$T/week-empty.log"
+out=$(bash "$CLI" perf --week "$T/week-empty.log" 2>&1)
+has "perf --week: nothing logged says so" "no perf lines in the last seven days"
+
 # ---- perf: the late ticks ----
 cat > "$T/stall.log" <<'EOF'
 kwin-canvas perf: open

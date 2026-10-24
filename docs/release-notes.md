@@ -1,5 +1,9 @@
 Unreleased:
 
+- `kwin-canvas perf --week` shows the last seven days, a line a day: sessions, the median first
+  paint, slow sessions and sessions that rebuilt the scene while moving. `perf --since` now reaches
+  past the last boot.
+
 - A smaller undo. In the open overview Ctrl+Z steps back the last drag or resize, one gesture at a
   time, before it steps back a whole commit.
 
