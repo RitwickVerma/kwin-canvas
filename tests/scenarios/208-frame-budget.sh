@@ -59,6 +59,11 @@ run_scenario() {
         x.frameGeometry = {x: 2300 + col * 540, y: 120 + row * 460, width: 500, height: 400}; });
         workspace.stackingOrder.forEach(function (x) { var c = String(x.caption);
         if (c.indexOf("KCalc") >= 0 || c.indexOf("Extra1") >= 0) x.onAllDesktops = true; });' 1.0
+    # The knobs this sets are put back to what the nest had, not deleted: a deleted key falls
+    # back to the effect's default, which is not the nest's (SmoothZoom is seeded false).
+    local was_smooth was_open
+    was_smooth=$(kreadconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key SmoothZoom --default __unset__)
+    was_open=$(kreadconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key OpenZoom --default __unset__)
     setcfg SmoothZoom true
     setcfg OpenZoom fit
     setcfg Perf true
@@ -98,8 +103,13 @@ run_scenario() {
         if (c.indexOf("KCalc") >= 0) x.onAllDesktops = false;
         if (c.indexOf("Extra") >= 0) x.closeWindow(); });' 1.0
     setcfg Perf false
-    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key OpenZoom --delete
-    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key SmoothZoom --delete
+    local k v
+    for k in SmoothZoom OpenZoom; do
+        [ "$k" = SmoothZoom ] && v=$was_smooth || v=$was_open
+        if [ "$v" = __unset__ ]; then kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key "$k" --delete
+        else kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key "$k" -- "$v"; fi
+    done
+    c state >/dev/null
     if [ "$two" = 1 ]; then
         run kscreen-doctor output.Virtual-0.position.0,0 output.Virtual-1.position.1920,0 output.Virtual-0.scale.1 output.Virtual-1.scale.1 >/dev/null 2>&1
     else
