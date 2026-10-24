@@ -1,5 +1,10 @@
 Unreleased:
 
+- Search. Meta+Ctrl+F (or `/` in the overview) opens the overview with a search field: type words of
+  a window's title or app and the others dim, the camera brings the best match to the middle, Tab
+  steps the matches and Enter flies into the chosen one. The keyboard is the search's while it runs,
+  pass-through or not.
+
 - `kwin-canvas reset` recentres a plane whose coordinates have drifted far from the origin: the
   view becomes (0, 0) and every target, bookmark and room home moves with it, while no window
   moves on the screen. `kwin-canvas help` lists every command again (it showed the first six).

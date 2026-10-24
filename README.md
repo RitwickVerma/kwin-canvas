@@ -196,6 +196,7 @@ tile, a maximized window) moves as a whole room on the plane.
 |---|---|---|
 | Meta+Ctrl+Alt+Space | step out: the overworld opens at the current viewport, 1:1 | step in: enter the location under the screen centre; another activity's frame switches to that activity |
 | Meta+Ctrl+Space | jump home | jump home |
+| Meta+Ctrl+F (or `/` when the canvas has the keys) | find a window: the overview opens fitted | type words of a window's title or app: the others dim, the camera brings the match to the middle; Tab steps the matches, Enter flies into the chosen one, Esc ends the search |
 | pan chords (no default; bind under Shortcuts → KWin) | slide the desktop half a screen that way | move the camera |
 | three-finger touchpad swipe | the desktop follows the fingers, then settles half a screen that way | |
 | drag on ground, Space+drag, or middle-drag | | pan |

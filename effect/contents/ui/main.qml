@@ -625,6 +625,90 @@ KWin.SceneEffect {
     // it enters the location under the screen centre, as the toolbar's Enter
     // does. The key is the overview pattern - Tab or a hover to the window,
     // Enter to go to it - on the canvas.
+    // ---- search ----------------------------------------------------------------
+    // Type to find a window: the overview opens fitted, the plugin hands the keys to the
+    // canvas, every typed word narrows the windows to those whose title, class or desktop
+    // file holds it (Logic.searchFilter), the others dim, the camera fits the matches and
+    // the best one is selected. Enter flies into it; Tab and the arrows step the matches;
+    // Backspace edits; Esc ends the search (the overview stays, a second Esc leaves it).
+    property bool searchActive: false
+    property string searchText: ""
+    property var searchHits: []       // internalIds, best first
+    property var searchHitSet: ({})   // internalId -> true, for the thumbnails' dim
+    property int searchIndex: 0
+    function searchStart() {
+        if (visible && quiet) { if (grasp) graspEnd(); else finishSlide(); }
+        if (!visible) open(false, "fit");
+        if (!visible || quiet) return;
+        searchActive = true;
+        searchText = "";
+        searchIndex = 0;
+        // The keys are the canvas's while the search runs, whatever window has the focus.
+        dropPassthrough();
+        searchUpdate();
+    }
+    function searchUpdate() {
+        const items = [];
+        for (let i = entries.length - 1; i >= 0; --i) {
+            const w = entries[i].window;
+            items.push({ id: w.internalId, text: String(w.caption) + " " + String(w.resourceClass || "") + " " + String(w.desktopFileName || "") });
+        }
+        const hits = Logic.searchFilter(items, searchText);
+        const set = {};
+        for (let i = 0; i < hits.length; ++i) set[hits[i]] = true;
+        searchHits = hits;
+        searchHitSet = set;
+        if (hits.length === 0) { searchIndex = 0; clearSelection(); return; }
+        searchIndex = ((searchIndex % hits.length) + hits.length) % hits.length;
+        selectOnly(entryById(hits[searchIndex]));
+        searchFit();
+    }
+    // The camera fits the matches (at most 1:1), so a lone match comes to the middle.
+    function searchFit() {
+        let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+        for (let i = 0; i < searchHits.length; ++i) {
+            const e = entryById(searchHits[i]);
+            if (!e) continue;
+            l = Math.min(l, e.x); t = Math.min(t, e.y);
+            r = Math.max(r, e.x + e.width); b = Math.max(b, e.y + e.height);
+        }
+        if (l === Infinity) return;
+        const f = Logic.fitBox(l, t, r, b, actionScreen().geometry, 120, zoomMin);
+        const z = Math.min(1, f.zoom);
+        const sg = actionScreen().geometry;
+        camGo(z, (l + r) / 2 - (sg.x + sg.width / 2) / z, (t + b) / 2 - (sg.y + sg.height / 2) / z, undefined, undefined, 2.5);
+    }
+    function searchEnd() {
+        if (!searchActive) return;
+        searchActive = false;
+        searchText = "";
+        searchHits = [];
+        searchHitSet = ({});
+        // The windows get the keys back.
+        if (visible && !quiet && passthrough) probeCall.call();
+    }
+    // A key while the search runs: true when the search took it.
+    function searchKey(k, text, mods) {
+        if (!searchActive) return false;
+        if (k === Qt.Key_Escape) { searchEnd(); return true; }
+        if (k === Qt.Key_Return || k === Qt.Key_Enter) {
+            const e = searchHits.length ? entryById(searchHits[searchIndex]) : null;
+            searchEnd();
+            if (e) focusWindow(e);
+            return true;
+        }
+        if (k === Qt.Key_Backspace) { searchText = searchText.slice(0, -1); searchIndex = 0; searchUpdate(); return true; }
+        if (k === Qt.Key_Tab || k === Qt.Key_Down || k === Qt.Key_Right) { if (searchHits.length) { searchIndex++; searchUpdate(); } return true; }
+        if (k === Qt.Key_Backtab || k === Qt.Key_Up || k === Qt.Key_Left) { if (searchHits.length) { searchIndex--; searchUpdate(); } return true; }
+        if ((mods & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) === 0 && text && text.length === 1 && text.charCodeAt(0) >= 32) {
+            searchText += text;
+            searchIndex = 0;
+            searchUpdate();
+            return true;
+        }
+        return true;   // nothing else reaches the canvas's own keys while typing
+    }
+
     function applyKey() {
         for (let i = 0; i < entries.length; ++i) {
             if (isSelected(entries[i])) { focusWindow(entries[i]); return; }
@@ -5474,6 +5558,12 @@ KWin.SceneEffect {
         onActivated: { effect.switcherFromChord = true; effect.switcherCluster = true; effect.switcherModMask = effect.modMaskOf(effect.configuration.SwitcherAltShortcut); effect.switcherToggle() }
     }
     KWin.ShortcutHandler {
+        name: "Canvas Search"
+        text: "Canvas: find a window by typing its title or app"
+        sequence: effect.configuration.SearchShortcut
+        onActivated: effect.searchActive ? effect.searchEnd() : effect.searchStart()
+    }
+    KWin.ShortcutHandler {
         name: "Canvas Home"
         text: "Canvas: return this activity to the origin"
         sequence: effect.configuration.HomeShortcut
@@ -5555,6 +5645,13 @@ KWin.SceneEffect {
         }
         case "origin": origin(); break;
         case "recentre": recentre(); break;
+        // search TEXT...: start a search and type TEXT; searchkey NAME: Return, Escape, Tab, Backspace.
+        case "search": searchStart(); if (a.length > 1) { searchText = a.slice(1).join(" "); searchUpdate(); } break;
+        case "searchkey": {
+            const keys = { Return: Qt.Key_Return, Escape: Qt.Key_Escape, Tab: Qt.Key_Tab, Backspace: Qt.Key_Backspace, Up: Qt.Key_Up };
+            if (keys[a[1]] !== undefined) searchKey(keys[a[1]], "", 0);
+            break;
+        }
         case "extents": zoomExtents(); break;
         case "pan": if (numok(1) && numok(2)) panBy(Number(a[1]), Number(a[2])); break;
         case "panpx": if (numok(1) && numok(2)) { viewX -= Number(a[1]) / zoom; viewY -= Number(a[2]) / zoom; } break; // screen pixels at the current zoom, no torch: the tests' exact pan
@@ -5757,6 +5854,7 @@ KWin.SceneEffect {
             + " snaps=" + snapCatches
             + " throw=" + (lastThrow ? Math.round(lastThrow.dx) + "," + Math.round(lastThrow.dy) : "-")
             + " bookmarks=" + Object.keys(bookmarks).length
+            + " search=" + (searchActive ? "\"" + searchText + "\"" + ":" + searchHits.length : "-")
             + " deskwin=" + Object.keys(desktopWindows).length
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
             + " map=" + (mapMinimap ? "minimap" : "-")
@@ -5803,6 +5901,10 @@ KWin.SceneEffect {
     // close would hang until the next open resumed it mid-flight).
     onVisibleChanged: {
         if (!visible) {
+            searchActive = false;
+            searchText = "";
+            searchHits = [];
+            searchHitSet = ({});
             camStop();
             lastCloseAt = Date.now();
             if (perf) perfTicksReport();

@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
+const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, searchFilter, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -54,6 +54,25 @@ ok("the dynamic gap reads the same scaled up",
     ok("layers come in z order", ls.every(function (l, i) { return i === 0 || ls[i - 1].z <= l.z; }));
     ok("a span under every window sits below the lowest", L.webLayers([sp(0, 900, false, 1)], zs)[0].z === 999.5);
     ok("no spans, no layers", L.webLayers([], zs).length === 0);
+}
+
+// ---- the search ----
+{
+    const items = [
+        { id: 1, text: "Downloads — Dolphin org.kde.dolphin" },
+        { id: 2, text: "kwin-canvas : main.qml — Kate org.kde.kate" },
+        { id: 3, text: "Ritwick Verma, software engineer — Brave brave-browser" },
+        { id: 4, text: "~/Projects/kwin-canvas — Konsole org.kde.konsole" }
+    ];
+    const f = function (q) { return JSON.stringify(L.searchFilter(items, q)); };
+    ok("nothing typed matches nothing", f("") === "[]" && f("   ") === "[]");
+    ok("a class matches", f("dolphin") === "[1]");
+    ok("case does not matter", f("BRAVE") === "[3]");
+    ok("every word must match, in any order", f("canvas konsole") === "[4]" && f("konsole canvas") === "[4]");
+    ok("a word start ranks first", f("ka") === "[2]");
+    ok("an inner hit still matches", f("ownl") === "[1]");
+    ok("ties keep the stack order", f("kwin") === "[2,4]");
+    ok("nothing found is empty", f("gimp") === "[]");
 }
 
 // ---- the distance ----

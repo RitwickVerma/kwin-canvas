@@ -771,7 +771,10 @@ Item {
                 readonly property real depth: { effect.revision; effect.focusEntry; effect.selectionRev; effect.switcherActive; return ((thumb.entry === effect.focusEntry || (effect.switcherActive && effect.isSelected(thumb.entry)) ? effect.entries.length + 1 : index + 1) / (effect.entries.length + (effect.focusEntry ? 1 : 0))); }
                 readonly property real depthScale: (effect.quiet || effect.ql >= 1) ? 1 : (1 + (0.025 * thumb.depth - 0.01) * Math.max(effect.skinReveal, effect.switcherRise))
                 scale: depthScale * (lifted ? 1.03 : (thumb.hovered && heavy ? 1.008 : 1)) * (0.94 + 0.06 * thumb.enterFade)
-                opacity: effect.thumbOpacity * thumb.enterFade
+                // A search dims what it does not match.
+                readonly property bool searchDim: effect.searchActive === true && effect.searchText !== "" && !effect.searchHitSet[thumb.entry.window.internalId]
+                opacity: effect.thumbOpacity * thumb.enterFade * (searchDim ? 0.18 : 1)
+                Behavior on opacity { enabled: effect.searchActive === true; NumberAnimation { duration: 140 } }
                 Behavior on scale { enabled: !effect.quiet; SpringAnimation { spring: 3.6; damping: 0.5; epsilon: 0.001 } }
                 transform: [
                     Rotation {
@@ -1316,6 +1319,11 @@ Item {
 
         Keys.onPressed: (event) => {
             const k = event.key;
+            // The search takes every key while it runs (the functions live on the effect;
+            // a hot reload swaps this file and not the effect, which may predate them).
+            if (effect.searchActive && effect.searchKey && effect.searchKey(k, event.text, event.modifiers)) { event.accepted = true; return; }
+            // A slash starts it, when the canvas has the keys.
+            if (k === Qt.Key_Slash && !effect.quiet && effect.searchStart && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) { effect.searchStart(); event.accepted = true; return; }
             // Ctrl+Z steps the layout back one commit, wherever the canvas
             // is open - the undo belongs to the plane, not to a window.
             if ((event.modifiers & Qt.ControlModifier) && k === Qt.Key_Z) {
@@ -1407,6 +1415,40 @@ Item {
                 if (mod) {
                     effect.chordRelease();
                     event.accepted = true;
+                }
+            }
+        }
+
+        // The search's field: what was typed and how many windows match, in glass at the top
+        // of the screen the canvas opened on.
+        Rectangle {
+            visible: effect.searchActive === true && view.screen === (effect.chromeScr || effect.primaryScreen)
+            z: 100003
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: Kirigami.Units.gridUnit * 4
+            width: Math.max(Kirigami.Units.gridUnit * 22, searchRow.implicitWidth + Kirigami.Units.largeSpacing * 3)
+            height: searchRow.implicitHeight + Kirigami.Units.largeSpacing * 2
+            radius: height / 2
+            color: Qt.rgba(0.08, 0.08, 0.10, 0.82)
+            border.width: 1
+            border.color: effect.searchText !== "" && effect.searchHits.length === 0 ? "#c0ff6b6b" : "#40ffffff"
+            Row {
+                id: searchRow
+                anchors.centerIn: parent
+                spacing: Kirigami.Units.largeSpacing
+                Kirigami.Icon { source: "search"; width: Kirigami.Units.iconSizes.small; height: width; anchors.verticalCenter: parent.verticalCenter }
+                PC3.Label {
+                    text: effect.searchText !== "" ? effect.searchText + "\u258f" : "Type to find a window\u258f"
+                    opacity: effect.searchText !== "" ? 1 : 0.6
+                    color: "#ffffff"
+                    font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.3
+                }
+                PC3.Label {
+                    visible: effect.searchText !== ""
+                    text: effect.searchHits.length === 0 ? "no match" : (effect.searchIndex + 1) + " of " + effect.searchHits.length
+                    color: "#ffffff"
+                    opacity: 0.6
+                    anchors.verticalCenter: parent.verticalCenter
                 }
             }
         }

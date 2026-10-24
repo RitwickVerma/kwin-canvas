@@ -264,6 +264,10 @@
             <label>Key sequence that steps out to the canvas and back in (enters the location under the screen centre).</label>
             <default>Meta+Ctrl+Alt+Space</default>
         </entry>
+        <entry name="SearchShortcut" type="String">
+            <label>Key sequence that finds a window by typing: the overview opens fitted, typed words narrow the windows to those whose title or app holds them, Enter flies into the best match, Tab steps the matches, Esc ends the search.</label>
+            <default>Meta+Ctrl+F</default>
+        </entry>
         <entry name="HomeShortcut" type="String">
             <label>Key sequence that returns to the canvas origin.</label>
             <default>Meta+Ctrl+Space</default>

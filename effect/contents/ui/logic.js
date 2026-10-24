@@ -114,6 +114,31 @@ function webLayers(spans, windowZs) {
     return out;
 }
 
+// The search's matches. items: [{ id, text }], text what a window answers to (its
+// title, its class, its desktop file); query: what was typed. Every word of the query
+// must appear in the text, case-insensitively, in any order. Returns the ids, best
+// first: a word that starts a word of the text beats one found inside a word, and an
+// earlier first hit beats a later one; ties keep the items' order.
+function searchFilter(items, query) {
+    const words = String(query || "").toLowerCase().split(/\s+/).filter(function (w) { return w.length > 0; });
+    if (words.length === 0) return [];
+    const out = [];
+    for (let i = 0; i < items.length; ++i) {
+        const t = String(items[i].text || "").toLowerCase();
+        let score = 0, first = Infinity, ok = true;
+        for (let k = 0; k < words.length; ++k) {
+            const at = t.indexOf(words[k]);
+            if (at < 0) { ok = false; break; }
+            const starts = at === 0 || /[^a-z0-9]/.test(t.charAt(at - 1));
+            score += starts ? 2 : 1;
+            first = Math.min(first, at);
+        }
+        if (ok) out.push({ id: items[i].id, score: score, first: first, order: i });
+    }
+    out.sort(function (a, b) { return b.score - a.score || a.first - b.first || a.order - b.order; });
+    return out.map(function (h) { return h.id; });
+}
+
 // Whether two recluster results describe the same clustering: the same
 // clusters (members, order, centroids, size, cohesion), the same window to
 // cluster map and the same thread ranks. The effect publishes a result only
