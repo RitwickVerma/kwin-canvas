@@ -1467,6 +1467,8 @@ Item {
             anchors.fill: parent
             // Set, never bound: once built the chrome stays for the scene's life.
             active: false
+            // A chrome that fails to build leaves the canvas working without its toolbar, said once.
+            onStatusChanged: if (status === Loader.Error) console.warn("kwin-canvas: the overview's chrome failed to build; the canvas works without its toolbar and tags (kwin-canvas doctor names the error)")
             sourceComponent: Component {
                 Item {
                     // The corner lens: the world shrunk into a chip for a glance at

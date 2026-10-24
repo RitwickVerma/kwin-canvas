@@ -1,5 +1,10 @@
 Unreleased:
 
+- Safe mode. When the canvas's scene fails to load (a QML error), the canvas closes and stays
+  closed instead of covering the desktop with a black overlay or freezing a slide; the desktop is
+  plain KWin until a fixed build loads (`make hot` or a relogin). A chrome that fails to build
+  leaves the canvas working without its toolbar.
+
 - New windows open where you are looking. A window that appears wholly off every monitor, put back
   at a spot from another day by a script (Remember Window Positions) or by the app, is moved to the
   middle of the monitor under the pointer. `NewWindowsInView` turns it off.

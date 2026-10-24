@@ -3375,7 +3375,19 @@ KWin.SceneEffect {
     }
 
     // ---- open / close ------------------------------------------------------
+    // Safe mode: the scene file failed to load (a QML error in ui.qml), so every open would be a
+    // black overlay over the desktop and every slide a frozen one. The canvas closes, logs it once
+    // and refuses to open: the desktop is plain KWin until ui.qml loads again, which a hot reload
+    // (make hot) or a relogin tries. `kwin-canvas check` and doctor name the error.
+    property bool safeMode: false
+    function sceneFailed() {
+        if (!safeMode) console.warn("kwin-canvas: the scene (ui.qml) failed to load; the canvas stays closed until it loads again (kwin-canvas doctor names the error)");
+        safeMode = true;
+        Qt.callLater(function () { visible = false; quiet = false; camStop(); });
+    }
+    onHotRevChanged: safeMode = false
     function open(quietMode, spec) {
+        if (safeMode) { dbg("open", "refused: safe mode, the scene failed to load"); return; }
         refreshGroundWallpaper();
         if (visible) return;
         tickFresh = true;
@@ -5196,6 +5208,8 @@ KWin.SceneEffect {
     // Open quietly if closed. False while the real canvas is open.
     function beginSlide() {
         if (visible && !quiet) return false;
+        // Safe mode: no scene, so no slide (the view would move with nothing written).
+        if (safeMode) return false;
         // A slide that has landed holds the scene one paint more before its
         // close (slideCloseTimer). A new slide in that 32 ms must not glide on
         // the landed canvas: its entry state is the old slide's, and the
@@ -5902,6 +5916,7 @@ KWin.SceneEffect {
             + " throw=" + (lastThrow ? Math.round(lastThrow.dx) + "," + Math.round(lastThrow.dy) : "-")
             + " bookmarks=" + Object.keys(bookmarks).length
             + " game=" + (gameMode ? 1 : 0)
+            + " safe=" + (safeMode ? 1 : 0)
             + " search=" + (searchActive ? "\"" + searchText + "\"" + ":" + searchHits.length : "-")
             + " deskwin=" + Object.keys(desktopWindows).length
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
@@ -6018,6 +6033,7 @@ KWin.SceneEffect {
         // focus binding inside a loaded item does not take it - the split
         // taught us that the hard way. Re-assert on every load.
         onLoaded: item.forceActiveFocus();
+        onStatusChanged: if (status === Loader.Error) effect.sceneFailed()
     }
 }
 
