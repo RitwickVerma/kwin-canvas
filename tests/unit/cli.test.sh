@@ -117,7 +117,7 @@ doctor() { # runs the repo's CLI over the fixture; session started in the future
     out=$(env PATH="$T/bin:$PATH" DOCTOR_REPO="${REPO:-$REPO_FIXTURE}" DOCTOR_HOME="$H" DOCTOR_PLUGIN_DIR="$PLUG" DOCTOR_KWIN_VERSION="${KWV-6.8.0}" \
         DOCTOR_KWIN_START="${KSTART:-$((NOW + 1000))}" DOCTOR_PLASMA_START="${PSTART:-$((NOW + 1000))}" \
         FAKE_LOAD="${FAKE_LOAD-cpu=10 load=0.50 mem=40 gpu=5}" FAKE_ZOOM="${FAKE_ZOOM-false}" FAKE_LOADED="${FAKE_LOADED-true}" \
-        DOCTOR_PERF_FILE="${PERF-$T/perf-none}" bash "$CLI" doctor 2>&1)
+        DOCTOR_PERF_FILE="${PERF-$T/perf-none}" DOCTOR_JOURNAL_FILE="${JOURNAL-$T/journal-none}" bash "$CLI" doctor 2>&1)
     rc=$?
 }
 
@@ -361,6 +361,42 @@ pc 6.9.0 --bogus
 exit_is "plugincheck: an unknown option exits 2" 2
 rm -f "$T/notified" "$T/bin/notify-send"; pc 6.9.0
 [ ! -e "$T/notified" ]; check "plugincheck: no --notify, no notification" $?
+
+# ---- QML errors: doctor, check ----
+: > "$T/journal-none"
+cat > "$T/journal-bad" <<'EOF'
+file:///home/u/.local/share/kwin/effects/kwin-canvas/contents/ui/ui.qml?rev=52:22:5: Grip is not a type
+file:///home/u/.local/share/kwin/effects/kwin-canvas/contents/ui/ui.qml?rev=52:22:5: Grip is not a type
+file:///home/u/.local/share/kwin/effects/kwin-canvas/contents/ui/ui.qml?rev=52:1430:9: QML Loader: Binding loop detected for property "active":
+qrc:/qt/qml/org/kde/plasma/components/Menu.qml:30:26: TypeError: Cannot read property 'width' of null
+kwin-canvas ui: loaded
+EOF
+doctor
+has "qml: none logged is OK" "OK    qml        no QML error from the effect logged since boot"
+JOURNAL="$T/journal-bad" doctor
+has "qml: the effect's errors fail, counted once each" "FAIL  qml        2 distinct QML errors from the effect since boot, the first: ui.qml:1430:9: QML Loader"
+lacks "qml: Plasma's own Menu.qml is not ours" "Menu.qml"
+ck() { out=$(env PATH="$T/bin:$PATH" DOCTOR_PLUGIN_DIR="$PLUG" DOCTOR_KWIN_VERSION="${KWV:-6.8.0}" DOCTOR_JOURNAL_FILE="$1" bash "$CLI" check "${@:2}" 2>&1); rc=$?; }
+ck "$T/journal-none"
+exit_is "check: plugin matches and no QML error exits 0" 0
+printf '#!/bin/sh\necho "$@" >> "%s/notified"\n' "$T" > "$T/bin/notify-send"; chmod 755 "$T/bin/notify-send"
+rm -f "$T/notified"; ck "$T/journal-bad" --notify
+exit_is "check: QML errors exit 1" 1
+grep -q "partly broken" "$T/notified"; check "check: --notify raises the QML notification" $?
+rm -f "$T/notified"; KWV=6.9.0 ck "$T/journal-none" --notify
+exit_is "check: a plugin mismatch exits 1" 1
+grep -q "kwin-canvas fix-plugin" "$T/notified"; check "check: the plugin notification names fix-plugin" $?
+rm -f "$T/notified" "$T/bin/notify-send"
+# ---- fix-plugin ----
+mkdir -p "$T/frepo/effect" "$T/frepo/build/plugin/bin/kwin/plugins" "$T/fdest"; : > "$T/frepo/effect/metadata.json"; : > "$T/frepo/VERSION"
+printf 'plugin:\n\t@printf "x org.kde.kwin.PluginFactoryInterface6.8.0 y" > build/plugin/bin/kwin/plugins/kwin_canvas_passthrough.so\n' > "$T/frepo/Makefile"
+out=$(env PATH="$T/bin:$PATH" DOCTOR_REPO="$T/frepo" DOCTOR_PLUGIN_DIR="$T/fdest" DOCTOR_KWIN_VERSION=6.8.0 FIX_SUDO=env bash "$CLI" fix-plugin 2>&1); rc=$?
+exit_is "fix-plugin: builds and installs, exit 0" 0
+[ -f "$T/fdest/kwin_canvas_passthrough.so" ]; check "fix-plugin: the plugin lands in the plugin dir" $?
+has "fix-plugin: says what it built and to relogin" "built for KWin 6.8.0. Log out and back in"
+cp "$CLI" "$T/cli-copy"; out=$(cd / && env PATH="$T/bin:$PATH" KWIN_CANVAS_REPO= bash "$T/cli-copy" fix-plugin 2>&1); rc=$?
+exit_is "fix-plugin: no checkout exits 1" 1
+has "fix-plugin: no checkout says how to point at one" "set KWIN_CANVAS_REPO"
 
 # ---- perf: the late ticks ----
 cat > "$T/stall.log" <<'EOF'

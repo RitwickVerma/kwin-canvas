@@ -1,5 +1,10 @@
 Unreleased:
 
+- A broken canvas says so. The login check (`kwin-canvas check`, run by the autostart `make install`
+  adds) now also reads the journal for QML errors from the effect and raises a notification naming
+  the first, and `kwin-canvas doctor` has a `qml` line. A plugin left behind by a KWin update is
+  fixed with one command, `kwin-canvas fix-plugin`, which the notification names.
+
 - The zoomed-out overview is smooth again. With a floated window on the desk (a pinned window, a
   picture-in-picture) a zoom-to-fit open ran at about 1.5 frames a second and took three seconds to
   settle: the cluster web was rebuilt on every frame. The web is now woven only when the layout

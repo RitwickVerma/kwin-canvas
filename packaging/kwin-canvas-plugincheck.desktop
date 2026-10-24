@@ -3,8 +3,8 @@
 [Desktop Entry]
 Type=Application
 Name=kwin-canvas plugin check
-Comment=Warn at login when the kwin-canvas pass-through plugin was built for another KWin
-Exec=@BIN@/kwin-canvas plugincheck --notify --after 20
+Comment=Warn at login when the kwin-canvas plugin was built for another KWin or the effect logged QML errors
+Exec=@BIN@/kwin-canvas check --notify --after 20
 Terminal=false
 NoDisplay=true
 X-KDE-autostart-after=plasma-workspace

@@ -13,6 +13,8 @@
 #   kwin-canvas doctor    read-only health check: what is installed, loaded, bound, enabled
 #   kwin-canvas plugincheck [--notify] [--after N]   is the pass-through plugin built for the running KWin (exit 1 if not)
 #   kwin-canvas perf [--since WHEN] [--from FILE]   timings the effect wrote to the journal
+#   kwin-canvas check [--notify] [--after N]   the plugin check plus the effect's QML errors since boot (exit 1 on either)
+#   kwin-canvas fix-plugin   rebuild the pass-through plugin in the checkout and install it (asks sudo)
 #
 # Commands travel the effect's debug channel: DebugCommand and DebugSeq in
 # the [Effect-kwin-canvas] group of kwinrc, read by the effect when KWin
@@ -167,7 +169,7 @@ doctor_plugin_version() {
     local m built kw found
     if m=$(plugin_mismatch); then
         read -r built kw found <<<"$m"
-        verdict FAIL plugin "built for KWin $built but this is KWin $kw: KWin refuses it, so the grasp over windows, input pass-through and the pill's pin buttons are off. Rebuild (make plugin), then as root: install -m 755 build/plugin/bin/kwin/plugins/$(basename "$found") $(dirname "$found")/, then relogin"
+        verdict FAIL plugin "built for KWin $built but this is KWin $kw: KWin refuses it, so the grasp over windows, input pass-through and the pill's pin buttons are off. Run kwin-canvas fix-plugin (or make plugin, then as root: install -m 755 build/plugin/bin/kwin/plugins/$(basename "$found") $(dirname "$found")/), then relogin"
     else
         found=""
         for f in "${DOCTOR_PLUGIN_DIR:-/usr/lib/qt6/plugins/kwin/plugins}"/*canvas*.so; do [ -e "$f" ] && found=$f; done
@@ -199,7 +201,8 @@ doctor_installed() {
     cli="$home/.local/bin/kwin-canvas"
     if [ ! -f "$cli" ]; then
         verdict FAIL installed "the CLI is not installed ($cli is missing): make install"
-    elif cmp -s "$repo/tools/kwin-canvas" "$cli"; then
+    # The install writes the checkout's path into its copy; that line is not a difference.
+    elif cmp -s <(grep -v '^INSTALLED_FROM=' "$repo/tools/kwin-canvas") <(grep -v '^INSTALLED_FROM=' "$cli"); then
         verdict OK installed "the CLI matches the repo ($cli)"
     else
         verdict WARN installed "the CLI differs from the repo's tools/kwin-canvas: make install"
@@ -525,16 +528,9 @@ doctor_frames() {
 
 doctor() {
     set +e +o pipefail
-    local home repo self cand
+    local home repo
     home=${DOCTOR_HOME:-$HOME}
-    repo=${DOCTOR_REPO:-}
-    if [ -z "$repo" ]; then
-        self=$(readlink -f "$0" 2>/dev/null)
-        cand=$(dirname "$self")/..
-        if [ -f "$cand/effect/metadata.json" ] && [ -f "$cand/VERSION" ]; then
-            repo=$(cd "$cand" && pwd)
-        fi
-    fi
+    repo=$(find_repo)
     echo "kwin-canvas doctor (read-only): repo ${repo:-none}, home $home"
     doctor_installed "$repo" "$home/.local/share" "$home"
     doctor_plugin_version
@@ -543,6 +539,7 @@ doctor() {
     doctor_ladder "$home/.config"
     doctor_enabled "$home/.config"
     doctor_frames
+    doctor_qml
     echo "kwin-canvas doctor: $DOCTOR_OK ok, $DOCTOR_WARN warn, $DOCTOR_FAIL fail"
     [ "$DOCTOR_FAIL" -eq 0 ]
 }
@@ -630,6 +627,85 @@ perf() {
 # plugincheck [--notify] [--after SECONDS]: exit 1, with the reason, when the installed plugin was built for another
 # KWin than the one running. --notify also raises a desktop notification, for a login autostart;
 # --after waits first, so the notification daemon is up by then.
+# qml_errors: "COUNT FIRST-LINE" for the errors the running KWin logged for the effect's QML
+# files since boot (a type that does not resolve, a TypeError, a binding loop), or nothing.
+# DOCTOR_JOURNAL_FILE reads a saved dump instead of the journal.
+qml_errors() {
+    local src
+    if [ -n "${DOCTOR_JOURNAL_FILE:-}" ]; then src=$(cat "$DOCTOR_JOURNAL_FILE" 2>/dev/null)
+    elif command -v journalctl >/dev/null 2>&1; then src=$(journalctl --user -b -g "kwin-canvas.*\.(qml|js)" -o cat --no-pager 2>/dev/null)
+    fi
+    printf '%s\n' "$src" | grep -aE "kwin-canvas[^ ]*/contents/ui/[A-Za-z]+\.(qml|js)[^ ]*:[0-9]+(:[0-9]+)?: " \
+        | grep -aE "is not a type|Error|Binding loop|is not defined|Cannot assign|Unable to assign|not available" \
+        | sed -E 's#^.*/contents/ui/##; s#\?rev=[0-9]+##' | sort -u | awk 'NR == 1 { first = $0 } END { if (NR) print NR " " first }'
+}
+doctor_qml() {
+    local e n first
+    e=$(qml_errors)
+    if [ -z "$e" ]; then verdict OK qml "no QML error from the effect logged since boot"; return; fi
+    n=${e%% *}; first=${e#* }
+    verdict FAIL qml "$n distinct QML errors from the effect since boot, the first: $first (the canvas may be half built; reinstall from a good commit, make install, and relogin)"
+}
+
+# The checkout `make install` copied this CLI from, written in by the install: the installed copy
+# lives in ~/.local/bin, away from it.
+INSTALLED_FROM=""
+# find_repo: the checkout this CLI belongs to, or DOCTOR_REPO, or nothing.
+find_repo() {
+    local self cand
+    if [ -n "${DOCTOR_REPO:-}" ]; then echo "$DOCTOR_REPO"; return; fi
+    self=$(readlink -f "$0" 2>/dev/null)
+    for cand in "$(dirname "$self")/.." "${KWIN_CANVAS_REPO:-}" "$INSTALLED_FROM"; do
+        [ -n "$cand" ] && [ -f "$cand/effect/metadata.json" ] && [ -f "$cand/VERSION" ] && { (cd "$cand" && pwd); return; }
+    done
+}
+
+# fix-plugin: rebuild the pass-through plugin for the running KWin and install it. The one
+# command a notification can name; the install asks for the password itself.
+fix_plugin() {
+    set +e +o pipefail
+    local repo so dest=${DOCTOR_PLUGIN_DIR:-/usr/lib/qt6/plugins/kwin/plugins}
+    repo=$(find_repo)
+    if [ -z "$repo" ]; then
+        echo "kwin-canvas: no checkout found. Run this from the checkout's tools/kwin-canvas, or set KWIN_CANVAS_REPO to it."
+        return 1
+    fi
+    echo "kwin-canvas: building the plugin in $repo for KWin $(running_kwin)"
+    make -C "$repo" -s plugin || { echo "kwin-canvas: the build failed (make deps lists what is missing)"; return 1; }
+    so="$repo/build/plugin/bin/kwin/plugins/kwin_canvas_passthrough.so"
+    [ -f "$so" ] || { echo "kwin-canvas: the build left no $so"; return 1; }
+    echo "kwin-canvas: installing it into $dest (sudo asks for your password)"
+    ${FIX_SUDO-sudo} install -m 755 "$so" "$dest/" || { echo "kwin-canvas: the install did not happen"; return 1; }
+    echo "kwin-canvas: installed, built for KWin $(plugin_built_for "$dest/kwin_canvas_passthrough.so"). Log out and back in to load it."
+}
+
+# check [--notify] [--after SECONDS]: the login check. The plugin's version against KWin's, and the
+# effect's QML errors since boot, each a desktop notification with --notify. Exit 1 on either.
+check() {
+    set +e +o pipefail
+    local notify=0 rc=0 e args=()
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --notify) notify=1; args+=(--notify); shift ;;
+            --after) sleep "${2:-0}"; shift 2 ;;
+            *) echo "kwin-canvas: check takes --notify and --after SECONDS"; return 2 ;;
+        esac
+    done
+    plugincheck "${args[@]}" || rc=1
+    e=$(qml_errors)
+    if [ -n "$e" ]; then
+        rc=1
+        local msg="The canvas logged ${e%% *} QML errors since login, so parts of it may not draw or answer. The first: ${e#* }. Run kwin-canvas doctor."
+        echo "kwin-canvas: $msg"
+        if [ "$notify" = 1 ] && command -v notify-send >/dev/null 2>&1; then
+            notify-send -a kwin-canvas -i dialog-error "kwin-canvas is partly broken" "$msg" || true
+        fi
+    else
+        echo "kwin-canvas: no QML error from the effect since boot"
+    fi
+    return $rc
+}
+
 plugincheck() {
     local m built kw found msg notify=0
     while [ $# -gt 0 ]; do
@@ -641,7 +717,7 @@ plugincheck() {
     done
     if m=$(plugin_mismatch); then
         read -r built kw found <<<"$m"
-        msg="The kwin-canvas plugin is built for KWin $built but this is KWin $kw, so KWin refuses it: the grasp over windows and the pill's pin buttons are off. Rebuild it (make plugin), install it as root, and log in again."
+        msg="The kwin-canvas plugin is built for KWin $built but this is KWin $kw, so KWin refuses it: the grasp over windows and the pill's pin buttons are off. Run: kwin-canvas fix-plugin, then log in again."
         echo "kwin-canvas: $msg"
         if [ "$notify" = 1 ] && command -v notify-send >/dev/null 2>&1; then
             notify-send -a kwin-canvas -i dialog-warning "kwin-canvas plugin out of date" "$msg" || true
@@ -655,6 +731,8 @@ case "${1:-}" in
     plugincheck) shift; plugincheck "$@"; exit $? ;;
     doctor) shift; doctor "$@"; exit $? ;;
     perf) shift; perf "$@"; exit $? ;;
+    check) shift; check "$@"; exit $? ;;
+    fix-plugin) shift; fix_plugin "$@"; exit $? ;;
 esac
 
 for tool in qdbus6 kreadconfig6 kwriteconfig6; do

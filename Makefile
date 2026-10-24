@@ -103,7 +103,7 @@ install: stage ## Install the effect, the ground wallpaper and the applet as use
 	@$(KPT) --type KWin/Effect --upgrade $(BUILD)/effect >/dev/null 2>&1 || $(KPT) --type KWin/Effect --install $(BUILD)/effect >/dev/null
 	@$(KPT) --type Plasma/Wallpaper --upgrade $(BUILD)/wallpaper >/dev/null 2>&1 || $(KPT) --type Plasma/Wallpaper --install $(BUILD)/wallpaper >/dev/null
 	@$(MAKE) -s copy-packages DATA_HOME=$(DATA_HOME)
-	@mkdir -p $(BIN_DIR) && install -m 755 $(CLI) $(BIN_DIR)/kwin-canvas
+	@mkdir -p $(BIN_DIR) && sed 's|^INSTALLED_FROM=""$$|INSTALLED_FROM="$(CURDIR)"|' $(CLI) > $(BIN_DIR)/kwin-canvas && chmod 755 $(BIN_DIR)/kwin-canvas
 	@mkdir -p $(AUTOSTART_DIR) && sed 's|@BIN@|$(BIN_DIR)|' packaging/kwin-canvas-plugincheck.desktop > $(AUTOSTART_DIR)/kwin-canvas-plugincheck.desktop
 	@echo "installed for $$USER: $(EFFECT_ID), $(WALL_ID), $(APPLET_ID), $(APPLET_DECOR_ID), $(DECOR_ID), $(BIN_DIR)/kwin-canvas"
 
