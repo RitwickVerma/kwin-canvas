@@ -16,6 +16,7 @@
 #   kwin-canvas perf [--since WHEN] [--from FILE]   timings the effect wrote to the journal
 #   kwin-canvas check [--notify] [--after N]   the plugin check plus the effect's QML errors since boot (exit 1 on either)
 #   kwin-canvas fix-plugin   rebuild the pass-through plugin in the checkout and install it (asks sudo)
+#   kwin-canvas setup [--check]   the recommended KDE settings, one question each before any change (--check only lists)
 #
 # Commands travel the effect's debug channel: DebugCommand and DebugSeq in
 # the [Effect-kwin-canvas] group of kwinrc, read by the effect when KWin
@@ -680,6 +681,69 @@ fix_plugin() {
     echo "kwin-canvas: installed, built for KWin $(plugin_built_for "$dest/kwin_canvas_passthrough.so"). Log out and back in to load it."
 }
 
+# setup [--check]: walk through the KDE settings the README recommends. Each that differs is shown
+# with what it does for the canvas and changed only on a "y"; --check lists and changes nothing.
+# Conflicts that need a person (a shared shortcut) are reported, not touched. SETUP_CONFIG points
+# at another config directory (the tests), SETUP_NO_RECONFIGURE skips asking KWin to reload.
+setup() {
+    set +e +o pipefail
+    local only=0 cfg changed=0 pending=0 line file group key want why cur ans
+    [ "${1:-}" = --check ] && only=1
+    cfg=${SETUP_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}}
+    echo "kwin-canvas setup: the recommended KDE settings for the canvas$([ $only = 1 ] && echo ", listed only")"
+    # The list comes in on fd 3, so the answers are read from the person on stdin.
+    while IFS='|' read -r file group key want why <&3; do
+        [ -n "$file" ] || continue
+        cur=$(ini_get "$cfg/$file" "$group" "$key" "")
+        if [ "$cur" = "$want" ]; then
+            printf '  ok    %-28s %s\n' "$key" "$want"
+            continue
+        fi
+        pending=$((pending + 1))
+        printf '  set?  %-28s %s -> %s: %s\n' "$key" "${cur:-unset}" "$want" "$why"
+        [ $only = 1 ] && continue
+        printf '        change it? [y/N] '
+        read -r ans || ans=""
+        case "$ans" in
+            y|Y|yes)
+                kwriteconfig6 --file "$cfg/$file" --group "$group" --key "$key" -- "$want" && changed=$((changed + 1))
+                echo "        set" ;;
+            *) echo "        left as it is" ;;
+        esac
+    done 3<<'LIST'
+kwinrc|Windows|FocusPolicy|FocusFollowsMouse|resting on a window hands it the input
+kwinrc|Windows|DelayFocusInterval|150|a pass-over does not steal the focus
+kwinrc|Windows|AutoRaise|true|the window you rest on comes up, as the canvas raises a fly's landing
+kwinrc|Windows|AutoRaiseInterval|300|the raise waits a beat after the focus
+kwinrc|Windows|ClickRaise|false|a click in a window does not fight the canvas's own stacking
+kwinrc|Effect-kwin-canvas|BorderActivate|1,3,5,7|the four screen corners open the canvas
+kwinrc|Effect-kwin-canvas|BorderZoom|fit|a corner shows every window, fitted to that monitor
+kwinrc|Plugins|zoomEnabled|false|KDE's Zoom effect owns Meta+wheel, Meta+= and Meta+-
+kdeglobals|KDE|AnimationDurationFactor|1|the slide and the camera follow the global speed; 1 is what they are tuned at
+LIST
+    # What needs a person, said and not touched.
+    if [ -f "$cfg/kglobalshortcutsrc" ]; then
+        local hits k who
+        hits=$(shortcut_conflicts "$cfg/kglobalshortcutsrc")
+        while IFS=$'\t' read -r k who; do
+            [ -n "$k" ] && printf '  fix   %s is bound to %s: rebind one in System Settings > Shortcuts\n' "$k" "$who"
+        done <<<"$hits"
+    fi
+    local desks
+    desks=$(ini_get "$cfg/kwinrc" Desktops Number 1)
+    [ "$desks" != 1 ] && printf '  note  %s virtual desktops: the plane takes their place; one is recommended (System Settings > Virtual Desktops)\n' "$desks"
+    if [ $only = 1 ]; then
+        echo "kwin-canvas setup: $pending to change; run kwin-canvas setup to be asked about each"
+        return 0
+    fi
+    if [ $changed -gt 0 ] && [ -z "${SETUP_NO_RECONFIGURE:-}" ]; then
+        qdbus6 org.kde.KWin /KWin org.kde.KWin.reconfigure >/dev/null 2>&1
+        echo "kwin-canvas setup: $changed changed, KWin reloaded its settings"
+    else
+        echo "kwin-canvas setup: $changed changed"
+    fi
+}
+
 # check [--notify] [--after SECONDS]: the login check. The plugin's version against KWin's, and the
 # effect's QML errors since boot, each a desktop notification with --notify. Exit 1 on either.
 check() {
@@ -734,6 +798,7 @@ case "${1:-}" in
     perf) shift; perf "$@"; exit $? ;;
     check) shift; check "$@"; exit $? ;;
     fix-plugin) shift; fix_plugin "$@"; exit $? ;;
+    setup) shift; setup "$@"; exit $? ;;
 esac
 
 for tool in qdbus6 kreadconfig6 kwriteconfig6; do

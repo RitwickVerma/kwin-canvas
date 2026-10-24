@@ -398,6 +398,23 @@ cp "$CLI" "$T/cli-copy"; out=$(cd / && env PATH="$T/bin:$PATH" KWIN_CANVAS_REPO=
 exit_is "fix-plugin: no checkout exits 1" 1
 has "fix-plugin: no checkout says how to point at one" "set KWIN_CANVAS_REPO"
 
+# ---- setup ----
+SC="$T/setupcfg"; mkdir -p "$SC"
+printf '[Windows]\nFocusPolicy=ClickToFocus\nDelayFocusInterval=150\n' > "$SC/kwinrc"
+printf '[KDE]\nAnimationDurationFactor=1\n' > "$SC/kdeglobals"
+su() { out=$(printf "$1" | env PATH="$T/bin:$PATH" SETUP_CONFIG="$SC" SETUP_NO_RECONFIGURE=1 bash "$CLI" setup "${@:2}" 2>&1); rc=$?; }
+su "" --check
+exit_is "setup --check: exit 0" 0
+has "setup --check: a differing setting is listed" "set?  FocusPolicy                  ClickToFocus -> FocusFollowsMouse"
+has "setup --check: a matching one is ok" "ok    DelayFocusInterval"
+grep -q "FocusPolicy=ClickToFocus" "$SC/kwinrc"; check "setup --check: changes nothing" $?
+su "y\nn\n"
+grep -q "FocusPolicy=FocusFollowsMouse" "$SC/kwinrc"; check "setup: a y changes that setting" $?
+grep -q "AutoRaise=" "$SC/kwinrc"; [ $? -ne 0 ]; check "setup: an n leaves the next alone" $?
+has "setup: counts what it changed" "kwin-canvas setup: 1 changed"
+su "" 
+grep -q "AutoRaise=" "$SC/kwinrc"; [ $? -ne 0 ]; check "setup: no answer (end of input) changes nothing" $?
+
 # ---- perf: the late ticks ----
 cat > "$T/stall.log" <<'EOF'
 kwin-canvas perf: open

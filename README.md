@@ -167,7 +167,9 @@ each row says what the setting does for the canvas.
 | Window Decorations | **Canvas**, with buttons *close, on all desktops, keep above, maximize, minimize* | The pill shows the same five as the panel applet; *on all desktops* is the float. |
 | Window Rules | Picture-in-picture, a lyrics window or a monitor: **Keep above** and **All desktops** | A window that is on all desktops floats: it stays on the screen while you fly. |
 
-The same, from a terminal:
+`kwin-canvas setup` walks through these: it shows each setting that differs, with what it does for
+the canvas, and changes it only when you answer `y` (`kwin-canvas setup --check` lists them and changes
+nothing). A shortcut that two actions share is reported for you to rebind. The same, by hand:
 
 ```bash
 kwriteconfig6 --file kwinrc --group Windows --key FocusPolicy FocusFollowsMouse

@@ -1,5 +1,8 @@
 Unreleased:
 
+- `kwin-canvas setup` checks the recommended KDE settings (focus follows mouse, the corners, KDE's
+  Zoom effect, the animation speed) and asks before changing each; `--check` only lists them.
+
 - Search. Meta+Ctrl+F (or `/` in the overview) opens the overview with a search field: type words of
   a window's title or app and the others dim, the camera brings the best match to the middle, Tab
   steps the matches and Enter flies into the chosen one. The keyboard is the search's while it runs,
