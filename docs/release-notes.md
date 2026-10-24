@@ -1,5 +1,8 @@
 Unreleased:
 
+- Windows out of view are marked. In the open overview every window no monitor shows has a small
+  chip with its icon at the screen's edge, on the side it lies; a click flies to it.
+
 - `kwin-canvas perf --week` shows the last seven days, a line a day: sessions, the median first
   paint, slow sessions and sessions that rebuilt the scene while moving. `perf --since` now reaches
   past the last boot.

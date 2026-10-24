@@ -1471,6 +1471,52 @@ Item {
             onStatusChanged: if (status === Loader.Error) console.warn("kwin-canvas: the overview's chrome failed to build; the canvas works without its toolbar and tags (kwin-canvas doctor names the error)")
             sourceComponent: Component {
                 Item {
+                    // Where the windows out of view are: in the open overview a window that no
+                    // monitor shows gets a small chip at the edge of the screen the toolbar is
+                    // on, at the point nearest to it, with its icon; a click flies to it. Floated
+                    // windows ride the screen already and get none.
+                    Repeater {
+                        model: effect.entries.length
+                        delegate: Item {
+                            id: mark
+                            required property int index
+                            readonly property var e: effect.entries[index]
+                            readonly property bool mine: view.screen === (effect.chromeScr || effect.primaryScreen)
+                            // The window in global screen coordinates, at the camera.
+                            readonly property real gx: e ? (e.x - effect.viewX) * effect.zoom : 0
+                            readonly property real gy: e ? (e.y - effect.viewY) * effect.zoom : 0
+                            readonly property real gw: e ? e.width * effect.zoom : 0
+                            readonly property real gh: e ? e.height * effect.zoom : 0
+                            readonly property bool away: { effect.viewX; effect.viewY; effect.zoom; effect.screenRects; effect.revision; return effect.entryAway(e); }
+                            visible: mine && away && !effect.quiet && !effect.searchActive
+                            readonly property real inset: Kirigami.Units.gridUnit * 1.6
+                            // The window's centre, clamped into this screen, in the view's coordinates.
+                            x: Math.max(inset, Math.min(view.sg.width - inset, gx + gw / 2 - view.sg.x)) - width / 2
+                            y: Math.max(inset, Math.min(view.sg.height - inset, gy + gh / 2 - view.sg.y)) - height / 2
+                            width: Kirigami.Units.iconSizes.medium + 8
+                            height: width
+                            z: 99000
+                            opacity: effect.chromeFade * (hoverMark.hovered ? 1 : 0.75)
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: width / 2
+                                color: Qt.rgba(0.08, 0.08, 0.10, 0.78)
+                                border.width: 1
+                                border.color: hoverMark.hovered ? Kirigami.Theme.highlightColor : "#50ffffff"
+                            }
+                            Kirigami.Icon {
+                                anchors.centerIn: parent
+                                width: Kirigami.Units.iconSizes.smallMedium
+                                height: width
+                                source: mark.e && mark.e.window ? mark.e.window.icon : ""
+                            }
+                            HoverHandler { id: hoverMark; cursorShape: Qt.PointingHandCursor }
+                            TapHandler { onTapped: if (mark.e) effect.flyToEntry(mark.e) }
+                            PC3.ToolTip.text: mark.e && mark.e.window ? mark.e.window.caption : ""
+                            PC3.ToolTip.visible: hoverMark.hovered
+                            PC3.ToolTip.delay: 300
+                        }
+                    }
                     // The corner lens: the world shrunk into a chip for a glance at
                     // the plane while working. The overlay is gone - the world is the
                     // map - so the lens is the only map surface left.

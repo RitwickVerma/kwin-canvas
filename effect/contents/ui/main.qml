@@ -1600,6 +1600,20 @@ KWin.SceneEffect {
         selfWriting++;
         try { w.frameGeometry = rect; } finally { selfWriting--; }
     }
+    // A window no monitor shows at the camera as it is (floated windows never count: they ride
+    // the screen). The overview's edge markers and the state line read it.
+    function entryAway(e) {
+        if (!e || !e.window || e.window.deleted || isPinnedEntry(e)) return false;
+        const gx = (e.x - viewX) * zoom, gy = (e.y - viewY) * zoom, gw = e.width * zoom, gh = e.height * zoom;
+        const rs = screenRects;
+        for (let i = 0; i < rs.length; ++i) {
+            const r = rs[i];
+            if (gx + gw > r.x && gx < r.x + r.width && gy + gh > r.y && gy < r.y + r.height) return false;
+        }
+        return true;
+    }
+    // The monitors' rects, for bindings that must follow a layout change.
+    readonly property var screenRects: { screensRev; return outputRects(); }
     function outputRects() {
         const out = [], ss = KWin.Workspace.screens;
         for (let i = 0; i < ss.length; ++i) { const g = ss[i].geometry; out.push({ x: g.x, y: g.y, width: g.width, height: g.height }); }
@@ -5953,6 +5967,7 @@ KWin.SceneEffect {
             + " bookmarks=" + Object.keys(bookmarks).length
             + " game=" + (gameMode ? 1 : 0)
             + " safe=" + (safeMode ? 1 : 0)
+            + " away=" + entries.filter(entryAway).length
             + " search=" + (searchActive ? "\"" + searchText + "\"" + ":" + searchHits.length : "-")
             + " deskwin=" + Object.keys(desktopWindows).length
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
