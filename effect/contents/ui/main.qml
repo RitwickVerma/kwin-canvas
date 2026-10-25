@@ -2092,15 +2092,24 @@ KWin.SceneEffect {
     // Wallpaper Engine and other non-KDE wallpapers exist only as the
     // desktop window's texture, which KWin.DesktopBackground does not draw,
     // so the backdrop asks the compositor for the real window instead.
+    // Matched by geometry: the desktop window that covers most of the screen. KWin 6.8 gives a
+    // desktop window no readable `screen` to a script, and a match on it fell through to the first
+    // desktop window for every screen, so the top monitor showed the bottom one's wallpaper
+    // squeezed into its own size (the owner's waywallen video, measured live).
     function desktopWindowFor(screen) {
         const stack = KWin.Workspace.stackingOrder;
+        let best = null, bestArea = 0;
         for (let i = stack.length - 1; i >= 0; --i) {
             const w = stack[i];
             if (!w || w.deleted || !w.desktopWindow) continue;
-            if (screen && w.screen && w.screen !== screen) continue;
-            return w;
+            if (!screen) return w;
+            const g = w.frameGeometry, o = screen.geometry;
+            const ix = Math.min(g.x + g.width, o.x + o.width) - Math.max(g.x, o.x);
+            const iy = Math.min(g.y + g.height, o.y + o.height) - Math.max(g.y, o.y);
+            const area = ix > 0 && iy > 0 ? ix * iy : 0;
+            if (area > bestArea) { best = w; bestArea = area; }
         }
-        return null;
+        return best;
     }
 
     // The bindable handle the scene tree binds to: refreshed whenever the
@@ -4614,6 +4623,14 @@ KWin.SceneEffect {
         if (!e || e.window.deleted) return false;
         const f = e.window.frameGeometry;
         let changed = false;
+        // Under a fractional scale KWin snaps a frame to the device-pixel grid (0.8 logical px at
+        // 1.25), so the canvas's x=1234 comes back as 1234.4. That is the write, not a move: the
+        // entry takes the snapped frame and the plane coordinate stays. Followed, it crept the
+        // window a fraction of a pixel on every slide (the owner's Steam and Spotify, 0.4 px a time).
+        if ((f.x !== e.frameX || f.y !== e.frameY) && Math.abs(f.x - e.frameX) < 1 && Math.abs(f.y - e.frameY) < 1) {
+            e.frameX = f.x;
+            e.frameY = f.y;
+        }
         if (f.x !== e.frameX || f.y !== e.frameY) {
             // Against the frame the canvas knows: KWin's reachability rule is not a move to follow.
             const was = { x: e.frameX, y: e.frameY, width: e.width, height: e.height };
@@ -6015,6 +6032,7 @@ KWin.SceneEffect {
             + " game=" + (gameMode ? 1 : 0)
             + " safe=" + (safeMode ? 1 : 0)
             + " away=" + entries.filter(entryAway).length
+            + " deskfor=" + KWin.Workspace.screens.map(function (sc) { const w = desktopWindowFor(sc); return sc.name + ":" + (w ? Math.round(w.frameGeometry.x) + "," + Math.round(w.frameGeometry.y) : "-"); }).join(";")
             + " search=" + (searchActive ? "\"" + searchText + "\"" + ":" + searchHits.length : "-")
             + " deskwin=" + Object.keys(desktopWindows).length
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)

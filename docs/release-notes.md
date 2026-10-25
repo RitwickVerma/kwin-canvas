@@ -1,5 +1,9 @@
 Unreleased:
 
+- With two monitors, each shows its own live wallpaper during a slide and in the overview; the top
+  one showed the bottom one's, squeezed to its size.
+- At a fractional scale windows no longer creep a fraction of a pixel on every slide.
+
 - The settings page has two tabs: Basic (opening, navigating, activities, toolbar, windows and the
   system) and Advanced (the hold modifier, keys, gestures, motion, snapping, ground, chords,
   fidelity). Game mode, new windows in view and the search chord have their fields.

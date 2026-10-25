@@ -7,6 +7,9 @@ run_scenario() {
     source tests/lib.sh
     arrange >/dev/null
     setcfg SmoothZoom false
+    # Put back as the nest had it, not deleted: the nest seeds MovesGlide, and a deleted key is
+    # the effect's default, which made every later scenario's moves glide.
+    local was_glide; was_glide=$(kreadconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key MovesGlide --default __unset__)
     setcfg MovesGlide false
     open_1to1
     c state
@@ -36,7 +39,8 @@ run_scenario() {
     open_1to1; c undo; sleep 0.4; c state
     assert_near "a fresh open has no move of the last visit to step back" "$(eget KCalc x)" "$kx" 2
     c cancel >/dev/null; sleep 0.6
-    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key MovesGlide --delete
+    if [ "$was_glide" = __unset__ ]; then kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key MovesGlide --delete
+    else kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key MovesGlide -- "$was_glide"; fi
     c state >/dev/null
     arrange >/dev/null
 }
