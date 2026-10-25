@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
+# SPDX-License-Identifier: GPL-2.0-or-later
 # CI image for kwin-canvas's GitLab jobs: the packages every job needs, installed once.
 #
 # Built on the runner host (CT115) by ci-image-build.service from a fresh clone of the default
