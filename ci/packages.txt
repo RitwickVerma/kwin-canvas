@@ -1,1 +1,1 @@
-git make reuse qt6-declarative python python-pillow ttf-dejavu gcc wayland pkgconf nodejs shellcheck vulture shaderc diffutils
+git make reuse qt6-declarative python python-pillow ttf-dejavu gcc wayland pkgconf nodejs shellcheck vulture shaderc diffutils kconfig
