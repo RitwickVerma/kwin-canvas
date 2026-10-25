@@ -1,5 +1,9 @@
 Unreleased:
 
+- The settings page has two tabs: Basic (opening, navigating, activities, toolbar, windows and the
+  system) and Advanced (the hold modifier, keys, gestures, motion, snapping, ground, chords,
+  fidelity). Game mode, new windows in view and the search chord have their fields.
+
 - App homes. "Open new windows of this app here" in a window's arrange menu remembers that app's
   spot on the plane; its next windows open there and the camera slides to them. The same item
   forgets it again.
