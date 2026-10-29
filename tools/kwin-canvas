@@ -17,6 +17,7 @@
 #   kwin-canvas check [--notify] [--after N]   the plugin check plus the effect's QML errors since boot (exit 1 on either)
 #   kwin-canvas fix-plugin   rebuild the pass-through plugin in the checkout and install it (asks sudo)
 #   kwin-canvas plugin-hook install|remove   rebuild the plugin by itself after every KWin update (a pacman hook; asks sudo)
+#   kwin-canvas addons   other KWin add-ons (effects, plugins) built for another KWin, with the command that fixes each (exit 1 if any)
 #   kwin-canvas setup [--check]   the recommended KDE settings, one question each before any change (--check only lists)
 #
 # Commands travel the effect's debug channel: DebugCommand and DebugSeq in
@@ -150,6 +151,57 @@ doctor_package() {
 plugin_built_for() {
     grep -a -o 'PluginFactoryInterface[0-9][0-9.]*' "$1" 2>/dev/null | head -1 | sed 's/^PluginFactoryInterface//'
 }
+# stale_addons: every compiled KWin effect or plugin, other than KWin's own and the canvas's,
+# whose version stamp is not the installed KWin's: KWin refuses it at the next login. One line
+# each, "FILE|PACKAGE|BUILT|FIX". ADDON_DIRS points elsewhere for the tests.
+addon_stamp() {
+    grep -a -o -E 'EffectPluginFactory[0-9][0-9.]*|PluginFactoryInterface[0-9][0-9.]*' "$1" 2>/dev/null | head -1 | sed -E 's/^(EffectPluginFactory|PluginFactoryInterface)//'
+}
+stale_addons() {
+    local kw f built pkg fix helper=""
+    kw=$(running_kwin); [ -n "$kw" ] || return 0
+    command -v paru >/dev/null 2>&1 && helper=paru
+    [ -z "$helper" ] && command -v yay >/dev/null 2>&1 && helper=yay
+    for f in ${ADDON_DIRS:-/usr/lib/qt6/plugins/kwin/effects/plugins /usr/lib/qt6/plugins/kwin/plugins}; do
+        for f in "$f"/*.so; do
+            [ -f "$f" ] || continue
+            case "$(basename "$f")" in *canvas*) continue ;; esac
+            built=$(addon_stamp "$f")
+            [ -n "$built" ] && [ "$built" != "$kw" ] || continue
+            pkg=$(pacman -Qqo "$f" 2>/dev/null)
+            [ "$pkg" = kwin ] && continue
+            if [ -z "$pkg" ]; then
+                pkg="-"; fix="no package owns it: rebuild it from where it came, then relogin"
+            elif pacman -Qqm 2>/dev/null | grep -qx "$pkg"; then
+                fix="${helper:+$helper -S --rebuild $pkg}"; fix=${fix:-"rebuild $pkg from the AUR"}
+            else
+                local repo; repo=$(pacman -Si "$pkg" 2>/dev/null | sed -n 's/^Repository *: //p' | head -1)
+                fix="the ${repo:-repository} package lags KWin: wait for ${repo:-it} to rebuild it, or build $pkg from the AUR"
+            fi
+            printf '%s|%s|%s|%s\n' "$(basename "$f")" "$pkg" "$built" "$fix"
+        done
+    done
+}
+# addons: the stale add-ons, readable; exit 1 when there is any.
+addons() {
+    set +e +o pipefail
+    local list kw file pkg built fix
+    kw=$(running_kwin); list=$(stale_addons)
+    if [ -z "$list" ]; then echo "kwin-canvas: every KWin add-on is built for KWin $kw"; return 0; fi
+    while IFS='|' read -r file pkg built fix; do
+        echo "kwin-canvas: $file ($pkg) is built for KWin $built, not $kw, so KWin refuses it: $fix"
+    done <<<"$list"
+    return 1
+}
+doctor_addons() {
+    local list kw file pkg built fix
+    kw=$(running_kwin); list=$(stale_addons)
+    if [ -z "$list" ]; then verdict OK addons "every other KWin effect and plugin is built for KWin $kw"; return; fi
+    while IFS='|' read -r file pkg built fix; do
+        verdict WARN addons "$file ($pkg) is built for KWin $built, not $kw, so KWin refuses it: $fix"
+    done <<<"$list"
+}
+
 # running_kwin: the KWin version this session runs (DOCTOR_KWIN_VERSION stands in for tests).
 running_kwin() {
     if [ -n "${DOCTOR_KWIN_VERSION+x}" ]; then printf '%s' "$DOCTOR_KWIN_VERSION"; return; fi
@@ -543,6 +595,7 @@ doctor() {
     doctor_enabled "$home/.config"
     doctor_frames
     doctor_qml
+    doctor_addons
     echo "kwin-canvas doctor: $DOCTOR_OK ok, $DOCTOR_WARN warn, $DOCTOR_FAIL fail"
     [ "$DOCTOR_FAIL" -eq 0 ]
 }
@@ -834,6 +887,14 @@ check() {
         esac
     done
     plugincheck "${args[@]}" || rc=1
+    local al
+    al=$(addons) || {
+        rc=1
+        echo "$al"
+        if [ "$notify" = 1 ] && command -v notify-send >/dev/null 2>&1; then
+            notify-send -a kwin-canvas -i dialog-warning "KWin add-ons need a rebuild" "$(printf '%s\n' "$al" | sed 's/^kwin-canvas: //')" || true
+        fi
+    }
     e=$(qml_errors)
     if [ -n "$e" ]; then
         rc=1
@@ -877,6 +938,7 @@ case "${1:-}" in
     fix-plugin) shift; fix_plugin "$@"; exit $? ;;
     setup) shift; setup "$@"; exit $? ;;
     plugin-hook) shift; plugin_hook "$@"; exit $? ;;
+    addons) shift; addons "$@"; exit $? ;;
 esac
 
 for tool in qdbus6 kreadconfig6 kwriteconfig6; do

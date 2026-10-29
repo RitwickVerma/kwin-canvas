@@ -1,5 +1,9 @@
 Unreleased:
 
+- `kwin-canvas addons` finds every other KWin effect or plugin built for another KWin (a blur or
+  rounded-corners effect from the AUR or chaotic-aur) and names the command that fixes each; the
+  pacman hook, the login notification and doctor report them too.
+
 - `kwin-canvas plugin-hook install` adds a pacman hook that rebuilds the plugin after every KWin
   update, so the grasp and pass-through survive updates; installing it also fixes a stale plugin now.
 
