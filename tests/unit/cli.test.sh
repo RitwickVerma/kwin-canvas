@@ -117,14 +117,13 @@ doctor() { # runs the repo's CLI over the fixture; session started in the future
     out=$(env PATH="$T/bin:$PATH" DOCTOR_REPO="${REPO:-$REPO_FIXTURE}" DOCTOR_HOME="$H" DOCTOR_PLUGIN_DIR="$PLUG" DOCTOR_KWIN_VERSION="${KWV-6.8.0}" \
         DOCTOR_KWIN_START="${KSTART:-$((NOW + 1000))}" DOCTOR_PLASMA_START="${PSTART:-$((NOW + 1000))}" \
         FAKE_LOAD="${FAKE_LOAD-cpu=10 load=0.50 mem=40 gpu=5}" FAKE_ZOOM="${FAKE_ZOOM-false}" FAKE_LOADED="${FAKE_LOADED-true}" \
-        DOCTOR_PERF_FILE="${PERF-$T/perf-none}" DOCTOR_JOURNAL_FILE="${JOURNAL-$T/journal-none}" ADDON_DIRS="$T/noaddons" bash "$CLI" doctor 2>&1)
+        DOCTOR_PERF_FILE="${PERF-$T/perf-none}" DOCTOR_JOURNAL_FILE="${JOURNAL-$T/journal-none}" bash "$CLI" doctor 2>&1)
     rc=$?
 }
 
 install_fixture; write_kwinrc; write_shortcuts; write_clean_shortcuts
 unset REPO KSTART PSTART
 
-mkdir -p "$T/noaddons"
 # ---- doctor: a clean machine ----
 doctor
 exit_is "clean: exit 0" 0
@@ -136,7 +135,6 @@ has "clean: no shortcut conflict" "OK    shortcuts  no key sequence is active"
 has "clean: zoom off" "OK    shortcuts  KDE's Zoom effect is not on"
 has "clean: ladder full" "OK    ladder     Auto mode, full fidelity now: cpu 10"
 has "clean: summary" "0 fail"
-has "clean: no stale add-on" "OK    addons     every other KWin effect and plugin is built for KWin"
 lacks "clean: no FAIL line" "FAIL "
 
 # ---- doctor: the frame timings ----
@@ -378,7 +376,7 @@ has "qml: none logged is OK" "OK    qml        no QML error from the effect logg
 JOURNAL="$T/journal-bad" doctor
 has "qml: the effect's errors fail, counted once each" "FAIL  qml        2 distinct QML errors from the effect since boot, the first: ui.qml:1430:9: QML Loader"
 lacks "qml: Plasma's own Menu.qml is not ours" "Menu.qml"
-ck() { out=$(env PATH="$T/bin:$PATH" DOCTOR_PLUGIN_DIR="$PLUG" DOCTOR_KWIN_VERSION="${KWV:-6.8.0}" DOCTOR_JOURNAL_FILE="$1" ADDON_DIRS="$T/noaddons" bash "$CLI" check "${@:2}" 2>&1); rc=$?; }
+ck() { out=$(env PATH="$T/bin:$PATH" DOCTOR_PLUGIN_DIR="$PLUG" DOCTOR_KWIN_VERSION="${KWV:-6.8.0}" DOCTOR_JOURNAL_FILE="$1" bash "$CLI" check "${@:2}" 2>&1); rc=$?; }
 ck "$T/journal-none"
 exit_is "check: plugin matches and no QML error exits 0" 0
 printf '#!/bin/sh\necho "$@" >> "%s/notified"\n' "$T" > "$T/bin/notify-send"; chmod 755 "$T/bin/notify-send"
@@ -420,10 +418,9 @@ grep -q "AutoRaise=" "$SC/kwinrc"; [ $? -ne 0 ]; check "setup: no answer (end of
 # ---- plugin-hook ----
 mkdir -p "$T/frepo/packaging" "$T/frepo/plugin" "$T/hooks" "$T/hooklib" "$T/hdest"
 cp "$HERE/packaging/kwin-canvas-plugin.hook" "$HERE/packaging/kwin-canvas-rebuild-plugin.in" "$T/frepo/packaging/"
-mkdir -p "$T/frepo/tools"; cp "$CLI" "$T/frepo/tools/kwin-canvas"
 : > "$T/frepo/plugin/CMakeLists.txt"
 printf '#!/bin/sh\nwhile [ "$1" != "--" ]; do shift; done; shift; exec "$@"\n' > "$T/bin/runuser"; chmod 755 "$T/bin/runuser"
-ph() { out=$(env PATH="$T/bin:$PATH" DOCTOR_REPO="$T/frepo" HOOK_DIR="$T/hooks" HOOK_LIBDIR="$T/hooklib" DOCTOR_PLUGIN_DIR="$T/hdest" DOCTOR_KWIN_VERSION=6.8.0 ADDON_DIRS="$T/noaddons" FIX_SUDO=env bash "$CLI" plugin-hook "$@" 2>&1); rc=$?; }
+ph() { out=$(env PATH="$T/bin:$PATH" DOCTOR_REPO="$T/frepo" HOOK_DIR="$T/hooks" HOOK_LIBDIR="$T/hooklib" DOCTOR_PLUGIN_DIR="$T/hdest" DOCTOR_KWIN_VERSION=6.8.0 FIX_SUDO=env bash "$CLI" plugin-hook "$@" 2>&1); rc=$?; }
 ph install
 exit_is "plugin-hook install: exit 0" 0
 grep -q "^Target = kwin$" "$T/hooks/kwin-canvas-plugin.hook"; check "plugin-hook: the hook triggers on kwin" $?
@@ -441,36 +438,6 @@ ph remove
 ph bogus
 exit_is "plugin-hook: an unknown verb exits 2" 2
 rm -f "$T/bin/runuser"
-
-# ---- addons: other KWin effects built for another KWin ----
-AD="$T/addons"; mkdir -p "$AD" "$T/pbin"
-printf 'x org.kde.kwin.EffectPluginFactory6.8.0 y' > "$AD/better_blur.so"
-printf 'x org.kde.kwin.EffectPluginFactory6.8.1 y' > "$AD/shapecorners.so"
-printf 'x org.kde.kwin.EffectPluginFactory6.8.2 y' > "$AD/current.so"
-printf 'x org.kde.kwin.EffectPluginFactory6.8.0 y' > "$AD/kwins_own.so"
-printf 'x org.kde.kwin.EffectPluginFactory6.8.0 y' > "$AD/loose.so"
-printf 'no stamp here' > "$AD/config.so"
-cat > "$T/pbin/pacman" <<'EOF'
-#!/bin/sh
-case "$1" in
-    -Qqo) case "$2" in *better_blur.so) echo blur-git ;; *shapecorners.so) echo corners-git ;; *current.so) echo current-git ;; *kwins_own.so) echo kwin ;; *) exit 1 ;; esac ;;
-    -Qqm) echo blur-git; echo current-git ;;
-    -Si) [ "$2" = corners-git ] && printf 'Repository      : chaotic-aur\n' ;;
-esac
-EOF
-chmod 755 "$T/pbin/pacman"; printf '#!/bin/sh\n' > "$T/pbin/paru"; chmod 755 "$T/pbin/paru"
-ad() { out=$(env PATH="$T/pbin:$T/bin:$PATH" ADDON_DIRS="$AD" DOCTOR_KWIN_VERSION=6.8.2 bash "$CLI" addons 2>&1); rc=$?; }
-ad
-exit_is "addons: a stale add-on exits 1" 1
-has "addons: an AUR effect gets its rebuild command" "better_blur.so (blur-git) is built for KWin 6.8.0, not 6.8.2, so KWin refuses it: paru -S --rebuild blur-git"
-has "addons: a repository effect is said to lag its repository" "shapecorners.so (corners-git) is built for KWin 6.8.1, not 6.8.2, so KWin refuses it: the chaotic-aur package lags KWin"
-has "addons: a file no package owns is named" "loose.so (-) is built for KWin 6.8.0"
-lacks "addons: a current one is not named" "current.so"
-lacks "addons: KWin's own files are KWin's business" "kwins_own.so"
-lacks "addons: a file with no stamp is not guessed at" "config.so"
-rm "$AD/better_blur.so" "$AD/shapecorners.so" "$AD/loose.so"; ad
-exit_is "addons: all current exits 0" 0
-has "addons: and says so" "every KWin add-on is built for KWin 6.8.2"
 
 # ---- perf --week ----
 cat > "$T/week.log" <<'EOF'

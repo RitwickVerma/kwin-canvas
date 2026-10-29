@@ -22,7 +22,4 @@ if install -m 755 "$SO" "$DEST/"; then
 else
     echo "kwin-canvas: the plugin was built but not installed into $DEST"
 fi
-# Other KWin add-ons (effects from the AUR or another repository) cannot be reinstalled from here:
-# pacman holds its database while a hook runs. Name them, with the command for each.
-runuser -u "$OWNER" -- "$REPO/tools/kwin-canvas" addons
 exit 0
