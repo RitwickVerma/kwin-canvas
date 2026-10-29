@@ -16,6 +16,7 @@
 #   kwin-canvas perf [--since WHEN] [--from FILE] [--week]   timings the effect wrote to the journal (--week: a line a day)
 #   kwin-canvas check [--notify] [--after N]   the plugin check plus the effect's QML errors since boot (exit 1 on either)
 #   kwin-canvas fix-plugin   rebuild the pass-through plugin in the checkout and install it (asks sudo)
+#   kwin-canvas plugin-hook install|remove   rebuild the plugin by itself after every KWin update (a pacman hook; asks sudo)
 #   kwin-canvas setup [--check]   the recommended KDE settings, one question each before any change (--check only lists)
 #
 # Commands travel the effect's debug channel: DebugCommand and DebugSeq in
@@ -786,6 +787,40 @@ LIST
     fi
 }
 
+# plugin-hook install|remove: a pacman hook that rebuilds the plugin after every KWin install or
+# upgrade (packaging/kwin-canvas-plugin.hook), and the root-owned script it runs, with this
+# checkout, its owner and the plugin dir written in. Install also runs it once, so a plugin that
+# is stale now is fixed in the same step. HOOK_DIR and HOOK_LIBDIR point elsewhere for the tests,
+# FIX_SUDO replaces sudo.
+plugin_hook() {
+    set +e +o pipefail
+    local repo hookdir=${HOOK_DIR:-/etc/pacman.d/hooks} libdir=${HOOK_LIBDIR:-/usr/local/lib/kwin-canvas}
+    local dest=${DOCTOR_PLUGIN_DIR:-/usr/lib/qt6/plugins/kwin/plugins} sudo=${FIX_SUDO-sudo} tmp
+    case "${1:-}" in
+        install)
+            repo=$(find_repo)
+            [ -n "$repo" ] || { echo "kwin-canvas: no checkout found. Run this from the checkout's tools/kwin-canvas, or set KWIN_CANVAS_REPO to it."; return 1; }
+            tmp=$(mktemp -d) || return 1
+            sed -e "s|@REPO@|$repo|" -e "s|@OWNER@|$(id -un)|" -e "s|@DEST@|$dest|" \
+                "$repo/packaging/kwin-canvas-rebuild-plugin.in" > "$tmp/rebuild-plugin"
+            sed "s|/usr/local/lib/kwin-canvas/rebuild-plugin|$libdir/rebuild-plugin|" "$repo/packaging/kwin-canvas-plugin.hook" > "$tmp/kwin-canvas-plugin.hook"
+            echo "kwin-canvas: installing the pacman hook into $hookdir and its script into $libdir (sudo asks for your password)"
+            if $sudo install -D -m 755 "$tmp/rebuild-plugin" "$libdir/rebuild-plugin" \
+                && $sudo install -D -m 644 "$tmp/kwin-canvas-plugin.hook" "$hookdir/kwin-canvas-plugin.hook"; then
+                rm -rf "$tmp"
+                echo "kwin-canvas: installed; every KWin update now rebuilds the plugin. Running it once now:"
+                $sudo "$libdir/rebuild-plugin"
+            else
+                rm -rf "$tmp"
+                echo "kwin-canvas: the hook was not installed"; return 1
+            fi ;;
+        remove)
+            $sudo rm -f "$hookdir/kwin-canvas-plugin.hook" "$libdir/rebuild-plugin" && $sudo rmdir "$libdir" 2>/dev/null
+            echo "kwin-canvas: the pacman hook is removed; after a KWin update run kwin-canvas fix-plugin" ;;
+        *) echo "kwin-canvas: plugin-hook takes install or remove"; return 2 ;;
+    esac
+}
+
 # check [--notify] [--after SECONDS]: the login check. The plugin's version against KWin's, and the
 # effect's QML errors since boot, each a desktop notification with --notify. Exit 1 on either.
 check() {
@@ -824,7 +859,7 @@ plugincheck() {
     done
     if m=$(plugin_mismatch); then
         read -r built kw found <<<"$m"
-        msg="The kwin-canvas plugin is built for KWin $built but this is KWin $kw, so KWin refuses it: the grasp over windows and the pill's pin buttons are off. Run: kwin-canvas fix-plugin, then log in again."
+        msg="The kwin-canvas plugin is built for KWin $built but this is KWin $kw, so KWin refuses it: the grasp over windows and the pill's pin buttons are off. Run: kwin-canvas fix-plugin, then log in again (kwin-canvas plugin-hook install does this by itself after every KWin update)."
         echo "kwin-canvas: $msg"
         if [ "$notify" = 1 ] && command -v notify-send >/dev/null 2>&1; then
             notify-send -a kwin-canvas -i dialog-warning "kwin-canvas plugin out of date" "$msg" || true
@@ -841,6 +876,7 @@ case "${1:-}" in
     check) shift; check "$@"; exit $? ;;
     fix-plugin) shift; fix_plugin "$@"; exit $? ;;
     setup) shift; setup "$@"; exit $? ;;
+    plugin-hook) shift; plugin_hook "$@"; exit $? ;;
 esac
 
 for tool in qdbus6 kreadconfig6 kwriteconfig6; do

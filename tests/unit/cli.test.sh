@@ -415,6 +415,30 @@ has "setup: counts what it changed" "kwin-canvas setup: 1 changed"
 su "" 
 grep -q "AutoRaise=" "$SC/kwinrc"; [ $? -ne 0 ]; check "setup: no answer (end of input) changes nothing" $?
 
+# ---- plugin-hook ----
+mkdir -p "$T/frepo/packaging" "$T/frepo/plugin" "$T/hooks" "$T/hooklib" "$T/hdest"
+cp "$HERE/packaging/kwin-canvas-plugin.hook" "$HERE/packaging/kwin-canvas-rebuild-plugin.in" "$T/frepo/packaging/"
+: > "$T/frepo/plugin/CMakeLists.txt"
+printf '#!/bin/sh\nwhile [ "$1" != "--" ]; do shift; done; shift; exec "$@"\n' > "$T/bin/runuser"; chmod 755 "$T/bin/runuser"
+ph() { out=$(env PATH="$T/bin:$PATH" DOCTOR_REPO="$T/frepo" HOOK_DIR="$T/hooks" HOOK_LIBDIR="$T/hooklib" DOCTOR_PLUGIN_DIR="$T/hdest" DOCTOR_KWIN_VERSION=6.8.0 FIX_SUDO=env bash "$CLI" plugin-hook "$@" 2>&1); rc=$?; }
+ph install
+exit_is "plugin-hook install: exit 0" 0
+grep -q "^Target = kwin$" "$T/hooks/kwin-canvas-plugin.hook"; check "plugin-hook: the hook triggers on kwin" $?
+grep -q "^Exec = $T/hooklib/rebuild-plugin$" "$T/hooks/kwin-canvas-plugin.hook"; check "plugin-hook: the hook runs the installed script" $?
+grep -q "^REPO='$T/frepo'$" "$T/hooklib/rebuild-plugin"; check "plugin-hook: the script knows the checkout" $?
+grep -q "^OWNER='$(id -un)'$" "$T/hooklib/rebuild-plugin"; check "plugin-hook: and builds as its owner" $?
+[ -f "$T/hdest/kwin_canvas_passthrough.so" ]; check "plugin-hook: installing runs it once, so the plugin is current now" $?
+has "plugin-hook: the run says it rebuilt" "the plugin is rebuilt for the new KWin"
+rm -rf "$T/frepo/plugin"; out=$(env PATH="$T/bin:$PATH" "$T/hooklib/rebuild-plugin" 2>&1); rc=$?
+exit_is "rebuild-plugin: no checkout never fails the transaction" 0
+has "rebuild-plugin: and says so" "no checkout at"
+mkdir -p "$T/frepo/plugin"; : > "$T/frepo/plugin/CMakeLists.txt"
+ph remove
+[ ! -e "$T/hooks/kwin-canvas-plugin.hook" ] && [ ! -e "$T/hooklib/rebuild-plugin" ]; check "plugin-hook remove: both files go" $?
+ph bogus
+exit_is "plugin-hook: an unknown verb exits 2" 2
+rm -f "$T/bin/runuser"
+
 # ---- perf --week ----
 cat > "$T/week.log" <<'EOF'
 2026-10-22T10:00:00-0700 host kwin_wayland[1]: kwin-canvas perf: first-paint ms=90

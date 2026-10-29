@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Rebuilds the kwin-canvas pass-through plugin whenever KWin is installed or upgraded, so the
+# plugin always matches the KWin the next login runs. Installed into /etc/pacman.d/hooks by
+# `kwin-canvas plugin-hook install`, removed by `kwin-canvas plugin-hook remove`.
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = kwin
+
+[Action]
+Description = Rebuilding the kwin-canvas plugin for the new KWin...
+When = PostTransaction
+Exec = /usr/local/lib/kwin-canvas/rebuild-plugin

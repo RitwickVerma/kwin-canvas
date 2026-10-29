@@ -1,5 +1,8 @@
 Unreleased:
 
+- `kwin-canvas plugin-hook install` adds a pacman hook that rebuilds the plugin after every KWin
+  update, so the grasp and pass-through survive updates; installing it also fixes a stale plugin now.
+
 - With two monitors, each shows its own live wallpaper during a slide and in the overview; the top
   one showed the bottom one's, squeezed to its size.
 - At a fractional scale windows no longer creep a fraction of a pixel on every slide.

@@ -1,0 +1,25 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Run by pacman as root after KWin is installed or upgraded (kwin-canvas-plugin.hook): builds the
+# pass-through plugin in the checkout as the checkout's owner, never as root, and installs the
+# result. `kwin-canvas plugin-hook install` fills in the three values. A failure is reported and
+# never fails the transaction; the login check (kwin-canvas check) names a stale plugin anyway.
+REPO='@REPO@'
+OWNER='@OWNER@'
+DEST='@DEST@'
+SO="$REPO/build/plugin/bin/kwin/plugins/kwin_canvas_passthrough.so"
+if [ ! -f "$REPO/plugin/CMakeLists.txt" ]; then
+    echo "kwin-canvas: no checkout at $REPO; the plugin was not rebuilt (kwin-canvas plugin-hook remove drops this hook)"
+    exit 0
+fi
+if ! runuser -u "$OWNER" -- make -C "$REPO" -s plugin; then
+    echo "kwin-canvas: the plugin build failed; run kwin-canvas fix-plugin after the upgrade"
+    exit 0
+fi
+if install -m 755 "$SO" "$DEST/"; then
+    echo "kwin-canvas: the plugin is rebuilt for the new KWin and loads at the next login"
+else
+    echo "kwin-canvas: the plugin was built but not installed into $DEST"
+fi
+exit 0
