@@ -496,6 +496,17 @@ doctor_enabled() {
     fi
 }
 
+# REBUILD_AWK: an awk function, rebuild(), true for a "built" Perf line that shows a rebuild on
+# the frame path: something built in at least 5 frames and in a tenth of the session's frames or
+# more. A window that opens mid-flight builds its few items in one frame; a binding that rebuilds
+# on the camera builds in most of them. A line from before the frames count (no frames=) counts
+# when 20 items or more were built while moving.
+REBUILD_AWK='function rebuild(   i, kv, mv, fr, of, hasfr) {
+    mv = 0; fr = 0; of = 0; hasfr = 0
+    for (i = 1; i <= NF; i++) { split($i, kv, "="); if (kv[1] == "moving") mv = kv[2] + 0; if (kv[1] == "frames") { fr = kv[2] + 0; hasfr = 1 } if (kv[1] == "of") of = kv[2] + 0 }
+    if (hasfr) return fr >= 5 && fr * 10 >= of
+    return mv >= 20
+}'
 # doctor_frames: the canvas's own frame timings, which the effect writes to the journal while
 # its Perf setting is on: whether the canvas sessions since boot kept their frames on time and
 # created no scene item while the camera or a drag was moving (a rebuild on the frame path, the
@@ -519,13 +530,13 @@ doctor_frames() {
     slow=$(printf '%s\n' "$lines" | awk '/^ticks / { p = 0; m = 0
         for (i = 2; i <= NF; i++) { split($i, kv, "="); if (kv[1] == "p95") p = kv[2] + 0; if (kv[1] == "max") m = kv[2] + 0 }
         if (p >= 100 || m >= 250) n++ } END { print n + 0 }')
-    built=$(printf '%s\n' "$lines" | awk '/^built / { for (i = 2; i <= NF; i++) { split($i, kv, "="); if (kv[1] == "moving" && kv[2] + 0 > 0) n++ } } END { print n + 0 }')
+    built=$(printf '%s\n' "$lines" | awk "$REBUILD_AWK"' /^built / { if (rebuild()) n++ } END { print n + 0 }')
     if [ "$built" -gt 0 ]; then
-        verdict WARN frames "$built canvas sessions since boot created scene items while the camera or a drag was moving: a rebuild on the frame path (kwin-canvas perf --since today shows the built line's kinds)"
+        verdict WARN frames "$built canvas sessions since boot rebuilt scene items in many frames while the camera or a drag was moving: a rebuild on the frame path (kwin-canvas perf --since today shows the built line's kinds)"
     elif [ "$slow" -gt 0 ]; then
         verdict WARN frames "$slow of $sessions canvas sessions since boot had a frame of 250 ms or more, or a p95 of 100 ms (kwin-canvas perf --since today lists the late ticks)"
     else
-        verdict OK frames "$sessions canvas sessions since boot kept their frames on time and built nothing while moving"
+        verdict OK frames "$sessions canvas sessions since boot kept their frames on time and rebuilt nothing on the frame path"
     fi
 }
 
@@ -642,7 +653,7 @@ perf_week() {
         echo "kwin-canvas perf: no perf lines in the last seven days (the effect writes them with its Perf setting on)"
         return 0
     fi
-    printf '%s\n' "$src" | awk '
+    printf '%s\n' "$src" | awk "$REBUILD_AWK"'
         /kwin-canvas perf: / {
             day = substr($1, 1, 10)
             ev = $0; sub(/.*kwin-canvas perf: /, "", ev)
@@ -654,7 +665,7 @@ perf_week() {
                 for (i = 2; i in f; i++) { split(f[i], kv, "="); if (kv[1] == "p95") p = kv[2] + 0; if (kv[1] == "max") m = kv[2] + 0 }
                 if (p >= 100 || m >= 250) slow[day]++
             } else if (f[1] == "built") {
-                for (i = 2; i in f; i++) { split(f[i], kv, "="); if (kv[1] == "moving" && kv[2] + 0 > 0) bm[day]++ }
+                if (rebuild()) bm[day]++
             }
         }
         END {

@@ -304,10 +304,11 @@ KWin.SceneEffect {
     // slide dist ms, hover-fetch ms, ticks n p50 p95 max (on the close), moved win dx dy
     // (a real window moved by something else, adopted into the plane), reverted win cls dx dy
     // (KWin's reachability rule moved a window and the canvas put it back), landed win dx dy
-    // (a floated window taking its picture's spot), built n moving (scene items
-    // created this session, and how many of them while the camera or a drag was
-    // moving: anything above 0 there is a rebuild on the frame path; a re-weave of
-    // the cluster web counts as one, "weave"), stall ms cam
+    // (a floated window taking its picture's spot), built n moving frames of (scene
+    // items created this session; how many of them while the camera or a drag was
+    // moving, by kind - a re-weave of the cluster web counts as "weave"; in how many
+    // of the session's frames that happened, of how many: a rebuild on the frame path
+    // builds in most moving frames, a window that opens mid-flight in one), stall ms cam
     // quiet entries ql cpu gpu mem (a tick 60 ms or more late, at most 40 a session).
     property bool perf: configuration.Perf
     function perfLog(ev, kv) {
@@ -324,6 +325,8 @@ KWin.SceneEffect {
     property int perfBuilt: 0         // scene items created this session (thumbnails, web spans, chips)
     property int perfBuiltMoving: 0   // of those, created while the camera or a drag was moving
     property var perfBuiltKinds: ({}) // kind -> count, of the ones created while moving
+    property int perfBuiltFrames: 0   // frames in which something was built while moving
+    property int perfBuiltLastFrame: -1
     // A heavy delegate of `kind` was created: counted with Perf, free without.
     function noteBuilt(kind) {
         if (!perf) return;
@@ -331,6 +334,7 @@ KWin.SceneEffect {
         if (camLive() || dragIndex >= 0) {
             perfBuiltMoving++;
             perfBuiltKinds[kind] = (perfBuiltKinds[kind] || 0) + 1;
+            if (perfTickN !== perfBuiltLastFrame) { perfBuiltFrames++; perfBuiltLastFrame = perfTickN; }
         }
     }
     // Tick spacing as a histogram, 1 ms bins (the last takes everything from
@@ -385,10 +389,12 @@ KWin.SceneEffect {
         }
         let kinds = "";
         for (const k in perfBuiltKinds) kinds += " " + k + "=" + perfBuiltKinds[k];
-        perfLog("built", "n=" + perfBuilt + " moving=" + perfBuiltMoving + kinds);
+        perfLog("built", "n=" + perfBuilt + " moving=" + perfBuiltMoving + " frames=" + perfBuiltFrames + " of=" + perfTickN + kinds);
         perfBuilt = 0;
         perfBuiltMoving = 0;
         perfBuiltKinds = ({});
+        perfBuiltFrames = 0;
+        perfBuiltLastFrame = -1;
         perfTickN = 0;
         perfTickMax = 0;
         perfStalls = 0;

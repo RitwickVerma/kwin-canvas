@@ -148,7 +148,13 @@ PERF="$T/perf-slow" doctor
 has "frames: a 718 ms frame warns" "WARN  frames     1 of 1 canvas sessions since boot had a frame of 250 ms"
 printf '%s\n' "kwin-canvas perf: ticks n=200 p50=16 p95=20 max=40" "kwin-canvas perf: built n=300 moving=79 weave=79" > "$T/perf-built"
 PERF="$T/perf-built" doctor
-has "frames: a rebuild while moving warns" "WARN  frames     1 canvas sessions since boot created scene items while"
+has "frames: a rebuild while moving warns (an old line, no frames count)" "WARN  frames     1 canvas sessions since boot rebuilt scene items in many frames"
+printf '%s\n' "kwin-canvas perf: ticks n=60 p50=16 p95=20 max=40" "kwin-canvas perf: built n=17 moving=4 frames=1 of=60 badge=2 chip=2" > "$T/perf-oneoff"
+PERF="$T/perf-oneoff" doctor
+has "frames: a window opening mid-flight (one frame) is not a rebuild" "OK    frames     1 canvas sessions since boot kept their frames on time and rebuilt nothing"
+printf '%s\n' "kwin-canvas perf: ticks n=60 p50=16 p95=20 max=40" "kwin-canvas perf: built n=200 moving=55 frames=50 of=60 weave=50" > "$T/perf-loop"
+PERF="$T/perf-loop" doctor
+has "frames: building in most moving frames is a rebuild" "WARN  frames     1 canvas sessions since boot rebuilt scene items in many frames"
 exit_is "frames: a warning is not a failure" 0
 unset PERF
 

@@ -844,7 +844,7 @@ growing list.
 | `slide` | `dist`, `ms` | a quiet slide: distance in px and wall-clock time from the animation's start to its landing |
 | `hover-fetch` | `ms` | the rest that made the camera fetch a hovered window (the pointer's rest, which is the fetch's latency) |
 | `ticks` | `n`, `p50`, `p95`, `max` | physics tick spacing in ms over the session, written when the canvas closes |
-| `built` | `n`, `moving`, and a count per kind (`thumb`, `web`, `badge`, `chip`, `weave`) | scene items created in the session, written when the canvas closes; `moving` counts those created while the camera or a drag was moving, which should be 0 (a re-weave of the cluster web counts as `weave`) |
+| `built` | `n`, `moving`, `frames`, `of`, and a count per kind (`thumb`, `web`, `badge`, `chip`, `weave`) | scene items created in the session, written when the canvas closes; `moving` counts those created while the camera or a drag was moving (a re-weave of the cluster web counts as `weave`), `frames` in how many of the session's `of` frames that happened. A rebuild on the frame path builds in most moving frames; a window that opens mid-flight builds its badge in one. Doctor and `perf --week` call it a rebuild at 5 frames and a tenth of the session's |
 | `moved` | `win`, `cls`, `dx`, `dy`, `open`, `quiet`, `pinned`, `floats`, `since …` | a real window's position changed by something other than the canvas and was adopted into the plane (a move the classifier did not take for KWin's reachability rule: see *Frame authority*) |
 | `reverted` | `win`, `cls`, `dx`, `dy`, `open`, `quiet`, `since …` | something other than the hand or the canvas moved a window from out of reach to in reach, and the canvas put it back (*Frame authority*); `since` is the milliseconds since the last open, close, focus change, dock event and layout change, `-` when none in five seconds |
 | `landed` | `win`, `dx`, `dy` | a floated window took its picture's spot as its plane coordinates when the canvas was left |
@@ -878,7 +878,7 @@ eleven windows in clusters, two floated): a zoom-to-fit open, a slide and a wind
 item while moving and keep their frames inside a budget. The nest renders in software, so its frame
 limits catch a rebuild on the frame path, not the speed of a GPU; the `built ... moving=` count is exact
 everywhere. On the real desktop `kwin-canvas doctor` reads the same Perf lines from the journal and
-warns about sessions that built while moving or had a frame of 250 ms or more.
+warns about sessions that rebuilt items in many frames while moving (see `built` above) or had a frame of 250 ms or more.
 
 **Where an open's first 150 ms go.** `open()` itself takes about 1 ms; the
 first physics tick comes 150 to 200 ms after it because `visible = true`
