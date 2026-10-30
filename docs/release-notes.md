@@ -1,5 +1,10 @@
 Unreleased:
 
+- The Canvas window decoration has no border inside the window any more: its resize band lies
+  outside the window, so an effect that shapes windows (Rounded Corners, an outline) shapes the
+  window you see on the sides and at the bottom. The top keeps the pill's band, so the top corners
+  stay square under such an effect.
+
 - `kwin-canvas plugin-hook install` adds a pacman hook that rebuilds the plugin after every KWin
   update, so the grasp and pass-through survive updates; installing it also fixes a stale plugin now.
 

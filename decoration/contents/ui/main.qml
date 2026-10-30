@@ -324,25 +324,30 @@ Decoration {
     }
 
     Component.onCompleted: {
-        // The resize borders: a generous invisible band - the only
-        // decoration the window carries besides the pill, and it is
-        // invisible by design. The title is an invisible 24 px band -
-        // the hover surface for the drag and the pill. With the title
-        // at 0 the client covers the whole interior and the pill could
-        // never be hovered; the band is transparent (alpha: true), so
-        // the window wears nothing while the pill floats exactly on the
-        // edge.
-        borders.setBorders(6);
+        // No border on the sides or at the bottom: the window's frame is the
+        // window, so an effect that shapes the frame (Rounded Corners, an
+        // outline) shapes what the eye sees. The resize band is the
+        // extended border below - Aurorae makes it a resize-only border,
+        // input outside the frame and never drawn (it was a transparent
+        // 6 px border inside the frame, and the rounded corners fell on
+        // it, invisible). The title is an invisible 32 px band - the hover
+        // surface for the drag and the pill. With the title at 0 the client
+        // covers the whole interior and the pill could never be hovered;
+        // the band is transparent (alpha: true), so the window wears
+        // nothing while the pill floats exactly on the edge. KWin has no
+        // resize-only border above a window, so this band stays inside the
+        // frame, and an effect's top corners fall on it.
+        borders.setBorders(0);
         borders.setTitle(32);
         // A maximized window is full-bleed: no band, so the client runs
         // to the screen's top edge and no transparent strip shows above
         // it. The pill is already tucked away when maximized.
         maximizedBorders.setTitle(0);
-        // No shadow: the extended borders only exist to give the
-        // aurorae engine a region for its own dark shadow, and that
-        // shadow read as a black line above the window. The pill fits
-        // entirely inside the title band, so it needs no headroom.
-        extendedBorders.setAllBorders(0);
+        // The resize band, outside the frame: Aurorae passes the extended
+        // borders to KWin as resize-only borders (left, right and bottom;
+        // there is never a top one), so they take the pointer and draw
+        // nothing.
+        extendedBorders.setAllBorders(6);
         decoration.installTitleItem(dragBand);
     }
 }
