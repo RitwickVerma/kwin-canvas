@@ -48,5 +48,9 @@ run_scenario() {
     c cancel >/dev/null; sleep 0.8
     kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key Bookmarks --delete
     c reloadstate >/dev/null
+    # The drift moved this activity's frames 250000 px from the others, and the recentre kept that
+    # layout: put every activity's frames back where a fresh nest has them, or a later scenario
+    # that enters another activity (95-gestures) finds it a quarter of a million pixels away.
+    c resettargets >/dev/null
     arrange >/dev/null
 }

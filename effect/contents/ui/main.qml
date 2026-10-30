@@ -5864,6 +5864,17 @@ KWin.SceneEffect {
             targets[currentActivity] = { x: 0, y: 0 };
             break;
         }
+        case "resettargets": {
+            // 1:1 only: every activity's frames back to the default layout around the current one
+            // at the origin, for a scenario that moved them (the windows are not moved).
+            if (visible) break;
+            viewX = 0; viewY = 0;
+            targets = {};
+            targets[currentActivity] = { x: 0, y: 0 };
+            ensureTargets();
+            revision++;
+            break;
+        }
         case "placeby": {
             // placeby CAPTION_SUBSTR X Y [W H]: position (and size) an entry by caption.
             if (!numok(2) || !numok(3)) break;

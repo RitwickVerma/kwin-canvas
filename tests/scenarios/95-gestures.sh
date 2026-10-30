@@ -154,5 +154,11 @@ run_scenario() {
     c commit
     c "rmactivity 2"
     sleep 1.2
+    # KWin puts a window whose only activity was removed on every activity, and Gwenview was on
+    # Activity 3: back on Activity 1 alone, as a fresh nest has it. Entering Activity 2 above also
+    # moved its frames: back where a fresh nest has them. A later scenario that counts on either
+    # (182, 183, 184) found them otherwise.
+    kwinjs 'workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("Gwenview") >= 0) x.activities = [workspace.currentActivity]; });' 0.5
+    c resettargets >/dev/null
     arrange >/dev/null
 }
