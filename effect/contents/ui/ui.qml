@@ -9,6 +9,7 @@
     re-login. The logic lives on the effect itself, in main.qml.
 */
 import QtQuick
+import QtQuick.Window
 import QtQuick.Layouts
 import QtQuick.Shapes
 import Qt5Compat.GraphicalEffects
@@ -319,7 +320,9 @@ Item {
         focus: true
         Connections {
             target: effect
-            function onVisibleChanged() { if (effect.visible) { view.hoverCount = 0; view.spaceHeld = false; } }
+            // With view caching the scene outlives the close: what a gesture left behind is cleared,
+            // and the keyboard focus taken again, at every open.
+            function onVisibleChanged() { if (effect.visible) { view.hoverCount = 0; view.spaceHeld = false; view.portalDrags = 0; view.forceActiveFocus(); } }
             // The switcher asks for the keyboard focus through a property
             // bump: the effect's own scope cannot name a view delegate.
             function onSwitcherFocusReqChanged() { view.focus = true; }
@@ -815,10 +818,27 @@ Item {
                     visible: effect.ql >= 3
                 }
 
+                // The window's picture. With the Rounded Corners effect on it wears that effect's
+                // corners: the thumbnail is rendered into a layer and the corner shader shapes the
+                // layer. The layer holds exactly the item's bounds, which is the window - KWin draws
+                // the thumbnail's texture, the window and its shadow, partly outside the item so the
+                // window lines up, and that offset is not readable from here, so the texture itself
+                // cannot be sampled in its place. The layer's size is the window's, in device pixels,
+                // and stays put while the zoom changes, so a zoom never reallocates it.
+                readonly property real cornerR: { effect.cornerStyle; KWin.Workspace.activeWindow; effect.ql; effect.revision; return effect.cornerRadiusOf ? effect.cornerRadiusOf(thumb.entry) : 0; }
                 KWin.WindowThumbnail {
                     anchors.fill: parent
                     client: thumb.entry.window
                     visible: effect.ql < 3
+                    layer.enabled: thumb.cornerR > 0
+                    layer.smooth: true
+                    layer.textureSize: Qt.size(Math.ceil(thumb.entry.width * Screen.devicePixelRatio), Math.ceil(thumb.entry.height * Screen.devicePixelRatio))
+                    layer.effect: ShaderEffect {
+                        property size itemSize: Qt.size(width, height)
+                        property real radius: thumb.cornerR * effect.zoom
+                        property real squircle: Number(effect.cornerStyle.squircle) || 0
+                        fragmentShader: Qt.resolvedUrl("../shaders/corners.frag.qsb")
+                    }
                 }
 
                 // The soft shadow under the window: the lifted and the

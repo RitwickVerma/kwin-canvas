@@ -855,6 +855,33 @@ growing list.
 | `landed` | `win`, `dx`, `dy` | a floated window took its picture's spot as its plane coordinates when the canvas was left |
 | `stall` | `ms`, `cam`, `quiet`, `entries`, `ql`, `cpu`, `gpu`, `mem` | a physics tick 60 ms or more late, with what the camera was doing (`goal`, `fling`, `-`) and the effect's last load readings; at most 40 a session; `kwin-canvas perf` lists the last 12 with their times |
 
+### What KWin does not do for a scene effect, and the plugin does
+
+Two things a QML scene effect cannot reach, so the pass-through plugin does them over D-Bus:
+
+- **View caching.** KWin destroys a QuickSceneEffect's scene views at every close and builds them
+  at every open; `QuickSceneEffect::setViewCachingEnabled` keeps them alive but suspended, and it
+  is not a QML property. `setViewCaching(bool)` finds the effect (`effects->findEffect`) and sets
+  it; the effect asks at every reconfigure and, until it took, at every open (`cached=` on the state
+  line). Measured in the nest: an overview's first paint 39 to 59 ms with it, 147 to 190 ms
+  without. A scene that outlives the close keeps what a gesture left on the view, so `ui.qml`
+  clears its counters and takes the keyboard focus again at every open. `ViewCaching` turns it
+  off.
+- **Rounded corners on the thumbnails.** `WindowThumbnailItem` renders the window's item straight
+  through KWin's `ItemRenderer` into a texture, past the effects chain, so a window the Rounded
+  Corners effect (kwin4_effect_shapecorners) shapes on the desktop is square on the canvas.
+  `cornerStyle()` reads that effect's settings (`[Round-Corners]` in kwinrc, with its own defaults)
+  and whether it is loaded; `Logic.cornerRadius` applies its rules (normal windows and dialogs,
+  its exclusions and inclusions by class or the title's last part, no corners when maximized,
+  tiled or fullscreen if it says so, active and inactive radii); the thumbnail is drawn into a
+  layer and `shaders/corners.frag` (a circle blended toward a power-4 superellipse by the
+  squircle setting) cuts the corners. The layer holds the item's bounds, which is the window: the
+  thumbnail's texture also holds the shadow and is drawn partly outside the item, and that offset
+  is not readable from QML. `ThumbnailCorners` turns it off. The outlines are not drawn.
+
+`make shaders` compiles `effect/contents/shaders/*.frag` with qsb into the committed `.qsb`
+files, and `make lint-shader` checks they match.
+
 ### The frame path
 
 Nothing on the canvas may create scene items, or redo work that only the layout decides, because the

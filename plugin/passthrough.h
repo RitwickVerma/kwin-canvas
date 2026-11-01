@@ -117,6 +117,21 @@ public Q_SLOTS:
      * plugin's halves of a gesture can be read side by side in KWin's log.
      */
     Q_SCRIPTABLE void setVerbose(bool verbose);
+    /**
+     * Keep the canvas's scene views alive between openings instead of KWin
+     * destroying and building them on every open (QuickSceneEffect's view
+     * caching, which is not a QML property). Returns whether the canvas effect
+     * was found and now has it as asked.
+     */
+    Q_SCRIPTABLE bool setViewCaching(bool enabled);
+    /**
+     * How the Rounded Corners effect (kwin4_effect_shapecorners) shapes windows, as JSON, so the
+     * canvas can shape its thumbnails the same way: a thumbnail is drawn past KWin's effects.
+     * {"on": loaded, "active": px, "inactive": px, "squircle": 0..1, "tile", "max", "full": skip
+     * those windows, "exclusions": [...], "inclusions": [...]}; its own defaults where kwinrc
+     * has no value.
+     */
+    Q_SCRIPTABLE QString cornerStyle() const;
     Q_SCRIPTABLE QString state() const;
     /**
      * The machine's load, for the fidelity ladder: "cpu=N load=NN.NN

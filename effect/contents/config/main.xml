@@ -268,6 +268,14 @@
             <label>Where new windows of an app open, as JSON: desktop file or class to a plane spot. Set from a window's arrange menu in the overview ("Open new windows of this app here").</label>
             <default>{}</default>
         </entry>
+        <entry name="ThumbnailCorners" type="Bool">
+            <label>On the canvas, give windows the same rounded corners the Rounded Corners effect gives them on the desktop (needs the pass-through plugin, which reads that effect's settings). A window's picture on the canvas is drawn past KWin's effects, so without this it is square.</label>
+            <default>true</default>
+        </entry>
+        <entry name="ViewCaching" type="Bool">
+            <label>Keep the canvas's scene built between openings (KWin's view caching, through the pass-through plugin), so an open resumes it instead of building it: the overview's first frame comes about twice as fast, at the cost of the scene's memory while the canvas is closed.</label>
+            <default>true</default>
+        </entry>
         <entry name="NewWindowsInView" type="Bool">
             <label>A new window that appears wholly off every monitor (put back at an old spot by a script or by the app itself) is moved to the middle of the monitor under the pointer, so a new window always opens where you are looking.</label>
             <default>true</default>

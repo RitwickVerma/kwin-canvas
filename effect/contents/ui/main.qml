@@ -3434,6 +3434,10 @@ KWin.SceneEffect {
     }
     onHotRevChanged: safeMode = false
     function open(quietMode, spec) {
+        // Asked again until it took: at load the plugin may not have found the effect yet.
+        if (!viewCached && configuration.ViewCaching !== false && passthrough) publishViewCaching();
+        // The Rounded Corners settings may have changed since the last open (they are that effect's).
+        refreshCornerStyle();
         if (safeMode) { dbg("open", "refused: safe mode, the scene failed to load"); return; }
         refreshGroundWallpaper();
         if (visible) return;
@@ -4692,6 +4696,30 @@ KWin.SceneEffect {
         method: "setSeparate"
     }
     KWin.DBusCall {
+        id: cornerCall
+        service: "org.kde.KWin"
+        path: "/KWinCanvas"
+        dbusInterface: "org.kde.kwin.canvas.Passthrough"
+        method: "cornerStyle"
+        // An older plugin has no such method and answers nothing: the thumbnails stay square.
+        onFinished: (ret) => {
+            let s = { on: false };
+            try { s = JSON.parse(String(ret && ret.length ? ret[0] : "")); } catch (err) { s = { on: false }; }
+            effect.cornerStyle = s && typeof s === "object" ? s : { on: false };
+        }
+    }
+    KWin.DBusCall {
+        id: viewCachingCall
+        service: "org.kde.KWin"
+        path: "/KWinCanvas"
+        dbusInterface: "org.kde.kwin.canvas.Passthrough"
+        method: "setViewCaching"
+        // The plugin answers whether it found the effect; an older plugin has no such method and
+        // answers nothing, which leaves the scene built per open as before.
+        // The answer comes as a list, its one value first.
+        onFinished: (ret) => { effect.viewCached = !!ret && ret[0] === true && effect.configuration.ViewCaching !== false; }
+    }
+    KWin.DBusCall {
         id: navCall
         service: "org.kde.KWin"
         path: "/KWinCanvas"
@@ -4863,6 +4891,8 @@ KWin.SceneEffect {
         // The | 0 is load-bearing: QML numbers are doubles, and QDBus does
         // not demote a double argument to the plugin's int slot, so the call
         // would vanish. (holdButtons above is already an int property.)
+        publishViewCaching();
+        refreshCornerStyle();
         holdDelayCall.arguments = [delay | 0];
         holdDelayCall.call();
         const hover = Number(configuration.HoverDelay) || 900;
@@ -4874,6 +4904,30 @@ KWin.SceneEffect {
     // filter's eyes while the canvas is closed, and the plugin reads its
     // own copy once at load - so the effect publishes the setting at every
     // reconfigure (the same moments publishHold runs).
+    // Rounded corners on the thumbnails: a thumbnail is drawn from the window's surface, past
+    // KWin's effects, so a window the Rounded Corners effect shapes on the desktop came out square
+    // on the canvas. The plugin reads that effect's settings; the scene shapes each thumbnail the
+    // same way (ui.qml, shaders/corners.frag). ThumbnailCorners turns it off.
+    property var cornerStyle: ({ on: false })
+    function refreshCornerStyle() {
+        if (configuration.ThumbnailCorners === false) { if (cornerStyle.on) cornerStyle = ({ on: false }); return; }
+        cornerCall.call();
+    }
+    function cornerRadiusOf(e) {
+        if (!e || !e.window || e.window.deleted || ql >= 2) return 0;
+        const w = e.window;
+        return Logic.cornerRadius({ cls: w.resourceClass, caption: w.caption, normal: w.normalWindow, dialog: w.dialog,
+                                    fullScreen: w.fullScreen, maximized: w.maximizeMode === 3, tiled: !!w.tile,
+                                    active: w === KWin.Workspace.activeWindow }, cornerStyle);
+    }
+    // View caching: the plugin asks KWin to keep the scene views alive between openings, so an
+    // open resumes a built scene instead of creating one (about half of an overview's first
+    // frame). ViewCaching turns it off. Asked at every reconfigure and until it took.
+    property bool viewCached: false
+    function publishViewCaching() {
+        viewCachingCall.arguments = [configuration.ViewCaching !== false];
+        viewCachingCall.call();
+    }
     function publishDoor() {
         doorCall.arguments = [configuration.WheelDoor !== false && !gameMode];
         doorCall.call();
@@ -6036,6 +6090,8 @@ KWin.SceneEffect {
             + " bookmarks=" + Object.keys(bookmarks).length
             + " game=" + (gameMode ? 1 : 0)
             + " safe=" + (safeMode ? 1 : 0)
+            + " cached=" + (viewCached ? 1 : 0)
+            + " corners=" + (cornerStyle.on ? entries.map(cornerRadiusOf).join(",") : "off")
             + " away=" + entries.filter(entryAway).length
             + " deskfor=" + KWin.Workspace.screens.map(function (sc) { const w = desktopWindowFor(sc); return sc.name + ":" + (w ? Math.round(w.frameGeometry.x) + "," + Math.round(w.frameGeometry.y) : "-"); }).join(";")
             + " search=" + (searchActive ? "\"" + searchText + "\"" + ":" + searchHits.length : "-")

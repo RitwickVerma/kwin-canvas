@@ -7,6 +7,7 @@
 #include <config-kwin.h>
 #include <core/output.h>
 #include <effect/effecthandler.h>
+#include <effect/quickeffect.h>
 #include <wayland/seat.h>
 #include <wayland/surface.h>
 #include <wayland_server.h>
@@ -17,6 +18,7 @@
 #include <KSharedConfig>
 #include <QDBusConnection>
 #include <QFile>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLibrary>
@@ -299,6 +301,41 @@ void CanvasPassthrough::setVerbose(bool verbose)
 {
     m_verbose = verbose;
     qCDebug(KWIN_CANVAS) << "canvas-passthrough: verbose" << (verbose ? "on" : "off");
+}
+
+QString CanvasPassthrough::cornerStyle() const
+{
+    // The effect's own defaults (its options.kcfg) where the user has set nothing.
+    const KConfigGroup g = KSharedConfig::openConfig(QStringLiteral("kwinrc"), KConfig::NoGlobals)->group(QStringLiteral("Round-Corners"));
+    const bool on = KWin::effects && KWin::effects->isEffectLoaded(QStringLiteral("kwin4_effect_shapecorners"));
+    const bool squircleShape = g.readEntry("UseSquircleShape", true);
+    QJsonObject o;
+    o[QStringLiteral("on")] = on;
+    o[QStringLiteral("active")] = g.readEntry("Size", 20);
+    o[QStringLiteral("inactive")] = g.readEntry("InactiveCornerRadius", 20);
+    o[QStringLiteral("squircle")] = squircleShape ? g.readEntry("Squircleness", 0.55) : 0.0;
+    o[QStringLiteral("tile")] = g.readEntry("DisableRoundTile", true);
+    o[QStringLiteral("max")] = g.readEntry("DisableRoundMaximize", true);
+    o[QStringLiteral("full")] = g.readEntry("DisableRoundFullScreen", true);
+    o[QStringLiteral("exclusions")] = QJsonArray::fromStringList(g.readEntry("Exclusions", QStringList()));
+    o[QStringLiteral("inclusions")] = QJsonArray::fromStringList(g.readEntry("Inclusions", QStringList()));
+    return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
+}
+
+bool CanvasPassthrough::setViewCaching(bool enabled)
+{
+    if (!KWin::effects) {
+        return false;
+    }
+    auto *effect = qobject_cast<KWin::QuickSceneEffect *>(KWin::effects->findEffect(QStringLiteral("kwin-canvas")));
+    if (!effect) {
+        return false;
+    }
+    if (effect->isViewCachingEnabled() != enabled) {
+        effect->setViewCachingEnabled(enabled);
+        qCDebug(KWIN_CANVAS) << "canvas-passthrough: view caching" << (enabled ? "on" : "off");
+    }
+    return true;
 }
 
 void CanvasPassthrough::publishRest(KWin::Window *w)

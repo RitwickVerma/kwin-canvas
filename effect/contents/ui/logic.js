@@ -114,6 +114,33 @@ function webLayers(spans, windowZs) {
     return out;
 }
 
+// The corner radius the Rounded Corners effect gives a window, so its thumbnail can wear the
+// same: style is what the plugin reads from the effect's settings (cornerStyle), w the window's
+// { cls, caption, normal, dialog, fullScreen, maximized, tiled, active }. 0 for none: the effect
+// not loaded, a window it does not shape (not a normal window or a dialog unless included, or
+// excluded - by its class or the last part of its title, case-insensitively, as the effect
+// matches), or a fullscreen, maximized or tiled one when the effect skips those.
+function cornerRadius(w, style) {
+    if (!style || !style.on || !w) return 0;
+    const cls = String(w.cls || "").toLowerCase();
+    const parts = String(w.caption || "").split(/ [—–-] /);
+    const tail = parts[parts.length - 1].toLowerCase();
+    const hits = function (list) {
+        for (let i = 0; list && i < list.length; ++i) {
+            const k = String(list[i]).toLowerCase();
+            if (k && (cls.indexOf(k) >= 0 || tail.indexOf(k) >= 0)) return true;
+        }
+        return false;
+    };
+    if (hits(style.exclusions)) return 0;
+    if (!w.normal && !w.dialog && !hits(style.inclusions)) return 0;
+    if (w.fullScreen && style.full) return 0;
+    if (w.maximized && style.max) return 0;
+    if (w.tiled && style.tile) return 0;
+    const r = Number(w.active ? style.active : style.inactive);
+    return r > 0 ? r : 0;
+}
+
 // ---- frame authority: the pure half -----------------------------------------
 // KWin keeps a window reachable: at least 100 px of its width (or all of a narrower window) over
 // a monitor, and its top edge from the monitor's top down to 28 px above its bottom (measured on

@@ -32,7 +32,7 @@ PYTHON      := python3
 QMLLINT     := /usr/lib/qt6/bin/qmllint
 
 .DEFAULT_GOAL := help
-.PHONY: help deps deps-install install uninstall install-system uninstall-system reload enable disable status hot \
+.PHONY: shaders help deps deps-install install uninstall install-system uninstall-system reload enable disable status hot \
         lint lint-reuse lint-qml lint-shell lint-shader lint-deadcode lint-python \
         tools fixtures fixtures-check play nest nest-down nest-clients nest-fixtures nest-reload nest-shot nest-log nest-clean nest-cmd \
         tutorial test test-panel test-decor test-two-outputs test-shim golden unit demo video clean stage dist pkgbuild aur aur-passthrough release tour \
@@ -79,9 +79,20 @@ lint-shell: ## Parse every script with bash -n, then shellcheck at error severit
 lint-deadcode: ## The dead-code census: nothing declared may be referenced only at its declaration
 	@bash tools/deadcode.sh
 
-lint-shader: ## Compile every shaders/*.frag in the shader wallpaper engine's context (header + shader + wrapper)
+lint-shader: ## Compile every shaders/*.frag in the shader wallpaper engine's context (header + shader + wrapper), and check the effect's compiled shaders match their source
 	@command -v glslangValidator >/dev/null 2>&1 || { echo "glslangValidator is not installed: sudo pacman -S shaderc"; exit 1; }
 	@bash tools/lint-shader.sh
+	@if [ -x $(QSB) ]; then for f in effect/contents/shaders/*.frag; do \
+		$(QSB) $(QSB_TARGETS) -o $(BUILD)/qsb-check $$f >/dev/null && cmp -s $(BUILD)/qsb-check $$f.qsb \
+			|| { echo "$$f.qsb is not $$f compiled: make shaders"; rm -f $(BUILD)/qsb-check; exit 1; }; \
+	done; rm -f $(BUILD)/qsb-check; echo "lint-shader: the effect's compiled shaders match their source"; \
+	else echo "lint-shader: qsb is not installed (qt6-shadertools), the compiled shaders were not checked"; fi
+
+# The effect's shaders are compiled into .qsb and committed, so installing needs no shader tools.
+QSB ?= /usr/lib/qt6/bin/qsb
+QSB_TARGETS := --glsl "100 es,120,150" --hlsl 50 --msl 12
+shaders: ## Compile the effect's shaders (effect/contents/shaders/*.frag) into the .qsb files the scene loads
+	@for f in effect/contents/shaders/*.frag; do $(QSB) $(QSB_TARGETS) -o $$f.qsb $$f && echo "compiled $$f.qsb"; done
 
 lint-python: ## vulture over the Python: no dead functions, imports or variables
 	@command -v vulture >/dev/null 2>&1 || { echo "vulture is not installed: sudo pacman -S vulture"; exit 1; }

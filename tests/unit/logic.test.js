@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, searchFilter, inReach, isPull, fightStep, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
+const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, searchFilter, inReach, isPull, fightStep, cornerRadius, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -104,6 +104,24 @@ ok("the dynamic gap reads the same scaled up",
     ok("a move after a pause starts a new chain", st.allow);
     const c0 = { n: 1, at: 1000 }; L.fightStep(c0, 1100, 500);
     ok("the step does not change the chain it was given", c0.n === 1 && c0.at === 1000);
+}
+
+// ---- the corner radius a thumbnail wears ----
+{
+    const style = { on: true, active: 16, inactive: 28, squircle: 0.2, tile: true, max: true, full: true, exclusions: ["VSCode"], inclusions: [] };
+    const W = function (o) { return Object.assign({ cls: "org.kde.konsole", caption: "~ : zsh — Konsole", normal: true, dialog: false, fullScreen: false, maximized: false, tiled: false, active: false }, o); };
+    ok("an inactive window wears the inactive radius", L.cornerRadius(W({}), style) === 28);
+    ok("the active one the active radius", L.cornerRadius(W({ active: true }), style) === 16);
+    ok("an excluded class wears none", L.cornerRadius(W({ cls: "com.microsoft.VSCode" }), style) === 0);
+    ok("nor one excluded by its title's last part", L.cornerRadius(W({ cls: "electron", caption: "main.qml - vscode" }), style) === 0);
+    ok("a maximized window wears none when the effect skips them", L.cornerRadius(W({ maximized: true }), style) === 0);
+    ok("but does when it does not", L.cornerRadius(W({ maximized: true }), Object.assign({}, style, { max: false })) === 28);
+    ok("nor a fullscreen one, nor a tiled one", L.cornerRadius(W({ fullScreen: true }), style) === 0 && L.cornerRadius(W({ tiled: true }), style) === 0);
+    ok("a dialog wears it", L.cornerRadius(W({ normal: false, dialog: true }), style) === 28);
+    ok("a utility window does not, unless included", L.cornerRadius(W({ normal: false, cls: "lyrics" }), style) === 0
+        && L.cornerRadius(W({ normal: false, cls: "lyrics" }), Object.assign({}, style, { inclusions: ["Lyrics"] })) === 28);
+    ok("the effect not loaded is none", L.cornerRadius(W({}), Object.assign({}, style, { on: false })) === 0);
+    ok("no style is none", L.cornerRadius(W({}), null) === 0);
 }
 
 // ---- the distance ----

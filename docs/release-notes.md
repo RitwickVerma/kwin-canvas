@@ -1,5 +1,13 @@
 Unreleased:
 
+- The overview opens about three times as fast: KWin keeps the canvas's scene between openings
+  instead of building it at every open (view caching, through the pass-through plugin). An
+  overview's first frame took 147 to 190 ms in the test nest and takes 39 to 59.
+- Windows keep their rounded corners on the canvas. With the Rounded Corners effect on, a window's
+  picture in the overview and during a slide wears the same corners as on the desktop (it was
+  square: KWin draws a window's picture past its effects), with that effect's radii, squircle and
+  exclusions. Both need the plugin updated: `kwin-canvas fix-plugin`.
+
 - The Canvas window decoration has no border inside the window any more: its resize band lies
   outside the window, so an effect that shapes windows (Rounded Corners, an outline) shapes the
   window you see on the sides and at the bottom. The top keeps the pill's band, so the top corners
