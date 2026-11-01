@@ -17,12 +17,13 @@ budget() {
     echo "${p95:-999} ${max:-999} ${st:-0} ${mv:-999} ${n:-0}"
 }
 toggle_chord() { nq org.kde.kglobalaccel /component/kwin org.kde.kglobalaccel.Component.invokeShortcut "Toggle Canvas" >/dev/null 2>&1; }
-# The budget. Items built while moving are deterministic and must be none. The
-# frame times are the nest's: it renders in software (llvmpipe), so two scaled
-# outputs cost the host's CPU what the real desktop's GPU does not, and a busy
-# host adds noise. The limits are set to catch a rebuild on the frame path (650 ms
-# frames once), not to grade a software renderer: p95 under 30 ms on one output
-# and 60 ms on two, and no frame over 250 ms.
+# The budget. Items built while moving are deterministic and must be none: that is the
+# guard (with floatRev back in the web's inputs it counted 79 weaves while the frame times
+# still passed). The frame times are the nest's and a busy host adds noise, so the limits
+# only catch the gross case: no frame over 250 ms anywhere, and on a GPU nest (NEST_GPU=1)
+# p95 under 30 ms on one output and 60 ms on two. The default nest renders in software
+# (llvmpipe), where a zoom-to-fit open runs at a p95 of about 120 ms with nothing wrong, so
+# its p95 grades the CPU, not the canvas, and is reported, not judged.
 P95_MAX=30
 MAX_MAX=250
 check_budget() { # label mark
@@ -30,7 +31,7 @@ check_budget() { # label mark
     read -r p95 max st mv n <<<"$(budget "$2")"
     echo "# $1: p95=${p95}ms max=${max}ms stalls=$st built-while-moving=$mv frames=$n"
     # A short session's p95 is its worst frame, which the max limit judges already.
-    if [ "${n:-0}" -ge 40 ]; then assert_true "$1: frames on time (p95 ${p95} ms)" "$p95" -le "$P95_MAX"; fi
+    if [ "${NEST_GPU:-0}" = 1 ] && [ "${n:-0}" -ge 40 ]; then assert_true "$1: frames on time (p95 ${p95} ms)" "$p95" -le "$P95_MAX"; fi
     assert_true "$1: no frame over ${MAX_MAX} ms (max ${max} ms)" "$max" -lt "$MAX_MAX"
     assert_eq "$1: no scene item built while moving" "$mv" 0
 }

@@ -314,8 +314,15 @@ recording, point OBS at the nest window while `DEMO_FRAMES=0 make demo` runs.
 
 ## Things that cost time
 
+- **The nest renders in software.** Since 2026-10-31 the compositor and every client in a
+  nest use Mesa's llvmpipe (the glvnd EGL vendor file and `LIBGL_ALWAYS_SOFTWARE`);
+  `NEST_GPU=1` puts it back on the host's GPU. On the GPU a nest competed with the owner's
+  game for VRAM and twice crashed in the NVIDIA driver when the card was full, and a golden
+  drawn by one GPU's driver is not another's. The cost is frame time: a zoom-to-fit open runs
+  at a p95 of about 120 ms in software, so `208-frame-budget` judges p95 only with
+  `NEST_GPU=1` and relies everywhere on its exact count of items built while moving.
 - **The full suite flakes under GPU pressure, and the failing set differs
-  per run.** A scenario that passes alone, in its batch and in a clean full
+  per run.** (On the GPU, which is no longer the default.) A scenario that passes alone, in its batch and in a clean full
   run can fail when the machine's VRAM is exhausted by leftover nests (a
   crashed nest's compositor keeps its buffers): the failures were 8 px frame
   offsets, a stale caption, then 40 failures one run and two the next. `make

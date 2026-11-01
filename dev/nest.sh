@@ -29,6 +29,8 @@
 # NEST_NAME=foo runs a second, independent nest (own socket, bus, config, log).
 # NEST_WALLPAPER=0 keeps the plain grid instead of tiling the fixture wallpaper.
 # NEST_OUTPUTS=2 gives the nest two side-by-side outputs (one frame each).
+# NEST_GPU=1 renders on the host's GPU; the default is Mesa's software renderer, so a nest
+# never competes with a game for the GPU and every machine draws the same goldens.
 # NEST_ANIM=N starts the nest with that global animation speed (AnimationDurationFactor, default 1).
 # NEST_VIRTUAL=1 renders to KWin's virtual framebuffer instead of a window on
 # the live desktop: nothing to look at, but frames keep coming at full rate
@@ -83,6 +85,14 @@ nest_env() {
     # XDG_CURRENT_DESKTOP=KDE: the portal broker the bus activates inherits
     # this, so it picks the KDE backend instead of the GTK one, whose
     # ScreenCast impl hangs on a compositor interface KWin does not speak.
+    # The renderer is Mesa's software one (llvmpipe), for the compositor and every client, unless
+    # NEST_GPU=1: on the host's GPU a nest competed with whatever the owner was running (a game
+    # held 7.5 of 10 GB) and crashed in the driver when the card was full, and a golden drawn by
+    # one GPU's driver is not another's. The EGL vendor file picks Mesa over NVIDIA's for glvnd;
+    # LIBGL_ALWAYS_SOFTWARE keeps a Mesa hardware driver (AMD, Intel) out too.
+    if [ "${NEST_GPU:-0}" != 1 ]; then
+        printf '%s\n' "__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json" "LIBGL_ALWAYS_SOFTWARE=1"
+    fi
     printf '%s\n' "XDG_CONFIG_HOME=$CONF" "XDG_STATE_HOME=$STATE/state" "XDG_CACHE_HOME=$STATE/cache" \
         "XDG_DATA_HOME=$STATE/data" "XDG_CURRENT_DESKTOP=KDE" \
         "XDG_DATA_DIRS=$HERE/build/nest-data:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
