@@ -868,8 +868,14 @@ Three things a QML scene effect cannot reach, so the pass-through plugin does th
   clears a held Space and takes the keyboard focus again at every open; the hover and drag
   counters are left alone, since their handlers outlive the close too and settle with the next
   pointer event (zeroing them under a still-hovered handler sent the count to -1 and made a
-  held drag in a client area pan, `81-nav-hold`). `ViewCaching` turns it
-  off.
+  held drag in a client area pan, `81-nav-hold`). Two more things the scene built fresh at every
+  open and now has to follow itself: KWin's `DesktopBackground` picks its desktop window only when
+  it is made or its output, desktop or activity changes, so `ui.qml` remakes it whenever a desktop
+  window comes or goes (`desktopsRev`; after a plasmashell restart or a layout reload it drew the
+  window that had gone, `128` after `117`); and a window delegate's frame handler follows the window
+  only while the canvas is open, as `resync` does (closed, it judged the canvas's own 1:1 shift
+  against the last open's entries as KWin's pull and put the window back, `30-commit`).
+  `ViewCaching` turns it off.
 - **Rounded corners on the thumbnails.** `WindowThumbnailItem` renders the window's item straight
   through KWin's `ItemRenderer` into a texture, past the effects chain, so a window the Rounded
   Corners effect (kwin4_effect_shapecorners) shapes on the desktop is square on the canvas.

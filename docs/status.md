@@ -70,16 +70,22 @@ drawn, the previous commit's fit open had a p95 of 61 ms and a drag one frame of
 canvas redraws two of them itself, with what the plugin reads (`docs/architecture.md`, *What KWin does not
 do for a scene effect*): the Rounded Corners effect's corners (`222`) and the blur effect's blur behind
 translucent windows (`223`: Better Blur DX's wallpaper mode exactly, KWin's blur over the bare desk; another
-window behind is not blurred). `223` was written while a game held the machine and has not run yet. Not
-drawn: the corner outlines and Better Blur DX's refraction. All of it, and view caching (`220`), needs the
+window behind is not blurred; `223` passes in the nest). Not drawn: the corner outlines and Better Blur
+DX's refraction. All of it, and view caching (`220`), needs the
 plugin of the same commit installed (`kwin-canvas fix-plugin`).
 
 **The suite in software (2026-10-31).** The nest renders with Mesa's llvmpipe unless `NEST_GPU=1`. The one
 full run since (with fonts pinned, for portable goldens) went 831 ok, 27 FAIL, 14 skip, but a game started
 five minutes in and held the CPU: the failures are drags and flicks read mid-gesture (`103`, `104`, `81`,
 `94`, `152`, `161`, `165`, `30`, `126`) and two screenshot compares (`93`'s knobs, `128`'s seam). It has not been repeated on an idle
-machine, so whether llvmpipe alone slows those reads is not known; its goldens were thrown away. The pinned
-fonts (`tests/fonts`, `dev/nest.sh`) wait, uncommitted, for a clean re-record.
+machine, so whether llvmpipe alone slows those reads is not known; its goldens were thrown away. Repeated
+on an idle machine it went 860 ok, 4 FAIL, 14 skip, and three of the four were view caching's: `128`'s seam
+twice (the kept scene drew the desktop window `117`'s layout reload had replaced) and `30`'s restore (the
+kept scene put back the canvas's own shift), both fixed (`docs/architecture.md`, *View caching*). The
+fourth, `150`, caught one stale landing in 40; it caught one in a later batch of six scenarios and none
+in 80 more landings, alone or after `117` and `128`. Cause not found. `81`'s window-follows-the-step check
+failed once in that batch and passed alone and after `30`. The pinned fonts (`tests/fonts`,
+`dev/nest.sh`) wait, uncommitted, for a clean re-record.
 
 **Window coordinates drifting (2026-10-20).** Causes found and fixed: a floated window rode to a screen
 edge on every slide (`178`), and KWin's reachability rule moved the windows the canvas parks beyond every

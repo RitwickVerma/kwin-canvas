@@ -2114,7 +2114,18 @@ KWin.SceneEffect {
     // One per output, by the output's name: the scene's layer binds to this
     // (reassigned whole, so the binding re-evaluates) and not to a call.
     property var desktopWindows: ({})
+    // Bumped when a desktop window comes or goes (a plasmashell restart, a layout reload, a
+    // monitor's own desktop arriving): the scene remakes its DesktopBackground items on it, since
+    // KWin picks their window only when one is made (ui.qml's Wallpaper).
+    property int desktopsRev: 0
+    property string desktopsKey: ""
     function refreshDesktopWindow() {
+        const stack = KWin.Workspace.stackingOrder, ids = [];
+        for (let i = 0; i < stack.length; ++i) {
+            if (stack[i] && !stack[i].deleted && stack[i].desktopWindow) ids.push(String(stack[i].internalId));
+        }
+        const key = ids.sort().join(",");
+        if (key !== desktopsKey) { desktopsKey = key; desktopsRev++; }
         desktopWindow = desktopWindowFor(null);
         const m = {};
         const screens = KWin.Workspace.screens;
@@ -4662,7 +4673,11 @@ KWin.SceneEffect {
         return changed;
     }
 
+    // A window delegate's frame change, followed while the canvas is open, as resync is. The scene
+    // outlives the close (view caching), and closed its entries are the last open's: a 1:1 shift
+    // bringing a parked window back was judged against them as KWin's pull and put back (30-commit).
     function syncIndex(index) {
+        if (!visible) return;
         if (syncEntry(entries[index])) revision++;
     }
 

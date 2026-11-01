@@ -100,6 +100,29 @@ Item {
         border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.25)
     }
 
+    // KWin's DesktopBackground, made anew whenever a desktop window comes or goes. KWin picks the
+    // window when the item is made or its output, desktop or activity changes, never when a
+    // desktop window comes or goes, and the scene outlives the close (view caching): after a
+    // plasmashell restart or a layout reload the canvas kept drawing the window that had gone, the
+    // old wallpaper where the desktop showed the new one (128 after 117). The effect counts those
+    // comings and goings (desktopsRev); a one-element model that changes with it is the remake.
+    component Wallpaper : Item {
+        id: paper
+        property var output: null
+        property string activity: ""
+        Repeater {
+            model: [effect.desktopsRev]
+            delegate: KWin.DesktopBackground {
+                anchors.fill: parent
+                output: paper.output
+                desktop: KWin.Workspace.currentDesktop
+                // An empty activity makes KWin 6.7 dereference a null activities object when
+                // activities are disabled, so always pass a non-empty one.
+                activity: paper.activity || "default"
+            }
+        }
+    }
+
     component IconButton : Rectangle {
         id: button
         required property Item viewItem
@@ -389,14 +412,13 @@ Item {
         // screen black until the landing snapped to the desktop) the plane's
         // gaps would show that black. At 1:1 with the frame in place it is
         // the same picture under the frame.
-        KWin.DesktopBackground {
+        Wallpaper {
             id: deskBg
             anchors.fill: parent
             z: -90
             visible: effect.visible && view.wallpaperDrawable
             output: view.screen
-            desktop: KWin.Workspace.currentDesktop
-            activity: effect.currentActivity || "default"
+            activity: effect.currentActivity
         }
         // The blur behind the window pictures: the wallpaper under the plane, blurred once for the
         // screen, which each window the blur effect blurs samples at its own place (the window
@@ -666,15 +688,11 @@ Item {
                     height: og.height * effect.zoom
                     z: 1
 
-                    // An empty activity makes KWin 6.7 dereference a null
-                    // activities object when activities are disabled, so
-                    // always pass a non-empty one.
-                    KWin.DesktopBackground {
+                    Wallpaper {
                         visible: view.wallpaperDrawable
                         anchors.fill: parent
                         output: frame.modelData
-                        desktop: KWin.Workspace.currentDesktop
-                        activity: activityFrames.activity || "default"
+                        activity: activityFrames.activity
                     }
 
                     // Sheet tint: keeps the frame legible when no background
