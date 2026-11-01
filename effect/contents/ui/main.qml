@@ -3438,6 +3438,7 @@ KWin.SceneEffect {
         if (!viewCached && configuration.ViewCaching !== false && passthrough) publishViewCaching();
         // The Rounded Corners settings may have changed since the last open (they are that effect's).
         refreshCornerStyle();
+        refreshBlurStyle();
         if (safeMode) { dbg("open", "refused: safe mode, the scene failed to load"); return; }
         refreshGroundWallpaper();
         if (visible) return;
@@ -4709,6 +4710,19 @@ KWin.SceneEffect {
         }
     }
     KWin.DBusCall {
+        id: blurCall
+        service: "org.kde.KWin"
+        path: "/KWinCanvas"
+        dbusInterface: "org.kde.kwin.canvas.Passthrough"
+        method: "blurStyle"
+        // An older plugin has no such method and answers nothing: no blur behind the thumbnails.
+        onFinished: (ret) => {
+            let s = { effect: "" };
+            try { s = JSON.parse(String(ret && ret.length ? ret[0] : "")); } catch (err) { s = { effect: "" }; }
+            effect.blurStyle = s && typeof s === "object" ? s : { effect: "" };
+        }
+    }
+    KWin.DBusCall {
         id: viewCachingCall
         service: "org.kde.KWin"
         path: "/KWinCanvas"
@@ -4893,6 +4907,7 @@ KWin.SceneEffect {
         // would vanish. (holdButtons above is already an int property.)
         publishViewCaching();
         refreshCornerStyle();
+        refreshBlurStyle();
         holdDelayCall.arguments = [delay | 0];
         holdDelayCall.call();
         const hover = Number(configuration.HoverDelay) || 900;
@@ -4919,6 +4934,34 @@ KWin.SceneEffect {
         return Logic.cornerRadius({ cls: w.resourceClass, caption: w.caption, normal: w.normalWindow, dialog: w.dialog,
                                     fullScreen: w.fullScreen, maximized: w.maximizeMode === 3, tiled: !!w.tile,
                                     active: w === KWin.Workspace.activeWindow }, cornerStyle);
+    }
+    // Blur behind the thumbnails: the blur effect blurs behind a translucent window on the
+    // desktop, and a thumbnail, drawn past KWin's effects, showed the plane sharp behind it. The
+    // plugin reads which blur effect runs, its settings and what each window asks for; the scene
+    // draws the screen's wallpaper, blurred once, behind each window the effect blurs (ui.qml,
+    // shaders/blur.frag). That is exactly Better Blur DX's wallpaper mode, and what KWin's blur
+    // shows over the bare desk; another window behind shows through sharp, as it did.
+    // ThumbnailBlur turns it off; the fidelity ladder drops it with the corners.
+    property var blurStyle: ({ effect: "" })
+    function refreshBlurStyle() {
+        if (configuration.ThumbnailBlur === false) { if (blurStyle.effect) blurStyle = ({ effect: "" }); return; }
+        blurCall.call();
+    }
+    function blurRectsOf(e) {
+        if (!e || !e.window || e.window.deleted || ql >= 2 || !blurStyle.effect) return [];
+        const w = e.window;
+        return Logic.blurRects({ id: String(w.internalId), cls: w.resourceClass, name: w.resourceName, width: e.width, height: e.height,
+                                 desktop: w.desktopWindow, dock: w.dock, menu: w.menu || w.popupMenu || w.dropdownMenu,
+                                 untitledUnknown: w.windowType === -1 && w.noBorder && !w.caption }, blurStyle);
+    }
+    // The blur's corners: the window's own where the Rounded Corners effect gives it some, else
+    // Better Blur DX's radius on a frame it blurs whole, which it squares off when maximized.
+    function blurCornerOf(e, cornerR, rects) {
+        if (cornerR > 0) return cornerR;
+        const r = Number(blurStyle.radius) || 0;
+        if (r <= 0 || !rects || rects.length !== 1 || !e || !e.window) return 0;
+        if (e.window.maximizeMode === 3 || e.window.fullScreen) return 0;
+        return rects[0][0] === 0 && rects[0][1] === 0 && rects[0][2] === e.width && rects[0][3] === e.height ? r : 0;
     }
     // View caching: the plugin asks KWin to keep the scene views alive between openings, so an
     // open resumes a built scene instead of creating one (about half of an overview's first
@@ -6092,6 +6135,7 @@ KWin.SceneEffect {
             + " safe=" + (safeMode ? 1 : 0)
             + " cached=" + (viewCached ? 1 : 0)
             + " corners=" + (cornerStyle.on ? entries.map(cornerRadiusOf).join(",") : "off")
+            + " blur=" + (blurStyle.effect ? entries.map(function (e) { return blurRectsOf(e).length; }).join(",") : "off")
             + " away=" + entries.filter(entryAway).length
             + " deskfor=" + KWin.Workspace.screens.map(function (sc) { const w = desktopWindowFor(sc); return sc.name + ":" + (w ? Math.round(w.frameGeometry.x) + "," + Math.round(w.frameGeometry.y) : "-"); }).join(";")
             + " search=" + (searchActive ? "\"" + searchText + "\"" + ":" + searchHits.length : "-")

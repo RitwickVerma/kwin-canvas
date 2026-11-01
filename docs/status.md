@@ -6,7 +6,7 @@ no longer true rather than appending, and keep it short. The model is in
 [architecture.md](architecture.md), the harness in [testing.md](testing.md), and
 what a user sees in [release-notes.md](release-notes.md).
 
-## Where it stands (2026-10-15)
+## Where it stands (2026-10-31)
 
 Everything below was measured in the hidden nest (`NEST_VIRTUAL=1`) and, for what
 is marked seen live, on the maintainer's desktop after a relogin.
@@ -66,6 +66,21 @@ the `built` Perf line, `208-frame-budget`, and a `frames` check in the doctor. I
 drawn, the previous commit's fit open had a p95 of 61 ms and a drag one frame of 654 ms; now 18 ms and
 35 ms at most on one output. The nest's frame times are a software renderer's and vary with the host.
 
+**KWin's effects on the canvas (2026-10-31).** A thumbnail is drawn past KWin's effects chain, so the
+canvas redraws two of them itself, with what the plugin reads (`docs/architecture.md`, *What KWin does not
+do for a scene effect*): the Rounded Corners effect's corners (`222`) and the blur effect's blur behind
+translucent windows (`223`: Better Blur DX's wallpaper mode exactly, KWin's blur over the bare desk; another
+window behind is not blurred). `223` was written while a game held the machine and has not run yet. Not
+drawn: the corner outlines and Better Blur DX's refraction. All of it, and view caching (`220`), needs the
+plugin of the same commit installed (`kwin-canvas fix-plugin`).
+
+**The suite in software (2026-10-31).** The nest renders with Mesa's llvmpipe unless `NEST_GPU=1`. The one
+full run since (with fonts pinned, for portable goldens) went 831 ok, 27 FAIL, 14 skip, but a game started
+five minutes in and held the CPU: the failures are drags and flicks read mid-gesture (`103`, `104`, `81`,
+`94`, `152`, `161`, `165`, `30`, `126`) and two screenshot compares (`93`'s knobs, `128`'s seam). It has not been repeated on an idle
+machine, so whether llvmpipe alone slows those reads is not known; its goldens were thrown away. The pinned
+fonts (`tests/fonts`, `dev/nest.sh`) wait, uncommitted, for a clean re-record.
+
 **Window coordinates drifting (2026-10-20).** Causes found and fixed: a floated window rode to a screen
 edge on every slide (`178`), and KWin's reachability rule moved the windows the canvas parks beyond every
 monitor, every time it looked at one again (focus, activities, work area, an open or close): `112-overlay`'s
@@ -122,9 +137,8 @@ the first frame. The first open of a session is slower still: 284, 338 and
 throwaway start/stop of the effect 3 s after it loads brought that to 172 to
 178 ms in three nests, with the closed idle CPU unchanged, so a pre-warm of the
 first open works in the nest; it is not shipped (see the candidates below). The
-per-open cost is left as it is: that it cannot be avoided without keeping the
-effect started is reasoned from the KWin API (a started effect draws the
-full-screen scene, which would break direct scanout), not tried. Nest timings,
+KWin-side half is gone now: view caching keeps the scene between opens (through
+the plugin, `220`), 39 to 59 ms to the first paint in the nest. Nest timings,
 not the desktop's.
 
 **Installing.** `make install` is the only target that writes `~/.local/share`, the

@@ -6,7 +6,13 @@ Unreleased:
 - Windows keep their rounded corners on the canvas. With the Rounded Corners effect on, a window's
   picture in the overview and during a slide wears the same corners as on the desktop (it was
   square: KWin draws a window's picture past its effects), with that effect's radii, squircle and
-  exclusions. Both need the plugin updated: `kwin-canvas fix-plugin`.
+  exclusions.
+- Translucent windows keep their blur on the canvas. With KWin's Blur or Better Blur DX on, a
+  window the effect blurs on the desktop shows the wallpaper blurred behind it in the overview and
+  during a slide (it showed the plane sharp), with that effect's strength, noise, force-blur list
+  and corner radius. Another window behind a translucent one still shows through sharp; that is
+  exactly Better Blur DX's wallpaper mode. `ThumbnailBlur` turns it off.
+  All three need the plugin updated: `kwin-canvas fix-plugin`.
 
 - The Canvas window decoration has no border inside the window any more: its resize band lies
   outside the window, so an effect that shapes windows (Rounded Corners, an outline) shapes the

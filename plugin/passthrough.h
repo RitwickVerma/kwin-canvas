@@ -132,6 +132,16 @@ public Q_SLOTS:
      * has no value.
      */
     Q_SCRIPTABLE QString cornerStyle() const;
+    /**
+     * How the blur effect blurs windows, as JSON, so the canvas can put the same blur behind its
+     * thumbnails: a thumbnail is drawn past KWin's effects. {"effect": the loaded blur effect
+     * ("better_blur_dx", "blur") or "", "strength", "noise", and for Better Blur DX its force
+     * blur: "radius", "force": "only" (the classes listed) or "all-but" (every class but them),
+     * "classes": [...], "menus", "docks"; "regions": {internalId: [[x, y, w, h], ...]}, the blur
+     * a Wayland window asks for itself, in its frame's coordinates}. The effect's own defaults
+     * where kwinrc has no value.
+     */
+    Q_SCRIPTABLE QString blurStyle() const;
     Q_SCRIPTABLE QString state() const;
     /**
      * The machine's load, for the fidelity ladder: "cpu=N load=NN.NN

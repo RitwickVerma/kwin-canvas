@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, searchFilter, inReach, isPull, fightStep, cornerRadius, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
+const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, searchFilter, inReach, isPull, fightStep, cornerRadius, blurRects, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -122,6 +122,32 @@ ok("the dynamic gap reads the same scaled up",
         && L.cornerRadius(W({ normal: false, cls: "lyrics" }), Object.assign({}, style, { inclusions: ["Lyrics"] })) === 28);
     ok("the effect not loaded is none", L.cornerRadius(W({}), Object.assign({}, style, { on: false })) === 0);
     ok("no style is none", L.cornerRadius(W({}), null) === 0);
+}
+
+// ---- where the blur effect blurs behind a thumbnail ----
+{
+    const W = function (o) { return Object.assign({ id: "{a}", cls: "org.kde.konsole", name: "konsole", width: 800, height: 500 }, o); };
+    const bbdx = { effect: "better_blur_dx", strength: 9, noise: 2, radius: 16, force: "all-but", classes: [], menus: true, docks: true, regions: {} };
+    const same = function (a, b) { return JSON.stringify(a) === JSON.stringify(b); };
+    ok("an empty all-but list blurs every window's whole frame", same(L.blurRects(W({}), bbdx), [[0, 0, 800, 500]]));
+    ok("but never the desktop", L.blurRects(W({ desktop: true }), bbdx).length === 0);
+    ok("nor a caption-less undecorated window of no known type", L.blurRects(W({ untitledUnknown: true }), bbdx).length === 0);
+    const only = Object.assign({}, bbdx, { force: "only", classes: ["org.kde.konsole"], menus: false });
+    ok("an only list blurs the class listed", L.blurRects(W({}), only).length === 1);
+    ok("and not another", L.blurRects(W({ cls: "org.kde.dolphin", name: "dolphin" }), only).length === 0);
+    ok("an entry matches the name too", L.blurRects(W({ cls: "x" }), Object.assign({}, only, { classes: ["konsole"] })).length === 1);
+    ok("exactly, not a part of it", L.blurRects(W({}), Object.assign({}, only, { classes: ["kde"] })).length === 0);
+    ok("a /regex/ entry searches the class", L.blurRects(W({}), Object.assign({}, only, { classes: ["/kde\\.kon/"] })).length === 1);
+    ok("a malformed regex matches nothing", L.blurRects(W({}), Object.assign({}, only, { classes: ["/(/"] })).length === 0);
+    ok("$blank is the empty class", L.blurRects(W({ cls: "", name: "" }), Object.assign({}, only, { classes: ["$blank"] })).length === 1);
+    ok("an all-but list skips its classes", L.blurRects(W({}), Object.assign({}, bbdx, { classes: ["konsole"] })).length === 0);
+    ok("menus only when it says so", L.blurRects(W({ menu: true, cls: "org.kde.konsole" }), only).length === 0
+        && L.blurRects(W({ menu: true }), Object.assign({}, only, { menus: true })).length === 1);
+    const asked = { effect: "blur", strength: 15, noise: 5, regions: { "{a}": [[-4, 30, 900, 200], [10, 600, 20, 20]] } };
+    ok("KWin's blur: what the window asks for, cut to its frame", same(L.blurRects(W({}), asked), [[0, 30, 800, 200]]));
+    ok("nothing for a window that asks for none", L.blurRects(W({ id: "{b}" }), asked).length === 0);
+    ok("a forced window outside the list keeps its own ask", same(L.blurRects(W({ cls: "x", name: "x" }), Object.assign({}, only, { regions: asked.regions })), [[0, 30, 800, 200]]));
+    ok("no blur effect is none", L.blurRects(W({}), { effect: "" }).length === 0 && L.blurRects(W({}), null).length === 0);
 }
 
 // ---- the distance ----

@@ -322,6 +322,62 @@ QString CanvasPassthrough::cornerStyle() const
     return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
 }
 
+QString CanvasPassthrough::blurStyle() const
+{
+    QJsonObject o;
+    QString id;
+    for (const QString &e : {QStringLiteral("better_blur_dx"), QStringLiteral("blur")}) {
+        if (KWin::effects && KWin::effects->isEffectLoaded(e)) {
+            id = e;
+            break;
+        }
+    }
+    o[QStringLiteral("effect")] = id;
+    if (id.isEmpty()) {
+        return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
+    }
+    // Better Blur DX is KWin's blur forked: the same strength and noise, with the same defaults
+    // (both blur.kcfg), and its force blur on top.
+    const bool better = id == QStringLiteral("better_blur_dx");
+    const KConfigGroup g = KSharedConfig::openConfig(QStringLiteral("kwinrc"), KConfig::NoGlobals)
+                               ->group(better ? QStringLiteral("Effect-better-blur-dx") : QStringLiteral("Effect-blur"));
+    o[QStringLiteral("strength")] = g.readEntry("BlurStrength", 15);
+    o[QStringLiteral("noise")] = g.readEntry("NoiseStrength", 5);
+    if (better) {
+        o[QStringLiteral("radius")] = g.readEntry("CornerRadius", 0.0);
+        o[QStringLiteral("force")] = g.readEntry("BlurMatching", true) ? QStringLiteral("only") : QStringLiteral("all-but");
+        o[QStringLiteral("classes")] = QJsonArray::fromStringList(
+            g.readEntry("WindowClasses", QStringLiteral("class1\nclass2")).split(QLatin1Char('\n'), Qt::SkipEmptyParts));
+        o[QStringLiteral("menus")] = g.readEntry("BlurMenus", false);
+        o[QStringLiteral("docks")] = g.readEntry("BlurDocks", false);
+    }
+    // What each window asks for itself. The surface's region is in the surface's own
+    // coordinates, which start at the buffer's corner; a region for the whole surface is
+    // infinite, so it is cut to the surface first. X11 windows' blur property is not read.
+    QJsonObject regions;
+    if (KWin::workspace()) {
+        const auto windows = KWin::workspace()->windows();
+        for (KWin::Window *w : windows) {
+            KWin::SurfaceInterface *surface = w->surface();
+            if (!surface) {
+                continue;
+            }
+            const KWin::RegionF region = surface->blurRegion().intersected(KWin::RectF(QPointF(0, 0), surface->size()));
+            if (region.isEmpty()) {
+                continue;
+            }
+            const QPointF offset = w->bufferGeometry().topLeft() - w->frameGeometry().topLeft();
+            QJsonArray rects;
+            for (const KWin::RectF &r : region.rects()) {
+                rects.append(QJsonArray{r.x() + offset.x(), r.y() + offset.y(), r.width(), r.height()});
+            }
+            regions[w->internalId().toString()] = rects;
+        }
+    }
+    o[QStringLiteral("regions")] = regions;
+    return QString::fromUtf8(QJsonDocument(o).toJson(QJsonDocument::Compact));
+}
+
 bool CanvasPassthrough::setViewCaching(bool enabled)
 {
     if (!KWin::effects) {

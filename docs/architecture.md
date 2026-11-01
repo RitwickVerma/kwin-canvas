@@ -857,7 +857,7 @@ growing list.
 
 ### What KWin does not do for a scene effect, and the plugin does
 
-Two things a QML scene effect cannot reach, so the pass-through plugin does them over D-Bus:
+Three things a QML scene effect cannot reach, so the pass-through plugin does them over D-Bus:
 
 - **View caching.** KWin destroys a QuickSceneEffect's scene views at every close and builds them
   at every open; `QuickSceneEffect::setViewCachingEnabled` keeps them alive but suspended, and it
@@ -865,7 +865,10 @@ Two things a QML scene effect cannot reach, so the pass-through plugin does them
   it; the effect asks at every reconfigure and, until it took, at every open (`cached=` on the state
   line). Measured in the nest: an overview's first paint 39 to 59 ms with it, 147 to 190 ms
   without. A scene that outlives the close keeps what a gesture left on the view, so `ui.qml`
-  clears its counters and takes the keyboard focus again at every open. `ViewCaching` turns it
+  clears a held Space and takes the keyboard focus again at every open; the hover and drag
+  counters are left alone, since their handlers outlive the close too and settle with the next
+  pointer event (zeroing them under a still-hovered handler sent the count to -1 and made a
+  held drag in a client area pan, `81-nav-hold`). `ViewCaching` turns it
   off.
 - **Rounded corners on the thumbnails.** `WindowThumbnailItem` renders the window's item straight
   through KWin's `ItemRenderer` into a texture, past the effects chain, so a window the Rounded
@@ -878,6 +881,22 @@ Two things a QML scene effect cannot reach, so the pass-through plugin does them
   squircle setting) cuts the corners. The layer holds the item's bounds, which is the window: the
   thumbnail's texture also holds the shadow and is drawn partly outside the item, and that offset
   is not readable from QML. `ThumbnailCorners` turns it off. The outlines are not drawn.
+- **Blur behind the thumbnails.** The blur effect draws behind a translucent window as KWin
+  composites it, and a thumbnail is rendered past it, so a translucent window showed the plane
+  sharp behind it. `blurStyle()` says which blur effect is loaded (`better_blur_dx` or KWin's
+  `blur`), its strength and noise, Better Blur DX's force blur (`BlurMatching` as `only` or
+  `all-but`, its class list, menus and docks, corner radius), and the region each Wayland window
+  asks for itself (`SurfaceInterface::blurRegion`, cut to the surface and moved into the frame's
+  coordinates; an X11 window's property is not read). `Logic.blurRects` applies the rules. Each
+  view blurs its wallpaper item once (a quarter-size `ShaderEffectSource` through a `MultiEffect`
+  blur into a second one), and each blurred window draws a patch under its picture that samples
+  that texture at the window's place on the screen (`shaders/blur.frag`, which also cuts the
+  window's corners and adds the noise). One blur per screen and a quad per window, nothing redrawn
+  while the camera moves over a still wallpaper. Another window behind a translucent one is not
+  blurred: that is Better Blur DX's wallpaper mode exactly, and KWin's blur over the bare desk.
+  The place leaves out a held window's lean and trail. `ThumbnailBlur` turns it off, and the
+  fidelity ladder drops it with the corners (`ql` 2); the state line's `blur=` counts each
+  window's rectangles.
 
 `make shaders` compiles `effect/contents/shaders/*.frag` with qsb into the committed `.qsb`
 files, and `make lint-shader` checks they match.

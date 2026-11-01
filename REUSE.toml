@@ -102,7 +102,7 @@ SPDX-FileCopyrightText = "2026 Ritwick Verma <verma1997@gmail.com>"
 SPDX-License-Identifier = "GPL-2.0-or-later"
 
 [[annotations]]
-# The effect's compiled shaders: corners.frag compiled by `make shaders` (qsb), binary.
+# The effect's compiled shaders: each .frag compiled by `make shaders` (qsb), binary.
 path = ["effect/contents/shaders/*.qsb"]
 SPDX-FileCopyrightText = "2026 Ritwick Verma <verma1997@gmail.com>"
 SPDX-License-Identifier = "GPL-2.0-or-later"

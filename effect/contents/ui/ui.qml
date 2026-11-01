@@ -12,6 +12,7 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Layouts
 import QtQuick.Shapes
+import QtQuick.Effects as QE
 import Qt5Compat.GraphicalEffects
 import org.kde.kirigami as Kirigami
 import org.kde.kcmutils as KCM
@@ -320,9 +321,12 @@ Item {
         focus: true
         Connections {
             target: effect
-            // With view caching the scene outlives the close: what a gesture left behind is cleared,
-            // and the keyboard focus taken again, at every open.
-            function onVisibleChanged() { if (effect.visible) { view.hoverCount = 0; view.spaceHeld = false; view.portalDrags = 0; view.forceActiveFocus(); } }
+            // With view caching the scene outlives the close: a Space left down is cleared, and
+            // the keyboard focus taken again, at every open. hoverCount and portalDrags are not:
+            // they mirror their handlers, which outlive the close too and settle with the next
+            // pointer event, and zeroing one under a handler still hovered took it to -1 when that
+            // handler let go (a held drag in a client area then panned instead: 81-nav-hold).
+            function onVisibleChanged() { if (effect.visible) { view.spaceHeld = false; view.forceActiveFocus(); } }
             // The switcher asks for the keyboard focus through a property
             // bump: the effect's own scope cannot name a view delegate.
             function onSwitcherFocusReqChanged() { view.focus = true; }
@@ -386,12 +390,43 @@ Item {
         // gaps would show that black. At 1:1 with the frame in place it is
         // the same picture under the frame.
         KWin.DesktopBackground {
+            id: deskBg
             anchors.fill: parent
             z: -90
             visible: effect.visible && view.wallpaperDrawable
             output: view.screen
             desktop: KWin.Workspace.currentDesktop
             activity: effect.currentActivity || "default"
+        }
+        // The blur behind the window pictures: the wallpaper under the plane, blurred once for the
+        // screen, which each window the blur effect blurs samples at its own place (the window
+        // delegate's patches, shaders/blur.frag). Built only while a blur effect runs, at a quarter
+        // of the screen's pixels; with a still wallpaper nothing redraws it while the camera moves.
+        readonly property bool blurOn: !!effect.blurStyle && !!effect.blurStyle.effect && effect.ql < 2 && !view.replica
+        readonly property size blurTexSize: Qt.size(Math.max(1, Math.round(width / 4)), Math.max(1, Math.round(height / 4)))
+        ShaderEffectSource {
+            id: wallSrc
+            sourceItem: view.blurOn ? (view.wallpaperDrawable ? deskBg : deskThumb) : null
+            textureSize: view.blurTexSize
+            visible: false
+        }
+        QE.MultiEffect {
+            id: wallBlur
+            anchors.fill: parent
+            source: wallSrc
+            visible: view.blurOn
+            autoPaddingEnabled: false
+            blurEnabled: true
+            blur: 1
+            // KWin's strength, 1 to 15, as the blur's radius at a quarter of the screen.
+            blurMax: Math.max(2, Math.min(64, Math.round(Number(effect.blurStyle.strength) || 15)))
+        }
+        ShaderEffectSource {
+            id: wallBlurTex
+            sourceItem: view.blurOn ? wallBlur : null
+            hideSource: true
+            textureSize: view.blurTexSize
+            visible: false
         }
         // The plane's items - the ground, the frame bands, the windows, the
         // tags, the web and the chips - gathered under one item. (They keep
@@ -816,6 +851,42 @@ Item {
                     radius: 6
                     color: Qt.rgba(1, 1, 1, 0.07)
                     visible: effect.ql >= 3
+                }
+
+                // The blur behind the window, where the blur effect blurs it on the desktop: the
+                // screen's blurred wallpaper (the view's wallBlurTex) sampled at the window's place on
+                // the screen, cut to the window's corners, under the picture - a translucent window
+                // shows it through and an opaque one covers it. The place leaves out the lean and the
+                // trail of a held window: a few pixels of a blur. The model is a count, so a frame
+                // never rebuilds it.
+                readonly property var blurRects: { effect.blurStyle; effect.ql; effect.revision; return view.blurOn && effect.blurRectsOf ? effect.blurRectsOf(thumb.entry) : []; }
+                Repeater {
+                    model: thumb.blurRects.length
+                    delegate: ShaderEffect {
+                        required property int index
+                        readonly property var r: thumb.blurRects[index] || [0, 0, 0, 0]
+                        readonly property real ew: Math.max(1, thumb.entry.width)
+                        readonly property real eh: Math.max(1, thumb.entry.height)
+                        Component.onCompleted: effect.noteBuilt("blur")
+                        x: r[0] / ew * thumb.width
+                        y: r[1] / eh * thumb.height
+                        width: r[2] / ew * thumb.width
+                        height: r[3] / eh * thumb.height
+                        z: -1
+                        visible: effect.ql < 3
+                        property var wall: wallBlurTex
+                        property vector4d patchRect: Qt.vector4d(r[0] / ew, r[1] / eh, r[2] / ew, r[3] / eh)
+                        // The window on the screen, scaled about its centre as the delegate is.
+                        property vector4d area: Qt.vector4d((thumb.x + thumb.width * (1 - thumb.scale) / 2) / view.width,
+                                                            (thumb.y + thumb.height * (1 - thumb.scale) / 2) / view.height,
+                                                            thumb.width * thumb.scale / view.width, thumb.height * thumb.scale / view.height)
+                        property size itemSize: Qt.size(thumb.width, thumb.height)
+                        property real radius: effect.blurCornerOf(thumb.entry, thumb.cornerR, thumb.blurRects) * effect.zoom
+                        property real squircle: thumb.cornerR > 0 ? (Number(effect.cornerStyle.squircle) || 0) : 0
+                        // KWin's noise adds up to its strength in 255ths.
+                        property real grain: (Number(effect.blurStyle.noise) || 0) / 255
+                        fragmentShader: Qt.resolvedUrl("../shaders/blur.frag.qsb")
+                    }
                 }
 
                 // The window's picture. With the Rounded Corners effect on it wears that effect's

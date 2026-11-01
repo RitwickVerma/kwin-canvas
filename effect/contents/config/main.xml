@@ -272,6 +272,10 @@
             <label>On the canvas, give windows the same rounded corners the Rounded Corners effect gives them on the desktop (needs the pass-through plugin, which reads that effect's settings). A window's picture on the canvas is drawn past KWin's effects, so without this it is square.</label>
             <default>true</default>
         </entry>
+        <entry name="ThumbnailBlur" type="Bool">
+            <label>On the canvas, draw the blur the blur effect (KWin's Blur, or Better Blur DX) draws behind translucent windows on the desktop: the wallpaper, blurred, behind each window it blurs (needs the pass-through plugin, which reads that effect's settings and what each window asks for). A window's picture on the canvas is drawn past KWin's effects, so without this a translucent window shows the plane sharp behind it.</label>
+            <default>true</default>
+        </entry>
         <entry name="ViewCaching" type="Bool">
             <label>Keep the canvas's scene built between openings (KWin's view caching, through the pass-through plugin), so an open resumes it instead of building it: the overview's first frame comes about twice as fast, at the cost of the scene's memory while the canvas is closed.</label>
             <default>true</default>

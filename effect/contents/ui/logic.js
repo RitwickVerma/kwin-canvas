@@ -141,6 +141,43 @@ function cornerRadius(w, style) {
     return r > 0 ? r : 0;
 }
 
+// ---- blur behind a thumbnail ---------------------------------------------
+// Where the blur effect blurs behind a window, as rectangles [x, y, w, h] in its frame's
+// coordinates, or []: style is the plugin's blurStyle(). Better Blur DX's force blur takes the
+// whole frame of every window its list picks ("only" the classes listed, or "all-but" them), but
+// never the desktop or a caption-less undecorated window of no known type, and menus and docks
+// only when it says so (KWin's own windows, which it skips too, are never on the canvas); otherwise what the window asks for itself
+// (style.regions, by internalId), cut to its frame. A class entry matches the window's class or
+// name exactly, "$blank" an empty one, and "/.../" is a regular expression.
+function blurClassHit(k, cls, name) {
+    k = String(k);
+    if (k.length >= 2 && k[0] === "/" && k[k.length - 1] === "/") {
+        let re = null;
+        try { re = new RegExp(k.slice(1, -1)); } catch (err) { return false; }
+        return re.test(cls) || re.test(name);
+    }
+    if (k === "$blank") k = "";
+    return k === cls || k === name;
+}
+function blurRects(w, style) {
+    if (!style || !style.effect || !w || !(w.width > 0) || !(w.height > 0)) return [];
+    if (style.force && !w.desktop && !w.untitledUnknown
+        && (style.menus || !w.menu) && (style.docks || !w.dock)) {
+        const cls = String(w.cls || ""), name = String(w.name || "");
+        const hit = (style.classes || []).some(function (k) { return blurClassHit(k, cls, name); });
+        if ((style.force === "only") === hit) return [[0, 0, w.width, w.height]];
+    }
+    const own = style.regions && style.regions[w.id];
+    if (!own || !own.length) return [];
+    const out = [];
+    for (let i = 0; i < own.length; ++i) {
+        const x0 = Math.max(0, own[i][0]), y0 = Math.max(0, own[i][1]);
+        const x1 = Math.min(w.width, own[i][0] + own[i][2]), y1 = Math.min(w.height, own[i][1] + own[i][3]);
+        if (x1 > x0 && y1 > y0) out.push([x0, y0, x1 - x0, y1 - y0]);
+    }
+    return out;
+}
+
 // ---- frame authority: the pure half -----------------------------------------
 // KWin keeps a window reachable: at least 100 px of its width (or all of a narrower window) over
 // a monitor, and its top edge from the monitor's top down to 28 px above its bottom (measured on
