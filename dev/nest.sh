@@ -81,10 +81,29 @@ LOW=(nice -n 10 ionice -c3)
 # not borrowed. build/nest-data (make nest-install) is first on the data
 # search path: the nest loads the tree's packages from there, never the live
 # session's ~/.local/share.
+# The nest's fontconfig and its Places: the fonts from tests/fonts only, and a "fixtures" place,
+# so Dolphin's breadcrumb starts at the place and not at the checkout's path (which differs from
+# one machine to the next and showed in the goldens).
+seed_fonts() {
+    mkdir -p "$STATE/cache/fontconfig" "$STATE/data"
+    sed -e "s|@FONTS@|$HERE/tests/fonts|" -e "s|@CACHE@|$STATE/cache/fontconfig|" "$HERE/tests/fonts/fonts.conf.in" > "$STATE/fonts.conf"
+    cat > "$STATE/data/user-places.xbel" <<XBEL
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE xbel>
+<xbel xmlns:bookmark="http://www.freedesktop.org/standards/desktop-bookmarks" xmlns:kdepriv="http://www.kde.org/kdepriv">
+ <bookmark href="file://$FIXTURES">
+  <title>fixtures</title>
+  <info><metadata owner="http://freedesktop.org"><bookmark:icon name="folder"/></metadata></info>
+ </bookmark>
+</xbel>
+XBEL
+}
 nest_env() {
     # XDG_CURRENT_DESKTOP=KDE: the portal broker the bus activates inherits
     # this, so it picks the KDE backend instead of the GTK one, whose
     # ScreenCast impl hangs on a compositor interface KWin does not speak.
+    # FONTCONFIG_FILE: the nest's own fonts (tests/fonts), never the host's, which update under
+    # the goldens (written by seed_fonts at the nest's start).
     # The renderer is Mesa's software one (llvmpipe), for the compositor and every client, unless
     # NEST_GPU=1: on the host's GPU a nest competed with whatever the owner was running (a game
     # held 7.5 of 10 GB) and crashed in the driver when the card was full, and a golden drawn by
@@ -94,7 +113,7 @@ nest_env() {
         printf '%s\n' "__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/50_mesa.json" "LIBGL_ALWAYS_SOFTWARE=1"
     fi
     printf '%s\n' "XDG_CONFIG_HOME=$CONF" "XDG_STATE_HOME=$STATE/state" "XDG_CACHE_HOME=$STATE/cache" \
-        "XDG_DATA_HOME=$STATE/data" "XDG_CURRENT_DESKTOP=KDE" \
+        "XDG_DATA_HOME=$STATE/data" "XDG_CURRENT_DESKTOP=KDE" "FONTCONFIG_FILE=$STATE/fonts.conf" \
         "XDG_DATA_DIRS=$HERE/build/nest-data:${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
 }
 # The nest's bus address, or a loud failure: an empty DBUS_SESSION_BUS_ADDRESS
@@ -115,8 +134,23 @@ wallpaper_file() {
     echo "file://$FIXTURES/wallpaper-${1:-1}.png"
 }
 
+# The host's own binary effects, each off: KWin 6 builds its effects into itself, so whatever lies
+# in effects/plugins was installed on top (Rounded Corners, Better Blur DX), loads by default and
+# changes every window's look. Rounded Corners even rewrites breezerc. A golden showed what the host
+# had installed, and the scenarios after 222 (which unloads it) another picture than those before.
+# 222 and 223 load theirs over D-Bus.
+host_effects_off() {
+    local f
+    for f in "${NEST_EFFECT_PLUGINS:-/usr/lib/qt6/plugins/kwin/effects/plugins}"/*.so; do
+        [ -f "$f" ] && echo "$(basename "$f" .so)Enabled=false"
+    done
+    return 0
+}
+
 seed_config() {
     mkdir -p "$CONF" "$CONF/xdg-desktop-portal"
+    # Breeze at its defaults at every start, whatever an effect wrote into it last time.
+    rm -f "$CONF/breezerc"
     # The preferred portal backend, in case anything reads the broker's
     # config before the bus env: KDE, whose screencast KWin serves.
     printf '%s\n' '[preferred]' 'default=kde' > "$CONF/xdg-desktop-portal/portals.conf"
@@ -127,6 +161,7 @@ zoomEnabled=false
 overviewEnabled=false
 blurEnabled=false
 contrastEnabled=false
+$(host_effects_off)
 
 [Effect-kwin-canvas]
 PublishGround=true
@@ -199,9 +234,15 @@ CFG
     # default colour scheme happens to be today, the nest draws Breeze Dark
     # with the dark icon theme, so a golden screenshot means the same pixels
     # on every machine and every day.
+    seed_fonts
     cat > "$CONF/kdeglobals" <<CFG
 [General]
 ColorScheme=BreezeDark
+font=Noto Sans,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
+fixed=Noto Sans Mono,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
+menuFont=Noto Sans,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
+smallestReadableFont=Noto Sans,8,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
+toolBarFont=Noto Sans,10,-1,5,400,0,0,0,0,0,0,0,0,0,0,1
 
 [Icons]
 Theme=breeze-dark

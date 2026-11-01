@@ -84,8 +84,17 @@ twice (the kept scene drew the desktop window `117`'s layout reload had replaced
 kept scene put back the canvas's own shift), both fixed (`docs/architecture.md`, *View caching*). The
 fourth, `150`, caught one stale landing in 40; it caught one in a later batch of six scenarios and none
 in 80 more landings, alone or after `117` and `128`. Cause not found. `81`'s window-follows-the-step check
-failed once in that batch and passed alone and after `30`. The pinned fonts (`tests/fonts`,
-`dev/nest.sh`) wait, uncommitted, for a clean re-record.
+failed once in that batch and passed alone and after `30`.
+
+**Portable goldens (2026-10-31).** The goldens depended on three things of the host's, now all pinned in
+the nest: its fonts (`tests/fonts`, a fontconfig of the nest's own; Konsole's width snaps to its font's
+cells), the checkout's path (Dolphin's breadcrumb, now a `fixtures` place), and its third-party KWin
+effects. KWin 6 builds its own effects into itself, so every binary in `effects/plugins` was installed
+on top, and those load by default: the maintainer's Rounded Corners reshaped every window (and rewrites
+`breezerc`), so a full run's goldens showed it before `222` unloads it and not after (`resized` 0.047
+between the two). The nest now switches every such effect off and drops `breezerc` at each start; `222`
+and `223` load theirs over D-Bus. Recorded that way, the snapshot scenarios match their goldens within
+0.007 run alone and run after `222` and `223`, and the two-output ones (with `222` first) within 0.006.
 
 **Window coordinates drifting (2026-10-20).** Causes found and fixed: a floated window rode to a screen
 edge on every slide (`178`), and KWin's reachability rule moved the windows the canvas parks beyond every
@@ -105,9 +114,8 @@ runs. Not the canvas: the diff is Konsole and Dolphin. Konsole's window is about
 golden's, because a terminal's size snaps to its cell grid and this machine's monospace font has other
 metrics, and Dolphin's breadcrumb shows the checkout's whole path (`Stuff > Projects > kwin-canvas > tests >
 fixtures`) where the golden shows `fixtures`. So the goldens depend on the host's fonts and on where the
-checkout lives. Pinning both in the nest (a fixed fontconfig, the fixtures reached through a fixed path)
-would make them portable; until then `make golden` records them for one machine. They also fail on the
-commit before the frame authority, so the consolidation did not cause them.
+checkout lives (both pinned since: *Portable goldens*, above). They also fail on the commit before the
+frame authority, so the consolidation did not cause them.
 `127-rest-cue` failed its last check in that run: it still asserted the rest cue ends at the handoff, and
 the cue has stayed full while the window holds the pointer since the 2026-10-07 "window wears the hand" change. It
 now asserts that, and that the line goes when the pointer leaves (7 checks pass).

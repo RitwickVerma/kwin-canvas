@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<!-- SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com> -->
+<!-- SPDX-License-Identifier: GPL-2.0-or-later -->
+<!-- The test nest's fontconfig: only the fonts in tests/fonts, so every machine and every
+     day renders the fixture apps with the same glyphs. dev/nest.sh fills in the paths. -->
+<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">
+<fontconfig>
+  <dir>@FONTS@</dir>
+  <cachedir>@CACHE@</cachedir>
+  <alias><family>sans-serif</family><prefer><family>Noto Sans</family></prefer></alias>
+  <alias><family>serif</family><prefer><family>Noto Sans</family></prefer></alias>
+  <alias><family>monospace</family><prefer><family>Noto Sans Mono</family></prefer></alias>
+  <alias><family>Hack</family><prefer><family>Noto Sans Mono</family></prefer></alias>
+  <config><rescan><int>0</int></rescan></config>
+</fontconfig>

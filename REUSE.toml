@@ -102,6 +102,14 @@ SPDX-FileCopyrightText = "2026 Ritwick Verma <verma1997@gmail.com>"
 SPDX-License-Identifier = "GPL-2.0-or-later"
 
 [[annotations]]
+# The test nest's own fonts, so a golden screenshot does not move when the host's
+# fonts update (noto-fonts 2026.10.01 changed Konsole's width under every golden).
+# Noto Sans and Noto Sans Mono 2.015, unmodified.
+path = ["tests/fonts/*.ttf"]
+SPDX-FileCopyrightText = "2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)"
+SPDX-License-Identifier = "OFL-1.1-no-RFN"
+
+[[annotations]]
 # The effect's compiled shaders: each .frag compiled by `make shaders` (qsb), binary.
 path = ["effect/contents/shaders/*.qsb"]
 SPDX-FileCopyrightText = "2026 Ritwick Verma <verma1997@gmail.com>"
