@@ -1818,6 +1818,12 @@ Item {
                         id: arrangeMenu
                         z: 100001
                         title: "Arrange"
+                        // A submenu's entry is made by the menu's delegate, and Plasma's default one reads
+                        // parent.width before it has a parent ("Menu.qml:30: TypeError", twice an open).
+                        delegate: PC3.MenuItem {
+                            width: parent ? parent.width : implicitWidth
+                            onImplicitWidthChanged: if (arrangeMenu.contentItem && arrangeMenu.contentItem.contentItem) arrangeMenu.contentItem.contentItem.childrenChanged()
+                        }
                         onOpened: effect.canvasMenus++
                         onClosed: effect.canvasMenus = Math.max(0, effect.canvasMenus - 1)
                         // The Plasma menu background assumes the desktop blur behind it;
