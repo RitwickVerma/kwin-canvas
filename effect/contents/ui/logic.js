@@ -114,6 +114,43 @@ function webLayers(spans, windowZs) {
     return out;
 }
 
+// ---- frame authority: the pure half -----------------------------------------
+// KWin keeps a window reachable: at least 100 px of its width (or all of a narrower window) over
+// a monitor, and its top edge from the monitor's top down to 28 px above its bottom (measured on
+// KWin 6.8). r and the monitors are { x, y, width, height }.
+function inReach(r, monitors) {
+    for (let i = 0; i < monitors.length; ++i) {
+        const o = monitors[i];
+        const across = Math.min(r.x + r.width, o.x + o.width) - Math.max(r.x, o.x);
+        if (across >= Math.min(100, r.width) && r.y >= o.y && r.y <= o.y + o.height - 28) return true;
+    }
+    return false;
+}
+
+// Whether a frame change has the shape of KWin's reachability rule, the only move of a window's
+// frame the canvas undoes: the same size (within a pixel), moved by a pixel or more, from a place
+// out of reach of the monitors as they are and as they were before the last layout change (a
+// window rescued from a monitor that went away is KWin's to place), to one in reach of the
+// monitors as they are.
+function isPull(was, now, monitorsNow, monitorsBefore) {
+    if (Math.abs(now.width - was.width) > 1 || Math.abs(now.height - was.height) > 1) return false;
+    if (Math.abs(now.x - was.x) < 1 && Math.abs(now.y - was.y) < 1) return false;
+    if (inReach(was, monitorsNow) || inReach(was, monitorsBefore || [])) return false;
+    return inReach(now, monitorsNow);
+}
+
+// The fight detector's step for one window. chain: { n, at } or null, the window's reverts so
+// far; now in ms. A revert within fightMs of the last one continues the chain; the third move of
+// a chain is the window insisting (a rule or a script) and is adopted. Returns the chain to keep
+// and whether this move may be reverted.
+function fightStep(chain, now, fightMs) {
+    const c = !chain || now - chain.at > fightMs ? { n: 0, at: now } : { n: chain.n, at: chain.at };
+    c.at = now;
+    const allow = c.n < 2;
+    c.n++;
+    return { chain: c, allow: allow };
+}
+
 // The search's matches. items: [{ id, text }], text what a window answers to (its
 // title, its class, its desktop file); query: what was typed. Every word of the query
 // must appear in the text, case-insensitively, in any order. Returns the ids, best

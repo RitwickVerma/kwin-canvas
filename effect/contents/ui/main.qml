@@ -1628,14 +1628,7 @@ KWin.SceneEffect {
     // In reach of a monitor, by KWin's rule as measured: at least 100 px of the width (or all of a
     // narrower window) over the monitor, and the top edge from the monitor's top down to 28 px above
     // its bottom.
-    function inReach(r, rects) {
-        for (let i = 0; i < rects.length; ++i) {
-            const o = rects[i];
-            const across = Math.min(r.x + r.width, o.x + o.width) - Math.max(r.x, o.x);
-            if (across >= Math.min(100, r.width) && r.y >= o.y && r.y <= o.y + o.height - 28) return true;
-        }
-        return false;
-    }
+    function inReach(r, rects) { return Logic.inReach(r, rects); }
     // The monitors before the last layout change, for the rescue rule above; refreshed once the
     // change has settled.
     property var layoutBefore: []
@@ -1645,7 +1638,6 @@ KWin.SceneEffect {
         repeat: false
         onTriggered: effect.layoutBefore = effect.outputRects()
     }
-    function reachable(r) { return inReach(r, outputRects()) || inReach(r, layoutBefore); }
     // Chrome and managed state, whose frames are not the plane's to keep.
     function isPlaneWindow(w) {
         if (!w || w.deleted || !w.managed) return false;
@@ -1660,18 +1652,14 @@ KWin.SceneEffect {
     readonly property int fightMs: 500
     property var revertLog: ({})
     function mayRevert(w) {
-        const id = w.internalId, now = Date.now();
-        let b = revertLog[id];
-        if (!b || now - b.at > fightMs) b = revertLog[id] = { n: 0, at: now };
-        b.at = now;
-        return b.n++ < 2;
+        const step = Logic.fightStep(revertLog[w.internalId], Date.now(), fightMs);
+        revertLog[w.internalId] = step.chain;
+        return step.allow;
     }
     // "revert" or "adopt" for a frame that went from `was` to `now`.
     function classifyFrame(w, was, now) {
         if (!was || !isPlaneWindow(w)) return "adopt";
-        if (Math.abs(now.width - was.width) > 1 || Math.abs(now.height - was.height) > 1) return "adopt";
-        if (Math.abs(now.x - was.x) < 1 && Math.abs(now.y - was.y) < 1) return "adopt";
-        if (reachable(was) || !inReach(now, outputRects())) return "adopt";
+        if (!Logic.isPull(was, now, outputRects(), layoutBefore)) return "adopt";
         // With following the activation turned off, KDE brings the activated window in: leave it.
         if (configuration.FollowActivation === false && w === KWin.Workspace.activeWindow) return "adopt";
         return mayRevert(w) ? "revert" : "adopt";

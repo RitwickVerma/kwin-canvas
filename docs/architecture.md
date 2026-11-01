@@ -704,6 +704,11 @@ tiled, fullscreen, minimized) or is chrome (dock, popup), the size changed, or i
 in reach. Revert it when the same size moved from a place out of reach to one in reach. Nothing else
 about what came before is consulted: no focus, area, activity or open/close correlation.
 
+The pure half lives in `logic.js` and is unit-tested: `inReach` (the rule as measured), `isPull`
+(the shape of a pull: same size, moved, out of reach before and after the last layout change, in
+reach now) and `fightStep` (the chain of reverts below). `classifyFrame` adds what only the scene
+knows: the canvas's own write, the window's state, FollowActivation.
+
 Three edges, each deliberate:
 
 - *Out of reach is judged against the monitors as they are and as they were before the last layout

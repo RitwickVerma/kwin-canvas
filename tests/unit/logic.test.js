@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, searchFilter, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
+const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, searchFilter, inReach, isPull, fightStep, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -73,6 +73,37 @@ ok("the dynamic gap reads the same scaled up",
     ok("an inner hit still matches", f("ownl") === "[1]");
     ok("ties keep the stack order", f("kwin") === "[2,4]");
     ok("nothing found is empty", f("gimp") === "[]");
+}
+
+// ---- the frame authority ----
+{
+    const mon = [{ x: 0, y: 0, width: 1920, height: 1080 }];
+    const R = function (x, y, w, h) { return { x: x, y: y, width: w || 460, height: h || 420 }; };
+    ok("100 px over the monitor is in reach", L.inReach(R(1820, 300), mon));
+    ok("80 px over it is not", !L.inReach(R(1840, 300), mon));
+    ok("a window narrower than 100 px wholly over it is", L.inReach(R(1840, 300, 80, 200), mon));
+    ok("a top edge above the monitor is not", !L.inReach(R(300, -60), mon));
+    ok("a top edge in the last 28 px is not", !L.inReach(R(300, 1060), mon));
+    ok("one at 28 px above the bottom is", L.inReach(R(300, 1052), mon));
+    ok("KWin's pull from far away is a pull (4000 -> 1820, the d112 case)", L.isPull(R(4000, 300), R(1820, 300), mon, mon));
+    ok("from 80 px over to 100 px over is a pull", L.isPull(R(1840, 300), R(1820, 300), mon, mon));
+    ok("a top edge brought to the top is a pull", L.isPull(R(300, -60), R(300, 0), mon, mon));
+    ok("a move between two places on the screen is not", !L.isPull(R(100, 120), R(700, 400), mon, mon));
+    ok("a move out of reach is not", !L.isPull(R(100, 120), R(5000, 120), mon, mon));
+    ok("a resize is not", !L.isPull(R(4000, 300), R(1820, 300, 500, 420), mon, mon));
+    ok("a sub-pixel snap is not", !L.isPull(R(4000, 300), R(4000.4, 300), mon, mon));
+    const two = [{ x: 0, y: 0, width: 1920, height: 1080 }, { x: 1920, y: 0, width: 1920, height: 1080 }];
+    ok("a rescue from a monitor that went away is not (it was in reach before)", !L.isPull(R(2220, 200), R(300, 200), mon, two));
+    let st = L.fightStep(null, 1000, 500);
+    ok("the first revert is allowed", st.allow);
+    st = L.fightStep(st.chain, 1200, 500);
+    ok("a second within the window is allowed", st.allow);
+    st = L.fightStep(st.chain, 1400, 500);
+    ok("the third running is the window insisting: adopted", !st.allow);
+    st = L.fightStep(st.chain, 2000, 500);
+    ok("a move after a pause starts a new chain", st.allow);
+    const c0 = { n: 1, at: 1000 }; L.fightStep(c0, 1100, 500);
+    ok("the step does not change the chain it was given", c0.n === 1 && c0.at === 1000);
 }
 
 // ---- the distance ----
