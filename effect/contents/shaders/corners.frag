@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 // SPDX-License-Identifier: GPL-2.0-or-later
 //
-// A window's thumbnail with rounded corners, so a window the Rounded Corners effect shapes on the
+// A window's picture with rounded corners, so a window the Rounded Corners effect shapes on the
 // desktop keeps its shape on the canvas (a thumbnail is drawn from the window's surface, past
-// KWin's effects). The corner is a blend of a circle and a superellipse of power 4: squircle 0 is
-// a circle, 1 the superellipse. Compiled with `make shaders` into corners.frag.qsb.
+// KWin's effects). The source is KWin's own thumbnail texture, the window with its shadow, and
+// frameRect is where the window sits inside it, so the picture is drawn straight from that
+// texture with no layer of the canvas's own; with an older plugin the source is a layer holding
+// just the window and frameRect is the whole of it. The corner is a blend of a circle and a
+// superellipse of power 4: squircle 0 is a circle, 1 the superellipse. Compiled with
+// `make shaders` into corners.frag.qsb.
 #version 440
 
 layout(location = 0) in vec2 qt_TexCoord0;
@@ -13,15 +17,16 @@ layout(location = 0) out vec4 fragColor;
 layout(std140, binding = 0) uniform buf {
     mat4 qt_Matrix;
     float qt_Opacity;
+    vec4 frameRect;  // the window inside the source, normalised: x, y, width, height
     vec2 itemSize;   // the item's size, in its own pixels
-    float radius;    // the corner radius, in the same pixels; 0 draws the thumbnail as it is
+    float radius;    // the corner radius, in the same pixels; 0 draws the picture as it is
     float squircle;  // 0 circle .. 1 superellipse
 };
 layout(binding = 1) uniform sampler2D source;
 
 void main()
 {
-    vec4 c = texture(source, qt_TexCoord0);
+    vec4 c = texture(source, frameRect.xy + qt_TexCoord0 * frameRect.zw);
     float a = 1.0;
     if (radius > 0.0) {
         // Distance past the start of the corner, per axis; inside the corner square both are > 0.

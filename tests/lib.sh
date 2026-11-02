@@ -99,6 +99,8 @@ sget() {
         cpu)      sed -n 's/.* cpu=\([0-9]*\).*/\1/p' <<<"$line" ;;
         gpu)      sed -n 's/.* gpu=\(-\?[0-9]*\).*/\1/p' <<<"$line" ;;
         mem)      sed -n 's/.* mem=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        vram)     sed -n 's/.* vram=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        offscreen) sed -n 's/.* offscreen=\([0-9]*\).*/\1/p' <<<"$line" ;;
         active)   sed -n 's/.* active=\(.*\)$/\1/p' <<<"$line" ;;
         nactivities) grep -c '^  {' <<<"$LAST_STATE" ;;
     esac

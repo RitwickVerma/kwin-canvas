@@ -108,6 +108,7 @@ KWin.SceneEffect {
     property real cpuBusy: 0
     property real gpuBusy: 0
     property real memBusy: 0
+    property real vramBusy: 0
     property int quietSamples: 0
     property int hotSamples: 0
     function qualityCap() {
@@ -119,7 +120,7 @@ KWin.SceneEffect {
             default: return 3; // Auto
         }
     }
-    function qualityApply(cpu, gpu, mem) {
+    function qualityApply(cpu, gpu, mem, vram) {
         // A reading outside [0, 100] is not a percentage at all - a stale
         // plugin still answering in kilobytes, or a dead channel - so it is
         // treated as absent rather than letting a huge number force the
@@ -127,9 +128,11 @@ KWin.SceneEffect {
         const cc = Number.isFinite(cpu) && cpu >= 0 && cpu <= 100 ? cpu : 0;
         const gg = Number.isFinite(gpu) && gpu >= 0 && gpu <= 100 ? gpu : 0;
         const mm = Number.isFinite(mem) && mem >= 0 && mem <= 100 ? mem : 0;
+        const vv = Number.isFinite(vram) && vram >= 0 && vram <= 100 ? vram : 0;
         cpuBusy = cc;
         gpuBusy = gg;
         memBusy = mm;
+        vramBusy = vv;
         if (String(configuration.QualityMode) !== "Auto") {
             ql = qualityCap();
             quietSamples = 0;
@@ -148,10 +151,17 @@ KWin.SceneEffect {
         const memMinimal = Number(configuration.MemMinimal);
         const memBare = Number(configuration.MemBare);
         const memQl = Logic.qualityFor(mm, Number.isFinite(memReduced) ? memReduced : 80, Number.isFinite(memMinimal) ? memMinimal : 90, Number.isFinite(memBare) ? memBare : 97);
-        // The three channels race each other: whichever sees the worse
+        // The GPU's memory: a full card is a driver that fails the next
+        // allocation (it wedged on 2026-10-30), and the canvas's textures are
+        // allocations. Minimal drops the blur's, bare the window pictures'.
+        const vramReduced = Number(configuration.VramReduced);
+        const vramMinimal = Number(configuration.VramMinimal);
+        const vramBare = Number(configuration.VramBare);
+        const vramQl = Logic.qualityFor(vv, Number.isFinite(vramReduced) ? vramReduced : 80, Number.isFinite(vramMinimal) ? vramMinimal : 88, Number.isFinite(vramBare) ? vramBare : 95);
+        // The four channels race each other: whichever sees the worse
         // pressure sets the step, and a calm machine must clear ALL of them
         // before the ladder climbs back up.
-        const target = Math.max(cpuQl, gpuQl, memQl);
+        const target = Math.max(cpuQl, gpuQl, memQl, vramQl);
         // Both directions wait for two consecutive samples: a launch spike
         // cannot flash the canvas down, and a single breath cannot flash it
         // up. A step down to the bare rungs announces itself, so it never
@@ -355,7 +365,7 @@ KWin.SceneEffect {
             perfStalls++;
             perfLog("stall", "ms=" + Math.round(ms) + " cam=" + (camHasGoal ? "goal" : (camVX !== 0 || camVY !== 0 ? "fling" : "-"))
                 + " quiet=" + (quiet ? 1 : 0) + " entries=" + entries.length + " ql=" + ql
-                + " cpu=" + Math.round(cpuBusy) + " gpu=" + Math.round(gpuBusy) + " mem=" + Math.round(memBusy));
+                + " cpu=" + Math.round(cpuBusy) + " gpu=" + Math.round(gpuBusy) + " mem=" + Math.round(memBusy) + " vram=" + Math.round(vramBusy));
         }
         const b = Math.min(250, Math.max(0, Math.round(ms)));
         if (perfBins.length === 0) perfBins = new Array(251).fill(0);
@@ -4824,8 +4834,9 @@ KWin.SceneEffect {
     }
     // The machine's load, for the fidelity ladder. The plugin reads /proc
     // itself (three small reads) and answers "cpu=N load=NN.NN mem=MMMM
-    // gpu=N"; cpu and gpu are the busy percentages since the previous call,
-    // gpu via NVML when the NVIDIA driver is present. Polled every two
+    // gpu=N vram=N"; cpu and gpu are the busy percentages since the previous
+    // call, vram how full the GPU's memory is, gpu and vram via NVML when the
+    // NVIDIA driver is present. Polled every two
     // seconds while the overworld is open - a fixed mode needs no probe,
     // the ladder applies the cap directly.
     KWin.DBusCall {
@@ -4842,7 +4853,10 @@ KWin.SceneEffect {
             const gpu = gi >= 0 ? Number(s.slice(gi + 4).split(" ")[0]) : 0;
             const mi = s.indexOf("mem=");
             const mem = mi >= 0 ? Number(s.slice(mi + 4).split(" ")[0]) : 0;
-            effect.qualityApply(Number.isFinite(cpu) ? cpu : 0, Number.isFinite(gpu) ? gpu : 0, Number.isFinite(mem) ? mem : 0);
+            // An older plugin answers without vram: the channel reads 0.
+            const vi = s.indexOf("vram=");
+            const vram = vi >= 0 ? Number(s.slice(vi + 5).split(" ")[0]) : 0;
+            effect.qualityApply(Number.isFinite(cpu) ? cpu : 0, Number.isFinite(gpu) ? gpu : 0, Number.isFinite(mem) ? mem : 0, Number.isFinite(vram) ? vram : 0);
         }
     }
     Timer {
@@ -4851,7 +4865,7 @@ KWin.SceneEffect {
         repeat: true
         running: effect.visible && !effect.quiet
         onTriggered: {
-            if (String(effect.configuration.QualityMode) !== "Auto") effect.qualityApply(0, 0, 0);
+            if (String(effect.configuration.QualityMode) !== "Auto") effect.qualityApply(0, 0, 0, 0);
             else loadCall.call();
         }
     }
@@ -6150,6 +6164,12 @@ KWin.SceneEffect {
             + " safe=" + (safeMode ? 1 : 0)
             + " cached=" + (viewCached ? 1 : 0)
             + " corners=" + (cornerStyle.on ? entries.map(cornerRadiusOf).join(",") : "off")
+            // The plugin's scene helper (ui.qml's frameTex): with it the corners are cut from
+            // KWin's own texture, without it through a layer per window.
+            + " scenehelper=" + (typeof canvasPlugin !== "undefined" && canvasPlugin ? 1 : 0)
+            // Application windows KWin draws offscreen for a thumbnail, the canvas's or anyone's:
+            // each costs a copy per changed frame, so a closed canvas holds none (ui.qml's picture).
+            + " offscreen=" + (typeof canvasPlugin !== "undefined" && canvasPlugin && canvasPlugin.offscreenWindows ? canvasPlugin.offscreenWindows() : "-")
             + " blur=" + (blurStyle.effect ? entries.map(function (e) { return blurRectsOf(e).length; }).join(",") : "off")
             + " away=" + entries.filter(entryAway).length
             + " deskfor=" + KWin.Workspace.screens.map(function (sc) { const w = desktopWindowFor(sc); return sc.name + ":" + (w ? Math.round(w.frameGeometry.x) + "," + Math.round(w.frameGeometry.y) : "-"); }).join(";")
@@ -6162,6 +6182,7 @@ KWin.SceneEffect {
             + " cpu=" + Math.round(cpuBusy)
             + " gpu=" + Math.round(gpuBusy)
             + " mem=" + Math.round(memBusy)
+            + " vram=" + Math.round(vramBusy)
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
         const ids = activityIds, screens = KWin.Workspace.screens;
         for (let i = 0; i < screens.length; ++i) {

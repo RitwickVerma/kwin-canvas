@@ -415,8 +415,8 @@ knob() {
 }
 
 doctor_ladder() {
-    local cfg=$1 mode reading cpu gpu mem rc rg rmem rung name gtxt body
-    local cr cm cb gr gm gb mr mm mb
+    local cfg=$1 mode reading cpu gpu mem vram rc rg rmem rv rung name gtxt vtxt body
+    local cr cm cb gr gm gb mr mm mb vr vm vb
     mode=$(ini_get "$cfg/kwinrc" Effect-kwin-canvas QualityMode Auto)
     # One call. load() is not state-free: the plugin's cpu is the busy share since its previous
     # call (the effect's own, every 2 s while the overworld is open, or anyone's), and this call
@@ -433,19 +433,28 @@ doctor_ladder() {
     cpu=${reading#cpu=}; cpu=${cpu%% *}
     mem=${reading#*mem=}; mem=${mem%% *}
     gpu=${reading#*gpu=}; gpu=${gpu%% *}
+    # An older plugin answers without vram.
+    vram=-1
+    case "$reading" in *vram=*) vram=${reading#*vram=}; vram=${vram%% *} ;; esac
     cr=$(knob "$cfg" CpuReduced 60); cm=$(knob "$cfg" CpuMinimal 80); cb=$(knob "$cfg" CpuBare 95)
     gr=$(knob "$cfg" GpuReduced 60); gm=$(knob "$cfg" GpuMinimal 80); gb=$(knob "$cfg" GpuBare 95)
     mr=$(knob "$cfg" MemReduced 80); mm=$(knob "$cfg" MemMinimal 90); mb=$(knob "$cfg" MemBare 97)
+    vr=$(knob "$cfg" VramReduced 80); vm=$(knob "$cfg" VramMinimal 88); vb=$(knob "$cfg" VramBare 95)
     rc=$(rung_of "$cpu" "$cr" "$cm" "$cb")
     rg=$(rung_of "$gpu" "$gr" "$gm" "$gb")
     rmem=$(rung_of "$mem" "$mr" "$mm" "$mb")
+    rv=0
+    [ "$vram" = -1 ] || rv=$(rung_of "$vram" "$vr" "$vm" "$vb")
     rung=$rc
     [ "$rg" -gt "$rung" ] && rung=$rg
     [ "$rmem" -gt "$rung" ] && rung=$rmem
+    [ "$rv" -gt "$rung" ] && rung=$rv
     case "$rung" in 0) name=full ;; 1) name=reduced ;; 2) name=minimal ;; *) name=bare ;; esac
     gtxt="gpu $gpu (steps at $gr/$gm/$gb)"
     [ "$gpu" = -1 ] && gtxt="gpu not readable (no NVML)"
-    body="cpu $cpu (steps at $cr/$cm/$cb; the average since the plugin was last asked), $gtxt, mem $mem (steps at $mr/$mm/$mb)"
+    vtxt="gpu memory $vram (steps at $vr/$vm/$vb)"
+    [ "$vram" = -1 ] && vtxt="gpu memory not readable (no NVML, or the plugin predates it)"
+    body="cpu $cpu (steps at $cr/$cm/$cb; the average since the plugin was last asked), $gtxt, mem $mem (steps at $mr/$mm/$mb), $vtxt"
     if [ "$mode" != Auto ]; then
         verdict OK ladder "mode $mode holds its rung whatever the load; live reading: $body"
     elif [ "$rung" -eq 0 ]; then

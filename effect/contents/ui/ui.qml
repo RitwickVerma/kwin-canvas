@@ -106,12 +106,18 @@ Item {
     // plasmashell restart or a layout reload the canvas kept drawing the window that had gone, the
     // old wallpaper where the desktop showed the new one (128 after 117). The effect counts those
     // comings and goings (desktopsRev); a one-element model that changes with it is the remake.
+    // DesktopBackground is a window thumbnail, and KWin copies a thumbnail's window on every frame
+    // the window changes, whether or not the item is drawn: a video wallpaper, which the canvas
+    // never draws through it, was copied for every frame and every screen, closed or open. So the
+    // item is made only while live (a wallpaper the canvas draws through it); a picture does not
+    // change, so keeping one costs nothing between opens.
     component Wallpaper : Item {
         id: paper
         property var output: null
         property string activity: ""
+        property bool live: true
         Repeater {
-            model: [effect.desktopsRev]
+            model: paper.live ? [effect.desktopsRev] : []
             delegate: KWin.DesktopBackground {
                 anchors.fill: parent
                 output: paper.output
@@ -381,7 +387,9 @@ Item {
             anchors.fill: parent
             z: -91
             property var desk: null
-            client: desk
+            // Only while it is drawn, as the window pictures: a video wallpaper changes every frame,
+            // and KWin would copy it for a closed canvas, or for a picture the frames draw instead.
+            client: effect.visible && !view.wallpaperDrawable ? desk : null
             visible: effect.visible && !view.wallpaperDrawable && client !== null
             function refresh() {
                 const w = effect.desktopWindowFor(view.screen);
@@ -417,6 +425,7 @@ Item {
             anchors.fill: parent
             z: -90
             visible: effect.visible && view.wallpaperDrawable
+            live: view.wallpaperDrawable
             output: view.screen
             activity: effect.currentActivity
         }
@@ -425,6 +434,10 @@ Item {
         // delegate's patches, shaders/blur.frag). Built only while a blur effect runs, at a quarter
         // of the screen's pixels; with a still wallpaper nothing redraws it while the camera moves.
         readonly property bool blurOn: !!effect.blurStyle && !!effect.blurStyle.effect && effect.ql < 2 && !view.replica
+        // The pass-through plugin's helper on KWin's QML engine (CanvasSceneHelper), or null
+        // without the plugin or with one older than it. The views are made at the first open,
+        // after the plugin has put it there.
+        readonly property QtObject sceneHelper: typeof canvasPlugin !== "undefined" ? canvasPlugin : null
         readonly property size blurTexSize: Qt.size(Math.max(1, Math.round(width / 4)), Math.max(1, Math.round(height / 4)))
         ShaderEffectSource {
             id: wallSrc
@@ -690,6 +703,7 @@ Item {
 
                     Wallpaper {
                         visible: view.wallpaperDrawable
+                        live: view.wallpaperDrawable
                         anchors.fill: parent
                         output: frame.modelData
                         activity: activityFrames.activity
@@ -908,26 +922,55 @@ Item {
                 }
 
                 // The window's picture. With the Rounded Corners effect on it wears that effect's
-                // corners: the thumbnail is rendered into a layer and the corner shader shapes the
-                // layer. The layer holds exactly the item's bounds, which is the window - KWin draws
-                // the thumbnail's texture, the window and its shadow, partly outside the item so the
-                // window lines up, and that offset is not readable from here, so the texture itself
-                // cannot be sampled in its place. The layer's size is the window's, in device pixels,
-                // and stays put while the zoom changes, so a zoom never reallocates it.
+                // corners, drawn straight from KWin's thumbnail texture: the texture is the window
+                // with its shadow, the plugin's helper says where the window sits in it (frameTex,
+                // re-read when the frame or any shadow changes), and the corner shader samples just
+                // that part with the corners cut. The thumbnail item stays in the scene at opacity 0
+                // so KWin keeps handing it the window's frames. No texture or pass of the canvas's
+                // own: the layer this replaced was a second full-size texture per window, redrawn on
+                // every zoom step. An older plugin has no helper; the picture then goes through
+                // that layer, the window's own size in device pixels, as before.
                 readonly property real cornerR: { effect.cornerStyle; KWin.Workspace.activeWindow; effect.ql; effect.revision; return effect.cornerRadiusOf ? effect.cornerRadiusOf(thumb.entry) : 0; }
+                readonly property var frameTex: {
+                    if (!(thumb.cornerR > 0) || !view.sceneHelper || !thumb.entry.window) return null;
+                    view.sceneHelper.revision; thumb.entry.window.frameGeometry;
+                    const f = view.sceneHelper.frameInTexture(thumb.entry.window);
+                    return f && f.length === 6 && f[4] > 0 && f[5] > 0 ? f : null;
+                }
+                // A thumbnail that has a window costs KWin even when nothing shows it: KWin draws
+                // the window into the thumbnail's texture again on every frame the window changes,
+                // and sends a hidden or minimized one frame callbacks at the screen's rate so it
+                // keeps drawing (KWin 6.8's windowthumbnailitem.cpp, Window::refOffscreenRendering).
+                // The kept scene outlives the close, so the picture has its window only while the
+                // canvas is up, and not at bare, where it is not drawn. The item keeps the last
+                // picture it was given: a reopen shows that at once and the live one a frame later.
                 KWin.WindowThumbnail {
+                    id: picture
                     anchors.fill: parent
-                    client: thumb.entry.window
+                    client: effect.visible && effect.ql < 3 ? thumb.entry.window : null
                     visible: effect.ql < 3
-                    layer.enabled: thumb.cornerR > 0
+                    opacity: thumb.frameTex ? 0 : 1
+                    layer.enabled: effect.visible && thumb.cornerR > 0 && !thumb.frameTex
                     layer.smooth: true
                     layer.textureSize: Qt.size(Math.ceil(thumb.entry.width * Screen.devicePixelRatio), Math.ceil(thumb.entry.height * Screen.devicePixelRatio))
                     layer.effect: ShaderEffect {
+                        property vector4d frameRect: Qt.vector4d(0, 0, 1, 1)
                         property size itemSize: Qt.size(width, height)
                         property real radius: thumb.cornerR * effect.zoom
                         property real squircle: Number(effect.cornerStyle.squircle) || 0
                         fragmentShader: Qt.resolvedUrl("../shaders/corners.frag.qsb")
                     }
+                }
+                ShaderEffect {
+                    anchors.fill: parent
+                    visible: !!thumb.frameTex && effect.ql < 3
+                    property var source: picture
+                    readonly property var f: thumb.frameTex || [0, 0, 1, 1, 1, 1]
+                    property vector4d frameRect: Qt.vector4d(f[0] / f[4], f[1] / f[5], f[2] / f[4], f[3] / f[5])
+                    property size itemSize: Qt.size(width, height)
+                    property real radius: thumb.cornerR * effect.zoom
+                    property real squircle: Number(effect.cornerStyle.squircle) || 0
+                    fragmentShader: Qt.resolvedUrl("../shaders/corners.frag.qsb")
                 }
 
                 // The soft shadow under the window: the lifted and the
@@ -1189,7 +1232,7 @@ Item {
 
                 KWin.WindowThumbnail {
                     anchors.fill: parent
-                    client: parent.modelData
+                    client: effect.visible ? parent.modelData : null
                 }
             }
         }

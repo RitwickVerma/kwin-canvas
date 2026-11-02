@@ -96,6 +96,26 @@ between the two). The nest now switches every such effect off and drops `breezer
 and `223` load theirs over D-Bus. Recorded that way, the snapshot scenarios match their goldens within
 0.007 run alone and run after `222` and `223`, and the two-output ones (with `222` first) within 0.006.
 
+**GPU memory and a closed canvas's cost (2026-11-02).** A game filled the maintainer's card (Deadlock, 7.2
+of 10 GB) and the NVIDIA driver then refused every new GPU channel until a reboot: the video wallpaper's
+renderer could not start, and a full card had wedged the driver on 2026-10-30 too. Three changes:
+the corners are cut straight from KWin's thumbnail texture through the plugin's `CanvasSceneHelper`
+(no full-size layer per window; `scenehelper=`), the fidelity ladder has a fourth channel, the GPU's
+memory (`vram=`, `VramReduced`/`Minimal`/`Bare`, doctor), and the kept scene is idle while closed. That
+last one was a real cost of view caching: every thumbnail kept its window, and KWin copies a
+thumbnail's window on every frame it changes and keeps a hidden one drawing at the screen's rate. Now the
+pictures have their windows only while the canvas is up (not at bare either), and a video wallpaper,
+which the canvas never drew through `DesktopBackground`, no longer has one per frame and screen.
+Measured in the nest: windows KWin draws offscreen after a close went from 6 to 0 (`offscreen=` on
+the state line, `220`; at bare 5 to 0, `116`); a minimized client that draws on every frame callback
+(`es2gears_wayland`) used 8.7% of a core after the canvas had been opened and closed and 0.0% now, as
+before any open. KWin's own CPU with one window redrawing did not move measurably on one output in
+software. Not measured: the GPU-side copies on the maintainer's 4096x1152 screen, and frame times of the
+new corners on a GPU. The closed scene still holds each window's last picture in GPU memory, so a reopen
+is instant; dropping them under memory pressure is open. Full suite in a software nest: 871 pass, 1 fail,
+13 skip; the one failure was `126-grasp-landing`'s known intermittent check, and `126` alone then passed
+three runs of three.
+
 **Window coordinates drifting (2026-10-20).** Causes found and fixed: a floated window rode to a screen
 edge on every slide (`178`), and KWin's reachability rule moved the windows the canvas parks beyond every
 monitor, every time it looked at one again (focus, activities, work area, an open or close): `112-overlay`'s

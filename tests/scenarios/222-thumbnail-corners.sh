@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
 # shellcheck source=../tests/lib.sh
-scenario_desc="with the Rounded Corners effect on, the canvas's window pictures wear its corners (a thumbnail is drawn past KWin's effects, so it was square): a corner shows the plane behind it, the rest of the picture is the same pixels as before, an excluded window stays square (maximized, tiled and fullscreen are the unit tests'), and ThumbnailCorners off draws them all square"
+scenario_desc="with the Rounded Corners effect on, the canvas's window pictures wear its corners (a thumbnail is drawn past KWin's effects, so it was square): a corner shows the plane behind it, the rest of the picture is the same pixels as before, the cornered picture stays live, an excluded window stays square (maximized, tiled and fullscreen are the unit tests'), and ThumbnailCorners off draws them all square"
 
 corners() { c state >/dev/null; grep -o ' corners=[^ ]*' <<<"$(head -1 <<<"$LAST_STATE")" | cut -d= -f2; }
 # RMSE between the same region of two screenshots.
@@ -26,13 +26,29 @@ run_scenario() {
     fi
     arrange >/dev/null
     setcfg SmoothZoom false
+    c "activate KCalc"; sleep 0.4
     open_1to1; sleep 0.6; c state
     local line; line=$(corners)
     echo "# corners=$line"
+    # The corners are cut from KWin's own thumbnail texture through the plugin's helper, not
+    # through a layer per window: the same pixels below prove the helper's frame lines up.
+    assert_eq "the plugin's scene helper is there" "$(grep -o ' scenehelper=[^ ]*' <<<"$(head -1 <<<"$LAST_STATE")" | cut -d= -f2)" 1
     local ki gi; ki=$(eget KCalc index); gi=$(eget wallpaper.png index)
     assert_eq "KCalc wears the effect's radius" "$(tr ',' '\n' <<<"$line" | sed -n "$((ki + 1))p")" 40
     assert_eq "Gwenview, excluded, wears none" "$(tr ',' '\n' <<<"$line" | sed -n "$((gi + 1))p")" 0
     shot "$OUT/tc-round.png" >/dev/null
+    # The picture stays live: the thumbnail item that hands over KWin's texture is not drawn
+    # itself, and must still be fed. The fixture Konsole's terminal switches to its alternate
+    # screen, written straight to its tty while the canvas is open, and the cornered picture
+    # follows; switching back restores the screen exactly, so no later golden sees it.
+    local kpid tty
+    kpid=$(nq | grep -o 'org.kde.konsole-[0-9]*' | head -1); kpid=${kpid##*-}
+    tty=$(for p in $(pgrep -P "${kpid:-0}"); do readlink "/proc/$p/fd/1"; done | grep -m1 '^/dev/pts/')
+    if [ -n "$tty" ]; then
+        printf '\033[?1049h\033[2J\033[H%s\r\n%s' "$(printf 'X%.0s' {1..46})" "$(printf 'X%.0s' {1..46})" >"$tty"; sleep 0.8
+        shot "$OUT/tc-live.png" >/dev/null
+        printf '\033[?1049l' >"$tty"; sleep 0.4
+    fi
     c cancel >/dev/null; sleep 0.6
 
     setcfg ThumbnailCorners false
@@ -49,6 +65,13 @@ run_scenario() {
     assert_true "and the rest of the picture is the same pixels (rmse $d)" "$(awk -v d="${d:-1}" 'BEGIN{print (d < 0.004)}')" -eq 1
     d=$(region_rmse "$OUT/tc-round.png" "$OUT/tc-square.png" "6x6+1401+121")
     assert_true "the excluded window's corner is untouched (rmse $d)" "$(awk -v d="${d:-1}" 'BEGIN{print (d < 0.004)}')" -eq 1
+    # The Konsole's terminal, at (100, 600) after arrange.
+    if [ -n "$tty" ]; then
+        d=$(region_rmse "$OUT/tc-round.png" "$OUT/tc-live.png" "500x360+110+610")
+        assert_true "the cornered picture is live: the terminal's new screen shows in it (rmse $d)" "$(awk -v d="${d:-0}" 'BEGIN{print (d > 0.05)}')" -eq 1
+    else
+        skip "the fixture Konsole's terminal was not found"
+    fi
 
     nq org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect kwin4_effect_shapecorners >/dev/null 2>&1
     kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key ThumbnailCorners --delete

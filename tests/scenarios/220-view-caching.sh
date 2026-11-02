@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
 # shellcheck source=../tests/lib.sh
-scenario_desc="view caching: with the plugin the scene is kept between openings, so an overview after the first resumes a built scene and reaches its first frame sooner; the reused scene still takes the keyboard, shows its toolbar, searches, slides and leaves no window moved; ViewCaching off builds per open again"
+scenario_desc="view caching: with the plugin the scene is kept between openings, so an overview after the first resumes a built scene and reaches its first frame sooner; the kept scene holds no window offscreen while closed; the reused scene still takes the keyboard, shows its toolbar, searches, slides and leaves no window moved; ViewCaching off builds per open again"
 
 cached() { c state >/dev/null; grep -o ' cached=[01]' <<<"$(head -1 <<<"$LAST_STATE")" | cut -d= -f2; }
 toggle_chord() { nq org.kde.kglobalaccel /component/kwin org.kde.kglobalaccel.Component.invokeShortcut "Toggle Canvas" >/dev/null 2>&1; }
@@ -28,8 +28,18 @@ run_scenario() {
     arrange >/dev/null
     setcfg SmoothZoom false
     setcfg Perf true
-    open_1to1; sleep 0.6; shot "$OUT/vc-first.png" >/dev/null; c cancel >/dev/null; sleep 0.8
+    # The kept scene keeps no window busy: KWin copies a thumbnail's window on every frame it
+    # changes, and keeps a hidden one drawing. The pictures hold their windows while open only.
+    # (Measured against the count before the first open: a notification or a task tooltip
+    # holds its own.)
+    c state; local base; base=$(sget offscreen)
+    open_1to1; sleep 0.6; shot "$OUT/vc-first.png" >/dev/null
+    c state
+    assert_true "an open canvas holds its windows' pictures (offscreen=$(sget offscreen), before ${base})" "$(sget offscreen)" -gt "${base:-0}"
+    c cancel >/dev/null; sleep 0.8
     assert_eq "view caching is on with the plugin" "$(cached)" 1
+    c state
+    assert_eq "a closed canvas holds no window offscreen" "$(sget offscreen)" "$base"
     local on; on=$(first_paints 5)
 
     # The reused scene still works: the keys, the toolbar, the search, a slide.

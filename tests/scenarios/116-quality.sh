@@ -37,7 +37,7 @@ wait_ql() {   # want [tries]
 # suite into the next scenario's readings.
 restore_quality_knobs() {
     setcfg QualityMode Auto
-    for k in QualityMode CpuBare CpuMinimal CpuReduced GpuBare GpuMinimal GpuReduced MemBare MemMinimal MemReduced; do
+    for k in QualityMode CpuBare CpuMinimal CpuReduced GpuBare GpuMinimal GpuReduced MemBare MemMinimal MemReduced VramBare VramMinimal VramReduced; do
         kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key "$k" --delete >/dev/null
     done
     c cancel
@@ -56,8 +56,10 @@ run_scenario() {
     open_1to1
     c state
     assert_eq "an idle machine wears everything" "$(sget ql)" 0
+    local held entries; held=$(( $(sget offscreen) - $(sget popups) )); entries=$(sget entries)
     assert_true "the gpu channel reports" -n "$(sget gpu)"
     assert_true "the mem channel reports" -n "$(sget mem)"
+    assert_true "the vram channel reports" -n "$(sget vram)"
     c "zoom 0.5 960 540"
     sleep 0.2
     c state
@@ -78,6 +80,10 @@ run_scenario() {
     sleep 0.3
     c state
     assert_eq "the ladder holds bare" "$(sget ql)" 3
+    # Bare gives the pictures' cost back, not just their pixels: no window is copied for them
+    # (a popup the canvas draws is, so popups are left out of both counts).
+    local bare; bare=$(( $(sget offscreen) - $(sget popups) ))
+    assert_true "bare lets go of every window's picture (offscreen ${held} -> ${bare} besides popups, ${entries} windows)" "$(( held - bare ))" -ge "${entries:-1}"
     shot "$OUT/qa-bare.png" >/dev/null
     assert_eq "the web is gone at bare" "$(changed "$(region_rmse "$OUT/qa-full.png" "$OUT/qa-bare.png" "12x12+$((tx-6))+$((ty-6))")")" 1
     assert_eq "the live pictures are gone at bare" "$(changed "$(region_rmse "$OUT/qa-full.png" "$OUT/qa-bare.png" "16x16+$((kx-8))+$((ky-8))")")" 1
@@ -104,6 +110,17 @@ run_scenario() {
     # (The windows shift a hair as the z-depth flattens, so the proof is
     # minimal against bare, not against full.)
     assert_eq "the pictures survive minimal" "$(changed "$(region_rmse "$OUT/qa-min.png" "$OUT/qa-bare.png" "16x16+$((kx-8))+$((ky-8))")")" 1
+
+    # The GPU's memory is a channel of its own: with every other channel calm, a full card
+    # alone steps the ladder down (any reading, the host's real one included, is past 0).
+    step_thresholds 100 100 100
+    if ! wait_ql 0 60; then fail "the ladder stepped back up for the vram check (ql=$(sget ql))"; restore_quality_knobs; return; fi
+    setcfg VramBare 100; setcfg VramMinimal 0; setcfg VramReduced 0
+    if ! wait_ql 2; then fail "a full GPU memory alone steps to minimal (ql=$(sget ql))"; restore_quality_knobs; return; fi
+    c state
+    assert_eq "a full GPU memory alone steps the ladder to minimal" "$(sget ql)" 2
+    # Back to the nest's pin, so the host's real card cannot move the checks below.
+    setcfg VramBare 100; setcfg VramMinimal 100; setcfg VramReduced 100
 
     # A fixed mode overrides the ladder: Full holds everything even with the
     # thresholds at zero.

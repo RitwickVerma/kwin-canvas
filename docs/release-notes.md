@@ -2,17 +2,27 @@ Unreleased:
 
 - The overview opens about three times as fast: KWin keeps the canvas's scene between openings
   instead of building it at every open (view caching, through the pass-through plugin). An
-  overview's first frame took 147 to 190 ms in the test nest and takes 39 to 59.
+  overview's first frame took 147 to 190 ms in the test nest and takes 39 to 59. The kept scene
+  does no work between openings: it lets go of the windows it shows, so KWin no longer copies
+  every changing window for it while you play, and a minimized window is not kept drawing.
+- With a video or scene wallpaper (waywallen, Wallpaper Engine) the canvas no longer has KWin copy
+  the wallpaper for every frame and every screen; it never drew those copies. At the bare rung of
+  the fidelity ladder the window pictures now give back their cost, not just their pixels.
 - Windows keep their rounded corners on the canvas. With the Rounded Corners effect on, a window's
   picture in the overview and during a slide wears the same corners as on the desktop (it was
   square: KWin draws a window's picture past its effects), with that effect's radii, squircle and
-  exclusions.
+  exclusions. The corners are cut from KWin's own picture of the window, so they cost no extra
+  copy of each window in the GPU's memory and no extra drawing while zooming.
 - Translucent windows keep their blur on the canvas. With KWin's Blur or Better Blur DX on, a
   window the effect blurs on the desktop shows the wallpaper blurred behind it in the overview and
   during a slide (it showed the plane sharp), with that effect's strength, noise, force-blur list
   and corner radius. Another window behind a translucent one still shows through sharp; that is
   exactly Better Blur DX's wallpaper mode. `ThumbnailBlur` turns it off.
-  All three need the plugin updated: `kwin-canvas fix-plugin`.
+- The fidelity ladder watches the GPU's memory. When a game fills the card, the canvas sheds its
+  blur and then its window pictures before KWin's own allocations start failing (a full card
+  wedged the NVIDIA driver on 2026-10-30 and left Plasma drawing in software). The three Vram
+  thresholds are hidden knobs beside the others; `kwin-canvas doctor` reports the reading.
+  All four need the plugin updated: `kwin-canvas fix-plugin`.
 
 - The Canvas window decoration has no border inside the window any more: its resize band lies
   outside the window, so an effect that shapes windows (Rounded Corners, an outline) shapes the

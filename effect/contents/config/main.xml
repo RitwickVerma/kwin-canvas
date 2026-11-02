@@ -369,6 +369,18 @@
             <label>The memory's used percentage at which Auto steps down to the bare minimum. A hidden knob.</label>
             <default>97</default>
         </entry>
+        <entry name="VramReduced" type="Int">
+            <label>The GPU memory's used percentage at which Auto steps down to reduced fidelity. A hidden knob, the fourth channel: a game holding most of the card leaves the compositor's own textures a few allocations from failing.</label>
+            <default>80</default>
+        </entry>
+        <entry name="VramMinimal" type="Int">
+            <label>The GPU memory's used percentage at which Auto steps down to minimal fidelity, which drops the blur's textures. A hidden knob.</label>
+            <default>88</default>
+        </entry>
+        <entry name="VramBare" type="Int">
+            <label>The GPU memory's used percentage at which Auto steps down to the bare minimum, plain rectangles without the window pictures. A hidden knob.</label>
+            <default>95</default>
+        </entry>
         <entry name="PanInertia" type="Bool">
             <label>A pan the hand lets go of keeps the plane moving, slowing by PanFriction, so a flick carries. A drag that pauses before the release, or a slow one, stops where it is put.</label>
             <default>true</default>

@@ -23,6 +23,8 @@
 #include <QJsonObject>
 #include <QLibrary>
 #include <QLoggingCategory>
+#include <QQmlContext>
+#include <QQmlEngine>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QTextStream>
@@ -75,6 +77,47 @@ static uint parseHoldButtons(const QString &spec)
     return mask;
 }
 
+CanvasSceneHelper::CanvasSceneHelper(QObject *parent)
+    : QObject(parent)
+{
+    for (Window *w : workspace()->windows()) {
+        watch(w);
+    }
+    connect(workspace(), &Workspace::windowAdded, this, &CanvasSceneHelper::watch);
+}
+
+void CanvasSceneHelper::watch(Window *window)
+{
+    connect(window, &Window::shadowChanged, this, [this]() {
+        ++m_revision;
+        Q_EMIT revisionChanged();
+    });
+}
+
+QVariantList CanvasSceneHelper::frameInTexture(QObject *window) const
+{
+    const Window *w = qobject_cast<Window *>(window);
+    if (!w) {
+        return {};
+    }
+    // The texture is KWin's render of visibleGeometry (the frame and its shadow), stretched over
+    // the whole texture (WindowThumbnailSource::update); the frame is where it is inside that.
+    const RectF visible = w->visibleGeometry();
+    const RectF frame = w->frameGeometry();
+    return {frame.x() - visible.x(), frame.y() - visible.y(), frame.width(), frame.height(), visible.width(), visible.height()};
+}
+
+int CanvasSceneHelper::offscreenWindows() const
+{
+    int count = 0;
+    for (const Window *w : workspace()->windows()) {
+        if (w->isOffscreenRendering() && !w->isDesktop()) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 CanvasPassthrough::CanvasPassthrough()
     : Plugin()
     // KWin inserts a filter before the first one of equal or greater weight,
@@ -89,6 +132,13 @@ CanvasPassthrough::CanvasPassthrough()
         QTimer::singleShot(200 * i, this, [this]() {
             if (!m_registered) {
                 m_registered = QDBusConnection::sessionBus().registerObject(s_path, this, QDBusConnection::ExportScriptableSlots);
+            }
+            // The scene's helper goes on KWin's QML engine the same way: the effects handler and
+            // the workspace may still be coming up when the plugin loads. The scene reads it when
+            // its views are made, at the first open, well after this.
+            if (!m_sceneHelper && effects && effects->qmlEngine() && workspace()) {
+                m_sceneHelper = new CanvasSceneHelper(this);
+                effects->qmlEngine()->rootContext()->setContextProperty(QStringLiteral("canvasPlugin"), m_sceneHelper);
             }
         });
     }
@@ -147,6 +197,10 @@ CanvasPassthrough::~CanvasPassthrough()
 {
     QDBusConnection::sessionBus().unregisterObject(s_path);
     input()->uninstallInputEventFilter(this);
+    // The scene must not keep a pointer to the helper this deletes with it.
+    if (m_sceneHelper && effects && effects->qmlEngine()) {
+        effects->qmlEngine()->rootContext()->setContextProperty(QStringLiteral("canvasPlugin"), nullptr);
+    }
 }
 
 QString CanvasPassthrough::probe() const
@@ -498,39 +552,47 @@ void CanvasPassthrough::windowAction(const QString &action)
     }
 }
 
-// The GPU's busy share via NVML, loaded on demand with QLibrary so the
-// plugin carries no link-time dependency on the NVIDIA driver. Without the
-// driver (or on another vendor's GPU) this stays -1 and the CPU channel
-// alone governs the ladder.
-static int nvmlBusy()
+// The GPU's busy share and the used share of its memory via NVML, loaded on
+// demand with QLibrary so the plugin carries no link-time dependency on the
+// NVIDIA driver. Without the driver (or on another vendor's GPU) both stay
+// -1 and the CPU and memory channels alone govern the ladder. The memory
+// matters on its own: a game holding most of it leaves the compositor's
+// textures (every thumbnail is one) a few allocations from failing, and a
+// full card is what wedged the driver on 2026-10-30.
+static void nvmlRead(int *busy, int *vram)
 {
+    *busy = -1;
+    *vram = -1;
     // Initialised once: nvmlInit is reference-counted and not free, and this
     // runs every couple of seconds for the whole session. The device handle
-    // is kept with it; a failed start leaves the channel at -1 for good.
+    // is kept with it; a failed start leaves both channels at -1 for good.
     static bool tried = false;
     static void *dev = nullptr;
     static int (*utilFn)(void *, void *) = nullptr;
+    static int (*memFn)(void *, void *) = nullptr;
     if (!tried) {
         tried = true;
         static QLibrary lib(QStringLiteral("libnvidia-ml.so.1"));
         if (lib.load()) {
             auto initFn = (int (*)())lib.resolve("nvmlInit_v2");
             auto handleFn = (int (*)(unsigned, void **))lib.resolve("nvmlDeviceGetHandleByIndex_v2");
-            auto util = (int (*)(void *, void *))lib.resolve("nvmlDeviceGetUtilizationRates");
-            if (initFn && handleFn && util && initFn() == 0 && handleFn(0, &dev) == 0 && dev) {
-                utilFn = util;
+            if (initFn && handleFn && initFn() == 0 && handleFn(0, &dev) == 0 && dev) {
+                utilFn = (int (*)(void *, void *))lib.resolve("nvmlDeviceGetUtilizationRates");
+                memFn = (int (*)(void *, void *))lib.resolve("nvmlDeviceGetMemoryInfo");
             }
         }
     }
-    if (!utilFn) {
-        return -1;
-    }
-    // nvmlUtilization_t is two unsigned ints: gpu, then memory.
+    // nvmlUtilization_t is two unsigned ints: gpu, then memory (the memory
+    // controller's busy share, not how full the memory is).
     unsigned int rates[2] = {0, 0};
-    if (utilFn(dev, rates) != 0) {
-        return -1;
+    if (utilFn && utilFn(dev, rates) == 0) {
+        *busy = int(rates[0]);
     }
-    return int(rates[0]);
+    // nvmlMemory_t is three unsigned long longs: total, free, used.
+    unsigned long long memory[3] = {0, 0, 0};
+    if (memFn && memFn(dev, memory) == 0 && memory[0] > 0) {
+        *vram = int(100.0 * double(memory[2]) / double(memory[0]));
+    }
 }
 
 QString CanvasPassthrough::load() const
@@ -540,7 +602,8 @@ QString CanvasPassthrough::load() const
     // line (all cores together, so a four-core game pegs it at ~100 the
     // same as an eight-core one). load is the one-minute average and mem
     // the available memory, both for the trace. gpu is the GPU's busy
-    // share via NVML, or -1 where the driver is absent. A few small
+    // share and vram the used share of its memory, via NVML, each -1
+    // where the driver is absent. A few small
     // reads, a few microseconds; the effect polls it every couple of
     // seconds only.
     qulonglong total = 0;
@@ -591,8 +654,10 @@ QString CanvasPassthrough::load() const
         // reads, alongside the CPU and the GPU.
         mem = memTotal ? int(100 - 100.0 * double(memAvail) / double(memTotal)) : 0;
     }
-    const int gpu = nvmlBusy();
-    return QStringLiteral("cpu=%1 load=%2 mem=%3 gpu=%4").arg(cpu).arg(load1, 0, 'f', 2).arg(mem).arg(gpu);
+    int gpu = -1;
+    int vram = -1;
+    nvmlRead(&gpu, &vram);
+    return QStringLiteral("cpu=%1 load=%2 mem=%3 gpu=%4 vram=%5").arg(cpu).arg(load1, 0, 'f', 2).arg(mem).arg(gpu).arg(vram);
 }
 
 int CanvasPassthrough::modifiers() const

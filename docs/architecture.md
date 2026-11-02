@@ -853,7 +853,7 @@ growing list.
 | `moved` | `win`, `cls`, `dx`, `dy`, `open`, `quiet`, `pinned`, `floats`, `since …` | a real window's position changed by something other than the canvas and was adopted into the plane (a move the classifier did not take for KWin's reachability rule: see *Frame authority*) |
 | `reverted` | `win`, `cls`, `dx`, `dy`, `open`, `quiet`, `since …` | something other than the hand or the canvas moved a window from out of reach to in reach, and the canvas put it back (*Frame authority*); `since` is the milliseconds since the last open, close, focus change, dock event and layout change, `-` when none in five seconds |
 | `landed` | `win`, `dx`, `dy` | a floated window took its picture's spot as its plane coordinates when the canvas was left |
-| `stall` | `ms`, `cam`, `quiet`, `entries`, `ql`, `cpu`, `gpu`, `mem` | a physics tick 60 ms or more late, with what the camera was doing (`goal`, `fling`, `-`) and the effect's last load readings; at most 40 a session; `kwin-canvas perf` lists the last 12 with their times |
+| `stall` | `ms`, `cam`, `quiet`, `entries`, `ql`, `cpu`, `gpu`, `mem`, `vram` | a physics tick 60 ms or more late, with what the camera was doing (`goal`, `fling`, `-`) and the effect's last load readings (`vram` how full the GPU's memory is); at most 40 a session; `kwin-canvas perf` lists the last 12 with their times |
 
 ### What KWin does not do for a scene effect, and the plugin does
 
@@ -875,18 +875,36 @@ Three things a QML scene effect cannot reach, so the pass-through plugin does th
   window that had gone, `128` after `117`); and a window delegate's frame handler follows the window
   only while the canvas is open, as `resync` does (closed, it judged the canvas's own 1:1 shift
   against the last open's entries as KWin's pull and put the window back, `30-commit`).
-  `ViewCaching` turns it off.
+  A kept scene must also be idle: a thumbnail that has a window is work for KWin whether or not
+  anything draws it. KWin draws the window into the thumbnail's texture again on every frame it
+  changes (`WindowThumbnailSource`, on `preFrameRender`, per scene view and window) and sends a
+  hidden or minimized one frame callbacks at the screen's rate so it keeps drawing
+  (`Window::refOffscreenRendering`). So the scene's thumbnails have their window only while the
+  canvas is up (the window picture not at bare either, where it is not drawn), and
+  `DesktopBackground`, which picks its own window, is made only for a wallpaper the canvas draws
+  through it: a video wallpaper was copied for every frame and every screen, open or closed. A
+  thumbnail item keeps the last texture it was given, so a reopen shows that picture at once and
+  the live one a frame later. `offscreen=` on the state line is the plugin's
+  `offscreenWindows()`, the application windows KWin draws offscreen: 0 for a closed canvas
+  (`220`) and at bare (`116`). `ViewCaching` turns view caching off.
 - **Rounded corners on the thumbnails.** `WindowThumbnailItem` renders the window's item straight
   through KWin's `ItemRenderer` into a texture, past the effects chain, so a window the Rounded
   Corners effect (kwin4_effect_shapecorners) shapes on the desktop is square on the canvas.
   `cornerStyle()` reads that effect's settings (`[Round-Corners]` in kwinrc, with its own defaults)
   and whether it is loaded; `Logic.cornerRadius` applies its rules (normal windows and dialogs,
   its exclusions and inclusions by class or the title's last part, no corners when maximized,
-  tiled or fullscreen if it says so, active and inactive radii); the thumbnail is drawn into a
-  layer and `shaders/corners.frag` (a circle blended toward a power-4 superellipse by the
-  squircle setting) cuts the corners. The layer holds the item's bounds, which is the window: the
-  thumbnail's texture also holds the shadow and is drawn partly outside the item, and that offset
-  is not readable from QML. `ThumbnailCorners` turns it off. The outlines are not drawn.
+  tiled or fullscreen if it says so, active and inactive radii); `shaders/corners.frag` (a circle
+  blended toward a power-4 superellipse by the squircle setting) draws the picture with the
+  corners cut, straight from KWin's thumbnail texture. That texture is the window's
+  `visibleGeometry`, the frame and its shadow, and where the frame sits in it is readable only
+  from C++: the plugin puts a `CanvasSceneHelper` on KWin's QML engine (the context property
+  `canvasPlugin`), whose `frameInTexture(window)` answers synchronously and whose `revision`
+  changes on any window's `shadowChanged`. The thumbnail item stays in the scene at opacity 0, so
+  KWin keeps handing it the window's frames, and the shader samples its texture through that
+  frame. The canvas allocates nothing per window: the layer this replaced was a second texture of
+  the window's full size in device pixels per window, drawn again on every zoom step. With a
+  plugin older than the helper the picture still goes through that layer. The state line's
+  `scenehelper=` says which. `ThumbnailCorners` turns it off. The outlines are not drawn.
 - **Blur behind the thumbnails.** The blur effect draws behind a translucent window as KWin
   composites it, and a thumbnail is rendered past it, so a translucent window showed the plane
   sharp behind it. `blurStyle()` says which blur effect is loaded (`better_blur_dx` or KWin's

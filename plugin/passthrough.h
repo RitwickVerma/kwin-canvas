@@ -23,6 +23,50 @@ class SurfaceInterface;
 }
 
 /**
+ * The canvas scene's in-process helper, set on KWin's QML engine as the context property
+ * canvasPlugin. A thumbnail's texture is KWin's own render of the window with its shadow
+ * (Window::visibleGeometry), and where the window sits inside it is readable only from C++:
+ * frameInTexture answers that synchronously, so the scene draws a window's picture straight from
+ * KWin's texture with the Rounded Corners shape instead of rendering it into a layer of its own
+ * (a second full-size texture and a second pass per window). revision changes whenever a
+ * window's shadow does, which is what moves the window inside its texture.
+ */
+class CanvasSceneHelper : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(int revision READ revision NOTIFY revisionChanged)
+
+public:
+    explicit CanvasSceneHelper(QObject *parent = nullptr);
+
+    int revision() const
+    {
+        return m_revision;
+    }
+    /**
+     * The window's frame inside its thumbnail texture: [left, top, frame width, frame height,
+     * visible width, visible height] in logical pixels, left and top measured from the
+     * texture's edge; empty when @p window is not a KWin window.
+     */
+    Q_INVOKABLE QVariantList frameInTexture(QObject *window) const;
+    /**
+     * How many application windows KWin is drawing offscreen for a thumbnail
+     * (Window::isOffscreenRendering): each is copied on every frame it changes and, hidden or
+     * minimized, kept drawing at the screen's rate. A closed canvas should hold none; the state
+     * line reports it. Desktop windows are left out: the scene keeps a picture wallpaper's, which
+     * never changes.
+     */
+    Q_INVOKABLE int offscreenWindows() const;
+
+Q_SIGNALS:
+    void revisionChanged();
+
+private:
+    void watch(KWin::Window *window);
+    int m_revision = 0;
+};
+
+/**
  * Input pass-through for the kwin-canvas effect.
  *
  * While the canvas is open it holds every input event, and the windows on
@@ -145,11 +189,12 @@ public Q_SLOTS:
     Q_SCRIPTABLE QString state() const;
     /**
      * The machine's load, for the fidelity ladder: "cpu=N load=NN.NN
-     * mem=MMMM gpu=GGG". cpu is the busy percentage since the previous
-     * call (0 on the first), load is the one-minute average, mem is the
-     * memory's used share as a percentage, gpu is the GPU's busy share
-     * via NVML or -1 where the driver is absent. Cheap: three /proc
-     * reads, polled every couple of seconds while the overworld is open.
+     * mem=MMMM gpu=GGG vram=VVV". cpu is the busy percentage since the
+     * previous call (0 on the first), load is the one-minute average, mem
+     * is the memory's used share as a percentage, gpu is the GPU's busy
+     * share and vram the used share of its memory, both via NVML or -1
+     * where the driver is absent. Cheap: three /proc reads, polled every
+     * couple of seconds while the overworld is open.
      */
     Q_SCRIPTABLE QString load() const;
     // The live keyboard modifier mask, for the switcher's release
@@ -274,6 +319,8 @@ private:
      * popup): published to the effect so its scene stands back and the
      * chrome gets the click natively. */
     bool m_chromeHover = false;
+    /** The QML scene's helper (CanvasSceneHelper), once KWin's QML engine has it. */
+    QPointer<CanvasSceneHelper> m_sceneHelper;
     mutable qulonglong m_prevTotal = 0;
     mutable qulonglong m_prevIdle = 0;
 };
