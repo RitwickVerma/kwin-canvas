@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
 # shellcheck source=../tests/lib.sh
-scenario_desc="view caching: with the plugin the scene is kept between openings, so an overview after the first resumes a built scene and reaches its first frame sooner; the kept scene holds no window offscreen while closed; the reused scene still takes the keyboard, shows its toolbar, searches, slides and leaves no window moved; ViewCaching off builds per open again"
+scenario_desc="view caching: with the plugin the scene is kept between openings, so an overview after the first resumes a built scene and reaches its first frame sooner; the kept scene holds no window offscreen while closed and is let go when the GPU's memory runs short; the reused scene still takes the keyboard, shows its toolbar, searches, slides and leaves no window moved; ViewCaching off builds per open again"
 
 cached() { c state >/dev/null; grep -o ' cached=[01]' <<<"$(head -1 <<<"$LAST_STATE")" | cut -d= -f2; }
 toggle_chord() { nq org.kde.kglobalaccel /component/kwin org.kde.kglobalaccel.Component.invokeShortcut "Toggle Canvas" >/dev/null 2>&1; }
@@ -61,6 +61,33 @@ run_scenario() {
     local d; d=$({ magick compare -metric RMSE "$OUT/vc-a.png" "$OUT/vc-b.png" null: 2>&1 || true; } | sed -n 's/.*(\([0-9.e-]*\)).*/\1/p')
     assert_true "the reused scene shows its toolbar as the first did (rmse $d)" "$(awk -v d="${d:-1}" 'BEGIN{print (d < 0.02)}')" -eq 1
     c cancel >/dev/null; sleep 0.8
+
+    # A full card lets the kept scene go: with VramReduced at 0 any reading of the GPU's memory
+    # (the host's real card) is past it, and within a few seconds the closed canvas drops its
+    # views. The next open builds the scene afresh. (No NVML on the host: nothing to read.)
+    c state
+    assert_eq "a closed canvas keeps its scene" "$(sget kept)" 1
+    local kpid rss0 rss1 kept=1
+    kpid=$(pgrep -f -- "--socket wayland-$NEST_NAME" | while read -r p; do [ "$(cat /proc/"$p"/comm 2>/dev/null)" = kwin_wayland ] && echo "$p"; done | head -1)
+    rss0=$(awk '/VmRSS/{print $2}' "/proc/${kpid:-0}/status" 2>/dev/null)
+    setcfg VramReduced 0
+    for _ in $(seq 1 12); do sleep 1; c state; kept=$(sget kept); [ "$kept" = 0 ] && break; done
+    if nvidia-smi -L >/dev/null 2>&1; then
+        assert_eq "a full GPU memory lets the kept scene go" "$kept" 0
+        sleep 1
+        rss1=$(awk '/VmRSS/{print $2}' "/proc/${kpid:-0}/status" 2>/dev/null)
+        echo "# kwin's resident memory with the kept scene ${rss0:-?} kB, after letting it go ${rss1:-?} kB (software rendering: the scene's buffers are in it)"
+    else
+        skip "no NVIDIA GPU on the host: the GPU's memory cannot be read"
+    fi
+    setcfg VramReduced 100
+    open_1to1; sleep 0.6; shot "$OUT/vc-rebuilt.png" >/dev/null
+    magick "$OUT/vc-rebuilt.png" -crop 720x40+600+8 +repage "$OUT/vc-c.png"
+    d=$({ magick compare -metric RMSE "$OUT/vc-a.png" "$OUT/vc-c.png" null: 2>&1 || true; } | sed -n 's/.*(\([0-9.e-]*\)).*/\1/p')
+    assert_true "the scene built afresh shows its toolbar as the first did (rmse $d)" "$(awk -v d="${d:-1}" 'BEGIN{print (d < 0.02)}')" -eq 1
+    c cancel >/dev/null; sleep 0.8
+    c state
+    assert_eq "and closed again, the new scene is kept" "$(sget kept)" 1
 
     # Off: built per open again.
     setcfg ViewCaching false

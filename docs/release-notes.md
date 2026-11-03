@@ -21,8 +21,13 @@ Unreleased:
 - The fidelity ladder watches the GPU's memory. When a game fills the card, the canvas sheds its
   blur and then its window pictures before KWin's own allocations start failing (a full card
   wedged the NVIDIA driver on 2026-10-30 and left Plasma drawing in software). The three Vram
-  thresholds are hidden knobs beside the others; `kwin-canvas doctor` reports the reading.
-  All four need the plugin updated: `kwin-canvas fix-plugin`.
+  thresholds are hidden knobs beside the others; `kwin-canvas doctor` reports the reading. A
+  closed canvas gives its kept scene back too: once the card is past `VramReduced` it lets the
+  scene go, and the next overview builds it fresh.
+- A closed canvas no longer works on every mouse move. The pass-through plugin used to run its
+  hover logic for every motion of the session, a game's included; closed, it now only notes what
+  is under the pointer.
+  All six need the plugin updated: `kwin-canvas fix-plugin`.
 
 - The Canvas window decoration has no border inside the window any more: its resize band lies
   outside the window, so an effect that shapes windows (Rounded Corners, an outline) shapes the

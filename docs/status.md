@@ -111,10 +111,24 @@ the state line, `220`; at bare 5 to 0, `116`); a minimized client that draws on 
 (`es2gears_wayland`) used 8.7% of a core after the canvas had been opened and closed and 0.0% now, as
 before any open. KWin's own CPU with one window redrawing did not move measurably on one output in
 software. Not measured: the GPU-side copies on the maintainer's 4096x1152 screen, and frame times of the
-new corners on a GPU. The closed scene still holds each window's last picture in GPU memory, so a reopen
-is instant; dropping them under memory pressure is open. Full suite in a software nest: 871 pass, 1 fail,
-13 skip; the one failure was `126-grasp-landing`'s known intermittent check, and `126` alone then passed
-three runs of three.
+new corners on a GPU. Full suite in a software nest: 871 pass, 1 fail, 13 skip; the one failure was
+`126-grasp-landing`'s known intermittent check, and `126` alone then passed three runs of three.
+
+Follow-up the same day: the closed scene let go under memory pressure, and a quiet input filter. The kept
+scene held its views' swapchains and every window's last picture in GPU memory for good; now a closed
+canvas reads the GPU's memory every 5 s while it keeps a scene (`gpuMemory()`, in process) and drops the
+scene at `VramReduced` (`kept=`, `220`). In the nest, KWin's resident memory fell from 454940 to
+437712 kB on the drop (software rendering, one 1920x1080 output, five small windows); the GPU memory
+freed on the maintainer's card is not measured. The plugin's filter ran its hover logic for every motion
+of the session while closed, and its idle clock restarted on every event and repeated every 4 s for
+good; closed, motion now stops after the chrome flag. KWin's CPU under a stream of about 1850 motions a
+second over a window, closed canvas, three runs each: 18.2 to 18.5% before, 17.4 to 19.3% after, so the
+filter's share is lost in the noise of the nest's software cursor; not claimed as a saving. Full suite
+after both: 872 pass, 4 fail, 13 skip. The failures were `87-passthrough-zoom` (the hover over the
+picture), `94-physics` (a spring-on drag landing 23 px off) and `98-snap` (the grid snap 9 and 12 px
+off), none of them flaky before; run alone straight after, the three gave 34 pass, 0 fail. Read as the
+batch's order or the machine's load, not as this change, but not proven so: watch them in the next
+full run.
 
 **Window coordinates drifting (2026-10-20).** Causes found and fixed: a floated window rode to a screen
 edge on every slide (`178`), and KWin's reachability rule moved the windows the canvas parks beyond every

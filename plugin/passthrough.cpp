@@ -148,9 +148,10 @@ CanvasPassthrough::CanvasPassthrough()
     // The passthrough lets go on its own: after a while with no input -
     // the pointer still, no keys - the canvas takes the input back, so
     // the Esc the user reaches for is the canvas's, not the window's,
-    // until the next touch.
+    // until the next touch. The clock runs only while the canvas has the
+    // input (setActive): every touch restarts it, and it fires once.
     m_idleTimer.setInterval(4000);
-    m_idleTimer.setSingleShot(false);
+    m_idleTimer.setSingleShot(true);
     connect(&m_idleTimer, &QTimer::timeout, this, [this]() {
         if (m_active && !m_idle) {
             m_idle = true;
@@ -219,7 +220,18 @@ void CanvasPassthrough::setActive(bool active)
     // to the canvas - the wheel right after the overworld opens zooms it,
     // not the window that happens to sit under the pointer.
     m_settled = false;
-    if (!active) {
+    // The idle clock starts with the activation, as if the hand had just
+    // touched, and a closed canvas has no idle: there is no input to take back.
+    if (m_idle) {
+        m_idle = false;
+        if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+            canvas->setProperty("passthroughIdle", false);
+        }
+    }
+    if (active) {
+        m_idleTimer.start();
+    } else {
+        m_idleTimer.stop();
         clearGrab();
         leave();
     }
@@ -593,6 +605,14 @@ static void nvmlRead(int *busy, int *vram)
     if (memFn && memFn(dev, memory) == 0 && memory[0] > 0) {
         *vram = int(100.0 * double(memory[2]) / double(memory[0]));
     }
+}
+
+int CanvasSceneHelper::gpuMemory() const
+{
+    int busy = -1;
+    int vram = -1;
+    nvmlRead(&busy, &vram);
+    return vram;
 }
 
 QString CanvasPassthrough::load() const
@@ -980,6 +1000,14 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
     if (m_clickWindow && (event->position - m_clickPos).manhattanLength() > 6) {
         m_clickWindow = nullptr;
     }
+    // A closed canvas has nothing to hover, rest or wake: past the chrome and
+    // the click candidate the motion is the desktop's. This filter sees every
+    // motion of the session, a game's included (a gaming mouse sends a
+    // thousand a second), so it stops here. The hold opens the canvas from
+    // the closed desktop and keeps the whole path.
+    if (!m_active && !m_holdDown) {
+        return false;
+    }
     if (m_idle) {
         m_idle = false;
         if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
@@ -1076,7 +1104,9 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     // stops the moment a button lands.
     publishRest(nullptr);
     m_idle = false;
-    m_idleTimer.start();
+    if (m_active) {
+        m_idleTimer.start();
+    }
     // Every button change is published to the effect: a focus fly must wait
     // until the hand lets go, or the opening canvas would grab the drag.
     const bool wasAny = m_allButtons != Qt::NoButton;
@@ -1227,13 +1257,12 @@ bool CanvasPassthrough::keyboardKey(KeyboardKeyEvent *event)
     // The idle's keys are the canvas's - the Esc the user reaches for is
     // the canvas's cancel, not the window's. Typing restarts the idle
     // clock but hands no key over; the key itself stays the canvas's
-    // while the passthrough is idle.
-    if (m_idle) {
+    // while the passthrough is idle. A closed canvas's keys are the desktop's.
+    if (!m_active || m_idle) {
         return false;
     }
-    m_idle = false;
     m_idleTimer.start();
-    if (!m_active || event->state == KeyboardKeyState::Repeated) {
+    if (event->state == KeyboardKeyState::Repeated) {
         return false;
     }
     // Heavily scoped: the keys belong to the window only while the pointer
@@ -1275,12 +1304,11 @@ bool CanvasPassthrough::pointerAxis(PointerAxisEvent *event)
     }
     // The idle's wheel is the canvas's, and it does not wake the
     // passthrough - only the pointer's touch does.
-    if (m_idle) {
+    if (!m_active || m_idle) {
         return false;
     }
-    m_idle = false;
     m_idleTimer.start();
-    if (!m_active || !m_settled || m_grabGround) {
+    if (!m_settled || m_grabGround) {
         return false;
     }
     // The system's own chrome takes its wheel natively: a scroll over the

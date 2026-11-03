@@ -57,6 +57,12 @@ public:
      * never changes.
      */
     Q_INVOKABLE int offscreenWindows() const;
+    /**
+     * How full the GPU's memory is, as a used percentage via NVML, or -1 without it. Synchronous
+     * and cheap (one driver call): a closed canvas asks it every few seconds while it keeps a
+     * scene, and lets the scene go when a game fills the card.
+     */
+    Q_INVOKABLE int gpuMemory() const;
 
 Q_SIGNALS:
     void revisionChanged();

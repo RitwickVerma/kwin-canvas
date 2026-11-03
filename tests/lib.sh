@@ -101,6 +101,7 @@ sget() {
         mem)      sed -n 's/.* mem=\([0-9]*\).*/\1/p' <<<"$line" ;;
         vram)     sed -n 's/.* vram=\([0-9]*\).*/\1/p' <<<"$line" ;;
         offscreen) sed -n 's/.* offscreen=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        kept)     sed -n 's/.* kept=\([0-9]*\).*/\1/p' <<<"$line" ;;
         active)   sed -n 's/.* active=\(.*\)$/\1/p' <<<"$line" ;;
         nactivities) grep -c '^  {' <<<"$LAST_STATE" ;;
     esac

@@ -4996,6 +4996,33 @@ KWin.SceneEffect {
     // open resumes a built scene instead of creating one (about half of an overview's first
     // frame). ViewCaching turns it off. Asked at every reconfigure and until it took.
     property bool viewCached: false
+    // A kept scene holds GPU memory while the canvas is closed: each view's buffers, the size of
+    // its screen, and every window's last picture. That is cheap until something else wants the
+    // card, and a game filling it is what wedged the driver on 2026-11-02. So while a scene is
+    // kept the GPU's memory is read every few seconds (one NVML call, the plugin's
+    // canvasPlugin.gpuMemory), and at VramReduced the scene is let go: KWin drops its cached
+    // views when the delegate changes, and the next open builds the scene afresh, as with
+    // ViewCaching off. Without NVML, or with an older plugin, the scene is kept.
+    property bool sceneKept: false
+    property bool gpuMemoryReadable: true
+    function releaseScene() {
+        if (visible || !sceneKept) return;
+        sceneKept = false;
+        effect.delegate = null;
+        effect.delegate = sceneDelegate;
+        dbg("scene", "released the kept scene: the GPU's memory is short");
+    }
+    Timer {
+        interval: 5000
+        repeat: true
+        running: !effect.visible && effect.sceneKept && effect.gpuMemoryReadable
+        onTriggered: {
+            const used = typeof canvasPlugin !== "undefined" && canvasPlugin && typeof canvasPlugin.gpuMemory === "function" ? canvasPlugin.gpuMemory() : -1;
+            if (used < 0) { effect.gpuMemoryReadable = false; return; }
+            const at = Number(effect.configuration.VramReduced);
+            if (used >= (Number.isFinite(at) ? at : 80)) effect.releaseScene();
+        }
+    }
     function publishViewCaching() {
         viewCachingCall.arguments = [configuration.ViewCaching !== false];
         viewCachingCall.call();
@@ -6163,6 +6190,7 @@ KWin.SceneEffect {
             + " game=" + (gameMode ? 1 : 0)
             + " safe=" + (safeMode ? 1 : 0)
             + " cached=" + (viewCached ? 1 : 0)
+            + " kept=" + (sceneKept ? 1 : 0)
             + " corners=" + (cornerStyle.on ? entries.map(cornerRadiusOf).join(",") : "off")
             // The plugin's scene helper (ui.qml's frameTex): with it the corners are cut from
             // KWin's own texture, without it through a layer per window.
@@ -6227,6 +6255,8 @@ KWin.SceneEffect {
             searchHitSet = ({});
             camStop();
             lastCloseAt = Date.now();
+            // KWin kept the views (view caching); releaseScene lets them go when the card fills.
+            sceneKept = viewCached;
             if (perf) perfTicksReport();
         }
     }
@@ -6284,15 +6314,20 @@ KWin.SceneEffect {
     // their own cursor, and both are disabled while Space is held.
 
     // The scene's shared components live in ui.qml (the hot-reload side).
-    delegate: Loader {
-        source: Qt.resolvedUrl("ui.qml") + (effect.hotRev > 0 ? "?rev=" + effect.hotRev : "")
-        // The loaded scene must own the keyboard focus: KWin delivers the
-        // scene's keys to the QuickView's active focus item, and a static
-        // focus binding inside a loaded item does not take it - the split
-        // taught us that the hard way. Re-assert on every load.
-        onLoaded: item.forceActiveFocus();
-        onStatusChanged: if (status === Loader.Error) effect.sceneFailed()
+    // Named, so releaseScene can hand KWin the same delegate again.
+    Component {
+        id: sceneDelegate
+        Loader {
+            source: Qt.resolvedUrl("ui.qml") + (effect.hotRev > 0 ? "?rev=" + effect.hotRev : "")
+            // The loaded scene must own the keyboard focus: KWin delivers the
+            // scene's keys to the QuickView's active focus item, and a static
+            // focus binding inside a loaded item does not take it - the split
+            // taught us that the hard way. Re-assert on every load.
+            onLoaded: item.forceActiveFocus();
+            onStatusChanged: if (status === Loader.Error) effect.sceneFailed()
+        }
     }
+    delegate: sceneDelegate
 }
 
 

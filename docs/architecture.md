@@ -887,6 +887,21 @@ Three things a QML scene effect cannot reach, so the pass-through plugin does th
   the live one a frame later. `offscreen=` on the state line is the plugin's
   `offscreenWindows()`, the application windows KWin draws offscreen: 0 for a closed canvas
   (`220`) and at bare (`116`). `ViewCaching` turns view caching off.
+
+  Idle is not free, though: a kept scene holds GPU memory, each view's swapchain (KWin's
+  `OffscreenQuickView` keeps it while hidden) and every window's last picture. That costs nothing
+  until something else wants the card, and a game filling it wedged the driver. So while a scene is
+  kept, the effect reads the GPU's memory every 5 s through the plugin's `gpuMemory()` (one NVML
+  call, in process), and at `VramReduced` it lets the scene go. `QuickSceneEffect` has no public
+  call that drops cached views, but `setDelegate` drops them when the delegate changes, so
+  `releaseScene` sets the delegate to null and back. The next open builds the scene as with
+  `ViewCaching` off. `kept=` on the state line shows it (`220`). Without NVML, or with an older
+  plugin, the scene is kept.
+- **The pass-through filter while the canvas is closed.** The plugin's input filter sees every
+  event of the session, a game's included. Closed, a motion publishes the chrome flag and clears a
+  click candidate that turned into a drag, and stops there; only the hold, which opens the canvas
+  from the closed desktop, takes the whole path. The idle clock runs only while the canvas has the
+  input: `setActive` starts and stops it, and it fires once.
 - **Rounded corners on the thumbnails.** `WindowThumbnailItem` renders the window's item straight
   through KWin's `ItemRenderer` into a texture, past the effects chain, so a window the Rounded
   Corners effect (kwin4_effect_shapecorners) shapes on the desktop is square on the canvas.
