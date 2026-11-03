@@ -1098,6 +1098,50 @@ the separators hidden there. It shows the current activity and zoom, one swatch 
 actions, Enter and Cancel, a help panel rendered from the binding config, and a menu that opens
 the settings pages through `KCMLauncher.openSystemSettings`, as Overview does.
 
+## The map widget
+
+The corner lens lives only inside the open canvas; `applet-map` (**Canvas Map**) is the same map
+as a Plasma widget, on the desktop or in a panel, with the canvas closed. It needs the plugin.
+
+- **The effect is the one authority.** Where a window sits on the plane is the effect's mapping
+  (its frame plus its activity's target, the separate cameras' parked spots), so the widget never
+  repeats it. `mapPlane()` answers JSON: one camera rectangle per screen, the frames in palette
+  order with their colour and a flag for the current activity's, and every window the canvas
+  draws (`isCanvasWindow`, every activity) with its id, caption, plane rectangle, focus and
+  whether it is on the current activity. Open, the windows are the live entries and the camera
+  is the moving view; closed, they are the desk at rest (`planeSpot`, `makeEntry`'s mapping
+  without its bookkeeping, since a read must change nothing).
+- **The plugin relays.** `CanvasMap` (`plugin/map.cpp`) is `/KWinCanvas/Map`,
+  `org.kde.kwin.canvas.Map`: `read()` calls `mapPlane` in process, `go(x, y)` and `focus(id)`
+  call `mapGo` and `mapFocus`. What it adds is `changed()`. The effect notices a window's move
+  only while the canvas is open, so the map watches KWin's windows itself (geometry, minimized,
+  hidden, desktops, activities, caption, added, removed, activated, stacking, desktop, outputs)
+  and the effect's camera and entries (the `viewX`, `viewY`, `zoom`, `revision`, `screensRev`,
+  `visible` and `quiet` notify signals), and says changed at most once per 100 ms: the first
+  change starts the clock and the rest of a burst rides it, so a drag still updates ten times
+  a second. It watches nothing until the first read, so a session without the widget pays
+  nothing.
+- **The widget reads on the signal.** It uses Plasma's own D-Bus module
+  (`org.kde.plasma.workspace.dbus`): `SessionBus.asyncCall` for the calls and a `SignalWatcher`
+  whose `dbuschanged` handler reads again, one read in flight at a time. No polling and no process
+  per read; only while the plugin or the effect is missing does it try again, every 10 s. A call
+  with arguments needs the whole list as one tuple signature, `(dd)` for `go`: the module encodes
+  the arguments against it, and `dd` sends the call with none.
+- **The clicks.** A click on a sheet is `mapFocus`: open, the canvas steps into the window as a
+  click on its picture would; closed, the desk slides it into view (`flyToWindow`, whatever
+  `FollowActivation` says, since the click asked for exactly that) before the focus moves, so
+  `onWindowActivated` does not fly it a second time; on another activity the activity switches
+  and the window takes the focus there (`pendingFocus`). A click on the ground is `mapGo`: the
+  plane point comes to the middle of the screen the pointer is on, by `camGo` when open and by
+  the closed slide (`slideTo`) otherwise.
+- **The two forms.** In a panel the compact form is the live map at the panel's thickness, as
+  wide as the plane's aspect asks; a click opens the full map, whose own click closes it again.
+  On the desktop the full map is the widget. Another activity's windows are fainter: they are on
+  the plane but not on the desk the screen shows.
+
+Scenario `224` pins the reading against the effect's state, the lazy signal, `go` and `focus`,
+and the widget itself in the nest's plasmashell (it draws, and a click on it moves the desk).
+
 ## Known limits
 
 - **Frames are not editable.** They are the outputs in KDE's display

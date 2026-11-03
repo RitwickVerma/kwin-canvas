@@ -56,7 +56,7 @@ mkdir -p "$DATA/kwin/effects" "$DATA/kwin/decorations" "$DATA/plasma/plasmoids" 
 # reaches a check. Tests that need a build make one under $T/repo/build.
 REPO_FIXTURE="$T/repo"
 mkdir -p "$REPO_FIXTURE"
-for d in effect wallpaper applet applet-decor decoration shared tools VERSION; do
+for d in effect wallpaper applet applet-decor applet-map decoration shared tools VERSION; do
     ln -sfn "$HERE/$d" "$REPO_FIXTURE/$d"
 done
 
@@ -69,6 +69,7 @@ install_fixture() {
     cp "$HERE/shared/Ground.qml" "$DATA/plasma/wallpapers/kwin-canvas-ground/contents/ui/Ground.qml"
     cp -r "$HERE/applet" "$DATA/plasma/plasmoids/org.kde.kwin.canvas.toggle"
     cp -r "$HERE/applet-decor" "$DATA/plasma/plasmoids/org.kde.kwin.canvas.decor"
+    cp -r "$HERE/applet-map" "$DATA/plasma/plasmoids/org.kde.kwin.canvas.map"
     cp -r "$HERE/decoration" "$DATA/kwin/decorations/kwin-canvas-decoration"
     cp "$CLI" "$H/.local/bin/kwin-canvas"
 }

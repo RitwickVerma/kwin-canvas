@@ -1,0 +1,21 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "verma1997@gmail.com",
+                "Name": "Ritwick Verma"
+            }
+        ],
+        "Category": "Windows and Tasks",
+        "Description": "The canvas's minimap: every window, the activities' frames and the screen's place on the plane, live; a click flies there",
+        "EnabledByDefault": true,
+        "Icon": "map-flat",
+        "Id": "org.kde.kwin.canvas.map",
+        "License": "GPL-2.0-or-later",
+        "Name": "Canvas Map",
+        "Version": "0.1.0",
+        "Website": "https://gitlab.com/ritwick7/kwin-canvas"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

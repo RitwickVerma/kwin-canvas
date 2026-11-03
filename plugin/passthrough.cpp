@@ -36,6 +36,7 @@ Q_LOGGING_CATEGORY(KWIN_CANVAS, "kwin_canvas_passthrough", QtDebugMsg)
 using namespace KWin;
 
 static const QString s_path = QStringLiteral("/KWinCanvas");
+static const QString s_mapPath = QStringLiteral("/KWinCanvas/Map");
 
 // A window caption as one field of the state reply. The reply is split on
 // "|" by the decor applet and read as one line, and real captions carry both
@@ -133,6 +134,10 @@ CanvasPassthrough::CanvasPassthrough()
             if (!m_registered) {
                 m_registered = QDBusConnection::sessionBus().registerObject(s_path, this, QDBusConnection::ExportScriptableSlots);
             }
+            // The map widget's object beside it, with its change signal exported.
+            if (!m_mapRegistered) {
+                m_mapRegistered = QDBusConnection::sessionBus().registerObject(s_mapPath, &m_map, QDBusConnection::ExportScriptableSlots | QDBusConnection::ExportScriptableSignals);
+            }
             // The scene's helper goes on KWin's QML engine the same way: the effects handler and
             // the workspace may still be coming up when the plugin loads. The scene reads it when
             // its views are made, at the first open, well after this.
@@ -196,6 +201,7 @@ CanvasPassthrough::CanvasPassthrough()
 
 CanvasPassthrough::~CanvasPassthrough()
 {
+    QDBusConnection::sessionBus().unregisterObject(s_mapPath);
     QDBusConnection::sessionBus().unregisterObject(s_path);
     input()->uninstallInputEventFilter(this);
     // The scene must not keep a pointer to the helper this deletes with it.

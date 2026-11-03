@@ -8,6 +8,7 @@ EFFECT_ID   := kwin-canvas
 WALL_ID     := kwin-canvas-ground
 APPLET_ID   := org.kde.kwin.canvas.toggle
 APPLET_DECOR_ID := org.kde.kwin.canvas.decor
+APPLET_MAP_ID := org.kde.kwin.canvas.map
 APPLET_DIR   = $(DATA_HOME)/plasma/plasmoids
 DECOR_ID    := kwin-canvas-decoration
 DECOR_DIR    = $(DATA_HOME)/kwin/decorations
@@ -100,12 +101,13 @@ lint-python: ## vulture over the Python: no dead functions, imports or variables
 
 # ---- packages ---------------------------------------------------------------
 stage:
-	rm -rf $(BUILD)/effect $(BUILD)/wallpaper $(BUILD)/applet $(BUILD)/applet-decor $(BUILD)/decoration
+	rm -rf $(BUILD)/effect $(BUILD)/wallpaper $(BUILD)/applet $(BUILD)/applet-decor $(BUILD)/applet-map $(BUILD)/decoration
 	mkdir -p $(BUILD)
 	cp -r effect $(BUILD)/effect
 	cp -r wallpaper $(BUILD)/wallpaper
 	cp -r applet $(BUILD)/applet
 	cp -r applet-decor $(BUILD)/applet-decor
+	cp -r applet-map $(BUILD)/applet-map
 	cp -r decoration $(BUILD)/decoration
 	cp shared/Ground.qml $(BUILD)/effect/contents/ui/Ground.qml
 	cp shared/Ground.qml $(BUILD)/wallpaper/contents/ui/Ground.qml
@@ -116,12 +118,13 @@ install: stage ## Install the effect, the ground wallpaper and the applet as use
 	@$(MAKE) -s copy-packages DATA_HOME=$(DATA_HOME)
 	@mkdir -p $(BIN_DIR) && sed 's|^INSTALLED_FROM=""$$|INSTALLED_FROM="$(CURDIR)"|' $(CLI) > $(BIN_DIR)/kwin-canvas && chmod 755 $(BIN_DIR)/kwin-canvas
 	@mkdir -p $(AUTOSTART_DIR) && sed 's|@BIN@|$(BIN_DIR)|' packaging/kwin-canvas-plugincheck.desktop > $(AUTOSTART_DIR)/kwin-canvas-plugincheck.desktop
-	@echo "installed for $$USER: $(EFFECT_ID), $(WALL_ID), $(APPLET_ID), $(APPLET_DECOR_ID), $(DECOR_ID), $(BIN_DIR)/kwin-canvas"
+	@echo "installed for $$USER: $(EFFECT_ID), $(WALL_ID), $(APPLET_ID), $(APPLET_DECOR_ID), $(APPLET_MAP_ID), $(DECOR_ID), $(BIN_DIR)/kwin-canvas"
 
 # The applets and the decoration, copied into DATA_HOME.
 copy-packages:
 	@mkdir -p $(APPLET_DIR) && rm -rf $(APPLET_DIR)/$(APPLET_ID) && cp -r $(BUILD)/applet $(APPLET_DIR)/$(APPLET_ID)
 	@mkdir -p $(APPLET_DIR) && rm -rf $(APPLET_DIR)/$(APPLET_DECOR_ID) && cp -r $(BUILD)/applet-decor $(APPLET_DIR)/$(APPLET_DECOR_ID)
+	@mkdir -p $(APPLET_DIR) && rm -rf $(APPLET_DIR)/$(APPLET_MAP_ID) && cp -r $(BUILD)/applet-map $(APPLET_DIR)/$(APPLET_MAP_ID)
 	@mkdir -p $(DECOR_DIR) && rm -rf $(DECOR_DIR)/$(DECOR_ID) && cp -r $(BUILD)/decoration $(DECOR_DIR)/$(DECOR_ID)
 
 # The nests' own copy of every package, under build/nest-data: what a test sees
@@ -138,6 +141,7 @@ uninstall: disable ## Turn the effect off and remove the user packages and the C
 	@$(KPT) --type Plasma/Wallpaper --remove $(WALL_ID) >/dev/null 2>&1 && echo "removed: $(WALL_ID)" || echo "not installed: $(WALL_ID)"
 	@rm -rf $(APPLET_DIR)/$(APPLET_ID) && echo "removed: $(APPLET_ID)" || echo "not installed: $(APPLET_ID)"
 	@rm -rf $(APPLET_DIR)/$(APPLET_DECOR_ID) && echo "removed: $(APPLET_DECOR_ID)" || echo "not installed: $(APPLET_DECOR_ID)"
+	@rm -rf $(APPLET_DIR)/$(APPLET_MAP_ID) && echo "removed: $(APPLET_MAP_ID)" || echo "not installed: $(APPLET_MAP_ID)"
 	@rm -f $(BIN_DIR)/kwin-canvas $(AUTOSTART_DIR)/kwin-canvas-plugincheck.desktop
 
 # System-wide layout, the same paths kpackagetool6 --global uses; KPackage
@@ -146,24 +150,26 @@ SYS_EFFECT  := $(DESTDIR)/usr/share/kwin/effects/$(EFFECT_ID)
 SYS_WALL    := $(DESTDIR)/usr/share/plasma/wallpapers/$(WALL_ID)
 SYS_APPLET  := $(DESTDIR)/usr/share/plasma/plasmoids/$(APPLET_ID)
 SYS_APPLET_DECOR := $(DESTDIR)/usr/share/plasma/plasmoids/$(APPLET_DECOR_ID)
+SYS_APPLET_MAP := $(DESTDIR)/usr/share/plasma/plasmoids/$(APPLET_MAP_ID)
 SYS_DECOR   := $(DESTDIR)/usr/share/kwin/decorations/$(DECOR_ID)
 SYS_BIN     := $(DESTDIR)/usr/bin/kwin-canvas
 
 install-system: stage ## Copy the packages into DESTDIR/usr/share and the CLI into DESTDIR/usr/bin (for a PKGBUILD or a .deb rule)
-	rm -rf $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) $(SYS_DECOR)
-	mkdir -p $(dir $(SYS_EFFECT)) $(dir $(SYS_WALL)) $(dir $(SYS_APPLET)) $(dir $(SYS_APPLET_DECOR)) $(dir $(SYS_DECOR)) $(dir $(SYS_BIN))
+	rm -rf $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) $(SYS_APPLET_MAP) $(SYS_DECOR)
+	mkdir -p $(dir $(SYS_EFFECT)) $(dir $(SYS_WALL)) $(dir $(SYS_APPLET)) $(dir $(SYS_APPLET_DECOR)) $(dir $(SYS_APPLET_MAP)) $(dir $(SYS_DECOR)) $(dir $(SYS_BIN))
 	cp -r $(BUILD)/effect $(SYS_EFFECT)
 	cp -r $(BUILD)/wallpaper $(SYS_WALL)
 	cp -r $(BUILD)/applet $(SYS_APPLET)
 	cp -r $(BUILD)/applet-decor $(SYS_APPLET_DECOR)
+	cp -r $(BUILD)/applet-map $(SYS_APPLET_MAP)
 	cp -r $(BUILD)/decoration $(SYS_DECOR)
-	find $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) $(SYS_DECOR) -type d -exec chmod 755 {} +
-	find $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) $(SYS_DECOR) -type f -exec chmod 644 {} +
+	find $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) $(SYS_APPLET_MAP) $(SYS_DECOR) -type d -exec chmod 755 {} +
+	find $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) $(SYS_APPLET_MAP) $(SYS_DECOR) -type f -exec chmod 644 {} +
 	install -m 755 $(CLI) $(SYS_BIN)
-	@echo "installed: $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) $(SYS_DECOR) $(SYS_BIN)"
+	@echo "installed: $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) $(SYS_APPLET_MAP) $(SYS_DECOR) $(SYS_BIN)"
 
 uninstall-system: ## Remove the system-wide copies
-	rm -rf $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) $(SYS_DECOR) $(SYS_BIN)
+	rm -rf $(SYS_EFFECT) $(SYS_WALL) $(SYS_APPLET) $(SYS_APPLET_DECOR) $(SYS_APPLET_MAP) $(SYS_DECOR) $(SYS_BIN)
 
 reload: install ## Reinstall and reload the effect in the live session (QML changes need a KWin restart)
 	-$(QDBUS) org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect $(EFFECT_ID)

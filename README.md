@@ -108,6 +108,7 @@ it would be invisible anyway. `Backdrop=grid` is the old plane.
 | `tools/kwin-canvas` | CLI (bash) | Step in, cancel, open or toggle from a terminal or a VT; status; doctor and perf, which only read |
 | `applet/` | Plasma/Applet | A panel button that fires the Toggle Canvas chord |
 | `applet-decor/` | Plasma/Applet | The decor applet: the focused window's glyphs in the panel, in the pill's language |
+| `applet-map/` | Plasma/Applet | The canvas's minimap as a widget, on the desktop or in a panel: a click flies there (needs the plugin) |
 | `decoration/` | KWin/Decoration | The Canvas window frame: no title bar, the glass pill on the focused window's edge |
 | `dev/nest.sh` | harness | Nested KWin with its own D-Bus and config, driven from the shell |
 
@@ -277,12 +278,14 @@ centre; `cancel`, `open`, `toggle` and `status` are the other subcommands.
 
 It finds the session bus at the user's runtime directory, so it works from
 a VT with no display. The **Canvas** panel applet (`applet/`) is a button
-that fires the Toggle Canvas chord.
+that fires the Toggle Canvas chord, and **Canvas Map** (`applet-map/`, with
+the plugin) is the minimap as a widget on the desktop or in a panel: the
+whole plane at a glance, and a click flies there.
 
 **Troubleshooting: `kwin-canvas doctor`.** When something does not behave, run
 `kwin-canvas doctor` first. It only reads, so it is safe to run mid-game, and
 prints one OK, WARN or FAIL line per check: whether each installed part (the
-effect, the ground wallpaper, both applets, the window decoration, the CLI and
+effect, the ground wallpaper, the three applets, the window decoration, the CLI and
 the plugin) is the same as the repo's, whether the running session is older than
 the files it loaded (`main.qml` and the plugin need a relogin, `ui.qml` a
 `make hot`), whether a global shortcut is bound to a Canvas action and another

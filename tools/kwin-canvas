@@ -200,6 +200,7 @@ doctor_installed() {
     doctor_package installed "wallpaper" "$repo/wallpaper" "$data/plasma/wallpapers/kwin-canvas-ground" "$repo/shared/Ground.qml"
     doctor_package installed "toggle applet" "$repo/applet" "$data/plasma/plasmoids/org.kde.kwin.canvas.toggle"
     doctor_package installed "decor applet" "$repo/applet-decor" "$data/plasma/plasmoids/org.kde.kwin.canvas.decor"
+    doctor_package installed "map applet" "$repo/applet-map" "$data/plasma/plasmoids/org.kde.kwin.canvas.map"
     doctor_package installed "decoration" "$repo/decoration" "$data/kwin/decorations/kwin-canvas-decoration"
     cli="$home/.local/bin/kwin-canvas"
     if [ ! -f "$cli" ]; then
@@ -280,7 +281,7 @@ doctor_session() {
         verdict WARN session "plasmashell is not running: applet and wallpaper staleness not checked"
     else
         newest=$(newest_mtime "$data/plasma/plasmoids/org.kde.kwin.canvas.toggle")
-        newest=$(printf '%s\n%s\n%s\n' "${newest:-0}" "$(newest_mtime "$data/plasma/plasmoids/org.kde.kwin.canvas.decor")" "$(newest_mtime "$data/plasma/wallpapers/kwin-canvas-ground")" | sort -n | tail -n 1)
+        newest=$(printf '%s\n%s\n%s\n%s\n' "${newest:-0}" "$(newest_mtime "$data/plasma/plasmoids/org.kde.kwin.canvas.decor")" "$(newest_mtime "$data/plasma/plasmoids/org.kde.kwin.canvas.map")" "$(newest_mtime "$data/plasma/wallpapers/kwin-canvas-ground")" | sort -n | tail -n 1)
         if [ "${newest:-0}" -gt "$pstart" ]; then
             verdict WARN session "an applet or the ground wallpaper is newer than plasmashell: restart plasmashell (kquitapp6 plasmashell; kstart plasmashell) or relogin"
         else

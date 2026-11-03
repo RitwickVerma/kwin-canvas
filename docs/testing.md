@@ -491,3 +491,16 @@ recording, point OBS at the nest window while `DEMO_FRAMES=0 make demo` runs.
   framebuffer to the window instead of changing the output mode, so resizing
   the nest window on the outer desktop distorts it. Leave it at the invoked
   size, or set `NEST_WIDTH` and `NEST_HEIGHT` before `make nest`.
+- **Plasma's D-Bus module wants a tuple signature.** A widget's
+  `SessionBus.asyncCall` encodes the call's arguments against the message's
+  `signature`, read as one tuple: `(dd)` for two doubles. `dd` encodes to
+  nothing and the call goes out with no arguments, which KWin's log reports as
+  `couldn't handle call to go, no slot matched` while the widget sees no error.
+  An empty signature makes the module introspect the object first; a call with
+  no arguments needs neither. `dbus-monitor` on the nest's bus shows what was
+  really sent.
+- **The nest's plasmashell log is empty.** `$STATE/plasmashell.log` stays at
+  0 bytes: plasmashell's messages go to the journal, and its QML warnings are
+  off there too. A check that greps it for a widget's errors passes whatever
+  the widget does; test a widget by what it does (`224` clicks the map and
+  watches the desk move).

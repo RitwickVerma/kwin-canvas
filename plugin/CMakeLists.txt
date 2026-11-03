@@ -32,6 +32,6 @@ file(READ "${CMAKE_CURRENT_SOURCE_DIR}/../VERSION" CANVAS_VERSION)
 string(STRIP "${CANVAS_VERSION}" CANVAS_VERSION)
 
 kcoreaddons_add_plugin(kwin_canvas_passthrough INSTALL_NAMESPACE "kwin/plugins")
-target_sources(kwin_canvas_passthrough PRIVATE main.cpp passthrough.cpp)
+target_sources(kwin_canvas_passthrough PRIVATE main.cpp passthrough.cpp map.cpp)
 target_compile_definitions(kwin_canvas_passthrough PRIVATE CANVAS_VERSION="${CANVAS_VERSION}")
 target_link_libraries(kwin_canvas_passthrough PRIVATE KWin::kwin KF6::CoreAddons KF6::ConfigCore Qt6::Core Qt6::Gui Qt6::DBus Qt6::Qml)

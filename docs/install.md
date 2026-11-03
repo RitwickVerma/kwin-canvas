@@ -216,6 +216,16 @@ kpackagetool6 --type Plasma/Applet --install kwin-canvas-toggle-0.4.0.tar.gz
 It invokes the chord by name through kglobalaccel, so it follows a
 rebinding in System Settings.
 
+## The map widget
+
+Optional, and it needs the pass-through plugin. **Canvas Map**
+(`org.kde.kwin.canvas.map`) is the canvas's minimap as a widget: every
+window, the activities' frames and where the screen is on the plane, live,
+with the canvas closed. Add it to the desktop or to a panel from Add Widgets.
+In a panel it is a small map that opens the full one. A click on a window
+flies to it and focuses it; a click on the ground brings that spot to the
+middle of the screen. Without the plugin it says so instead of drawing.
+
 ## Known limits in 0.4.0
 
 - The monitor frames reproduce KDE's display arrangement and the canvas

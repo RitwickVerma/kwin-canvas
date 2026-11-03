@@ -1,5 +1,12 @@
 Unreleased:
 
+- The minimap as a widget. **Canvas Map** shows the whole plane at a glance with the canvas
+  closed: the activities' frames in their colours, every window as a sheet and the screen's own
+  rectangle, live as windows move. Put it on the desktop, or in a panel, where it is a small map
+  that opens the full one. A click on a window flies to it and focuses it; a click on the ground
+  brings that spot to the middle of the screen. It costs nothing until it is added: the plugin
+  starts watching the windows at the widget's first reading, and the widget reads again only
+  when something on the map moved.
 - The overview opens about three times as fast: KWin keeps the canvas's scene between openings
   instead of building it at every open (view caching, through the pass-through plugin). An
   overview's first frame took 147 to 190 ms in the test nest and takes 39 to 59. The kept scene
@@ -27,7 +34,7 @@ Unreleased:
 - A closed canvas no longer works on every mouse move. The pass-through plugin used to run its
   hover logic for every motion of the session, a game's included; closed, it now only notes what
   is under the pointer.
-  All six need the plugin updated: `kwin-canvas fix-plugin`.
+  All seven need the plugin updated: `kwin-canvas fix-plugin`.
 
 - The Canvas window decoration has no border inside the window any more: its resize band lies
   outside the window, so an effect that shapes windows (Rounded Corners, an outline) shapes the

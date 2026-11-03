@@ -4,6 +4,8 @@
 */
 #pragma once
 
+#include "map.h"
+
 #include <input.h>
 #include <input_event.h>
 #include <plugin.h>
@@ -293,6 +295,9 @@ private:
     bool m_idle = false;
     /** The D-Bus object is registered: the startup retries stop once it is. */
     bool m_registered = false;
+    /** The map widget's object (/KWinCanvas/Map), registered by the same retries. */
+    CanvasMap m_map;
+    bool m_mapRegistered = false;
     /** The idle clock: restarted on every input event. */
     QTimer m_idleTimer;
     /** A hold button is currently down (one of m_hold). */

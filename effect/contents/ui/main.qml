@@ -4902,6 +4902,120 @@ KWin.SceneEffect {
         separateCall.arguments = [separate && camScreen ? String(camScreen.name) : ""];
         separateCall.call();
     }
+
+    // ---- the map widget ------------------------------------------------------
+    // The plane as the map widget (applet-map) draws it, asked for by the
+    // plugin's Map object on the widget's behalf. The effect is the one
+    // authority on where things sit on the plane, so the widget never repeats
+    // the mapping: open, the map is the live canvas (the entries where the
+    // hand has put them, the camera where it is now); closed, it is the desk
+    // at rest (every window the canvas would draw, at its frame plus its
+    // activity's target). The frames carry their palette colours, so the
+    // widget's frames are the lens's. JSON, rounded to whole pixels.
+    function mapPlane() {
+        const live = canvasOpen;
+        const z = live ? zoom : 1;
+        const cur = currentActivity;
+        const screens = KWin.Workspace.screens;
+        // The camera: what each screen shows. Live, a screen shows the view;
+        // closed, or a separate camera's other monitors, the desk at rest.
+        const camera = [];
+        for (let i = 0; i < screens.length; ++i) {
+            const g = screens[i].geometry;
+            if (live && (!separate || screens[i] === camScreen)) {
+                camera.push([Math.round(viewX + g.x / z), Math.round(viewY + g.y / z), Math.round(g.width / z), Math.round(g.height / z)]);
+            } else {
+                const t = peekTargetOn(cur, screens[i]);
+                camera.push([Math.round(t.x + g.x), Math.round(t.y + g.y), g.width, g.height]);
+            }
+        }
+        const fs = frames();
+        const frameList = [];
+        for (let i = 0; i < fs.length; ++i) {
+            frameList.push([Math.round(fs[i].x), Math.round(fs[i].y), fs[i].width, fs[i].height,
+                            String(palette[i % palette.length]), fs[i].id === cur ? 1 : 0]);
+        }
+        const active = KWin.Workspace.activeWindow;
+        const windows = [];
+        const add = function (w, x, y, width, height) {
+            windows.push({ id: String(w.internalId), caption: String(w.caption || ""),
+                           x: Math.round(x), y: Math.round(y), w: Math.round(width), h: Math.round(height),
+                           active: w === active ? 1 : 0, here: onActivity(w, cur) ? 1 : 0 });
+        };
+        if (live) {
+            for (let i = 0; i < entries.length; ++i) {
+                const e = entries[i];
+                if (e.window && !e.window.deleted) add(e.window, e.x, e.y, e.width, e.height);
+            }
+        } else {
+            const stack = KWin.Workspace.stackingOrder;
+            for (let i = 0; i < stack.length; ++i) {
+                const w = stack[i];
+                if (!isCanvasWindow(w, true)) continue;
+                const p = planeSpot(w);
+                add(w, p.x, p.y, w.frameGeometry.width, w.frameGeometry.height);
+            }
+        }
+        return JSON.stringify({ open: live, camera: camera, frames: frameList, windows: windows });
+    }
+    // Where a window sits on the plane while the canvas is closed: makeEntry's
+    // mapping without its bookkeeping (a map read must change nothing).
+    function planeSpot(w) {
+        const a = activityOf(w);
+        const g = w.frameGeometry;
+        if (separate) {
+            const pk = parked[w.internalId];
+            if (pk && g.x === pk.rx && g.y === pk.ry) return { x: pk.x, y: pk.y };
+            const t = peekTargetOn(a, outputAtReal(g.x, g.y, g.width, g.height));
+            return { x: g.x + t.x, y: g.y + t.y };
+        }
+        const t = peekTarget(a);
+        return { x: g.x + t.x, y: g.y + t.y };
+    }
+    // The widget's click on the ground: the plane point to the centre of the
+    // screen the pointer is on. Open, the camera flies there; closed, the desk
+    // slides there the way a pan step does, and stays at 1:1.
+    function mapGo(x, y) {
+        x = Number(x);
+        y = Number(y);
+        if (!isFinite(x) || !isFinite(y)) return;
+        const g = actionScreen().geometry;
+        dbg("map", "go (" + Math.round(x) + "," + Math.round(y) + ")");
+        if (canvasOpen) {
+            camGo(zoom, x - (g.x + g.width / 2) / zoom, y - (g.y + g.height / 2) / zoom);
+            return;
+        }
+        slideTo(x - (g.x + g.width / 2) - viewX, y - (g.y + g.height / 2) - viewY);
+    }
+    // The widget's click on a window: fly to it and focus it. Open, the canvas
+    // steps into it as a click on its picture would; closed, it is focused and
+    // the desk slides it into view whether or not FollowActivation is on (the
+    // click asked for exactly that); on another activity the activity switches
+    // and the window takes the focus there.
+    function mapFocus(id) {
+        id = String(id);
+        const all = KWin.Workspace.windows;
+        let w = null;
+        for (let i = 0; i < all.length; ++i) if (all[i] && String(all[i].internalId) === id) { w = all[i]; break; }
+        if (!isCanvasWindow(w, true)) return;
+        dbg("map", "focus " + w.caption);
+        if (canvasOpen) {
+            const e = entryFor(w);
+            if (e) focusWindow(e);
+            return;
+        }
+        if (!onActivity(w, currentActivity)) {
+            pendingFocus = w;
+            KWin.Workspace.currentActivity = activityOf(w);
+            return;
+        }
+        // The fly first: its slide opens the quiet scene, so the activation that
+        // follows is not flown a second time by onWindowActivated (the restart
+        // would jerk the slide already under way).
+        flyToWindow(w);
+        KWin.Workspace.activeWindow = w;
+    }
+
     // The buttons the plugin leaves to the canvas whatever is drawn under the
     // pointer: the same mask the shim reads (planeNavButtons). Told when the
     // plugin answers, and again if the binding changes.

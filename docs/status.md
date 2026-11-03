@@ -130,6 +130,36 @@ off), none of them flaky before; run alone straight after, the three gave 34 pas
 batch's order or the machine's load, not as this change, but not proven so: watch them in the next
 full run.
 
+**The map widget (2026-11-03).** `applet-map` (**Canvas Map**) is the corner lens as a Plasma widget,
+on the desktop or in a panel, with the canvas closed (`docs/architecture.md`, *The map widget*). The
+effect answers the plane (`mapPlane`), the plugin's new `/KWinCanvas/Map` object relays it and says
+`changed()` at most every 100 ms once someone has read, and the widget reads on that signal through
+Plasma's own D-Bus module, with no polling. Verified in the hidden nest: `224` alone, 16 pass, 0
+fail (the reading matches the effect's entries and view, no signal before the first read, `go` and
+`focus` slide the desk, the widget draws and a click on it moves the desk); with `137`, `85`, `220`,
+`154` and `145`, 75 pass, 0 fail. Control: the first run sent `go`'s arguments under the signature
+`dd`, the call reached KWin with none, and exactly the click check failed. The panel form was looked
+at once in a nest panel (the compact map and its popup). Not verified: the live session (it needs
+the plugin, `kwin-canvas fix-plugin`, a relogin, and the widget added), the popup's size on the
+maintainer's 4096x1152 plane, and separate cameras on two outputs.
+
+**Desktop stutter, read from the perf trace (2026-11-03).** Another session's audit counted 267
+"compositor freezes" of 50 ms or more in 24 hours. They are the effect's `stall` lines: the 16 ms
+tick late by 60 ms or more, which is KWin's main thread blocked, measured only while the canvas
+scene is up. In those 24 hours the canvas ran 871 times (mostly slides) and 146 runs had a stall;
+208 of 269 stalls were 60 to 99 ms, 112 came with the GPU's memory at 95% or more, and most of the
+rest were full-fidelity slides with the GPU under 80% busy (about 5% of slides have a p95 tick of
+60 ms or more). They do not line up with the plugin's 1 s state-file write. KWin's own watchdog
+("The main thread was hanging temporarily!") fired 9 times: the NVIDIA driver out of video memory
+during a game (01:05), a Proton launch (18:05), audio devices re-added around a Vibepollo stream
+session (17:06, 3.2 s then 22 s; 04:58), and 19:06 unexplained; four of the five clusters also sit
+within a minute of snapper's hourly cleanup, a lead only. With the canvas closed, a 30 s probe of
+KWin's D-Bus answered within 12 ms at worst. Vibepollo's session controller runs `kscreen-doctor -j`
+about every 5 s (23,691 runs in 24 hours) with no measurable delay to KWin. Turning the canvas off
+removes this measure with it, so an on/off count cannot settle it. Next: a measure of KWin's main
+thread that runs with the canvas on or off, and a stall line that splits the canvas's own JS time
+from the rest.
+
 **Window coordinates drifting (2026-10-20).** Causes found and fixed: a floated window rode to a screen
 edge on every slide (`178`), and KWin's reachability rule moved the windows the canvas parks beyond every
 monitor, every time it looked at one again (focus, activities, work area, an open or close): `112-overlay`'s

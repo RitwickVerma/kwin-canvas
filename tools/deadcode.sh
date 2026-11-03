@@ -20,9 +20,12 @@ census() {
     local n=$1 desc=$2
     local uses
     # The references may live in either side of the hot-reload split: the
-    # logic declares in main.qml, the scene tree in ui.qml.
+    # logic declares in main.qml, the scene tree in ui.qml. The plugin is a
+    # reader too: it sets the effect's properties and calls its functions by
+    # name (setProperty, QMetaObject::invokeMethod).
     uses=$(grep -c "\b${n}\b" effect/contents/ui/main.qml)
     uses=$((uses + $(grep -c "\b${n}\b" effect/contents/ui/ui.qml)))
+    uses=$((uses + $(cat plugin/*.cpp | grep -c "\b${n}\b")))
     if [ "$uses" -le 1 ]; then
         DEAD+=("$desc: $n (declared, never referenced)")
     fi
