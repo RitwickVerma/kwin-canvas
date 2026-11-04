@@ -191,6 +191,15 @@ function inReach(r, monitors) {
     return false;
 }
 
+// Whether any of r shows on one of the monitors.
+function onAMonitor(r, monitors) {
+    for (let i = 0; i < monitors.length; ++i) {
+        const o = monitors[i];
+        if (r.x < o.x + o.width && r.x + r.width > o.x && r.y < o.y + o.height && r.y + r.height > o.y) return true;
+    }
+    return false;
+}
+
 // Whether a frame change has the shape of KWin's reachability rule, the only move of a window's
 // frame the canvas undoes: the same size (within a pixel), moved by a pixel or more, from a place
 // out of reach of the monitors as they are and as they were before the last layout change (a

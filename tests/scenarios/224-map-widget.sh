@@ -5,7 +5,7 @@ scenario_desc="the map widget: the plugin's Map reads the effect's plane, says c
 run_scenario() {
     source tests/lib.sh
 
-    mq() { nq org.kde.KWin /KWinCanvas/Map org.kde.kwin.canvas.Map."$@"; }
+    mq() { local m=$1; shift; nq org.kde.KWin /KWinCanvas/Map "org.kde.kwin.canvas.Map.$m" "$@"; }
     # pj EXPR: one value out of a map reading on stdin (the plane is the dict p).
     pj() { python3 -I -c 'import json, sys; p = json.loads(sys.stdin.read() or "null"); print(eval(sys.argv[1]))' "$1" 2>/dev/null; }
     kcalc='[w for w in p["windows"] if "KCalc" in w["caption"]][0]'
@@ -39,8 +39,8 @@ run_scenario() {
     open_1to1
     c state
     assert_eq "every window the canvas draws is on the map" "$(pj 'len(p["windows"])' <<<"$closed")" "$(sget entries)"
-    assert_near "KCalc sits where the canvas puts it (x)" "$(pj "$kcalc[\"x\"]" <<<"$closed")" "$(eget KCalc x)" 1
-    assert_near "and (y)" "$(pj "$kcalc[\"y\"]" <<<"$closed")" "$(eget KCalc y)" 1
+    assert_near "KCalc sits where the canvas puts it (x)" "$(pj "${kcalc}[\"x\"]" <<<"$closed")" "$(eget KCalc x)" 1
+    assert_near "and (y)" "$(pj "${kcalc}[\"y\"]" <<<"$closed")" "$(eget KCalc y)" 1
     assert_eq "open, the map reads the live canvas" "$(pj 'p["open"]' <<<"$(mq read)")" True
     c cancel
     sleep 0.3
@@ -71,15 +71,15 @@ run_scenario() {
     # focus: KCalc is now off the screen's left; a click on its sheet brings it
     # back into view and gives it the focus.
     local id
-    id=$(pj "$kcalc[\"id\"]" <<<"$(mq read)")
+    id=$(pj "${kcalc}[\"id\"]" <<<"$(mq read)")
     mq focus "$id" >/dev/null
     local i plane=""
     for i in $(seq 1 20); do
         sleep 0.2
         plane=$(mq read)
-        [ "$(pj "$kcalc[\"active\"]" <<<"$plane")" = 1 ] && [ "$(pj "(lambda w, c: c[0] <= w['x'] and w['x'] + w['w'] <= c[0] + c[2])($kcalc, p['camera'][0])" <<<"$plane")" = True ] && break
+        [ "$(pj "${kcalc}[\"active\"]" <<<"$plane")" = 1 ] && [ "$(pj "(lambda w, c: c[0] <= w['x'] and w['x'] + w['w'] <= c[0] + c[2])($kcalc, p['camera'][0])" <<<"$plane")" = True ] && break
     done
-    assert_eq "focus gives KCalc the focus" "$(pj "$kcalc[\"active\"]" <<<"$plane")" 1
+    assert_eq "focus gives KCalc the focus" "$(pj "${kcalc}[\"active\"]" <<<"$plane")" 1
     assert_eq "and slides it wholly into view" "$(pj "(lambda w, c: c[0] <= w['x'] and w['x'] + w['w'] <= c[0] + c[2])($kcalc, p['camera'][0])" <<<"$plane")" True
 
     # The widget itself, on the desktop. The desk first goes somewhere empty, so

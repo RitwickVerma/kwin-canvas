@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
 # shellcheck source=../tests/lib.sh
-scenario_desc="KWin moves a window toward the screen when it is activated (top edge to y=0, left edge past the right edge minus 100 px back to that line); the canvas undoes that, so an auto fly to a partly or wholly off-screen window, an activation in the open overview and a focus-follows-mouse hover change no window's plane coordinate"
+scenario_desc="KWin moves a window toward the screen when it is activated (top edge to y=0, left edge past the right edge minus 100 px back to that line); the canvas undoes that, so an auto fly to a partly or wholly off-screen window and an activation in the open overview change no window's plane coordinate; a focus-follows-mouse hover slides nothing and keeps KWin's nudge of the hovered window"
 # plane(): every window's plane coordinate while the canvas is closed: its real frame plus the camera.
 plane() {
     kwinjs 'var o = []; workspace.stackingOrder.forEach(function (x) { var n = String(x.caption); ["KCalc","Konsole","sample.txt","Dolphin","Gwenview"].forEach(function (k) { if (n.indexOf(k) >= 0) o.push(k + "=" + x.frameGeometry.x + "," + x.frameGeometry.y); }); }); print("NDGPOS " + o.join(" "));' 0.45
@@ -14,6 +14,10 @@ put() { kwinjs "workspace.stackingOrder.forEach(function (x) { if (String(x.capt
 kcalc_inside() { # is KCalc wholly on the screen now?
     kwinjs 'workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("KCalc") >= 0) { var g = x.frameGeometry; print("NDGIN " + (g.x >= 0 && g.y >= 0 && g.x + g.width <= workspace.virtualScreenSize.width && g.y + g.height <= workspace.virtualScreenSize.height ? "yes" : "no " + g.x + "," + g.y)); } });' 0.4
     grep -a "NDGIN " "$STATE/kwin.log" | tail -1 | sed 's/.*NDGIN //'
+}
+focused() { # the active window's caption, up to its first space
+    kwinjs 'var a = workspace.activeWindow; print("NDGACT " + (a ? String(a.caption).split(" ")[0] : "-"));' 0.3
+    grep -a "NDGACT " "$STATE/kwin.log" | tail -1 | sed 's/.*NDGACT //'
 }
 run_scenario() {
     source tests/lib.sh
@@ -48,14 +52,28 @@ run_scenario() {
     activate KCalc; sleep 1.2; c state >/dev/null
     assert_eq "overview: activating a window above the screen leaves its plane spot" "$(eget KCalc x),$(eget KCalc y)" "$ex,$ey"
     c cancel >/dev/null; sleep 0.8
-    # Focus follows the pointer: resting on the part of a window that is on the screen.
+    # Focus follows the pointer: resting on the part of a window that is on the screen. The
+    # window shows where the pointer is, so the desk does not slide for a hover, and KWin's nudge
+    # bringing its title bar to the screen's top stands, as it does without the canvas; every
+    # other window keeps its plane coordinate. The pointer first rests inside Dolphin (a title
+    # bar does not take the focus), so KCalc loses the focus and KWin looks at it: a window
+    # losing the focus is not under the pointer and keeps its place.
     arrange >/dev/null
     put 600 -60
-    input move 1000 700; sleep 0.5
+    local start; start=$(plane)
+    input move 1000 800; sleep 0.5
+    assert_eq "hover: resting inside Dolphin gives it the focus" "$(focused)" fixtures
     before=$(plane)
+    assert_eq "hover: KCalc losing the focus to the window under the pointer keeps its plane coordinate" "$before" "$start"
+    c state >/dev/null
+    local vbefore; vbefore="$(sget viewx),$(sget viewy)"
     input move 800 120; sleep 3
+    assert_eq "hover: resting on KCalc gives it the focus" "$(focused)" KCalc
     after=$(plane)
-    assert_eq "hover: focus-follows-mouse activating a window above the screen moved no window's plane coordinate" "$after" "$(awk -v b="$before" 'BEGIN{print b}')"
+    c state >/dev/null
+    assert_eq "hover: focus-follows-mouse on a window above the screen does not slide the desk" "$(sget viewx),$(sget viewy)" "$vbefore"
+    assert_eq "hover: KWin's nudge brings its title bar to the screen's top, and only it moves" "$after" \
+        "$(awk -v b="$before" 'BEGIN{n = split(b, a, " "); for (i = 1; i <= n; i++) { if (a[i] ~ /^KCalc=/) { split(substr(a[i], 7), p, ","); a[i] = sprintf("KCalc=%.1f,%.1f", p[1], p[2] + 60) } printf "%s ", a[i] } }')"
     kwriteconfig6 --file "$CONF/kwinrc" --group Windows --key FocusPolicy --delete >/dev/null
     c cancel >/dev/null 2>&1
     arrange >/dev/null

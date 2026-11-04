@@ -1670,6 +1670,13 @@ KWin.SceneEffect {
     function classifyFrame(w, was, now) {
         if (!was || !isPlaneWindow(w)) return "adopt";
         if (!Logic.isPull(was, now, outputRects(), layoutBefore)) return "adopt";
+        // Closed, the window the pointer rests on, which showed on a monitor: the hand pointed at
+        // it, and KWin's nudge bringing its title bar or its edge into reach as it takes the focus
+        // stands, as it does without the canvas. Put back, the title bar hid again on every hover
+        // (focus following the mouse). Every other window keeps its plane coordinate (one the
+        // canvas left with a sliver on the screen, one losing the focus), and so does every
+        // window on the open canvas, whose scene draws the plane.
+        if (!visible && Logic.onAMonitor(was, outputRects()) && pointedWindow() === w) return "adopt";
         // With following the activation turned off, KDE brings the activated window in: leave it.
         if (configuration.FollowActivation === false && w === KWin.Workspace.activeWindow) return "adopt";
         return mayRevert(w) ? "revert" : "adopt";
@@ -5176,6 +5183,22 @@ KWin.SceneEffect {
         return planeLive ? Qt.point(p.x * planeScale + planeOffsetX, p.y * planeScale + planeOffsetY) : p;
     }
 
+    // The topmost window under the pointer while the canvas is closed, or null
+    // (the desktop, a panel or nothing there).
+    function pointedWindow() {
+        const p = KWin.Workspace.cursorPos;
+        const stack = KWin.Workspace.stackingOrder;
+        for (let i = stack.length - 1; i >= 0; --i) {
+            const w = stack[i];
+            if (!w || w.deleted || w.minimized || w.hidden || !onDesktop(w) || !onActivity(w, currentActivity)) continue;
+            const g = w.frameGeometry;
+            if (p.x >= g.x && p.x < g.x + g.width && p.y >= g.y && p.y < g.y + g.height) {
+                return w.desktopWindow || w.dock ? null : w;
+            }
+        }
+        return null;
+    }
+
     // The output holding a global point, or null. Edge panning asks which
     // screen the pointer is on so that only that screen's view pans.
     function screenAt(x, y) {
@@ -5935,6 +5958,14 @@ KWin.SceneEffect {
             // button down (Alt-Tab, the task bar) the fly takes a turn of its
             // own, so the activation finishes first.
             if (effect.pointerButtons !== 0) { effect.pendingFly = w; return; }
+            // No button down and the pointer resting on the window: focus followed the
+            // mouse. The window shows where the pointer is, and sliding the whole desk
+            // to bring the rest of it in moved every window on the screen for a hover
+            // (the owner's focus-follows-mouse). A click on it still flies, on release.
+            if (effect.pointedWindow() === w) {
+                effect.dbg("fly", w.caption + " took the focus under the pointer: no fly");
+                return;
+            }
             Qt.callLater(function () { if (!w.deleted) effect.flyToWindow(w); });
         }
         function onActivitiesChanged(id) { Qt.callLater(effect.activitiesChanged); }

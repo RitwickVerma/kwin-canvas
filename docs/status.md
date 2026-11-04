@@ -143,6 +143,26 @@ at once in a nest panel (the compact map and its popup). Not verified: the live 
 the plugin, `kwin-canvas fix-plugin`, a relogin, and the widget added), the popup's size on the
 maintainer's 4096x1152 plane, and separate cameras on two outputs.
 
+**Windows snapping back on a hover (2026-11-03).** The owner: window positions get reset, a window
+jumps back by itself. With focus following the mouse, resting the pointer on a window hanging over
+a screen edge gives it the focus; KWin then brings its title bar or edge into reach, the canvas took
+that for a pull and put it back, and the auto fly slid the whole desk to show the rest (84 px for a
+window 60 px above the top, about 500 px for one 50 px in from the right). The live log that day:
+302 reverts, 243 of them parked windows pulled (correct), 15 of 4 to 99 px on windows that showed
+on the screen; 112 slides, 74 of 300 to 999 px. Fixed: a focus that followed the mouse (no button,
+the pointer on the window) does not fly, and, closed, the window the pointer rests on keeps KWin's
+nudge (`docs/architecture.md`, *Frame authority*, fourth edge). A first, wider rule (keep the nudge
+of every window that showed on a monitor) broke `182`: the canvas's own sliver-on-screen placements
+were pulled to 1820 and 1052. Every other path was checked in the nest at the owner's settings
+(scale 1.25, focus follows mouse, autoraise, no click raise) before the fix, 15 pass, 0 fail: drags,
+an overview move and step in, the task bar's fly, a reopen, a restore, a zone snap, a same-size
+move, Move Window to Center, Quick Tile Left. Verified in the hidden nest: `180`, `182`, `207`,
+`204` and `224`, all pass (`204` 10, `224` 16); control, `204` against the committed effect fails
+exactly the two hover checks (the desk slid 84 px, the nudge put back). `204`'s old hover case
+rested on a title bar, which takes no focus, and passed whatever the canvas did
+(`docs/testing.md`). Not verified: the live session, the paths sweep again with the fix, the full
+suite.
+
 **Desktop stutter, read from the perf trace (2026-11-03).** Another session's audit counted 267
 "compositor freezes" of 50 ms or more in 24 hours. They are the effect's `stall` lines: the 16 ms
 tick late by 60 ms or more, which is KWin's main thread blocked, measured only while the canvas

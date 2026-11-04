@@ -1,5 +1,12 @@
 Unreleased:
 
+- With focus following the mouse, resting the pointer on a window that hangs over the screen's
+  edge no longer slides the whole desk, and that window no longer jumps back. The hover gave it
+  the focus, and the canvas flew to it as to a window picked in the task bar: every window on the
+  screen moved, by 84 px for one over the top edge and about 500 px for one 50 px in from the
+  right. Now the hovered window keeps KDE's own nudge (its title bar comes into reach) and nothing
+  else moves. A click, the task bar, Alt-Tab and the map still bring a window wholly into view, and
+  windows parked off the screen still keep their place.
 - The minimap as a widget. **Canvas Map** shows the whole plane at a glance with the canvas
   closed: the activities' frames in their colours, every window as a sheet and the screen's own
   rectangle, live as windows move. Put it on the desktop, or in a panel, where it is a small map

@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, searchFilter, inReach, isPull, fightStep, cornerRadius, blurRects, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
+const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, searchFilter, inReach, onAMonitor, isPull, fightStep, cornerRadius, blurRects, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -86,8 +86,14 @@ ok("the dynamic gap reads the same scaled up",
     ok("a top edge in the last 28 px is not", !L.inReach(R(300, 1060), mon));
     ok("one at 28 px above the bottom is", L.inReach(R(300, 1052), mon));
     ok("KWin's pull from far away is a pull (4000 -> 1820, the d112 case)", L.isPull(R(4000, 300), R(1820, 300), mon, mon));
+    ok("a window wholly past the right edge brought to 100 px over is a pull", L.isPull(R(1980, 300), R(1820, 300), mon, mon));
+    ok("a window wholly above the screen brought to the top is a pull", L.isPull(R(300, -500), R(300, 0), mon, mon));
     ok("from 80 px over to 100 px over is a pull", L.isPull(R(1840, 300), R(1820, 300), mon, mon));
     ok("a top edge brought to the top is a pull", L.isPull(R(300, -60), R(300, 0), mon, mon));
+    ok("a window with its top above the screen shows on it", L.onAMonitor(R(300, -60), mon));
+    ok("a window wholly above the screen does not", !L.onAMonitor(R(300, -500), mon));
+    ok("one pixel showing is showing", L.onAMonitor(R(1919, 300), mon));
+    ok("a window touching the edge from outside is not showing", !L.onAMonitor(R(1920, 300), mon));
     ok("a move between two places on the screen is not", !L.isPull(R(100, 120), R(700, 400), mon, mon));
     ok("a move out of reach is not", !L.isPull(R(100, 120), R(5000, 120), mon, mon));
     ok("a resize is not", !L.isPull(R(4000, 300), R(1820, 300, 500, 420), mon, mon));

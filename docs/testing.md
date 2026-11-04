@@ -504,3 +504,10 @@ recording, point OBS at the nest window while `DEMO_FRAMES=0 make demo` runs.
   off there too. A check that greps it for a widget's errors passes whatever
   the widget does; test a widget by what it does (`224` clicks the map and
   watches the desk move).
+- **A title bar does not take the focus.** With `FocusFollowsMouse` set, a
+  pointer resting on a window's server-side title bar leaves the focus where it
+  was; inside the window it moves after `DelayFocusInterval`. `204`'s hover case
+  rested on Dolphin's title bar (1000,700), so KCalc never lost the focus, the
+  hover back onto it changed nothing, and the case passed whatever the canvas
+  did. Rest inside the client area, and read `workspace.activeWindow` once to
+  see the focus really moved.
