@@ -933,7 +933,11 @@ Item {
                 readonly property real cornerR: { effect.cornerStyle; KWin.Workspace.activeWindow; effect.ql; effect.revision; return effect.cornerRadiusOf ? effect.cornerRadiusOf(thumb.entry) : 0; }
                 readonly property var frameTex: {
                     if (!(thumb.cornerR > 0) || !view.sceneHelper || !thumb.entry.window) return null;
-                    view.sceneHelper.revision; thumb.entry.window.frameGeometry;
+                    // Asked again when this window's item or shadow changes (its own frameWatch);
+                    // an older plugin has only the revision every window's shadow bumps.
+                    const fw = typeof view.sceneHelper.frameWatch === "function" ? view.sceneHelper.frameWatch(thumb.entry.window) : null;
+                    if (fw) fw.revision; else view.sceneHelper.revision;
+                    thumb.entry.window.frameGeometry;
                     const f = view.sceneHelper.frameInTexture(thumb.entry.window);
                     return f && f.length === 6 && f[4] > 0 && f[5] > 0 ? f : null;
                 }

@@ -842,6 +842,7 @@ KWin.SceneEffect {
     // so a revision is all that is needed for the canvas to catch up.
     function noteDesktopsChanged(w) {
         if (!w || w.deleted || !w.managed) return;
+        if (!windowPinned(w)) forgetFloatHome(w);
         revision++;
     }
 
@@ -849,13 +850,17 @@ KWin.SceneEffect {
     // window glides to the nearest spot on its monitor's work area that clears it
     // (Logic.dodgeSpot), and back to where it was once the focused window no longer needs that
     // spot. It waits for the focus to settle (dodgeTimer): a fly lands first, and with focus
-    // following the mouse a pointer crossing windows moves nothing. Only with the canvas closed;
-    // a focused window that leaves no room (maximized) leaves the float where it is. FloatDodge
-    // turns it off. floatHome: id -> { x, y }, the screen spot a float left for the focused
-    // window, forgotten when anything but this moves it (the hand puts it somewhere new).
+    // following the mouse a pointer crossing windows moves nothing. Only with the canvas closed:
+    // a settle that comes while it is up waits for the close (dodgePending). A focus that is not
+    // a free window of the plane (a launcher, a panel, the desktop, a maximized or tiled window,
+    // a float) moves nothing either way. FloatDodge turns it off. floatHome: id -> { x, y }, the
+    // screen spot a float left for the focused window. It is forgotten when the float moves by
+    // any other hand (a resize in place keeps it), stops floating, or the overview opens, where
+    // the hand may put it anywhere.
     property var floatHome: ({})
     property var dodgeMoves: []        // [{ w, fx, fy, tx, ty }], the glide in flight
     property real dodgeT: 0
+    property bool dodgePending: false
     readonly property int dodgeGap: 12
     Timer {
         id: dodgeTimer
@@ -865,13 +870,20 @@ KWin.SceneEffect {
     function noteFocusSettling() {
         if (configuration.FloatDodge !== false) dodgeTimer.restart();
     }
+    // The focused window took a new shape without a focus change (the hand's move or resize, a
+    // maximize or its undo, a tile): the floats look again.
+    function noteFocusedReshaped(w) {
+        if (w === KWin.Workspace.activeWindow) noteFocusSettling();
+    }
     function dodgeFloats() {
         if (configuration.FloatDodge === false || safeMode) return;
-        // The canvas up (a fly in flight, the overview): ask again once it is down.
-        if (visible) { dodgeTimer.restart(); return; }
+        if (visible) { dodgePending = true; return; }
+        // A glide still in flight lands first, so every spot below is read where it ends.
+        if (dodgeAnim.running) dodgeAnim.complete();
         const focus = KWin.Workspace.activeWindow;
-        const fg = focus && isPlaneWindow(focus) && !windowPinned(focus) ? focus.frameGeometry : null;
-        const fr = fg ? { x: fg.x, y: fg.y, width: fg.width, height: fg.height } : null;
+        if (!focus || !isPlaneWindow(focus) || windowPinned(focus)) return;
+        const fg = focus.frameGeometry;
+        const fr = { x: fg.x, y: fg.y, width: fg.width, height: fg.height };
         const floats = [];
         const all = KWin.Workspace.stackingOrder;
         for (let i = 0; i < all.length; ++i) {
@@ -880,6 +892,8 @@ KWin.SceneEffect {
             const g = w.frameGeometry;
             floats.push({ w: w, r: { x: g.x, y: g.y, width: g.width, height: g.height } });
         }
+        // The floats are planned in turn, each against where the others will be, so two never
+        // pick the same spot and none goes home onto another.
         const moves = [];
         for (let i = 0; i < floats.length; ++i) {
             const f = floats[i], id = f.w.internalId;
@@ -887,26 +901,30 @@ KWin.SceneEffect {
             const area = { x: a.x, y: a.y, width: a.width, height: a.height };
             const others = [];
             for (let j = 0; j < floats.length; ++j) if (j !== i) others.push(floats[j].r);
+            const crowds = function (r) { for (let k = 0; k < others.length; ++k) if (Logic.rectsMeet(r, others[k])) return true; return false; };
+            let to = null;
             const home = floatHome[id];
             if (home) {
                 const hr = { x: home.x, y: home.y, width: f.r.width, height: f.r.height };
                 const inside = hr.x >= area.x && hr.y >= area.y && hr.x + hr.width <= area.x + area.width && hr.y + hr.height <= area.y + area.height;
                 // Home is free again: go back, and there is no home any more. Still in the
-                // focused window's way, the float stays where it stepped to (or steps on, below).
-                if (inside && !Logic.rectsMeet(hr, fr)) {
+                // focused window's way, or taken by another float, the float stays where it
+                // stepped to (or steps on, below).
+                if (inside && !Logic.rectsMeet(hr, fr) && !crowds(hr)) {
                     delete floatHome[id];
-                    if (hr.x !== f.r.x || hr.y !== f.r.y) moves.push({ w: f.w, fx: f.r.x, fy: f.r.y, tx: hr.x, ty: hr.y });
-                    continue;
+                    to = { x: hr.x, y: hr.y };
                 }
             }
-            const spot = Logic.dodgeSpot(f.r, fr, area, others, dodgeGap);
-            if (!spot) continue;
-            if (!home) floatHome[id] = { x: f.r.x, y: f.r.y };
-            moves.push({ w: f.w, fx: f.r.x, fy: f.r.y, tx: spot.x, ty: spot.y });
+            if (!to) {
+                to = Logic.dodgeSpot(f.r, fr, area, others, dodgeGap);
+                if (to && !home) floatHome[id] = { x: f.r.x, y: f.r.y };
+            }
+            if (!to || (to.x === f.r.x && to.y === f.r.y)) continue;
+            moves.push({ w: f.w, fx: f.r.x, fy: f.r.y, tx: to.x, ty: to.y });
+            f.r = { x: to.x, y: to.y, width: f.r.width, height: f.r.height };
         }
         if (moves.length === 0) return;
         dbg("dodge", moves.map(function (m) { return m.w.caption + " (" + m.fx + "," + m.fy + ") -> (" + m.tx + "," + m.ty + ")"; }).join(", "));
-        if (dodgeAnim.running) dodgeAnim.complete();
         dodgeMoves = moves;
         dodgeT = 0;
         dodgeAnim.restart();
@@ -930,9 +948,9 @@ KWin.SceneEffect {
         duration: Math.round(200 * effect.animFactor)
         easing.type: Easing.OutCubic
     }
-    // Anything but the dodge moved a float: it is where the hand put it now, its new home.
+    // A float moved by any other hand (or no longer floating): it is where that hand put it now.
     function forgetFloatHome(w) {
-        if (w && floatHome[w.internalId] && !(dodgeAnim.running && dodgeMoves.some(function (m) { return m.w === w; }))) delete floatHome[w.internalId];
+        if (w && floatHome[w.internalId]) delete floatHome[w.internalId];
     }
     function pinEntries(list) {
         for (let i = 0; i < list.length; ++i) if (list[i]) setPinned(list[i].window, true);
@@ -1670,10 +1688,10 @@ KWin.SceneEffect {
         trackFree(w);
         w.frameGeometryChanged.connect(function (old) { effect.frameChanged(w, old); });
         w.desktopsChanged.connect(function () { effect.noteDesktopsChanged(w); });
-        w.maximizedChanged.connect(function () { effect.noteReturnedFree(w); });
-        w.tileChanged.connect(function () { effect.noteReturnedFree(w); });
+        w.maximizedChanged.connect(function () { effect.noteReturnedFree(w); effect.noteFocusedReshaped(w); });
+        w.tileChanged.connect(function () { effect.noteReturnedFree(w); effect.noteFocusedReshaped(w); });
         // The focused window moved or resized by the hand: a float may now be in its way.
-        w.interactiveMoveResizeFinished.connect(function () { if (w === KWin.Workspace.activeWindow) effect.noteFocusSettling(); });
+        w.interactiveMoveResizeFinished.connect(function () { effect.noteFocusedReshaped(w); });
     }
     // ---- Frame authority ---------------------------------------------------------
     // The plane is the truth. A window's plane coordinate belongs to the canvas, and its real
@@ -1780,7 +1798,7 @@ KWin.SceneEffect {
         markDirty(w);
         if (w && w.dock) lastDockAt = Date.now();
         if (selfWriting > 0 || !was) return;
-        if (windowPinned(w)) forgetFloatHome(w);
+        if (floatHome[w.internalId] && (w.frameGeometry.x !== was.x || w.frameGeometry.y !== was.y)) forgetFloatHome(w);
         if (classifyFrame(w, was, w.frameGeometry) === "revert") revertFrame(w, was);
     }
     // What happened just before a window moved, for the Perf lines only: milliseconds since the last
@@ -3550,6 +3568,10 @@ KWin.SceneEffect {
         if (safeMode) { dbg("open", "refused: safe mode, the scene failed to load"); return; }
         refreshGroundWallpaper();
         if (visible) return;
+        // A float's glide lands before the scene reads the frames; in the overview the hand may
+        // put a float anywhere, so the spots floats left are forgotten.
+        if (dodgeAnim.running) dodgeAnim.complete();
+        if (!quietMode) floatHome = ({});
         tickFresh = true;
         { const cp = cursorScreen(); chromeScreen = screenAt(cp.x, cp.y) || null; chromeCandidate = null; }
         if (perf) {
@@ -6462,6 +6484,7 @@ KWin.SceneEffect {
             // KWin kept the views (view caching); releaseScene lets them go when the card fills.
             sceneKept = viewCached;
             if (perf) perfTicksReport();
+            if (dodgePending) { dodgePending = false; noteFocusSettling(); }
         }
     }
 

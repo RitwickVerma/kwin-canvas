@@ -19,10 +19,42 @@
 
 namespace KWin
 {
+class Item;
 class Window;
 class LogicalOutput;
 class SurfaceInterface;
 }
+
+/**
+ * One window's watch for where its frame sits in its thumbnail texture: revision changes when
+ * the window item's bounding rect (the texture's extent) or the shadow changes. Per window, so a
+ * window's resize re-reads only its own picture's frame. The item comes when a Wayland window
+ * first maps, and KWin may build it again; the watch looks for it on every map and frame change.
+ */
+class CanvasFrameWatch : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(int revision READ revision NOTIFY revisionChanged)
+
+public:
+    CanvasFrameWatch(KWin::Window *window, QObject *parent);
+
+    int revision() const
+    {
+        return m_revision;
+    }
+
+Q_SIGNALS:
+    void revisionChanged();
+
+private:
+    void bump();
+    void hookItem();
+    QPointer<KWin::Window> m_window;
+    QPointer<KWin::Item> m_item;
+    QMetaObject::Connection m_itemConnection;
+    int m_revision = 0;
+};
 
 /**
  * The canvas scene's in-process helper, set on KWin's QML engine as the context property
@@ -30,8 +62,9 @@ class SurfaceInterface;
  * (Window::visibleGeometry), and where the window sits inside it is readable only from C++:
  * frameInTexture answers that synchronously, so the scene draws a window's picture straight from
  * KWin's texture with the Rounded Corners shape instead of rendering it into a layer of its own
- * (a second full-size texture and a second pass per window). revision changes whenever a
- * window's shadow does, which is what moves the window inside its texture.
+ * (a second full-size texture and a second pass per window). frameWatch(window) says when to
+ * ask again for that window; revision, for an older effect, changes whenever any window's
+ * shadow does.
  */
 class CanvasSceneHelper : public QObject
 {
@@ -52,6 +85,11 @@ public:
      */
     Q_INVOKABLE QVariantList frameInTexture(QObject *window) const;
     /**
+     * The window's CanvasFrameWatch, made on first ask and kept until the window goes; null when
+     * @p window is not a KWin window.
+     */
+    Q_INVOKABLE QObject *frameWatch(QObject *window);
+    /**
      * How many application windows KWin is drawing offscreen for a thumbnail
      * (Window::isOffscreenRendering): each is copied on every frame it changes and, hidden or
      * minimized, kept drawing at the screen's rate. A closed canvas should hold none; the state
@@ -71,8 +109,8 @@ Q_SIGNALS:
 
 private:
     void watch(KWin::Window *window);
-    void bump();
     int m_revision = 0;
+    QHash<const KWin::Window *, CanvasFrameWatch *> m_frameWatches;
 };
 
 /**
@@ -249,6 +287,8 @@ private:
     KWin::Window *chromeAt(const QPointF &screen) const;
     /** Publish the chrome flag to the effect on every change. */
     void publishChrome(const QPointF &screen);
+    /** Out of idle, if it was: the input is live again, and the effect hears it (passthroughIdle). */
+    void wakeFromIdle();
     void publishRest(KWin::Window *w);
     void publishHover(KWin::Window *w);
     bool atSeam(const QPointF &screen) const;

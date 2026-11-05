@@ -30,5 +30,7 @@ run_scenario() {
     nq org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "panels()[0].height = 46" >/dev/null 2>&1
     sleep 3
     assert_eq "and shrinking it again did too" "$(pos3)" "$parked"
+    # The seeded default layout (its panel and Plasma's own wallpaper) goes, as in 117, 149 and 86.
+    if [ "$seeded" = 1 ]; then shell_shape; sleep 2; fi
     arrange >/dev/null
 }

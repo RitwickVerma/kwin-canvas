@@ -155,6 +155,24 @@ the plugin reading the item's own bounds, 0.49% and 0.38%, the Rounded Corners o
 does not draw. `222` pins it: a window moved on the open canvas shows its own picture (rmse 0
 fixed, 0.26 with HEAD's plugin). Needs the rebuilt plugin live (`fix-plugin`, a relogin).
 
+**Audit after the auto pan revert (2026-11-05).** A review of f061db1..a890058 found 10 issues,
+all fixed: the float dodge's home spot is forgotten on a hand move (not a resize in place), on
+unfloating and on an overview open; a focus on a launcher, a panel, the desktop or a maximized,
+tiled or floated window moves no float; floats are planned in turn, so two never take one spot
+and none goes home onto another; a glide in flight lands before the next is planned or the
+canvas opens; a settle while the canvas is up waits for the close instead of re-arming; the plugin's
+frame watch is per window (`frameWatch`), so one window's resize re-reads only its own picture,
+and it finds the window's item again when KWin builds one later; the three idle wakes are one
+(`wakeFromIdle`). The full suite (123 scenarios, the first full run since 86cc400) gave 903 pass,
+2 fail, 13 skip; both failures traced and fixed: `225` showed that un-maximizing the focused window
+never re-checked the floats (the focused window's maximize, tile and hand move now start the
+clock), and `87` failed whenever it ran after `85` (on HEAD's plugin as on the new one, 3 of 3
+each): closing the canvas left the plugin's hover candidate set, so a rest on that same window at
+the next open never started the hover clock and the window never took the input until the pointer
+left and came back. `181` left the seeded default panel for the runner to repair; it reshapes the
+desk as `117`, `149` and `86` do. Not explained: a 1.8 s KWin stall during a hold on the live
+desktop at 05:10 (cpu 19%, gpu 39%).
+
 **A float steps aside (2026-11-05).** The owner's idea: a floating window moves so the focused
 window shows whole. `docs/architecture.md`, *A float steps aside for the focused window*.
 Verified in the hidden nest: `225` (steps right of the focused window, comes back, stays with

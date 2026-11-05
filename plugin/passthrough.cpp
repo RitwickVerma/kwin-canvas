@@ -90,27 +90,60 @@ CanvasSceneHelper::CanvasSceneHelper(QObject *parent)
 
 void CanvasSceneHelper::watch(Window *window)
 {
-    connect(window, &Window::shadowChanged, this, &CanvasSceneHelper::bump);
-    // The item's bounding rect is the texture's extent. It settles in the item's own slots after
-    // a resize (the surface and the decoration resize there), so a frameInTexture read when the
-    // frame changed can be a step behind; this asks again once the item has caught up. A plain
-    // move leaves it alone: it is in the item's own coordinates. A Wayland window gets its item
-    // when it first maps (WaylandWindow::markAsMapped), which can come after windowAdded.
-    if (WindowItem *item = window->windowItem()) {
-        connect(item, &Item::boundingRectChanged, this, &CanvasSceneHelper::bump);
-    } else {
-        connect(
-            window, &Window::readyForPaintingChanged, this,
-            [this, window]() {
-                if (WindowItem *item = window->windowItem()) {
-                    connect(item, &Item::boundingRectChanged, this, &CanvasSceneHelper::bump);
-                }
-            },
-            Qt::SingleShotConnection);
+    connect(window, &Window::shadowChanged, this, [this]() {
+        ++m_revision;
+        Q_EMIT revisionChanged();
+    });
+}
+
+QObject *CanvasSceneHelper::frameWatch(QObject *window)
+{
+    Window *w = qobject_cast<Window *>(window);
+    if (!w) {
+        return nullptr;
+    }
+    if (CanvasFrameWatch *watch = m_frameWatches.value(w)) {
+        return watch;
+    }
+    auto *watch = new CanvasFrameWatch(w, this);
+    // The scene's binding holds it, but the window owns its life: QML must not collect it.
+    QQmlEngine::setObjectOwnership(watch, QQmlEngine::CppOwnership);
+    m_frameWatches.insert(w, watch);
+    connect(w, &QObject::destroyed, this, [this, w]() {
+        delete m_frameWatches.take(w);
+    });
+    return watch;
+}
+
+CanvasFrameWatch::CanvasFrameWatch(Window *window, QObject *parent)
+    : QObject(parent)
+    , m_window(window)
+{
+    connect(window, &Window::shadowChanged, this, &CanvasFrameWatch::bump);
+    connect(window, &Window::readyForPaintingChanged, this, &CanvasFrameWatch::hookItem);
+    connect(window, &Window::frameGeometryChanged, this, &CanvasFrameWatch::hookItem);
+    hookItem();
+}
+
+// The item's bounding rect is the texture's extent. It settles in the item's own slots after a
+// resize (the surface and the decoration resize there), so a frameInTexture read when the frame
+// changed can be a step behind; its change asks again once the item has caught up. A plain move
+// leaves it alone: it is in the item's own coordinates.
+void CanvasFrameWatch::hookItem()
+{
+    Item *item = m_window ? m_window->windowItem() : nullptr;
+    if (item == m_item) {
+        return;
+    }
+    disconnect(m_itemConnection);
+    m_item = item;
+    if (item) {
+        m_itemConnection = connect(item, &Item::boundingRectChanged, this, &CanvasFrameWatch::bump);
+        bump();
     }
 }
 
-void CanvasSceneHelper::bump()
+void CanvasFrameWatch::bump()
 {
     ++m_revision;
     Q_EMIT revisionChanged();
@@ -247,6 +280,17 @@ QString CanvasPassthrough::probe() const
     return QStringLiteral("kwin-canvas-passthrough %1 kwin %2").arg(QStringLiteral(CANVAS_VERSION), KWIN_VERSION_STRING);
 }
 
+void CanvasPassthrough::wakeFromIdle()
+{
+    if (!m_idle) {
+        return;
+    }
+    m_idle = false;
+    if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+        canvas->setProperty("passthroughIdle", false);
+    }
+}
+
 void CanvasPassthrough::setActive(bool active)
 {
     if (m_active == active) {
@@ -258,14 +302,15 @@ void CanvasPassthrough::setActive(bool active)
     // to the canvas - the wheel right after the overworld opens zooms it,
     // not the window that happens to sit under the pointer.
     m_settled = false;
+    // Nor has it rested anywhere: a candidate left from the last opening would
+    // match the window under a pointer that rests there again, so the hover
+    // clock would never start and the window never take the input until the
+    // pointer left it and came back.
+    m_hoverCandidate = nullptr;
+    m_hoverTimer.stop();
     // The idle clock starts with the activation, as if the hand had just
     // touched, and a closed canvas has no idle: there is no input to take back.
-    if (m_idle) {
-        m_idle = false;
-        if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
-            canvas->setProperty("passthroughIdle", false);
-        }
-    }
+    wakeFromIdle();
     if (active) {
         m_idleTimer.start();
     } else {
@@ -1048,12 +1093,7 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
     if (!m_active && !m_holdDown) {
         return false;
     }
-    if (m_idle) {
-        m_idle = false;
-        if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
-            canvas->setProperty("passthroughIdle", false);
-        }
-    }
+    wakeFromIdle();
     m_idleTimer.start();
     // passthrough is live and the window under the pointer takes input.
     m_settled = true;
@@ -1144,12 +1184,7 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     // stops the moment a button lands.
     publishRest(nullptr);
     // A press wakes the passthrough as a motion does, and the effect hears it.
-    if (m_idle) {
-        m_idle = false;
-        if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
-            canvas->setProperty("passthroughIdle", false);
-        }
-    }
+    wakeFromIdle();
     if (m_active) {
         m_idleTimer.start();
     }

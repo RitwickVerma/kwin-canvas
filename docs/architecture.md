@@ -677,13 +677,18 @@ A floated window that overlaps the focused window glides (200 ms) to the nearest
 monitor's work area that clears it by 12 px, and goes back to where it was once the focused window
 leaves that spot free (`dodgeFloats`, `Logic.dodgeSpot`, `225`). It waits for the focus to settle,
 450 ms after the last focus change (`dodgeTimer`), so a fly lands first and a pointer crossing
-windows with focus following the mouse moves nothing; it runs only with the canvas closed, and asks
-again once a slide is down. A spot clear of the other floats beats a nearer one under another
-float; a focused window that leaves no room (maximized) leaves the float where it is. The glide
-is the canvas's own write (`setReal`), so the float's plane coordinate follows it. `floatHome`
-keeps the spot each float left; any other move of the float (the hand, a script) makes where it
-now is its home. The focused window's own move or resize ending (`interactiveMoveResizeFinished`)
-starts the clock too. `FloatDodge` turns it off.
+windows with focus following the mouse moves nothing; it runs only with the canvas closed, and a
+settle that comes while the canvas is up waits for the close. The floats are planned in turn, each against where the others will be,
+so two never take the same spot and none goes home onto another; a spot clear of the other
+floats beats a nearer one under another float, and when there is no room the float stays. A
+focus that is not a free window of the plane (a launcher, a panel, the desktop, a maximized or
+tiled window, a float) moves nothing either way, so opening KRunner does not send the floats
+home and back. The glide is the canvas's own write (`setReal`), so the float's plane coordinate
+follows it; a glide in flight lands before the next is planned or the canvas opens. `floatHome`
+keeps the spot each float left, and forgets it when the float moves by any other hand (a resize
+in place keeps it), stops floating, or the overview opens. The focused window's own new shape
+without a focus change (the hand's move or resize ending, a maximize or its undo, a tile) starts
+the clock too. `FloatDodge` turns it off.
 
 ### Frame authority
 
@@ -931,8 +936,11 @@ Three things a QML scene effect cannot reach, so the pass-through plugin does th
   corners cut, straight from KWin's thumbnail texture. That texture is the window's
   `visibleGeometry`, the frame and its shadow, and where the frame sits in it is readable only
   from C++: the plugin puts a `CanvasSceneHelper` on KWin's QML engine (the context property
-  `canvasPlugin`), whose `frameInTexture(window)` answers synchronously and whose `revision`
-  changes on any window's `shadowChanged` or its item's `boundingRectChanged`. It reads the
+  `canvasPlugin`), whose `frameInTexture(window)` answers synchronously, and whose
+  `frameWatch(window)` is a small per-window object whose `revision` changes on that window's
+  `shadowChanged` or its item's `boundingRectChanged` (the item is looked for again on every map
+  and frame change, since a Wayland window gets it when it first maps): one window's resize
+  re-reads only its own picture's frame. It reads the
   window item's bounding rect in the item's own coordinates, where the frame sits at the origin,
   so a move changes nothing it answers: read as the item's rect in the scene, it lagged a move by
   one slot (the item takes the move in its own `frameGeometryChanged` slot, after the binding that

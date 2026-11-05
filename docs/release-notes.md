@@ -1,5 +1,7 @@
 Unreleased:
 
+- In the overview, resting on the window the pointer last rested on before the canvas closed hands
+  it the input again. It did not until the pointer left that window and came back.
 - A floating window steps aside for the window you are working in. When the focus settles on a
   window a float overlaps, the float glides to the nearest free spot on the screen, and back to
   where it was when you move on to a window that leaves that spot free. It waits half a second, so
