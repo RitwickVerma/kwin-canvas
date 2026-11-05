@@ -172,7 +172,7 @@ doctor_plugin_version() {
     local m built kw found
     if m=$(plugin_mismatch); then
         read -r built kw found <<<"$m"
-        verdict FAIL plugin "built for KWin $built but this is KWin $kw: KWin refuses it, so the grasp over windows, input pass-through and the pill's pin buttons are off. Run kwin-canvas fix-plugin (or make plugin, then as root: install -m 755 build/plugin/bin/kwin/plugins/$(basename "$found") $(dirname "$found")/), then relogin"
+        verdict FAIL plugin "built for KWin $built but this is KWin $kw: KWin refuses it, so the grasp over windows, input pass-through and the panel applet's buttons are off. Run kwin-canvas fix-plugin (or make plugin, then as root: install -m 755 build/plugin/bin/kwin/plugins/$(basename "$found") $(dirname "$found")/), then relogin"
     else
         found=""
         for f in "${DOCTOR_PLUGIN_DIR:-/usr/lib/qt6/plugins/kwin/plugins}"/*canvas*.so; do [ -e "$f" ] && found=$f; done
@@ -880,7 +880,7 @@ plugincheck() {
     done
     if m=$(plugin_mismatch); then
         read -r built kw found <<<"$m"
-        msg="The kwin-canvas plugin is built for KWin $built but this is KWin $kw, so KWin refuses it: the grasp over windows and the pill's pin buttons are off. Run: kwin-canvas fix-plugin, then log in again (kwin-canvas plugin-hook install does this by itself after every KWin update)."
+        msg="The kwin-canvas plugin is built for KWin $built but this is KWin $kw, so KWin refuses it: the grasp over windows and the panel applet's buttons are off. Run: kwin-canvas fix-plugin, then log in again (kwin-canvas plugin-hook install does this by itself after every KWin update)."
         echo "kwin-canvas: $msg"
         if [ "$notify" = 1 ] && command -v notify-send >/dev/null 2>&1; then
             notify-send -a kwin-canvas -i dialog-warning "kwin-canvas plugin out of date" "$msg" || true
