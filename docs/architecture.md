@@ -62,11 +62,16 @@ state:
   application grabbing its own focus all fly to their window. A window
   hanging half off the screen counts as not visible: an intersection is not
   enough, a focused window must be wholly on screen. One focus change does
-  not fly: focus that followed the mouse (no button down, the pointer on the
-  window, `pointedWindow`). The window shows where the pointer is, and a
-  slide for a hover moved every window on the screen each time the pointer
-  crossed a window hanging over an edge; a click on it still flies, on
-  release. The last two activated windows are kept as `focusHistory`, the
+  not fly: focus that followed the mouse (`hoverFocused`: a focus policy
+  other than click to focus, no button down, the window the topmost under
+  the pointer, looking through tooltips, menus, notifications and on-screen
+  displays, and none when a panel is under it). The window shows where the
+  pointer is, and a slide for a hover moved every window on the screen each
+  time the pointer crossed a window hanging over an edge; a click on it still
+  flies, on release, and with click to focus Alt-Tab to the window under a
+  resting pointer flies too. With focus following the mouse, that Alt-Tab is
+  taken for a hover: KWin's nudge brings the window's title bar into reach
+  instead. The last two activated windows are kept as `focusHistory`, the
   swap's pair.
 - A pan chord or a touchpad swipe starts a slide (below).
 - The Toggle chord steps out: the canvas opens.
@@ -729,12 +734,13 @@ Four edges, each deliberate:
 - *With FollowActivation off the active window is adopted*: KDE brings the activated window in, as it
   does without the canvas.
 - *Closed, the window the pointer rests on keeps KWin's nudge*, when some of it showed on a monitor
-  (`onAMonitor`, `pointedWindow`). With focus following the mouse, resting the pointer on a window
+  (`onAMonitor`, `hoverFocused`). With focus following the mouse, resting the pointer on a window
   that hangs over an edge gives it the focus, and KWin brings its title bar or its edge into reach;
   the hand pointed at it, so the nudge stands, as it does without the canvas. Put back, the title bar
   hid again on every hover, and the window could not be grabbed by it. Every other window keeps its
   plane coordinate: a parked one, one the canvas left with a sliver on the screen (`182`), one
-  losing the focus, and every window on the open canvas, whose scene draws the plane.
+  losing the focus, any window with click to focus, and every window on the open canvas, whose
+  scene draws the plane.
 
 **The decision this makes, and its price.** Because only the hand and the canvas move a window, a
 script, a rule or an app that moves an out-of-reach window onto a monitor is undone, whoever it is. To
@@ -1129,11 +1135,13 @@ as a Plasma widget, on the desktop or in a panel, with the canvas closed. It nee
   call `mapGo` and `mapFocus`. What it adds is `changed()`. The effect notices a window's move
   only while the canvas is open, so the map watches KWin's windows itself (geometry, minimized,
   hidden, desktops, activities, caption, added, removed, activated, stacking, desktop, outputs)
-  and the effect's camera and entries (the `viewX`, `viewY`, `zoom`, `revision`, `screensRev`,
-  `visible` and `quiet` notify signals), and says changed at most once per 100 ms: the first
-  change starts the clock and the rest of a burst rides it, so a drag still updates ten times
-  a second. It watches nothing until the first read, so a session without the widget pays
-  nothing.
+  and the effect's camera, entries and activity (the `viewX`, `viewY`, `zoom`, `revision`,
+  `screensRev`, `visible`, `quiet` and `currentActivity` notify signals), and says changed at
+  most once per 100 ms: the first change starts the clock and the rest of a burst rides it, so a
+  drag still updates ten times a second. It watches nothing until the first read, so a session
+  that never had the widget pays nothing. It does not stop: once read (a widget since removed,
+  one `qdbus` call), every change until KWin restarts sends that signal, at most ten a second,
+  which the bus drops when no one listens.
 - **The widget reads on the signal.** It uses Plasma's own D-Bus module
   (`org.kde.plasma.workspace.dbus`): `SessionBus.asyncCall` for the calls and a `SignalWatcher`
   whose `dbuschanged` handler reads again, one read in flight at a time. No polling and no process

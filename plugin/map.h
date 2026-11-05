@@ -24,8 +24,9 @@ class Window;
  * widget's clicks to the effect. What it adds is the change signal. The effect
  * notices a window's move only while the canvas is open, so the map watches
  * KWin's windows itself, and the effect's camera and entries, and says
- * changed() at most once per 100 ms. It starts watching at the first read: a
- * session without the widget pays nothing.
+ * changed() at most once per 100 ms. It starts watching at the first read, so
+ * a session that never had the widget pays nothing, and does not stop: after a
+ * removed widget the signal goes on, at most ten a second, to no listener.
  */
 class CanvasMap : public QObject
 {

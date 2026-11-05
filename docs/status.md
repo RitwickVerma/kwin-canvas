@@ -163,6 +163,19 @@ rested on a title bar, which takes no focus, and passed whatever the canvas did
 (`docs/testing.md`). Not verified: the live session, the paths sweep again with the fix, the full
 suite.
 
+**Review of f1ebb2c..f061db1 (2026-11-05).** Fixed: the hover rule now needs a focus policy other
+than click to focus (`hoverFocused`; with click to focus, Alt-Tab to a window under a resting
+pointer did not fly), looks through tooltips, menus, notifications and on-screen displays, and
+treats a panel under the pointer as no window; the map widget and the built-in minimap colour a
+frame by its activity, not its place in `frames()`; the map watches `currentActivity`; `mapGo`
+centres on the camera screen with separate cameras; `220` no longer leaks `VramReduced`; a press
+that wakes the pass-through tells the effect; the kept scene's VRAM watch makes one NVML call.
+Verified in the hidden nest: `204`, `180`, `182`, `207`, `224`, `220`, `116`, `123`, `85`, 99 pass,
+0 fail; control, `204` against f061db1's effect fails exactly the new click-to-focus case. Not
+fixed, stated instead (`docs/architecture.md`, *The map widget*): once read, the map keeps
+watching until KWin restarts, a removed widget included. A stop rule (the widget saying it is
+gone, a lease per D-Bus client) is a proposal.
+
 **Desktop stutter, read from the perf trace (2026-11-03).** Another session's audit counted 267
 "compositor freezes" of 50 ms or more in 24 hours. They are the effect's `stall` lines: the 16 ms
 tick late by 60 ms or more, which is KWin's main thread blocked, measured only while the canvas

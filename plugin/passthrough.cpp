@@ -579,7 +579,9 @@ void CanvasPassthrough::windowAction(const QString &action)
 // full card is what wedged the driver on 2026-10-30.
 static void nvmlRead(int *busy, int *vram)
 {
-    *busy = -1;
+    if (busy) {
+        *busy = -1;
+    }
     *vram = -1;
     // Initialised once: nvmlInit is reference-counted and not free, and this
     // runs every couple of seconds for the whole session. The device handle
@@ -602,8 +604,9 @@ static void nvmlRead(int *busy, int *vram)
     }
     // nvmlUtilization_t is two unsigned ints: gpu, then memory (the memory
     // controller's busy share, not how full the memory is).
+    // A null busy asks for the memory alone (the kept scene's watch): one driver call.
     unsigned int rates[2] = {0, 0};
-    if (utilFn && utilFn(dev, rates) == 0) {
+    if (busy && utilFn && utilFn(dev, rates) == 0) {
         *busy = int(rates[0]);
     }
     // nvmlMemory_t is three unsigned long longs: total, free, used.
@@ -615,9 +618,8 @@ static void nvmlRead(int *busy, int *vram)
 
 int CanvasSceneHelper::gpuMemory() const
 {
-    int busy = -1;
     int vram = -1;
-    nvmlRead(&busy, &vram);
+    nvmlRead(nullptr, &vram);
     return vram;
 }
 
@@ -1109,7 +1111,13 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     // A press is never a rest: whatever cue the hover clock was filling
     // stops the moment a button lands.
     publishRest(nullptr);
-    m_idle = false;
+    // A press wakes the passthrough as a motion does, and the effect hears it.
+    if (m_idle) {
+        m_idle = false;
+        if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+            canvas->setProperty("passthroughIdle", false);
+        }
+    }
     if (m_active) {
         m_idleTimer.start();
     }

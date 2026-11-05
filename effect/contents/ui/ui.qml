@@ -1761,7 +1761,9 @@ Item {
                                 y: { effect.revision; effect.screensRev; planeMap.width; planeMap.height; return planeMap.my(f.y); }
                                 width: { effect.revision; planeMap.width; planeMap.height; return f.width * planeMap.sc; }
                                 height: { effect.revision; planeMap.width; planeMap.height; return f.height * planeMap.sc; }
-                                readonly property color accent: effect.palette[index % effect.palette.length]
+                                // The activity's colour, as on the canvas: an index into frames() shifts
+                                // with a second monitor or a hidden frame.
+                                readonly property color accent: effect.activityColor(f.id)
                                 color: Qt.rgba(accent.r, accent.g, accent.b, 0.30)
                                 border.width: 1
                                 border.color: Qt.rgba(accent.r, accent.g, accent.b, 0.75)

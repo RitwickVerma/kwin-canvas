@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
 # shellcheck source=../tests/lib.sh
-scenario_desc="KWin moves a window toward the screen when it is activated (top edge to y=0, left edge past the right edge minus 100 px back to that line); the canvas undoes that, so an auto fly to a partly or wholly off-screen window and an activation in the open overview change no window's plane coordinate; a focus-follows-mouse hover slides nothing and keeps KWin's nudge of the hovered window"
+scenario_desc="KWin moves a window toward the screen when it is activated (top edge to y=0, left edge past the right edge minus 100 px back to that line); the canvas undoes that, so an auto fly to a partly or wholly off-screen window and an activation in the open overview change no window's plane coordinate; a focus-follows-mouse hover slides nothing and keeps KWin's nudge of the hovered window; with click to focus, Alt-Tab to a window under the resting pointer still flies"
 # plane(): every window's plane coordinate while the canvas is closed: its real frame plus the camera.
 plane() {
     kwinjs 'var o = []; workspace.stackingOrder.forEach(function (x) { var n = String(x.caption); ["KCalc","Konsole","sample.txt","Dolphin","Gwenview"].forEach(function (k) { if (n.indexOf(k) >= 0) o.push(k + "=" + x.frameGeometry.x + "," + x.frameGeometry.y); }); }); print("NDGPOS " + o.join(" "));' 0.45
@@ -74,7 +74,21 @@ run_scenario() {
     assert_eq "hover: focus-follows-mouse on a window above the screen does not slide the desk" "$(sget viewx),$(sget viewy)" "$vbefore"
     assert_eq "hover: KWin's nudge brings its title bar to the screen's top, and only it moves" "$after" \
         "$(awk -v b="$before" 'BEGIN{n = split(b, a, " "); for (i = 1; i <= n; i++) { if (a[i] ~ /^KCalc=/) { split(substr(a[i], 7), p, ","); a[i] = sprintf("KCalc=%.1f,%.1f", p[1], p[2] + 60) } printf "%s ", a[i] } }')"
+    # Click to focus: a hover moves no focus, so a window under a resting pointer that takes
+    # the focus got it from the keyboard (Alt-Tab, a script here). It flies as any activation
+    # does, and no window's plane coordinate changes.
     kwriteconfig6 --file "$CONF/kwinrc" --group Windows --key FocusPolicy --delete >/dev/null
+    kwriteconfig6 --file "$CONF/kwinrc" --group Windows --key DelayFocusInterval --delete >/dev/null
+    nq org.kde.KWin /KWin org.kde.KWin.reconfigure >/dev/null 2>&1; sleep 1
+    arrange >/dev/null
+    put 600 -60
+    activate Konsole; sleep 1.8
+    input move 800 120; sleep 0.5
+    before=$(plane)
+    activate KCalc; sleep 2.4
+    after=$(plane)
+    assert_eq "click to focus: Alt-Tab to the window under the resting pointer flies, no plane coordinate changes" "$after" "$(awk -v b="$before" 'BEGIN{print b}')"
+    assert_eq "click to focus: and it ended wholly on the screen" "$(kcalc_inside)" yes
     c cancel >/dev/null 2>&1
     arrange >/dev/null
 }

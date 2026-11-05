@@ -59,7 +59,7 @@ void CanvasMap::watchCanvas(QObject *effect)
     m_canvas = effect;
     const QMetaObject *mo = effect->metaObject();
     const QMetaMethod slot = metaObject()->method(metaObject()->indexOfSlot("touch()"));
-    for (const char *name : {"viewX", "viewY", "zoom", "revision", "screensRev", "visible", "quiet"}) {
+    for (const char *name : {"viewX", "viewY", "zoom", "revision", "screensRev", "visible", "quiet", "currentActivity"}) {
         const int i = mo->indexOfProperty(name);
         if (i >= 0 && mo->property(i).hasNotifySignal()) {
             connect(effect, mo->property(i).notifySignal(), this, slot);

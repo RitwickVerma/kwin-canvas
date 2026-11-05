@@ -1670,13 +1670,13 @@ KWin.SceneEffect {
     function classifyFrame(w, was, now) {
         if (!was || !isPlaneWindow(w)) return "adopt";
         if (!Logic.isPull(was, now, outputRects(), layoutBefore)) return "adopt";
-        // Closed, the window the pointer rests on, which showed on a monitor: the hand pointed at
-        // it, and KWin's nudge bringing its title bar or its edge into reach as it takes the focus
-        // stands, as it does without the canvas. Put back, the title bar hid again on every hover
-        // (focus following the mouse). Every other window keeps its plane coordinate (one the
-        // canvas left with a sliver on the screen, one losing the focus), and so does every
-        // window on the open canvas, whose scene draws the plane.
-        if (!visible && Logic.onAMonitor(was, outputRects()) && pointedWindow() === w) return "adopt";
+        // Closed, the window that took the focus from the pointer resting on it, which showed on
+        // a monitor: the hand pointed at it, and KWin's nudge bringing its title bar or its edge
+        // into reach stands, as it does without the canvas. Put back, the title bar hid again on
+        // every hover (focus following the mouse). Every other window keeps its plane coordinate
+        // (one the canvas left with a sliver on the screen, one losing the focus, any window with
+        // click to focus), and so does every window on the open canvas, whose scene draws the plane.
+        if (!visible && Logic.onAMonitor(was, outputRects()) && hoverFocused(w)) return "adopt";
         // With following the activation turned off, KDE brings the activated window in: leave it.
         if (configuration.FollowActivation === false && w === KWin.Workspace.activeWindow) return "adopt";
         return mayRevert(w) ? "revert" : "adopt";
@@ -2371,13 +2371,7 @@ KWin.SceneEffect {
         const cx = e.x + e.width / 2, cy = e.y + e.height / 2;
         let parkedNow = false;
         if (!rectContains(f, cx, cy)) {
-            const ss = KWin.Workspace.screens;
-            let leaks = false;
-            for (let i = 0; i < ss.length && !leaks; ++i) {
-                const o = ss[i].geometry;
-                leaks = x < o.x + o.width && x + e.width > o.x && y < o.y + o.height && y + e.height > o.y;
-            }
-            if (leaks) {
+            if (Logic.onAMonitor({ x: x, y: y, width: e.width, height: e.height }, outputRects())) {
                 const bb = KWin.Workspace.virtualScreenGeometry, margin = 300;
                 const dx = cx - (f.x + f.width / 2), dy = cy - (f.y + f.height / 2);
                 if (Math.abs(dx) >= Math.abs(dy)) x = dx >= 0 ? bb.x + bb.width + margin : bb.x - margin - e.width;
@@ -4940,7 +4934,7 @@ KWin.SceneEffect {
         const frameList = [];
         for (let i = 0; i < fs.length; ++i) {
             frameList.push([Math.round(fs[i].x), Math.round(fs[i].y), fs[i].width, fs[i].height,
-                            String(palette[i % palette.length]), fs[i].id === cur ? 1 : 0]);
+                            String(activityColor(fs[i].id)), fs[i].id === cur ? 1 : 0]);
         }
         const active = KWin.Workspace.activeWindow;
         const windows = [];
@@ -4986,7 +4980,9 @@ KWin.SceneEffect {
         x = Number(x);
         y = Number(y);
         if (!isFinite(x) || !isFinite(y)) return;
-        const g = actionScreen().geometry;
+        // Open with separate cameras the view is the camera screen's, whichever screen the
+        // widget (and so the pointer) is on.
+        const g = (canvasOpen && separate && camScreen ? camScreen : actionScreen()).geometry;
         dbg("map", "go (" + Math.round(x) + "," + Math.round(y) + ")");
         if (canvasOpen) {
             camGo(zoom, x - (g.x + g.width / 2) / zoom, y - (g.y + g.height / 2) / zoom);
@@ -5191,12 +5187,23 @@ KWin.SceneEffect {
         for (let i = stack.length - 1; i >= 0; --i) {
             const w = stack[i];
             if (!w || w.deleted || w.minimized || w.hidden || !onDesktop(w) || !onActivity(w, currentActivity)) continue;
-            const g = w.frameGeometry;
-            if (p.x >= g.x && p.x < g.x + g.width && p.y >= g.y && p.y < g.y + g.height) {
-                return w.desktopWindow || w.dock ? null : w;
-            }
+            if (!rectContains(w.frameGeometry, p.x, p.y)) continue;
+            // A panel or the desktop under the hand: no window is pointed at (the task bar's
+            // click is not a hover over the window behind the panel).
+            if (w.desktopWindow || w.dock) return null;
+            // A tooltip, a menu, a notification or an on-screen display over the window is
+            // not what the hand rests on: look through it.
+            if (!w.managed || w.popupWindow || w.specialWindow) continue;
+            return w;
         }
         return null;
+    }
+    // Whether w took the focus because the pointer rests on it: focus follows the
+    // pointer (any policy but click to focus) and w is the window under it. With
+    // click to focus a hover moves no focus, so a window under a resting pointer
+    // got it from the keyboard (Alt-Tab) or a script.
+    function hoverFocused(w) {
+        return KWin.Options.focusPolicy !== KWin.Options.ClickToFocus && pointedWindow() === w;
     }
 
     // The output holding a global point, or null. Edge panning asks which
@@ -5962,7 +5969,7 @@ KWin.SceneEffect {
             // mouse. The window shows where the pointer is, and sliding the whole desk
             // to bring the rest of it in moved every window on the screen for a hover
             // (the owner's focus-follows-mouse). A click on it still flies, on release.
-            if (effect.pointedWindow() === w) {
+            if (effect.hoverFocused(w)) {
                 effect.dbg("fly", w.caption + " took the focus under the pointer: no fly");
                 return;
             }

@@ -98,6 +98,8 @@ run_scenario() {
     assert_true "a resumed scene reaches its first frame sooner (${on} < ${off} ms)" "${on:-999}" -lt "${off:-0}"
 
     kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key ViewCaching --delete
+    # VramReduced is the fidelity ladder's threshold too: a leaked 100 follows the suite.
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key VramReduced --delete
     setcfg Perf false
     arrange >/dev/null
 }
