@@ -7,7 +7,7 @@
                 "Name": "Ritwick Verma"
             }
         ],
-        "Description": "The canvas's frame: no title bar, no border (the resize band lies outside the window), and a small glass pill with the close, minimize and maximize glyphs fading in on the top edge",
+        "Description": "The canvas's frame: no border (the resize band lies outside the window) and one title bar in the colour scheme's title bar colours, with the canvas's close, minimize, maximize and float glyphs and the caption, drawn edge to edge so a frame-shaping effect such as Rounded Corners rounds the window you see",
         "Id": "kwin-canvas-decoration",
         "License": "GPL",
         "Name": "Canvas"

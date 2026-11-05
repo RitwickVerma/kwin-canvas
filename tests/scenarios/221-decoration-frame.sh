@@ -22,7 +22,7 @@ run_scenario() {
     assert_eq "no border on the left" "$cx" "$fx"
     assert_eq "nor on the right" "$((cx + cw))" "$((fx + fw))"
     assert_eq "nor at the bottom" "$((cy + ch))" "$((fy + fh))"
-    assert_eq "the title band is the pill's 32 px" "$((cy - fy))" 32
+    assert_eq "the title bar is 32 px" "$((cy - fy))" 32
 
     if have_input; then
         # The resize band is outside the frame: a drag from 3 px past the right edge widens it.

@@ -8,7 +8,7 @@
             }
         ],
         "Category": "Windows and Tasks",
-        "Description": "The focused window's caption and the canvas pill's glyphs: close, minimize, maximize and float, in the native titlebar-buttons order, drawn in the pill's own language",
+        "Description": "The focused window's caption and the canvas decoration's glyphs: close, minimize, maximize and float, in the native titlebar-buttons order, drawn in the decoration's own language",
         "EnabledByDefault": true,
         "Icon": "window-duplicate",
         "Id": "org.kde.kwin.canvas.decor",

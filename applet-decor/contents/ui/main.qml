@@ -3,8 +3,8 @@
 
     SPDX-License-Identifier: GPL-2.0-or-later
 
-    The panel twin of the window decoration's pill. It shows the same
-    glyphs the pill draws - the same marks, the same circles, the same
+    The panel twin of the window decoration's bar. It shows the same
+    glyphs the bar draws - the same marks, the same circles, the same
     hover and press pops, the same accents - in the same order the native
     titlebar buttons give them, so the panel and the window speak one
     language. Every configured button gets a
@@ -12,12 +12,11 @@
     the keep-above, B the keep-below, E the exclude-from-capture, and a
     spacer becomes a gap. The menu and the help codes are left out
     honestly: the in-process window API has no menu or help call, so the
-    panel cannot act on them (the decoration's own pill can, through the
+    panel cannot act on them (the decoration's own bar can, through the
     decoration's request methods).
     The glyphs act on the focused window through the pass-through
     plugin's windowAction channel, which works with the canvas closed
-    too, including on maximized windows where the pill stays tucked
-    away.
+    too, including on maximized windows, which wear no bar.
 */
 
 import QtQuick
@@ -61,8 +60,8 @@ PlasmoidItem {
     property bool winCapture: false
 
     // The native titlebar-buttons configuration, the same source the
-    // pill reads - the left set first, then the right - so the applet's
-    // glyph order is the pill's glyph order. The menu, the app-menu and
+    // bar reads - the left set first, then the right, as the bar shows
+    // them from its left end to its right. The menu, the app-menu and
     // the help letters are skipped: the panel's channel cannot act on
     // them (see the header).
     property string buttonsLeft: ""
@@ -179,7 +178,7 @@ PlasmoidItem {
     compactRepresentation: fullRepresentation
 
     // One glyph, drawn by its letter: the same circle, the same marks,
-    // the same pops, the same accents as the decoration's pill. A
+    // the same pops, the same accents as the decoration's bar. A
     // spacer renders as an empty gap.
     Component {
         id: glyphDelegate

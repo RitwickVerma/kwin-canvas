@@ -163,6 +163,19 @@ rested on a title bar, which takes no focus, and passed whatever the canvas did
 (`docs/testing.md`). Not verified: the live session, the paths sweep again with the fix, the full
 suite.
 
+**The decoration is a bar (2026-11-05).** The owner asked for the decoration's look as a bar "so
+rounding can play nicely": with Rounded Corners (16 px, an outline) on, the effect shaped the
+frame, whose top 32 px were a transparent band, so the rounding and the outline fell on nothing
+and the visible window kept square top corners. The band is now drawn edge to edge in the colour
+scheme's title bar colours (`DecorationOptions.titleBarColor`, `fontColor`, `titleFont`, which
+follow the focus), the glyphs keep their marks in the scheme's text colour, left and right sets on
+their own sides, and the caption sits centred between them. Verified in the hidden nest with the
+decoration loaded (`NEST_DECOR=canvas`): `135` (rewritten: both windows wear a drawn bar, the
+active and inactive colours differ and swap with the focus, the frame's top corners are the bar),
+`221`, `137`, 22 pass, 0 fail, 1 skip (the close glyph, live only); the shot was looked at. Not
+verified: the live session with Rounded Corners (the nest runs no third-party effects), a light
+colour scheme.
+
 **Review of f1ebb2c..f061db1 (2026-11-05).** Fixed: the hover rule now needs a focus policy other
 than click to focus (`hoverFocused`; with click to focus, Alt-Tab to a window under a resting
 pointer did not fly), looks through tooltips, menus, notifications and on-screen displays, and

@@ -1,5 +1,11 @@
 Unreleased:
 
+- The Canvas window decoration is a title bar. The transparent band with the floating glass pill
+  is now one bar drawn edge to edge in your colour scheme's title bar colours (active and
+  inactive), with the canvas's glyphs on the sides System Settings puts them and the caption in
+  the middle. Rounded Corners and its outline now round and ring the window you see: with the old
+  band the top corners fell on nothing and the window kept square top corners. A maximized window
+  still has no bar.
 - With focus following the mouse, resting the pointer on a window that hangs over the screen's
   edge no longer slides the whole desk, and that window no longer jumps back. The hover gave it
   the focus, and the canvas flew to it as to a window picked in the task bar: every window on the

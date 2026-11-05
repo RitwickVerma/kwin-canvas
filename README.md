@@ -107,9 +107,9 @@ it would be invisible anyway. `Backdrop=grid` is the old plane.
 | `plugin/` | KWin plugin (C++, optional) | Pass-through: while the canvas is open, clicks, drags, the wheel and keys reach the real windows |
 | `tools/kwin-canvas` | CLI (bash) | Step in, cancel, open or toggle from a terminal or a VT; status; doctor and perf, which only read |
 | `applet/` | Plasma/Applet | A panel button that fires the Toggle Canvas chord |
-| `applet-decor/` | Plasma/Applet | The decor applet: the focused window's glyphs in the panel, in the pill's language |
+| `applet-decor/` | Plasma/Applet | The decor applet: the focused window's glyphs in the panel, in the decoration's language |
 | `applet-map/` | Plasma/Applet | The canvas's minimap as a widget, on the desktop or in a panel: a click flies there (needs the plugin) |
-| `decoration/` | KWin/Decoration | The Canvas window frame: no title bar, the glass pill on the focused window's edge |
+| `decoration/` | KWin/Decoration | The Canvas window frame: no border, one title bar in the colour scheme's colours with the canvas's glyphs, drawn edge to edge so Rounded Corners rounds it |
 | `dev/nest.sh` | harness | Nested KWin with its own D-Bus and config, driven from the shell |
 
 ## Install
@@ -165,7 +165,7 @@ each row says what the setting does for the canvas.
 | Desktop Effects | Stock **Zoom** off | It owns Meta+wheel, Meta+= and Meta+-. |
 | Animations | Global speed at the **default**, not faster or slower | The slide, the camera and the fades follow it (below 1 is faster); at a quarter of the default KDE's own slide effects blink. |
 | Panels | **Auto hide** or **Dodge windows** | An always-visible panel reserves screen space, and KWin recalculates its work area whenever the panel changes; it then pulls windows parked outside the monitors back in. The canvas puts them back, but a panel that reserves no space never triggers it. |
-| Window Decorations | **Canvas**, with buttons *close, on all desktops, keep above, maximize, minimize* | The pill shows the same five as the panel applet; *on all desktops* is the float. |
+| Window Decorations | **Canvas**, with buttons *close, on all desktops, keep above, maximize, minimize* | The bar shows the same five as the panel applet; *on all desktops* is the float. |
 | Window Rules | Picture-in-picture, a lyrics window or a monitor: **Keep above** and **All desktops** | A window that is on all desktops floats: it stays on the screen while you fly. |
 
 `kwin-canvas setup` walks through these: it shows each setting that differs, with what it does for
@@ -186,7 +186,7 @@ qdbus6 org.kde.KWin /KWin reconfigure
 
 `BorderActivate` numbers the screen edges from 0 at the top, clockwise to 7 at the top left,
 so `1,3,5,7` is the four corners. The pass-through plugin is built for one exact KWin
-version: after a KWin update the grasp over windows and the pill's buttons stop working until
+version: after a KWin update the grasp over windows and the panel applet's buttons stop working until
 it is rebuilt and installed again, and `kwin-canvas doctor` says so.
 
 Also running in the author's session, and not tested against the canvas beyond what the

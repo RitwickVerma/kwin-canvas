@@ -4,29 +4,26 @@
     SPDX-License-Identifier: GPL-2.0-or-later
 */
 /*
-    The canvas's window frame is no frame at all. The window wears
-    nothing - no border, no shadow - just a glass pill at the top edge's
-    left end, half in and half out of the window, that slides out of the
-    edge when the window takes the focus and back behind it when the
-    focus leaves. The whole top edge drags the window. This is
-    the decoration, so it is the window's frame in the normal desktop
-    too, not only on the plane; the canvas keeps its own semantics
-    untouched.
+    The canvas's window frame is the window and one bar. No border on the
+    sides or at the bottom (the resize band lies outside the window), and
+    on top a 32 px title bar in the colour scheme's own title bar colours,
+    active and inactive, with the canvas's glyphs and the caption. The bar
+    is drawn edge to edge, so an effect that shapes the frame (Rounded
+    Corners, an outline) rounds and rings the window the eye sees: with the
+    old transparent band the effect's top corners fell on nothing, and the
+    window under it kept square top corners. The whole bar drags the
+    window. This is the decoration, so it is the window's frame in the
+    normal desktop too, not only on the plane.
 
-    The pill wears the native configuration: System Settings' titlebar
-    buttons decide which glyphs it shows and in what order (the left
-    set first, then the right), and moving them between the sides
-    reshapes the pill without a re-login. Every button the QML bridge
-    reports gets a glyph: X the close, I the minimize, A the maximize,
-    S the float (the on-all-desktops pin), M the menu, F the
+    The bar wears the native configuration: System Settings' titlebar
+    buttons decide which glyphs it shows, on which side and in what order,
+    and moving them reshapes the bar without a re-login. Every button the
+    QML bridge reports gets a glyph: X the close, I the minimize, A the
+    maximize, S the float (the on-all-desktops pin), M the menu, F the
     keep-above, B the keep-below, H the help, and a configured spacer
     becomes a gap. One button cannot be drawn here: the
     exclude-from-capture glyph, because this KWin's QML bridge predates
     the button and drops it from the list entirely.
-
-    The QML decoration cannot blur the desktop behind it (the engine
-    exposes no blur region - Klassy can, as a C++ decoration); the
-    pill's glass and the refraction here are drawn, and read the same.
 */
 import QtQuick
 import org.kde.kwin.decoration
@@ -36,35 +33,34 @@ Decoration {
     alpha: true
 
     readonly property bool activeWindow: decoration.client.active
-    // The states the pill shows: a floated window wears the accent ring
-    // and the filled arrow; a maximized one shows the restore glyph;
-    // the keep-above and keep-below marks light their own accent.
-    // Float is on all desktops (the same test the canvas uses); keep above
-    // and keep below are their own marks.
+    // The states the glyphs show: a floated window's pin and a maximized
+    // window's restore pair wear the accent; so do the keep-above and
+    // keep-below marks when on. Float is on all desktops (the same test the
+    // canvas uses); keep above and keep below are their own marks.
     readonly property bool floating: decoration.client.onAllDesktops
     readonly property bool maximized: decoration.client.maximized
     readonly property bool above: decoration.client.keepAbove
     readonly property bool below: decoration.client.keepBelow
-    readonly property color glyph: activeWindow ? Qt.rgba(1, 1, 1, 0.88) : Qt.rgba(1, 1, 1, 0.45)
-    readonly property color glass: Qt.rgba(0.05, 0.05, 0.08, 0.62)
+    // The colour scheme's title bar and its text, each for the window's
+    // active or inactive state (the options follow the client's focus).
+    readonly property color ink: options.fontColor
+    readonly property int band: 32
 
-    // The native titlebar-buttons configuration: which glyphs the pill
-    // shows, in the user's own order - the left set first, then the
-    // right - so the pill is the system's buttons, just drawn in the
-    // canvas's glass. Every code the QML bridge reports maps to a
-    // glyph; a spacer maps to an empty gap. The exclude-from-capture
-    // button never arrives (the bridge's enum predates it) and the
-    // application-menu and shade codes have no room here, so those are
-    // left out by the bridge's own shape.
+    // The native titlebar-buttons configuration: which glyphs the bar shows,
+    // on which side, in the user's own order, so the bar is the system's
+    // buttons drawn in the canvas's glyphs. Every code the QML bridge
+    // reports maps to a glyph; a spacer maps to an empty gap. The
+    // exclude-from-capture button never arrives (the bridge's enum
+    // predates it) and the application-menu and shade codes have no room
+    // here, so those are left out by the bridge's own shape.
     DecorationOptions {
         id: options
         deco: decoration
     }
-    readonly property var pillButtons: {
-        const sets = options.titleButtonsLeft.concat(options.titleButtonsRight);
+    function glyphCodes(set) {
         const out = [];
-        for (let i = 0; i < sets.length; i++) {
-            const t = sets[i];
+        for (let i = 0; i < set.length; i++) {
+            const t = set[i];
             if (t === DecorationOptions.DecorationButtonClose) out.push("X");
             else if (t === DecorationOptions.DecorationButtonMinimize) out.push("I");
             else if (t === DecorationOptions.DecorationButtonMaximizeRestore) out.push("A");
@@ -77,9 +73,15 @@ Decoration {
         }
         return out;
     }
+    readonly property var leftButtons: glyphCodes(options.titleButtonsLeft)
+    readonly property var rightButtons: glyphCodes(options.titleButtonsRight)
+    // The ink as a canvas style, at an alpha.
+    function css(c, a) {
+        return "rgba(" + Math.round(c.r * 255) + "," + Math.round(c.g * 255) + "," + Math.round(c.b * 255) + "," + a + ")";
+    }
 
-    // The drag band: the whole top edge drags the window. Invisible by
-    // design; the pill floats on it.
+    // The title item: the whole bar drags the window (and takes the title
+    // bar's clicks, double-click and wheel as configured).
     Item {
         id: dragBand
         anchors {
@@ -87,61 +89,61 @@ Decoration {
             right: parent.right
             top: parent.top
         }
-        height: 32
+        height: root.band
     }
 
-    // The pill: one glass capsule with the configured glyphs inside. It
-    // sits at the top edge's left end. Only the focused window wears
-    // its pill. The unfocused pill waits behind the window's top edge,
-    // invisible under the client; the moment the window takes the
-    // focus, the pill slides out from behind the edge and settles on
-    // top of it, a springy rise with a hint of overshoot. When the
-    // focus leaves, it slides back behind. Each glyph swells when the
-    // pointer comes near it, and sinks a touch when pressed.
-    Item {
-        id: pill
-        anchors.left: parent.left
-        anchors.leftMargin: 8
-        // The pill rests with its bottom on the drag band's floor (the
-        // client's top edge); one pill height lower it is entirely
-        // behind the client and invisible. The activeWindow switch is
-        // the whole show: the slide out and the slide back are the same
-        // spring. A maximized window keeps the pill tucked away too -
-        // the full-bleed surface is its own chrome, and the band above
-        // it still drags (KWin un-maximizes on the drag).
-        y: dragBand.y + dragBand.height - pill.height + ((root.activeWindow && !root.maximized) ? 0 : pill.height)
-        Behavior on y {
-            SpringAnimation { spring: 2.6; damping: 0.8; epsilon: 0.01 }
-        }
-        // The capsule hugs its glyphs: the capsule is 28 px a glyph, the
-        // same as the panel applet's, so the two rows line up; fewer buttons make a shorter pill, and a
-        // configuration with none of the four hides it entirely.
-        width: 24 + root.pillButtons.length * 28 - (root.pillButtons.length > 0 ? 6 : 0)
-        height: 30
-        visible: root.pillButtons.length > 0
-
-        // The capsule's glass, with the refraction: the gradient's own
-        // top light reads as the lens; no extra streak, so nothing
-        // reads as a stray line.
-        Rectangle {
-            id: capsule
-            anchors.fill: parent
-            radius: 15
-            color: root.glass
-            border.width: 1
-            border.color: Qt.rgba(1, 1, 1, 0.24)
-            // The glass is the capsule, flat: the QML gradient would REPLACE
-            // the color (the refraction wash made the pill nearly invisible
-            // against the wallpaper - measured in the nest).
+    // The bar. A maximized window is full-bleed and has none (its title is
+    // 0 below); the band above it would only sit under the client.
+    Rectangle {
+        id: bar
+        anchors.fill: dragBand
+        visible: !root.maximized
+        color: options.titleBarColor
+        Behavior on color {
+            ColorAnimation {
+                duration: 140
+                easing.type: Easing.OutCubic
+            }
         }
 
         Row {
-            anchors.centerIn: parent
+            id: leftRow
+            anchors.left: parent.left
+            anchors.leftMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
             spacing: 6
-
             Repeater {
-                model: root.pillButtons
+                model: root.leftButtons
                 delegate: glyphDelegate
+            }
+        }
+        Row {
+            id: rightRow
+            anchors.right: parent.right
+            anchors.rightMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 6
+            Repeater {
+                model: root.rightButtons
+                delegate: glyphDelegate
+            }
+        }
+        // The caption, centred on the bar and kept clear of both button
+        // rows, so it sits in the middle whichever side the buttons are on.
+        Text {
+            anchors.centerIn: parent
+            width: Math.max(0, Math.min(implicitWidth, parent.width - 2 * Math.max(leftRow.width, rightRow.width) - 2 * 20))
+            text: decoration.client.caption
+            textFormat: Text.PlainText
+            font: options.titleFont
+            color: root.ink
+            elide: Text.ElideMiddle
+            horizontalAlignment: Text.AlignHCenter
+            Behavior on color {
+                ColorAnimation {
+                    duration: 140
+                    easing.type: Easing.OutCubic
+                }
             }
         }
     }
@@ -156,6 +158,7 @@ Decoration {
             property bool hovered: false
             property bool pressed: false
             readonly property bool lit: (modelData === "S" && root.floating) || (modelData === "A" && root.maximized) || (modelData === "F" && root.above) || (modelData === "B" && root.below)
+            readonly property color ink: root.ink
             scale: pressed ? 0.86 : (hovered ? 1.2 : 1)
             width: 22
             height: 22
@@ -172,7 +175,7 @@ Decoration {
                 height: 16
                 radius: 8
                 visible: parent.modelData !== "_"
-                color: parent.pressed ? Qt.rgba(1, 1, 1, 0.42) : (parent.hovered ? Qt.rgba(1, 1, 1, 0.28) : (parent.lit ? Qt.rgba(0.16, 0.43, 0.87, 0.30) : "transparent"))
+                color: parent.pressed ? Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.36) : (parent.hovered ? Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.22) : (parent.lit ? Qt.rgba(0.16, 0.43, 0.87, 0.30) : "transparent"))
                 Behavior on color {
                     ColorAnimation {
                         duration: 140
@@ -180,7 +183,7 @@ Decoration {
                     }
                 }
                 border.width: 1
-                border.color: parent.hovered || parent.pressed ? Qt.rgba(1, 1, 1, 0.95) : (parent.lit ? "#2a6ddf" : root.glyph)
+                border.color: parent.hovered || parent.pressed ? root.ink : (parent.lit ? "#2a6ddf" : Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.7))
                 Behavior on border.color {
                     ColorAnimation {
                         duration: 140
@@ -208,8 +211,8 @@ Decoration {
                     ctx.clearRect(0, 0, width, height);
                     const code = parent.modelData;
                     const lit = parent.lit;
-                    ctx.strokeStyle = lit ? "#2a6ddf" : "#ffffff";
-                    ctx.fillStyle = lit ? "#2a6ddf" : "#ffffff";
+                    ctx.strokeStyle = lit ? "#2a6ddf" : root.css(root.ink, 1);
+                    ctx.fillStyle = lit ? "#2a6ddf" : root.css(root.ink, 1);
                     ctx.lineWidth = (code === "S" || code === "F" || code === "B") ? 1.3 : 1.2;
                     if (code === "X") {
                         ctx.beginPath();
@@ -291,12 +294,14 @@ Decoration {
                         ctx.fill();
                     }
                 }
-                // Repaint on the delegate's own lit, which is what onPaint reads: a
-                // Connections on root could run before lit re-evaluated, and paint
-                // the old state until something else forced another paint.
+                // Repaint on the delegate's own lit and ink, which is what onPaint reads:
+                // a Connections on root could run before lit re-evaluated, and paint the
+                // old state until something else forced another paint. The ink changes
+                // with the focus and the colour scheme.
                 Connections {
                     target: mark.parent
                     function onLitChanged() { mark.requestPaint(); }
+                    function onInkChanged() { mark.requestPaint(); }
                 }
             }
 
@@ -330,18 +335,13 @@ Decoration {
         // extended border below - Aurorae makes it a resize-only border,
         // input outside the frame and never drawn (it was a transparent
         // 6 px border inside the frame, and the rounded corners fell on
-        // it, invisible). The title is an invisible 32 px band - the hover
-        // surface for the drag and the pill. With the title at 0 the client
-        // covers the whole interior and the pill could never be hovered;
-        // the band is transparent (alpha: true), so the window wears
-        // nothing while the pill floats exactly on the edge. KWin has no
-        // resize-only border above a window, so this band stays inside the
-        // frame, and an effect's top corners fall on it.
+        // it, invisible). KWin has no resize-only border above a window, so
+        // the title stays inside the frame: it is the bar, drawn edge to
+        // edge, and the effect's top corners fall on it.
         borders.setBorders(0);
-        borders.setTitle(32);
-        // A maximized window is full-bleed: no band, so the client runs
-        // to the screen's top edge and no transparent strip shows above
-        // it. The pill is already tucked away when maximized.
+        borders.setTitle(root.band);
+        // A maximized window is full-bleed: no bar, so the client runs to
+        // the screen's top edge.
         maximizedBorders.setTitle(0);
         // The resize band, outside the frame: Aurorae passes the extended
         // borders to KWin as resize-only borders (left, right and bottom;
