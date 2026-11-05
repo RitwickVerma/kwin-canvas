@@ -143,25 +143,30 @@ at once in a nest panel (the compact map and its popup). Not verified: the live 
 the plugin, `kwin-canvas fix-plugin`, a relogin, and the widget added), the popup's size on the
 maintainer's 4096x1152 plane, and separate cameras on two outputs.
 
-**Windows snapping back on a hover (2026-11-03).** The owner: window positions get reset, a window
-jumps back by itself. With focus following the mouse, resting the pointer on a window hanging over
-a screen edge gives it the focus; KWin then brings its title bar or edge into reach, the canvas took
-that for a pull and put it back, and the auto fly slid the whole desk to show the rest (84 px for a
-window 60 px above the top, about 500 px for one 50 px in from the right). The live log that day:
-302 reverts, 243 of them parked windows pulled (correct), 15 of 4 to 99 px on windows that showed
-on the screen; 112 slides, 74 of 300 to 999 px. Fixed: a focus that followed the mouse (no button,
-the pointer on the window) does not fly, and, closed, the window the pointer rests on keeps KWin's
-nudge (`docs/architecture.md`, *Frame authority*, fourth edge). A first, wider rule (keep the nudge
-of every window that showed on a monitor) broke `182`: the canvas's own sliver-on-screen placements
-were pulled to 1820 and 1052. Every other path was checked in the nest at the owner's settings
-(scale 1.25, focus follows mouse, autoraise, no click raise) before the fix, 15 pass, 0 fail: drags,
-an overview move and step in, the task bar's fly, a reopen, a restore, a zone snap, a same-size
-move, Move Window to Center, Quick Tile Left. Verified in the hidden nest: `180`, `182`, `207`,
-`204` and `224`, all pass (`204` 10, `224` 16); control, `204` against the committed effect fails
-exactly the two hover checks (the desk slid 84 px, the nudge put back). `204`'s old hover case
-rested on a title bar, which takes no focus, and passed whatever the canvas did
-(`docs/testing.md`). Not verified: the live session, the paths sweep again with the fix, the full
-suite.
+**The flash at a landing (2026-11-05).** The owner: "always a flash after auto pan finishes". With
+Rounded Corners on, every cornered window's picture is cut from KWin's texture through the
+plugin's `frameInTexture`, which read the window item's scene rect; the item takes a move in its
+own slot after the binding asks, so at a landing (every window moved) each picture sampled its
+texture shifted by the whole slide until the close. Burst-captured in the hidden nest through
+KWin's ScreenShot2 at about 45 frames a second, with Rounded Corners at the owner's settings, a
+video-like wallpaper (the desktop window path) and the canvas decoration: the scene's last frame
+differed from the settled desktop on 19.5% of the screen after a slide and 10.5% after a fly; with
+the plugin reading the item's own bounds, 0.49% and 0.38%, the Rounded Corners outline the canvas
+does not draw. `222` pins it: a window moved on the open canvas shows its own picture (rmse 0
+fixed, 0.26 with HEAD's plugin). Needs the rebuilt plugin live (`fix-plugin`, a relogin).
+
+**Auto pan on a hover, taken out and put back (2026-11-03 to 11-05).** The owner reported window
+positions resetting ("snap back"). f061db1 read that as the hover pan: with focus following the
+mouse, a window hanging over an edge took the focus and the canvas slid the desk to it, putting
+KWin's nudge back. It stopped the pan for a focus that followed the mouse and kept KWin's nudge for
+the hovered window. Live after the relogin on 11-05 the owner found auto pan broken: most of their
+pans are those hovers (112 slides on 11-03; 14 in the first 20 minutes after the relogin), and the
+log shows a VS Code window activated 220 px above the screen with no pan at all. Both rules are
+gone; the activation flies as before. What the original "snap back" was is not settled: the paths
+sweep at the owner's settings (drags, overview moves, the task bar, a reopen, a restore, zones,
+shortcuts) found nothing else, 15 pass, 0 fail. Verified in the hidden nest: `204` (its hover case
+rests inside the windows and checks the focus moved, then expects the pan and no plane coordinate
+changed), `155`, `180`, `182`, `205`, `207`, all pass.
 
 **The decoration is a bar (2026-11-05).** The owner asked for the decoration's look as a bar "so
 rounding can play nicely": with Rounded Corners (16 px, an outline) on, the effect shaped the
@@ -176,10 +181,8 @@ active and inactive colours differ and swap with the focus, the frame's top corn
 verified: the live session with Rounded Corners (the nest runs no third-party effects), a light
 colour scheme.
 
-**Review of f1ebb2c..f061db1 (2026-11-05).** Fixed: the hover rule now needs a focus policy other
-than click to focus (`hoverFocused`; with click to focus, Alt-Tab to a window under a resting
-pointer did not fly), looks through tooltips, menus, notifications and on-screen displays, and
-treats a panel under the pointer as no window; the map widget and the built-in minimap colour a
+**Review of f1ebb2c..f061db1 (2026-11-05).** Fixed: the hover rule's gaps (since removed with the
+rule, above); the map widget and the built-in minimap colour a
 frame by its activity, not its place in `frames()`; the map watches `currentActivity`; `mapGo`
 centres on the camera screen with separate cameras; `220` no longer leaks `VramReduced`; a press
 that wakes the pass-through tells the effect; the kept scene's VRAM watch makes one NVML call.

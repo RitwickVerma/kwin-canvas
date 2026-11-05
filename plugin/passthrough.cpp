@@ -8,6 +8,7 @@
 #include <core/output.h>
 #include <effect/effecthandler.h>
 #include <effect/quickeffect.h>
+#include <scene/windowitem.h>
 #include <wayland/seat.h>
 #include <wayland/surface.h>
 #include <wayland_server.h>
@@ -89,10 +90,30 @@ CanvasSceneHelper::CanvasSceneHelper(QObject *parent)
 
 void CanvasSceneHelper::watch(Window *window)
 {
-    connect(window, &Window::shadowChanged, this, [this]() {
-        ++m_revision;
-        Q_EMIT revisionChanged();
-    });
+    connect(window, &Window::shadowChanged, this, &CanvasSceneHelper::bump);
+    // The item's bounding rect is the texture's extent. It settles in the item's own slots after
+    // a resize (the surface and the decoration resize there), so a frameInTexture read when the
+    // frame changed can be a step behind; this asks again once the item has caught up. A plain
+    // move leaves it alone: it is in the item's own coordinates. A Wayland window gets its item
+    // when it first maps (WaylandWindow::markAsMapped), which can come after windowAdded.
+    if (WindowItem *item = window->windowItem()) {
+        connect(item, &Item::boundingRectChanged, this, &CanvasSceneHelper::bump);
+    } else {
+        connect(
+            window, &Window::readyForPaintingChanged, this,
+            [this, window]() {
+                if (WindowItem *item = window->windowItem()) {
+                    connect(item, &Item::boundingRectChanged, this, &CanvasSceneHelper::bump);
+                }
+            },
+            Qt::SingleShotConnection);
+    }
+}
+
+void CanvasSceneHelper::bump()
+{
+    ++m_revision;
+    Q_EMIT revisionChanged();
 }
 
 QVariantList CanvasSceneHelper::frameInTexture(QObject *window) const
@@ -101,11 +122,22 @@ QVariantList CanvasSceneHelper::frameInTexture(QObject *window) const
     if (!w) {
         return {};
     }
-    // The texture is KWin's render of visibleGeometry (the frame and its shadow), stretched over
-    // the whole texture (WindowThumbnailSource::update); the frame is where it is inside that.
-    const RectF visible = w->visibleGeometry();
+    // The texture is KWin's render of visibleGeometry (the frame, its shadow and whatever the
+    // client draws past the frame), stretched over the whole texture
+    // (WindowThumbnailSource::update). visibleGeometry is the window item's bounding rect mapped
+    // to the scene, and the item takes a move in its own frameGeometryChanged slot: read from a
+    // binding that ran first, it was the old place while the frame was the new one, and the
+    // picture sampled the texture shifted by the whole move - every slide's landing, which moves
+    // every window in the frame before the close. In the item's own coordinates the frame sits at
+    // the origin (WindowItem::updateGeometry places the item at the window's pos()), so where the
+    // frame lies in the texture does not depend on where the window is.
+    const WindowItem *item = w->windowItem();
+    if (!item) {
+        return {};
+    }
+    const RectF bounds = item->boundingRect();
     const RectF frame = w->frameGeometry();
-    return {frame.x() - visible.x(), frame.y() - visible.y(), frame.width(), frame.height(), visible.width(), visible.height()};
+    return {-bounds.x(), -bounds.y(), frame.width(), frame.height(), bounds.width(), bounds.height()};
 }
 
 int CanvasSceneHelper::offscreenWindows() const

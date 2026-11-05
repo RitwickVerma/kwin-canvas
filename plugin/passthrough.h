@@ -71,6 +71,7 @@ Q_SIGNALS:
 
 private:
     void watch(KWin::Window *window);
+    void bump();
     int m_revision = 0;
 };
 

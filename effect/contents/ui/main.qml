@@ -1670,13 +1670,6 @@ KWin.SceneEffect {
     function classifyFrame(w, was, now) {
         if (!was || !isPlaneWindow(w)) return "adopt";
         if (!Logic.isPull(was, now, outputRects(), layoutBefore)) return "adopt";
-        // Closed, the window that took the focus from the pointer resting on it, which showed on
-        // a monitor: the hand pointed at it, and KWin's nudge bringing its title bar or its edge
-        // into reach stands, as it does without the canvas. Put back, the title bar hid again on
-        // every hover (focus following the mouse). Every other window keeps its plane coordinate
-        // (one the canvas left with a sliver on the screen, one losing the focus, any window with
-        // click to focus), and so does every window on the open canvas, whose scene draws the plane.
-        if (!visible && Logic.onAMonitor(was, outputRects()) && hoverFocused(w)) return "adopt";
         // With following the activation turned off, KDE brings the activated window in: leave it.
         if (configuration.FollowActivation === false && w === KWin.Workspace.activeWindow) return "adopt";
         return mayRevert(w) ? "revert" : "adopt";
@@ -5179,33 +5172,6 @@ KWin.SceneEffect {
         return planeLive ? Qt.point(p.x * planeScale + planeOffsetX, p.y * planeScale + planeOffsetY) : p;
     }
 
-    // The topmost window under the pointer while the canvas is closed, or null
-    // (the desktop, a panel or nothing there).
-    function pointedWindow() {
-        const p = KWin.Workspace.cursorPos;
-        const stack = KWin.Workspace.stackingOrder;
-        for (let i = stack.length - 1; i >= 0; --i) {
-            const w = stack[i];
-            if (!w || w.deleted || w.minimized || w.hidden || !onDesktop(w) || !onActivity(w, currentActivity)) continue;
-            if (!rectContains(w.frameGeometry, p.x, p.y)) continue;
-            // A panel or the desktop under the hand: no window is pointed at (the task bar's
-            // click is not a hover over the window behind the panel).
-            if (w.desktopWindow || w.dock) return null;
-            // A tooltip, a menu, a notification or an on-screen display over the window is
-            // not what the hand rests on: look through it.
-            if (!w.managed || w.popupWindow || w.specialWindow) continue;
-            return w;
-        }
-        return null;
-    }
-    // Whether w took the focus because the pointer rests on it: focus follows the
-    // pointer (any policy but click to focus) and w is the window under it. With
-    // click to focus a hover moves no focus, so a window under a resting pointer
-    // got it from the keyboard (Alt-Tab) or a script.
-    function hoverFocused(w) {
-        return KWin.Options.focusPolicy !== KWin.Options.ClickToFocus && pointedWindow() === w;
-    }
-
     // The output holding a global point, or null. Edge panning asks which
     // screen the pointer is on so that only that screen's view pans.
     function screenAt(x, y) {
@@ -5965,14 +5931,6 @@ KWin.SceneEffect {
             // button down (Alt-Tab, the task bar) the fly takes a turn of its
             // own, so the activation finishes first.
             if (effect.pointerButtons !== 0) { effect.pendingFly = w; return; }
-            // No button down and the pointer resting on the window: focus followed the
-            // mouse. The window shows where the pointer is, and sliding the whole desk
-            // to bring the rest of it in moved every window on the screen for a hover
-            // (the owner's focus-follows-mouse). A click on it still flies, on release.
-            if (effect.hoverFocused(w)) {
-                effect.dbg("fly", w.caption + " took the focus under the pointer: no fly");
-                return;
-            }
             Qt.callLater(function () { if (!w.deleted) effect.flyToWindow(w); });
         }
         function onActivitiesChanged(id) { Qt.callLater(effect.activitiesChanged); }

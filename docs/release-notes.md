@@ -6,13 +6,12 @@ Unreleased:
   the middle. Rounded Corners and its outline now round and ring the window you see: with the old
   band the top corners fell on nothing and the window kept square top corners. A maximized window
   still has no bar.
-- With focus following the mouse, resting the pointer on a window that hangs over the screen's
-  edge no longer slides the whole desk, and that window no longer jumps back. The hover gave it
-  the focus, and the canvas flew to it as to a window picked in the task bar: every window on the
-  screen moved, by 84 px for one over the top edge and about 500 px for one 50 px in from the
-  right. Now the hovered window keeps KDE's own nudge (its title bar comes into reach) and nothing
-  else moves. A click, the task bar, Alt-Tab and the map still bring a window wholly into view, and
-  windows parked off the screen still keep their place.
+- Auto pan follows the mouse again. A build on 2026-11-03 stopped the canvas panning when focus
+  followed the pointer onto a window hanging over the screen's edge; that pan is back, as it was.
+- The end of an auto pan no longer flashes. With Rounded Corners on, every window's picture showed
+  the wrong part of the window for the slide's last frame or two (the plugin read where the window
+  sits in KWin's picture of it a step behind each move), so the landing flickered. Needs the
+  rebuilt plugin (`kwin-canvas fix-plugin`).
 - The minimap as a widget. **Canvas Map** shows the whole plane at a glance with the canvas
   closed: the activities' frames in their colours, every window as a sheet and the screen's own
   rectangle, live as windows move. Put it on the desktop, or in a panel, where it is a small map

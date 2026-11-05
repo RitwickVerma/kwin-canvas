@@ -61,18 +61,12 @@ state:
   way to travel, and every focus change does: the task manager, Alt-Tab, an
   application grabbing its own focus all fly to their window. A window
   hanging half off the screen counts as not visible: an intersection is not
-  enough, a focused window must be wholly on screen. One focus change does
-  not fly: focus that followed the mouse (`hoverFocused`: a focus policy
-  other than click to focus, no button down, the window the topmost under
-  the pointer, looking through tooltips, menus, notifications and on-screen
-  displays, and none when a panel is under it). The window shows where the
-  pointer is, and a slide for a hover moved every window on the screen each
-  time the pointer crossed a window hanging over an edge; a click on it still
-  flies, on release, and with click to focus Alt-Tab to the window under a
-  resting pointer flies too. With focus following the mouse, that Alt-Tab is
-  taken for a hover: KWin's nudge brings the window's title bar into reach
-  instead. The last two activated windows are kept as `focusHistory`, the
-  swap's pair.
+  enough, a focused window must be wholly on screen. Focus that followed the
+  mouse flies too: with focus following the mouse, resting the pointer on a
+  window hanging over an edge brings the rest of it in, and that is the auto
+  pan the maintainer uses most (a release that skipped hovers, 2026-11-03,
+  was taken back two days later as broken). The last two activated windows
+  are kept as `focusHistory`, the swap's pair.
 - A pan chord or a touchpad swipe starts a slide (below).
 - The Toggle chord steps out: the canvas opens.
 
@@ -716,11 +710,10 @@ about what came before is consulted: no focus, area, activity or open/close corr
 
 The pure half lives in `logic.js` and is unit-tested: `inReach` (the rule as measured), `isPull`
 (the shape of a pull: same size, moved, out of reach before and after the last layout change, in
-reach now) and `fightStep` (the chain of reverts below), with `onAMonitor` for the fourth edge.
-`classifyFrame` adds what only the scene knows: the canvas's own write, the window's state, the
-pointer, FollowActivation.
+reach now) and `fightStep` (the chain of reverts below). `classifyFrame` adds what only the scene
+knows: the canvas's own write, the window's state, FollowActivation.
 
-Four edges, each deliberate:
+Three edges, each deliberate:
 
 - *Out of reach is judged against the monitors as they are and as they were before the last layout
   change* (`layoutBefore`, refreshed 1.5 s after a change). A window KWin rescues from a monitor that
@@ -733,14 +726,6 @@ Four edges, each deliberate:
   quick open, close and open of the canvas reverts all three of KWin's pulls.
 - *With FollowActivation off the active window is adopted*: KDE brings the activated window in, as it
   does without the canvas.
-- *Closed, the window the pointer rests on keeps KWin's nudge*, when some of it showed on a monitor
-  (`onAMonitor`, `hoverFocused`). With focus following the mouse, resting the pointer on a window
-  that hangs over an edge gives it the focus, and KWin brings its title bar or its edge into reach;
-  the hand pointed at it, so the nudge stands, as it does without the canvas. Put back, the title bar
-  hid again on every hover, and the window could not be grabbed by it. Every other window keeps its
-  plane coordinate: a parked one, one the canvas left with a sliver on the screen (`182`), one
-  losing the focus, any window with click to focus, and every window on the open canvas, whose
-  scene draws the plane.
 
 **The decision this makes, and its price.** Because only the hand and the canvas move a window, a
 script, a rule or an app that moves an out-of-reach window onto a monitor is undone, whoever it is. To
@@ -760,7 +745,7 @@ away, scenario `205`) pulls only the window that gets focus. The classifier does
 
 Scenarios: `180` (a scale change; a script's move is undone; a move between places on the screen is
 not), `181` (a real panel resize, `make test-panel`), `182` to `184` (the commit, open and close, the
-activity switch), `204` (a fly to a window above or past the screen, and a hover that does not fly), `206` (a pull right after an
+activity switch), `204` (a fly to a window above or past the screen, from an activation or a hover), `206` (a pull right after an
 open, in the overview and a fly), `207` (the edges above), `205` (a stress at the maintainer's layout).
 
 ### A fly leaves a floated window where it is
@@ -933,7 +918,12 @@ Three things a QML scene effect cannot reach, so the pass-through plugin does th
   `visibleGeometry`, the frame and its shadow, and where the frame sits in it is readable only
   from C++: the plugin puts a `CanvasSceneHelper` on KWin's QML engine (the context property
   `canvasPlugin`), whose `frameInTexture(window)` answers synchronously and whose `revision`
-  changes on any window's `shadowChanged`. The thumbnail item stays in the scene at opacity 0, so
+  changes on any window's `shadowChanged` or its item's `boundingRectChanged`. It reads the
+  window item's bounding rect in the item's own coordinates, where the frame sits at the origin,
+  so a move changes nothing it answers: read as the item's rect in the scene, it lagged a move by
+  one slot (the item takes the move in its own `frameGeometryChanged` slot, after the binding that
+  asked), and every slide's landing, which moves every window, drew each picture shifted by the
+  whole slide for its last frames (`222`). The thumbnail item stays in the scene at opacity 0, so
   KWin keeps handing it the window's frames, and the shader samples its texture through that
   frame. The canvas allocates nothing per window: the layer this replaced was a second texture of
   the window's full size in device pixels per window, drawn again on every zoom step. With a

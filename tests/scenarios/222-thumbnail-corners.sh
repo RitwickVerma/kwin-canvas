@@ -1,12 +1,12 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
 # shellcheck source=../tests/lib.sh
-scenario_desc="with the Rounded Corners effect on, the canvas's window pictures wear its corners (a thumbnail is drawn past KWin's effects, so it was square): a corner shows the plane behind it, the rest of the picture is the same pixels as before, the cornered picture stays live, an excluded window stays square (maximized, tiled and fullscreen are the unit tests'), and ThumbnailCorners off draws them all square"
+scenario_desc="with the Rounded Corners effect on, the canvas's window pictures wear its corners, and a moved window's picture stays itself (a thumbnail is drawn past KWin's effects, so it was square): a corner shows the plane behind it, the rest of the picture is the same pixels as before, the cornered picture stays live, an excluded window stays square (maximized, tiled and fullscreen are the unit tests'), and ThumbnailCorners off draws them all square"
 
 corners() { c state >/dev/null; grep -o ' corners=[^ ]*' <<<"$(head -1 <<<"$LAST_STATE")" | cut -d= -f2; }
-# RMSE between the same region of two screenshots.
+# RMSE between a region of one screenshot and a region of another (the same one by default).
 region_rmse() {
-    magick "$1" -crop "$3" +repage "$OUT/rc-a.png"; magick "$2" -crop "$3" +repage "$OUT/rc-b.png"
+    magick "$1" -crop "$3" +repage "$OUT/rc-a.png"; magick "$2" -crop "${4:-$3}" +repage "$OUT/rc-b.png"
     { magick compare -metric RMSE "$OUT/rc-a.png" "$OUT/rc-b.png" null: 2>&1 || true; } | sed -n 's/.*(\([0-9.e-]*\)).*/\1/p'
 }
 
@@ -49,7 +49,18 @@ run_scenario() {
         shot "$OUT/tc-live.png" >/dev/null
         printf '\033[?1049l' >"$tty"; sleep 0.4
     fi
+    # A window moved on the open canvas: its entry follows (207), and its picture must show the
+    # window, not the texture shifted by the move. The frame's place in KWin's texture was read
+    # from the window item's scene rect, which the item updates in its own slot after the frame
+    # changes; read first, it was the old place, and the cornered picture sampled the texture
+    # 200 px off until something else moved the window. A slide's landing moves every window
+    # in the frame, so every landing showed the shifted pictures for its last frames.
+    kwinjs 'workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("KCalc") >= 0) x.frameGeometry = {x: 300, y: 120, width: 480, height: 420}; });' 0.5
+    sleep 0.4
+    shot "$OUT/tc-moved.png" >/dev/null
     c cancel >/dev/null; sleep 0.6
+    # Back where the square shot below expects it.
+    arrange >/dev/null
 
     setcfg ThumbnailCorners false
     open_1to1; sleep 0.6; c state
@@ -72,6 +83,9 @@ run_scenario() {
     else
         skip "the fixture Konsole's terminal was not found"
     fi
+
+    d=$(region_rmse "$OUT/tc-round.png" "$OUT/tc-moved.png" "300x200+190+230" "300x200+390+230")
+    assert_true "a window moved on the open canvas shows its own picture at its new place (rmse $d)" "$(awk -v d="${d:-1}" 'BEGIN{print (d < 0.004)}')" -eq 1
 
     nq org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect kwin4_effect_shapecorners >/dev/null 2>&1
     kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key ThumbnailCorners --delete
