@@ -671,6 +671,20 @@ and the applet draw their own buttons for them, and the float never sets or
 clears them. The `PinnedWindows` knob is no longer read; it stays declared so
 an old config still loads.
 
+### A float steps aside for the focused window
+
+A floated window that overlaps the focused window glides (200 ms) to the nearest spot on its
+monitor's work area that clears it by 12 px, and goes back to where it was once the focused window
+leaves that spot free (`dodgeFloats`, `Logic.dodgeSpot`, `225`). It waits for the focus to settle,
+450 ms after the last focus change (`dodgeTimer`), so a fly lands first and a pointer crossing
+windows with focus following the mouse moves nothing; it runs only with the canvas closed, and asks
+again once a slide is down. A spot clear of the other floats beats a nearer one under another
+float; a focused window that leaves no room (maximized) leaves the float where it is. The glide
+is the canvas's own write (`setReal`), so the float's plane coordinate follows it. `floatHome`
+keeps the spot each float left; any other move of the float (the hand, a script) makes where it
+now is its home. The focused window's own move or resize ending (`interactiveMoveResizeFinished`)
+starts the clock too. `FloatDodge` turns it off.
+
 ### Frame authority
 
 **The plane is the truth.** A window's plane coordinate belongs to the canvas; its real frame is

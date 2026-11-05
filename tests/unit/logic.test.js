@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, searchFilter, inReach, onAMonitor, isPull, fightStep, cornerRadius, blurRects, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
+const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, searchFilter, inReach, onAMonitor, rectsMeet, dodgeSpot, isPull, fightStep, cornerRadius, blurRects, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -110,6 +110,28 @@ ok("the dynamic gap reads the same scaled up",
     ok("a move after a pause starts a new chain", st.allow);
     const c0 = { n: 1, at: 1000 }; L.fightStep(c0, 1100, 500);
     ok("the step does not change the chain it was given", c0.n === 1 && c0.at === 1000);
+}
+
+// ---- a float steps aside for the focused window ----
+{
+    const area = { x: 0, y: 0, width: 1920, height: 1040 };
+    const r = function (x, y, w, h) { return { x: x, y: y, width: w, height: h }; };
+    ok("a float clear of the focused window stays", L.dodgeSpot(r(1500, 100, 300, 200), r(100, 100, 600, 400), area, [], 12) === null);
+    ok("no focused window, no dodge", L.dodgeSpot(r(1500, 100, 300, 200), null, area, [], 12) === null);
+    const s1 = L.dodgeSpot(r(600, 150, 300, 200), r(100, 100, 600, 400), area, [], 12);
+    ok("a float over the focused window's right edge steps right, just past it", s1 && s1.x === 712 && s1.y === 150);
+    const s2 = L.dodgeSpot(r(150, 150, 300, 200), r(100, 100, 600, 400), area, [], 12);
+    ok("one inside its left end goes down, the nearer way out", s2 && s2.x === 150 && s2.y === 512);
+    const s3 = L.dodgeSpot(r(1600, 100, 300, 200), r(1300, 0, 620, 1040), area, [], 12);
+    ok("against the screen's right edge it goes left of the focused window", s3 && s3.x === 988 && s3.y === 100);
+    ok("a maximized focused window leaves nowhere: it stays", L.dodgeSpot(r(600, 150, 300, 200), r(0, 0, 1920, 1040), area, [], 12) === null);
+    const s4 = L.dodgeSpot(r(600, 150, 300, 200), r(100, 100, 600, 400), area, [r(700, 100, 400, 300)], 12);
+    ok("a spot under another float loses to a clear one", s4 && !(s4.x < 1100 && s4.x + 300 > 700 && s4.y < 400 && s4.y + 200 > 100));
+    ok("rects that share area meet", L.rectsMeet(r(0, 0, 100, 100), r(50, 50, 100, 100)));
+    ok("rects that only touch do not", !L.rectsMeet(r(0, 0, 100, 100), r(100, 0, 100, 100)));
+    ok("a null rect meets nothing", !L.rectsMeet(r(0, 0, 100, 100), null));
+    const s5 = L.dodgeSpot(r(600, 900, 300, 200), r(100, 100, 600, 1000), area, [], 12);
+    ok("the held axis is pulled into the work area", s5 && s5.y + 200 <= 1040 && s5.x === 712);
 }
 
 // ---- the corner radius a thumbnail wears ----

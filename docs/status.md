@@ -155,6 +155,13 @@ the plugin reading the item's own bounds, 0.49% and 0.38%, the Rounded Corners o
 does not draw. `222` pins it: a window moved on the open canvas shows its own picture (rmse 0
 fixed, 0.26 with HEAD's plugin). Needs the rebuilt plugin live (`fix-plugin`, a relogin).
 
+**A float steps aside (2026-11-05).** The owner's idea: a floating window moves so the focused
+window shows whole. `docs/architecture.md`, *A float steps aside for the focused window*.
+Verified in the hidden nest: `225` (steps right of the focused window, comes back, stays with
+`FloatDodge` off), with `105`, `162`, `166`, `178`, `222`, `150`, `204`, all pass; `make unit` has
+`dodgeSpot`'s cases. Not verified: the live session, two monitors, a float bigger than the gap
+beside the focused window on both sides (it then takes a corner or stays).
+
 **Auto pan on a hover, taken out and put back (2026-11-03 to 11-05).** The owner reported window
 positions resetting ("snap back"). f061db1 read that as the hover pan: with focus following the
 mouse, a window hanging over an edge took the focus and the canvas slid the desk to it, putting

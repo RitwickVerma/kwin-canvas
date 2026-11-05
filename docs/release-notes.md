@@ -1,5 +1,10 @@
 Unreleased:
 
+- A floating window steps aside for the window you are working in. When the focus settles on a
+  window a float overlaps, the float glides to the nearest free spot on the screen, and back to
+  where it was when you move on to a window that leaves that spot free. It waits half a second, so
+  with focus following the mouse a pointer passing over windows moves nothing; a maximized window
+  leaves no room, and the float stays. `FloatDodge` turns it off.
 - The Canvas window decoration is a title bar. The transparent band with the floating glass pill
   is now one bar drawn edge to edge in your colour scheme's title bar colours (active and
   inactive), with the canvas's glyphs on the sides System Settings puts them and the caption in

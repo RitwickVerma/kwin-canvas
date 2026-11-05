@@ -200,6 +200,46 @@ function onAMonitor(r, monitors) {
     return false;
 }
 
+// Whether two rects share any area; a null one meets nothing.
+function rectsMeet(a, b) {
+    return !!a && !!b && a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+// Where a floated window steps to so the focused window shows whole: the spot nearest its own,
+// inside the work area, clear of the focused window by gap, or null when it does not overlap
+// the focused window or no such spot exists (a maximized focused window). It slides along one
+// axis to just past the focused window's edge, the other axis held where it was or pulled into
+// the area, and failing those tries the area's corners; a spot clear of the other floats wins
+// over a nearer one that is not. Every rect is {x, y, width, height}.
+function dodgeSpot(f, focus, area, others, gap) {
+    const meets = rectsMeet;
+    if (!focus || !meets(f, focus)) return null;
+    const g = gap || 0;
+    const clampX = function (x) { return Math.max(area.x, Math.min(x, area.x + area.width - f.width)); };
+    const clampY = function (y) { return Math.max(area.y, Math.min(y, area.y + area.height - f.height)); };
+    const spots = [
+        { x: focus.x - g - f.width, y: clampY(f.y) },
+        { x: focus.x + focus.width + g, y: clampY(f.y) },
+        { x: clampX(f.x), y: focus.y - g - f.height },
+        { x: clampX(f.x), y: focus.y + focus.height + g },
+        { x: area.x + g, y: area.y + g },
+        { x: area.x + area.width - f.width - g, y: area.y + g },
+        { x: area.x + g, y: area.y + area.height - f.height - g },
+        { x: area.x + area.width - f.width - g, y: area.y + area.height - f.height - g },
+    ];
+    let best = null, bestCost = Infinity;
+    for (let i = 0; i < spots.length; ++i) {
+        const r = { x: spots[i].x, y: spots[i].y, width: f.width, height: f.height };
+        if (r.x < area.x || r.y < area.y || r.x + r.width > area.x + area.width || r.y + r.height > area.y + area.height) continue;
+        if (meets(r, focus)) continue;
+        let crowded = false;
+        for (let j = 0; others && j < others.length && !crowded; ++j) crowded = meets(r, others[j]);
+        const cost = Math.hypot(r.x - f.x, r.y - f.y) + (crowded ? 1e6 : 0);
+        if (cost < bestCost) { bestCost = cost; best = { x: r.x, y: r.y }; }
+    }
+    return best;
+}
+
 // Whether a frame change has the shape of KWin's reachability rule, the only move of a window's
 // frame the canvas undoes: the same size (within a pixel), moved by a pixel or more, from a place
 // out of reach of the monitors as they are and as they were before the last layout change (a
