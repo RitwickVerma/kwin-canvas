@@ -274,7 +274,7 @@ FAKE_LOAD="" doctor
 has "ladder: a silent plugin is a warning" "WARN  ladder     the pass-through plugin does not answer"
 exit_is "ladder: silent plugin is not a failure" 0
 
-# ---- doctor: enabled state and the pill's letters ----
+# ---- doctor: enabled state and the bar's letters ----
 write_kwinrc "" false
 FAKE_LOADED=false doctor
 has "enabled: off warns" "WARN  enabled    the effect is not enabled"
@@ -286,7 +286,7 @@ exit_is "enabled but not loaded: exit 1" 1
 has "enabled but not loaded: FAIL" "FAIL  enabled    the effect is enabled in kwinrc but KWin has not loaded it"
 write_kwinrc "" true "" "MSL" "HIAXE_"
 doctor
-has "buttons: pill-only letters" "only the pill draws: M H"
+has "buttons: bar-only letters" "only the bar draws: M H"
 has "buttons: applet-only letter" "only the applet draws: E"
 has "buttons: letters neither draws" "neither draws: L"
 has "buttons: both sides read" "buttons left 'MSL' right 'HIAXE_'"

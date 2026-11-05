@@ -466,7 +466,7 @@ doctor_ladder() {
 }
 
 doctor_enabled() {
-    local cfg=$1 on loaded theme lib left right c seen pill_only="" applet_only="" neither=""
+    local cfg=$1 on loaded theme lib left right c seen bar_only="" applet_only="" neither=""
     on=$(ini_get "$cfg/kwinrc" Plugins kwin-canvasEnabled "")
     loaded=$(qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.isEffectLoaded kwin-canvas 2>/dev/null || true)
     if [ "$on" = true ] && [ "$loaded" = false ]; then
@@ -482,27 +482,27 @@ doctor_enabled() {
     lib=$(ini_get "$cfg/kwinrc" org.kde.kdecoration2 library "")
     left=$(ini_get "$cfg/kwinrc" org.kde.kdecoration2 ButtonsOnLeft MS)
     right=$(ini_get "$cfg/kwinrc" org.kde.kdecoration2 ButtonsOnRight HIAX)
-    # The pill draws X I A S M F B H and a spacer; the panel applet draws X I A S F B E and a
-    # spacer (it has no menu or help call, the pill has no capture glyph).
+    # The bar draws X I A S M F B H and a spacer; the panel applet draws X I A S F B E and a
+    # spacer (it has no menu or help call, the bar has no capture glyph).
     seen=""
     for c in $(printf '%s%s' "$left" "$right" | fold -w1); do
         case "$seen" in *"$c"*) continue ;; esac
         seen="$seen$c"
         case "$c" in
             X|I|A|S|F|B|_) ;;
-            M|H) pill_only="$pill_only $c" ;;
+            M|H) bar_only="$bar_only $c" ;;
             E) applet_only="$applet_only $c" ;;
             *) neither="$neither $c" ;;
         esac
     done
     local note="buttons left '$left' right '$right'"
-    [ -n "$pill_only" ] && note="$note; only the pill draws:$pill_only (the applet skips them)"
-    [ -n "$applet_only" ] && note="$note; only the applet draws:$applet_only (the pill has no glyph for it)"
+    [ -n "$bar_only" ] && note="$note; only the bar draws:$bar_only (the applet skips them)"
+    [ -n "$applet_only" ] && note="$note; only the applet draws:$applet_only (the bar has no glyph for it)"
     [ -n "$neither" ] && note="$note; neither draws:$neither"
     if [ "$theme" = kwin-canvas-decoration ]; then
-        verdict OK enabled "decoration: kwin-canvas-decoration is in use, so the pill is drawn; $note"
+        verdict OK enabled "decoration: kwin-canvas-decoration is in use, so the bar is drawn; $note"
     else
-        verdict OK enabled "decoration: ${theme:-the default} ($lib), not the canvas decoration, so no pill; $note"
+        verdict OK enabled "decoration: ${theme:-the default} ($lib), not the canvas decoration, so no bar; $note"
     fi
 }
 
