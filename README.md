@@ -85,13 +85,8 @@ labels scrolls under the windows when you pan at 1:1 and scales with them when
 you zoom out, so the plane has landmarks and the zoom has something to anchor.
 Beyond the monitor frames the plane keeps the wallpaper's presence
 (`Backdrop=wallpaper`, the default): on the desks it is exact, and across the
-rest of the view the same wallpaper is drawn once per output, blurred
-(`BackdropBlur`, 48 px) and dimmed (`BackdropDim`, 0.45) with the grid over
-it, so stepping out looks like the desktop dissolving into a haze rather than
-a wallpaper repeating in tiles or a grid fading into nothing. The haze is the
-desktop window itself, live - a slideshow or a picture of the day keeps going
-in it - and it costs nothing while the camera sits at 1:1 on the desk, where
-it would be invisible anyway. `Backdrop=grid` is the old plane.
+rest of the view the same wallpaper is drawn once per output, screen-fixed,
+with the grid over it. `Backdrop=grid` is the old plane.
 
 > Proven in a nested KWin 6.8 session and on a live Plasma 6.8 desktop,
 > with over a hundred scenarios and golden screenshots - but still a fork's

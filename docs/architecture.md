@@ -464,28 +464,15 @@ even with no background window, as in the nest.
 are disabled (null dereference in `updateWindow`), so the effect always
 passes a non-empty activity.
 
-**The backdrop** is the same wallpaper, continued past the desks: `Backdrop=wallpaper` (the default) keeps the desktop's own wallpaper exact on the frames, and
-beyond them draws it once per output as a full-view, screen-fixed layer,
-blurred (`BackdropBlur`, 48 px by default) and dimmed toward `Background`
-(`BackdropDim`, 0.45), with the ground grid over it - the desktop dissolving
-into a haze, the way an overview's backdrop reads, rather than the wallpaper
-repeating in tiles, which is what it would look like if it moved with the
-plane at 1:1. The layer is the desktop window itself, live (a slideshow, a
-picture of the day, an animated wallpaper keep going in the haze), and each
-view fades its layer out while the current activity's frame covers the view
-- `blurAlpha` follows the coverage on a 280 ms easing, so stepping in
-softens the haze away as the desk fills the view and stepping out softens
-it back, never a switch - and at rest under a covering frame (open at 1:1,
-an idle slide) it is gone entirely and costs nothing, which is exactly
-where the blur would be invisible anyway. At 1:1 the
-frame's interior is the real wallpaper, pixel for pixel, so a slide draws
-what the screen was showing and the haze appears only beyond the moving
-desktop. The dim is 0 while the canvas is quiet, where the plane and the
-desktop have to be the same thing, and it fades in with the chrome on open
-and out with it on the step in. `Backdrop=grid` is the plane as it was: no
-wallpaper, the ground's own background, the grid. The layer follows the
-screen, not the plane, so a hotplug or an activity switch rebuilds nothing;
-`screensRev` still gates the frames below.
+**The backdrop** is the same wallpaper, continued past the desks: `Backdrop=wallpaper` (the
+default) keeps the desktop's own wallpaper exact on the frames, and beyond them draws it once per
+output as a full-view, screen-fixed layer, untouched (`deskBg` in ui.qml), with the ground grid
+over it. At 1:1 the frame's interior is the real wallpaper, pixel for pixel, so a slide draws what
+the screen was showing. The blur and dim it once had are gone; `BackdropBlur` and `BackdropDim` are
+no longer read and stay declared so an old config loads (`93`). `Backdrop=grid` is the plane as it
+was: no wallpaper, the ground's own background, the grid. The layer follows the screen, not the
+plane, so a hotplug or an activity switch rebuilds nothing; `screensRev` still gates the frames
+below.
 
 ## Keys
 
@@ -677,8 +664,8 @@ A floated window that overlaps the focused window glides (200 ms) to the nearest
 monitor's work area that clears it by 12 px, and goes back to where it was once the focused window
 leaves that spot free (`dodgeFloats`, `Logic.dodgeSpot`, `225`). It waits for the focus to settle,
 450 ms after the last focus change (`dodgeTimer`), so a fly lands first and a pointer crossing
-windows with focus following the mouse moves nothing; it runs only with the canvas closed, and a
-settle that comes while the canvas is up waits for the close. The floats are planned in turn, each against where the others will be,
+windows with focus following the mouse moves nothing; it runs only with the canvas closed, and
+every close starts the clock again, since a slide or a commit moved the desk under the floats. The floats are planned in turn, each against where the others will be,
 so two never take the same spot and none goes home onto another; a spot clear of the other
 floats beats a nearer one under another float, and when there is no room the float stays. A
 focus that is not a free window of the plane (a launcher, a panel, the desktop, a maximized or
@@ -824,13 +811,18 @@ letting go - the way a careful placement ends - lands exactly where it was put.
 
 **A spring** is anything with a destination: a wheel notch, a fit, an edge
 opening the canvas, `camGo(zoom, x, y, [gx, gy])`, and now the step in and the
-cancel - they fly and land on it like everything else. It is critically damped
+cancel - they fly and land on it like everything else. A new goal during a
+flight keeps the camera's speed (`camGo` carries `camVX`, `camVY`, `camVZoom`
+across the retarget), so wheel notches and pan steps in a burst ride as one
+motion instead of stopping dead at each, and a pan step during a step's flight
+counts from where that one is going (`panKey`), so three quick presses travel
+three steps. It is critically damped
 (`k = w²`, `c = 2w`, `w = CamSpring` in 1/s, 14 by default, about a third of a
 second) so it arrives as fast as it can without overshooting, the same easing
-family KWin's own Overview uses but interruptible. A goal starts with a push -
-a fraction (0.4) of the critical speed toward it, which a critically damped
-spring cannot overshoot - so it is moving on the first frame instead of the
-second. When a screen point is
+family KWin's own Overview uses but interruptible. A goal from rest starts with
+no push: let go from rest the spring has its full acceleration and no speed, so
+the first step is imperceptible and the flight builds into one glide (a push
+snapped the first frame, which read as a cut). When a screen point is
 pinned (`camAnchored`) the anchor owns the position - the canvas point under
 the screen point when the zoom started stays under it, recomputed as
 `anchor.x - gx / zoom` every step - and only the scale springs, which is what a
@@ -964,9 +956,12 @@ Three things a QML scene effect cannot reach, so the pass-through plugin does th
   window's corners and adds the noise). One blur per screen and a quad per window, nothing redrawn
   while the camera moves over a still wallpaper. Another window behind a translucent one is not
   blurred: that is Better Blur DX's wallpaper mode exactly, and KWin's blur over the bare desk.
-  The place leaves out a held window's lean and trail. `ThumbnailBlur` turns it off, and the
-  fidelity ladder drops it with the corners (`ql` 2); the state line's `blur=` counts each
-  window's rectangles.
+  The place leaves out a held window's lean and trail. The blurred wallpaper is built only while
+  some window wears a patch (`anyBlurred`): KWin's stock blur is loaded by default, and over a
+  video wallpaper the chain re-rendered on every video frame for no patch at all. Each window's
+  rectangles are kept under its size, names and the blur effect's settings (`blurMemo`), so a
+  drag compiles no class pattern. `ThumbnailBlur` turns it off, and the fidelity ladder drops it
+  with the corners (`ql` 2); the state line's `blur=` counts each window's rectangles.
 
 `make shaders` compiles `effect/contents/shaders/*.frag` with qsb into the committed `.qsb`
 files, and `make lint-shader` checks they match.
@@ -993,6 +988,9 @@ The rules that follow from it:
   the web), so nothing is built a turn later in mid-flight.
 - Many small items that differ only in position become one item per layer (`Logic.webLayers`: the
   web's spans grouped by the stack band they sit in).
+- A stroke's width follows the zoom in quarter octaves (`strokeZoom`), not continuously: every new
+  width re-strokes a layer's whole path on the compositor's thread, and a zoom changed it every
+  frame. The width drifts at most 9% between steps.
 
 `208-frame-budget` holds this on a desk shaped like the maintainer's (two stacked outputs at scale 1.25,
 eleven windows in clusters, two floated): a zoom-to-fit open, a slide and a window drag must create no
@@ -1150,10 +1148,13 @@ as a Plasma widget, on the desktop or in a panel, with the canvas closed. It nee
   and the effect's camera, entries and activity (the `viewX`, `viewY`, `zoom`, `revision`,
   `screensRev`, `visible`, `quiet` and `currentActivity` notify signals), and says changed at
   most once per 100 ms: the first change starts the clock and the rest of a burst rides it, so a
-  drag still updates ten times a second. It watches nothing until the first read, so a session
-  that never had the widget pays nothing. It does not stop: once read (a widget since removed,
-  one `qdbus` call), every change until KWin restarts sends that signal, at most ten a second,
-  which the bus drops when no one listens.
+  drag still updates ten times a second. It watches only while someone wants the signal: each
+  widget holds the map with a token of its own (`hold`) from its creation and lets go
+  (`release`) as it is removed, and the plugin lets go of every token of a bus connection that
+  goes (plasmashell quit or crashed; `QDBusServiceWatcher`). A read without a hold (a script,
+  `qdbus`, the scenarios) keeps it watching for a minute after that read. With no holder and no
+  recent read it disconnects everything, so a session without the widget, or after it, pays
+  nothing (`224`).
 - **The widget reads on the signal.** It uses Plasma's own D-Bus module
   (`org.kde.plasma.workspace.dbus`): `SessionBus.asyncCall` for the calls and a `SignalWatcher`
   whose `dbuschanged` handler reads again, one read in flight at a time. No polling and no process

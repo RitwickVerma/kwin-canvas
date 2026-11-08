@@ -155,6 +155,30 @@ the plugin reading the item's own bounds, 0.49% and 0.38%, the Rounded Corners o
 does not draw. `222` pins it: a window moved on the open canvas shows its own picture (rmse 0
 fixed, 0.26 with HEAD's plugin). Needs the rebuilt plugin live (`fix-plugin`, a relogin).
 
+**Whole-codebase review (2026-11-07).** Five read-only reviewers over all the code (main.qml in three
+parts, ui.qml with logic.js, the plugin with the CLI, applets and decoration) plus a review of the
+last week found about 70 issues; all are fixed in one commit except the narrow timing of a hold
+landing exactly as a slide closes (handled, not reproduced). The ones a user would notice: the
+chord switcher never stepped in after the release with the plugin live (the 80 ms poll restarted
+the settle forever); a key held in a passed-through window kept repeating after the pointer left
+it; a release over a panel lost the next click; Home and Search during a slide, an activity
+switch mid-slide, and input during the 170 ms farewell (a second commit, an extra undo step);
+`reset` left plane restore spots, app homes and parked windows behind; `tidyRows` put the second
+row thousands of px off at a negative origin; separate cameras moved undrawn windows by the wrong
+monitor's delta, drew other activities' windows on the replica and frames at the camera
+monitor's target; the door ate the desktop's wheel-up and sideways scroll; the decor applet
+spawned `qdbus6` four times a second for the session. Closed-canvas cost cut: the kept scene's
+per-thumb handlers and geometry bindings, `skinReveal` on every pointer motion, seven D-Bus calls
+per game-mode flip, the plugin's effect lookup and unchanged property writes per event, the state
+file's fsync every second. New: the map widget holds and releases the map (`hold`, `release`,
+a bus watch, a minute's lease for a plain read); the camera keeps its speed across a retarget and
+pan steps add up from the goal; the blurred wallpaper only while a window wears a patch; web
+strokes by quarter octaves of zoom; switches for `FloatDodge` and `ThumbnailBlur`; the inert
+`BackdropBlur` and `BackdropDim` rows gone. Verified: `make lint`, `make unit` 199, the CLI
+tests 137, `make plugin`. Not yet verified when committed: the hidden nest (a game held the GPU);
+the full suite, the decoration batch and a control of `102` against the previous effect are
+queued.
+
 **Audit after the auto pan revert (2026-11-05).** A review of f061db1..a890058 found 10 issues,
 all fixed: the float dodge's home spot is forgotten on a hand move (not a resize in place), on
 unfloating and on an overview open; a focus on a launcher, a panel, the desktop or a maximized,

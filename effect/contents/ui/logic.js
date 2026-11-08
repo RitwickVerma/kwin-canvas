@@ -191,18 +191,25 @@ function inReach(r, monitors) {
     return false;
 }
 
-// Whether any of r shows on one of the monitors.
-function onAMonitor(r, monitors) {
-    for (let i = 0; i < monitors.length; ++i) {
-        const o = monitors[i];
-        if (r.x < o.x + o.width && r.x + r.width > o.x && r.y < o.y + o.height && r.y + r.height > o.y) return true;
-    }
-    return false;
-}
-
 // Whether two rects share any area; a null one meets nothing.
 function rectsMeet(a, b) {
     return !!a && !!b && a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+}
+
+// Whether r lies wholly inside area.
+function rectInside(r, area) {
+    return r.x >= area.x && r.y >= area.y && r.x + r.width <= area.x + area.width && r.y + r.height <= area.y + area.height;
+}
+
+// Whether r meets any rect of the list.
+function meetsAny(r, list) {
+    for (let i = 0; list && i < list.length; ++i) if (rectsMeet(r, list[i])) return true;
+    return false;
+}
+
+// Whether any of r shows on one of the monitors.
+function onAMonitor(r, monitors) {
+    return meetsAny(r, monitors);
 }
 
 // Where a floated window steps to so the focused window shows whole: the spot nearest its own,
@@ -212,8 +219,7 @@ function rectsMeet(a, b) {
 // the area, and failing those tries the area's corners; a spot clear of the other floats wins
 // over a nearer one that is not. Every rect is {x, y, width, height}.
 function dodgeSpot(f, focus, area, others, gap) {
-    const meets = rectsMeet;
-    if (!focus || !meets(f, focus)) return null;
+    if (!focus || !rectsMeet(f, focus)) return null;
     const g = gap || 0;
     const clampX = function (x) { return Math.max(area.x, Math.min(x, area.x + area.width - f.width)); };
     const clampY = function (y) { return Math.max(area.y, Math.min(y, area.y + area.height - f.height)); };
@@ -230,11 +236,8 @@ function dodgeSpot(f, focus, area, others, gap) {
     let best = null, bestCost = Infinity;
     for (let i = 0; i < spots.length; ++i) {
         const r = { x: spots[i].x, y: spots[i].y, width: f.width, height: f.height };
-        if (r.x < area.x || r.y < area.y || r.x + r.width > area.x + area.width || r.y + r.height > area.y + area.height) continue;
-        if (meets(r, focus)) continue;
-        let crowded = false;
-        for (let j = 0; others && j < others.length && !crowded; ++j) crowded = meets(r, others[j]);
-        const cost = Math.hypot(r.x - f.x, r.y - f.y) + (crowded ? 1e6 : 0);
+        if (!rectInside(r, area) || rectsMeet(r, focus)) continue;
+        const cost = Math.hypot(r.x - f.x, r.y - f.y) + (meetsAny(r, others) ? 1e6 : 0);
         if (cost < bestCost) { bestCost = cost; best = { x: r.x, y: r.y }; }
     }
     return best;
@@ -634,13 +637,14 @@ function tidyRows(list, opts) {
         return (a.y - b.y) || (a.x - b.x);
     });
     const out = [];
-    let x = ox, y = oy, rowBottom = 0, first = true;
+    // A row's bottom starts at its own top: the origin can be anywhere on the plane, above y 0 too.
+    let x = ox, y = oy, rowBottom = oy, first = true;
     for (let i = 0; i < items.length; ++i) {
         const it = items[i];
         if (!first && x + it.width > ox + maxW) {
             x = ox;
             y = rowBottom + gap;
-            rowBottom = 0;
+            rowBottom = y;
         }
         out.push({ x: x, y: y });
         x += it.width + gap;
@@ -650,30 +654,3 @@ function tidyRows(list, opts) {
     return out;
 }
 
-// The trail's anti-scribble: the Ramer-Douglas-Peucker simplification keeps
-// only the points that change the path's direction (beyond tol canvas
-// pixels), so the camera's jitter collapses into a clean ribbon through the
-// real turns. The {x,y,t} points keep their timestamps for the age fade.
-function simplifyPath(pts, tol) {
-    if (!pts || pts.length <= 2) return pts || [];
-    const keep = new Array(pts.length).fill(false);
-    keep[0] = keep[pts.length - 1] = true;
-    const stack = [[0, pts.length - 1]];
-    while (stack.length) {
-        const pair = stack.pop();
-        const a = pair[0], b = pair[1];
-        const dx = pts[b].x - pts[a].x, dy = pts[b].y - pts[a].y;
-        const len = Math.hypot(dx, dy) || 1;
-        let maxD = -1, maxI = -1;
-        for (let i = a + 1; i < b; i++) {
-            const d = Math.abs(dy * (pts[i].x - pts[a].x) - dx * (pts[i].y - pts[a].y)) / len;
-            if (d > maxD) { maxD = d; maxI = i; }
-        }
-        if (maxD > tol) {
-            keep[maxI] = true;
-            stack.push([a, maxI]);
-            stack.push([maxI, b]);
-        }
-    }
-    return pts.filter(function (_, i) { return keep[i]; });
-}

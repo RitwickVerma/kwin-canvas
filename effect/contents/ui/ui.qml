@@ -283,8 +283,8 @@ Item {
         // it, since the frames move and the black moves with them. Where it
         // cannot draw, the layers step aside and the compositor's own
         // desktop shows through, as it does at 1:1 between the frames.
-        // False until plasmashell has answered, and the scene is rebuilt on
-        // every open: starting optimistic let the frames paint KWin's black
+        // False until plasmashell has answered (a scene built afresh, without
+        // view caching or after a release, asks again): starting optimistic let the frames paint KWin's black
         // over a video wallpaper for the frame or two before the reply
         // (a recording showed one fully black frame per open). Unknown shows
         // the desktop window, which for a picture wallpaper is the same
@@ -297,6 +297,9 @@ Item {
         property bool queried: false
         property bool wallpaperDrawable: effect.wallpaperPicture !== undefined ? effect.wallpaperPicture : queried
         function checkWallpaper() {
+            // The effect asks plasmashell itself (wallpaperPicture); only an older effect under a
+            // hot reload leaves it to the view.
+            if (effect.wallpaperPicture !== undefined) return;
             wallpaperQuery.arguments = ["let r = ''; const ds = desktops(); for (let i = 0; i < ds.length; ++i) { r += (ds[i].wallpaperPlugin || '') + '|'; } print(r);"];
             wallpaperQuery.call();
         }
@@ -434,6 +437,11 @@ Item {
         // delegate's patches, shaders/blur.frag). Built only while a blur effect runs, at a quarter
         // of the screen's pixels; with a still wallpaper nothing redraws it while the camera moves.
         readonly property bool blurOn: !!effect.blurStyle && !!effect.blurStyle.effect && effect.ql < 2 && !view.replica
+        // The blurred wallpaper itself only while some window wears a patch: KWin's stock blur is
+        // loaded by default, and with a video wallpaper the chain re-rendered every video frame for
+        // no patch at all. (An effect from before anyBlurred: built as before.)
+        readonly property real strokeZoom: Math.pow(2, Math.round(Math.log2(Math.max(0.001, effect.zoom)) * 4) / 4)
+        readonly property bool wallBlurOn: blurOn && effect.anyBlurred !== false
         // The pass-through plugin's helper on KWin's QML engine (CanvasSceneHelper), or null
         // without the plugin or with one older than it. The views are made at the first open,
         // after the plugin has put it there.
@@ -441,7 +449,7 @@ Item {
         readonly property size blurTexSize: Qt.size(Math.max(1, Math.round(width / 4)), Math.max(1, Math.round(height / 4)))
         ShaderEffectSource {
             id: wallSrc
-            sourceItem: view.blurOn ? (view.wallpaperDrawable ? deskBg : deskThumb) : null
+            sourceItem: view.wallBlurOn ? (view.wallpaperDrawable ? deskBg : deskThumb) : null
             textureSize: view.blurTexSize
             visible: false
         }
@@ -449,16 +457,17 @@ Item {
             id: wallBlur
             anchors.fill: parent
             source: wallSrc
-            visible: view.blurOn
+            visible: view.wallBlurOn
             autoPaddingEnabled: false
             blurEnabled: true
             blur: 1
-            // KWin's strength, 1 to 15, as the blur's radius at a quarter of the screen.
-            blurMax: Math.max(2, Math.min(64, Math.round(Number(effect.blurStyle.strength) || 15)))
+            // KWin's strength, 1 to 15, as the blur's radius at a quarter of the screen. (No
+            // blurStyle on an effect that predates it: a hot reload.)
+            blurMax: Math.max(2, Math.min(64, Math.round(Number(effect.blurStyle ? effect.blurStyle.strength : 0) || 15)))
         }
         ShaderEffectSource {
             id: wallBlurTex
-            sourceItem: view.blurOn ? wallBlur : null
+            sourceItem: view.wallBlurOn ? wallBlur : null
             hideSource: true
             textureSize: view.blurTexSize
             visible: false
@@ -473,8 +482,10 @@ Item {
             delegate: KWin.WindowThumbnail {
                 required property var modelData
                 readonly property var e: modelData
-                client: e.window
-                visible: !e.window.deleted
+                // Only what KWin shows on that monitor: the current activity's windows.
+                readonly property bool shown: !e.window.deleted && e.activity === effect.currentActivity
+                client: shown ? e.window : null
+                visible: shown
                 x: { effect.revision; return e.frameX - view.sg.x; }
                 y: { effect.revision; return e.frameY - view.sg.y; }
                 width: { effect.revision; return e.width; }
@@ -695,8 +706,11 @@ Item {
                     // outline, until the skin comes out with the zoom and
                     // the pan - so the desktop looks like itself at the seam.
                     visible: !effect.isHidden(activityFrames.activity, modelData)
-                    x: { effect.revision; return (effect.peekTarget(activityFrames.activity).x + og.x - effect.viewX) * effect.zoom - view.sg.x; }
-                    y: { effect.revision; return (effect.peekTarget(activityFrames.activity).y + og.y - effect.viewY) * effect.zoom - view.sg.y; }
+                    // Each monitor's frame at its own target, as frames() and the minimap have it (the
+                    // camera monitor's target for every frame drifted apart with separate cameras).
+                    readonly property var tgt: { effect.revision; return effect.peekTargetOn ? effect.peekTargetOn(activityFrames.activity, modelData) : effect.peekTarget(activityFrames.activity); }
+                    x: (tgt.x + og.x - effect.viewX) * effect.zoom - view.sg.x
+                    y: (tgt.y + og.y - effect.viewY) * effect.zoom - view.sg.y
                     width: og.width * effect.zoom
                     height: og.height * effect.zoom
                     z: 1
@@ -808,7 +822,6 @@ Item {
                 // The entry a drag started on. A raise restacks the entries
                 // under the delegates, so a drag follows its entry, not its index.
                 property var held: null
-                readonly property int heldIndex: { effect.revision; return effect.entries.indexOf(held); }
                 x: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; effect.moveRev; const f = (effect.floatAnchor && effect.floatAnchor[thumb.entry.window.internalId]) || effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].x - effect.viewX) * effect.zoom - view.sg.x; return f ? f.x - view.sg.x : base; }
                 y: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; effect.moveRev; const f = (effect.floatAnchor && effect.floatAnchor[thumb.entry.window.internalId]) || effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; return f ? f.y - view.sg.y : base; }
                 width: { effect.revision; return effect.entries[index].width * effect.zoom; }
@@ -930,14 +943,22 @@ Item {
                 // own: the layer this replaced was a second full-size texture per window, redrawn on
                 // every zoom step. An older plugin has no helper; the picture then goes through
                 // that layer, the window's own size in device pixels, as before.
-                readonly property real cornerR: { effect.cornerStyle; KWin.Workspace.activeWindow; effect.ql; effect.revision; return effect.cornerRadiusOf ? effect.cornerRadiusOf(thumb.entry) : 0; }
+                // Without the Rounded Corners effect nothing else is read, so a focus or caption
+                // change re-runs nothing.
+                readonly property real cornerR: {
+                    if (!effect.cornerStyle || !effect.cornerStyle.on) return 0;
+                    KWin.Workspace.activeWindow; effect.ql; effect.revision;
+                    return effect.cornerRadiusOf ? effect.cornerRadiusOf(thumb.entry) : 0;
+                }
                 readonly property var frameTex: {
                     if (!(thumb.cornerR > 0) || !view.sceneHelper || !thumb.entry.window) return null;
-                    // Asked again when this window's item or shadow changes (its own frameWatch);
-                    // an older plugin has only the revision every window's shadow bumps.
+                    // Asked again when this window's item or shadow changes (its own frameWatch),
+                    // which a resize changes and a move does not: the answer is in the item's own
+                    // coordinates, so a closed canvas keeping its scene pays nothing as windows
+                    // move. An older plugin has only the revision every window's shadow bumps, and
+                    // its answer moves with the window.
                     const fw = typeof view.sceneHelper.frameWatch === "function" ? view.sceneHelper.frameWatch(thumb.entry.window) : null;
-                    if (fw) fw.revision; else view.sceneHelper.revision;
-                    thumb.entry.window.frameGeometry;
+                    if (fw) fw.revision; else { view.sceneHelper.revision; thumb.entry.window.frameGeometry; }
                     const f = view.sceneHelper.frameInTexture(thumb.entry.window);
                     return f && f.length === 6 && f[4] > 0 && f[5] > 0 ? f : null;
                 }
@@ -951,7 +972,8 @@ Item {
                 KWin.WindowThumbnail {
                     id: picture
                     anchors.fill: parent
-                    client: effect.visible && effect.ql < 3 ? thumb.entry.window : null
+                    // A replica view (a monitor the overview is not open on) never shows the plane.
+                    client: effect.visible && effect.ql < 3 && !view.replica ? thumb.entry.window : null
                     visible: effect.ql < 3
                     opacity: thumb.frameTex ? 0 : 1
                     layer.enabled: effect.visible && thumb.cornerR > 0 && !thumb.frameTex
@@ -973,7 +995,9 @@ Item {
                     property vector4d frameRect: Qt.vector4d(f[0] / f[4], f[1] / f[5], f[2] / f[4], f[3] / f[5])
                     property size itemSize: Qt.size(width, height)
                     property real radius: thumb.cornerR * effect.zoom
-                    property real squircle: Number(effect.cornerStyle.squircle) || 0
+                    // Made for every window, so an effect that predates cornerStyle (a hot reload)
+                    // must not throw here.
+                    property real squircle: Number(effect.cornerStyle ? effect.cornerStyle.squircle : 0) || 0
                     fragmentShader: Qt.resolvedUrl("../shaders/corners.frag.qsb")
                 }
 
@@ -1114,8 +1138,11 @@ Item {
                 }
 
                 // The client decides the size it ends up with. Follow it.
+                // Only while the canvas is up: the kept scene outlives the close, and a move or a
+                // restack of any window called into the effect for nothing.
                 Connections {
                     target: thumb.entry.window
+                    enabled: effect.visible
                     function onFrameGeometryChanged() { effect.syncIndex(thumb.index); }
                     function onStackingOrderChanged() { Qt.callLater(effect.resync); }
                 }
@@ -1163,8 +1190,9 @@ Item {
                 Item {
                     objectName: "kwin-canvas-client"
                     readonly property var entry: thumb.entry
-                    readonly property rect fg: thumb.entry.window.frameGeometry
-                    readonly property rect cg: thumb.entry.window.clientGeometry
+                    // Read while the canvas is up only: closed, every move of the window re-ran them.
+                    readonly property rect fg: effect.visible ? thumb.entry.window.frameGeometry : Qt.rect(0, 0, 0, 0)
+                    readonly property rect cg: effect.visible ? thumb.entry.window.clientGeometry : Qt.rect(0, 0, 0, 0)
                     x: (cg.x - fg.x) * effect.zoom
                     y: (cg.y - fg.y) * effect.zoom
                     width: cg.width * effect.zoom
@@ -1312,7 +1340,7 @@ Item {
                         }
                         Text {
                             anchors.verticalCenter: parent.verticalCenter
-                            text: cluster.n + " windows"
+                            text: cluster ? cluster.n + " windows" : ""
                             color: "#b8ffffff"
                             font.pixelSize: 11
                         }
@@ -1385,9 +1413,12 @@ Item {
                 Component.onCompleted: { show = want; effect.noteBuilt("web"); }
                 Shape {
                     // The strokes divide by the zoom so the wrapper's scale keeps
-                    // them at a constant screen width.
+                    // them at about a constant screen width: by the zoom in quarter
+                    // octaves, since every new width re-strokes the layer's whole path
+                    // on the compositor's thread (each frame of a zoom did). The width
+                    // drifts at most 9% between steps.
                     ShapePath {
-                        strokeWidth: 5 / effect.zoom
+                        strokeWidth: 5 / view.strokeZoom
                         strokeColor: Qt.rgba(1, 1, 1, 0.10)
                         fillColor: "transparent"
                         capStyle: ShapePath.RoundCap
@@ -1395,7 +1426,7 @@ Item {
                         PathSvg { path: layer.t.d }
                     }
                     ShapePath {
-                        strokeWidth: 1.6 / effect.zoom
+                        strokeWidth: 1.6 / view.strokeZoom
                         strokeColor: Qt.rgba(1, 1, 1, 0.8)
                         fillColor: "transparent"
                         capStyle: ShapePath.RoundCap
@@ -1424,10 +1455,8 @@ Item {
                 width: 24 * effect.zoom
                 height: 24 * effect.zoom
                 z: 40000
-                // The wrapper stays visible: Qt skips bindings on invisible
-                // items, so a visible gate here would freeze the chip out of
-                // the grasp that should show it. The chip's pixels and its
-                // tap gate on the grasp below.
+                // The wrapper stays visible and its opacity carries the gate: the chip's
+                // pixels and its tap gate on the grasp below.
                 visible: true
                 opacity: { effect.clusterRev; effect.skinReveal; effect.grasp; return (effect.grasp && effect.skinReveal > 0.02 && index < effect.clusters.length && effect.clusters[index].n > 1) ? effect.skinReveal : 0; }
                 Rectangle {
@@ -1610,12 +1639,11 @@ Item {
         }
 
         // The chrome (the lens, the grasp's hint, the frame tags, the arrange menu, the toast, the
-        // switcher, the toolbar and the help) is built only when it can be seen: the scene is
-        // created afresh on every open, and building all of it cost about half of each open's
-        // first frame, a quick slide or fly included, which shows none of it. It is built
-        // synchronously once wanted (an asynchronous build cannot resolve this file's inline
-        // components, Grip and the rest, and gained nothing in KWin's scene), and it stays
-        // until the scene goes away with the close.
+        // switcher, the toolbar and the help) is built only when it can be seen: building all of
+        // it cost about half of an open's first frame, a quick slide or fly included, which shows
+        // none of it. It is built synchronously once wanted (an asynchronous build cannot resolve
+        // this file's inline components, Grip and the rest, and gained nothing in KWin's scene),
+        // and it stays as long as the scene does: across closes, with view caching.
         readonly property bool chromeWanted: !effect.quiet || effect.grasp || effect.switcherActive || !!effect.toastText
         onChromeWantedChanged: if (chromeWanted) chromeLoader.active = true
         Loader {
@@ -1784,14 +1812,16 @@ Item {
                                 // where its picture rides the screen's edge: the glance
                                 // shows where the window is, and the camera rectangle
                                 // shows how far the eye has gone from it.
-                                x: { effect.revision; return planeMap.mx(e.x); }
-                                y: { effect.revision; return planeMap.my(e.y); }
-                                width: { effect.revision; return Math.max(1.6, e.width * planeMap.sc); }
-                                height: { effect.revision; return Math.max(1.6, e.height * planeMap.sc); }
+                                // A delegate can outlive a shorter entry list for a turn: it reads nothing then.
+                                x: { effect.revision; return e ? planeMap.mx(e.x) : 0; }
+                                y: { effect.revision; return e ? planeMap.my(e.y) : 0; }
+                                width: { effect.revision; return e ? Math.max(1.6, e.width * planeMap.sc) : 0; }
+                                height: { effect.revision; return e ? Math.max(1.6, e.height * planeMap.sc) : 0; }
                                 radius: 1
                                 color: Qt.rgba(1, 1, 1, 0.5)
                                 border.width: 0.6
-                                border.color: effect.isSelected(e) ? "#b8ffffff" : "#4affffff"
+                                // The selection changes in place (add, toggle, marquee): selectionRev says so.
+                                border.color: { effect.selectionRev; return e && effect.isSelected(e) ? "#b8ffffff" : "#4affffff"; }
                                 // The lens is a glance, not a surface: its taps belong
                                 // to the world beneath it, never to the sheets.
                             }
@@ -1950,8 +1980,9 @@ Item {
                                 activity: activityTags.modelData
                                 activityIndex: activityTags.index
                                 screen: modelData
-                                x: { effect.revision; return (effect.peekTarget(activity).x + screen.geometry.x - effect.viewX) * effect.zoom - view.sg.x; }
-                                y: { effect.revision; return (effect.peekTarget(activity).y + screen.geometry.y - effect.viewY) * effect.zoom - view.sg.y - height - 2; }
+                                readonly property var tgt: { effect.revision; return effect.peekTargetOn ? effect.peekTargetOn(activity, screen) : effect.peekTarget(activity); }
+                                x: (tgt.x + screen.geometry.x - effect.viewX) * effect.zoom - view.sg.x
+                                y: (tgt.y + screen.geometry.y - effect.viewY) * effect.zoom - view.sg.y - height - 2
                                 z: 60000
                             }
                         }

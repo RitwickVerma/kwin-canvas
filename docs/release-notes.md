@@ -1,5 +1,37 @@
 Unreleased:
 
+- The chord switcher steps in again on its own. With the pass-through plugin, releasing Meta+Tab
+  left the switcher waiting for Enter or Esc.
+- The camera keeps its speed across a burst. Wheel notches and pan steps a moment apart ride as
+  one motion instead of stopping at each, and three quick arrow presses travel three steps (they
+  travelled about two and a half).
+- A key held in a window of the overview is released in that window when you let go, even if the
+  pointer has moved to the ground meanwhile; the window no longer repeats it until the next press.
+- Home and Search pressed during a slide do what they say; an activity switch during a slide no
+  longer pans the new activity; a wheel notch or Esc while the overview closes no longer runs the
+  close again (each added an undo step and rewrote every window).
+- With FollowActivation off a click on a window no longer slides the desk, and a
+  window opening at its app's home no longer slides the desk over a fullscreen game.
+- `kwin-canvas reset` carries maximized windows' restore spots, app homes and parked windows
+  along; an unmaximize after a reset could land a window far off the screen.
+- Tidy keeps its rows together wherever the plane's origin is; the second row could land
+  thousands of pixels below the first.
+- Separate cameras: windows the canvas does not draw keep their place under a pan of the other
+  monitor, another activity's windows no longer show on the second monitor, and each monitor's
+  frame is drawn at its own place.
+- Over the bare desktop the wheel up and sideways scrolling reach the desktop again; only the
+  zoom-out step opens the canvas.
+- The Canvas Map widget lets the plugin stop watching the windows when it is removed. The decor
+  panel widget asks the plugin over D-Bus inside plasmashell instead of starting a process four
+  times a second.
+- A closed canvas does less while you play: the kept scene no longer reacts to every window move
+  and focus change, a pointer motion no longer recomputes the chrome's reveal, game mode sends two
+  calls instead of seven, and the plugin writes its state file and tells the effect about the
+  hover only when they change.
+- The blurred wallpaper behind translucent windows is built only when a window wears it, and the
+  cluster web is re-stroked a few times per zoom instead of on every frame.
+- The settings page has switches for the float dodge and for the blur behind windows; the backdrop
+  blur and dim settings, which did nothing, are gone.
 - In the overview, resting on the window the pointer last rested on before the canvas closed hands
   it the input again. It did not until the pointer left that window and came back.
 - A floating window steps aside for the window you are working in. When the focus settles on a

@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, searchFilter, inReach, onAMonitor, rectsMeet, dodgeSpot, isPull, fightStep, cornerRadius, blurRects, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows, simplifyPath };")();
+const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, searchFilter, inReach, onAMonitor, rectsMeet, rectInside, meetsAny, dodgeSpot, isPull, fightStep, cornerRadius, blurRects, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -130,6 +130,10 @@ ok("the dynamic gap reads the same scaled up",
     ok("rects that share area meet", L.rectsMeet(r(0, 0, 100, 100), r(50, 50, 100, 100)));
     ok("rects that only touch do not", !L.rectsMeet(r(0, 0, 100, 100), r(100, 0, 100, 100)));
     ok("a null rect meets nothing", !L.rectsMeet(r(0, 0, 100, 100), null));
+    ok("a rect inside the area is inside", L.rectInside(r(10, 10, 100, 100), area));
+    ok("one past its edge is not", !L.rectInside(r(1900, 10, 100, 100), area));
+    ok("a rect meets a list when it meets one of it", L.meetsAny(r(0, 0, 100, 100), [r(500, 500, 10, 10), r(50, 50, 10, 10)]));
+    ok("and not when it meets none", !L.meetsAny(r(0, 0, 100, 100), [r(500, 500, 10, 10)]) && !L.meetsAny(r(0, 0, 100, 100), null));
     const s5 = L.dodgeSpot(r(600, 900, 300, 200), r(100, 100, 600, 1000), area, [], 12);
     ok("the held axis is pulled into the work area", s5 && s5.y + 200 <= 1040 && s5.x === 712);
 }
@@ -509,6 +513,10 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
         const out = L.tidyRows([{ x: 0, y: 0, width: 100, height: 20 }, { x: 0, y: 0, width: 60, height: 30 }], { gap: 10, origin: { x: 0, y: 0 }, maxWidth: 120 });
         return near(out[0].x, 0) && near(out[0].y, 0) && near(out[1].x, 0) && near(out[1].y, 30);
     })());
+    ok("tidy keeps its rows together at an origin above the plane's 0", (function () {
+        const out = L.tidyRows([{ x: 0, y: 0, width: 100, height: 200 }, { x: 0, y: 0, width: 100, height: 200 }], { gap: 32, origin: { x: -5000, y: -3000 }, maxWidth: 150 });
+        return near(out[0].y, -3000) && near(out[1].y, -3000 + 200 + 32) && near(out[1].x, -5000);
+    })());
     ok("tidy never wraps the first item of a row", (function () {
         const out = L.tidyRows([{ x: 0, y: 0, width: 200, height: 20 }, { x: 0, y: 0, width: 50, height: 20 }], { gap: 10, origin: { x: 5, y: 5 }, maxWidth: 150 });
         return near(out[0].x, 5) && near(out[0].y, 5) && near(out[1].x, 5) && near(out[1].y, 35);
@@ -548,15 +556,6 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
         return near(d.dx, 2564) && near(d.dy, 0);
     })());
 }
-
-// ---- the trail's simplification ----
-ok("a straight line collapses to its ends", L.simplifyPath([{ x: 0, y: 0, t: 1 }, { x: 10, y: 0, t: 2 }, { x: 20, y: 0, t: 3 }], 40).length === 2);
-const corner = L.simplifyPath([{ x: 0, y: 0, t: 1 }, { x: 100, y: 0, t: 2 }, { x: 100, y: 100, t: 3 }], 40);
-ok("a real corner survives", corner.length === 3);
-const jitter = L.simplifyPath([{ x: 0, y: 0, t: 1 }, { x: 50, y: 5, t: 2 }, { x: 100, y: 0, t: 3 }], 40);
-ok("the jitter on a straight run collapses", jitter.length === 2 && jitter[1].t === 3);
-const keepT = L.simplifyPath([{ x: 0, y: 0, t: 1 }, { x: 50, y: 0, t: 2 }, { x: 0, y: 90, t: 3 }], 40);
-ok("the timestamps ride the kept points", keepT.length === 3 && keepT[2].t === 3);
 
 console.log("== unit pass " + pass + "  fail " + fail);
 process.exit(fail === 0 ? 0 : 1);

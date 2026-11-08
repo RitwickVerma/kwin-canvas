@@ -8,6 +8,9 @@
 #include <window.h>
 #include <workspace.h>
 
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDBusServiceWatcher>
 #include <QMetaMethod>
 #include <QMetaProperty>
 #include <QVariant>
@@ -23,6 +26,20 @@ CanvasMap::CanvasMap(QObject *parent)
     m_pending.setSingleShot(true);
     m_pending.setInterval(100);
     connect(&m_pending, &QTimer::timeout, this, &CanvasMap::changed);
+    m_lease.setSingleShot(true);
+    m_lease.setInterval(60000);
+    connect(&m_lease, &QTimer::timeout, this, &CanvasMap::maybeStop);
+    // A holder whose connection to the bus goes (plasmashell quit or crashed) holds nothing.
+    m_holderWatch = new QDBusServiceWatcher(this);
+    m_holderWatch->setConnection(QDBusConnection::sessionBus());
+    m_holderWatch->setWatchMode(QDBusServiceWatcher::WatchForUnregistration);
+    connect(m_holderWatch, &QDBusServiceWatcher::serviceUnregistered, this, [this](const QString &service) {
+        for (auto it = m_holders.begin(); it != m_holders.end();) {
+            it = it.value() == service ? m_holders.erase(it) : std::next(it);
+        }
+        m_holderWatch->removeWatchedService(service);
+        maybeStop();
+    });
 }
 
 QObject *CanvasMap::canvas() const
@@ -67,26 +84,80 @@ void CanvasMap::watchCanvas(QObject *effect)
     }
 }
 
+void CanvasMap::startWatching()
+{
+    if (m_watching) {
+        return;
+    }
+    m_watching = true;
+    for (Window *w : workspace()->windows()) {
+        watch(w);
+    }
+    connect(workspace(), &Workspace::windowAdded, this, [this](Window *w) {
+        watch(w);
+        touch();
+    });
+    connect(workspace(), &Workspace::windowRemoved, this, &CanvasMap::touch);
+    connect(workspace(), &Workspace::windowActivated, this, &CanvasMap::touch);
+    connect(workspace(), &Workspace::stackingOrderChanged, this, &CanvasMap::touch);
+    connect(workspace(), &Workspace::currentDesktopChanged, this, &CanvasMap::touch);
+    connect(workspace(), &Workspace::outputsChanged, this, &CanvasMap::touch);
+    if (QObject *effect = canvas()) {
+        watchCanvas(effect);
+    }
+}
+
+void CanvasMap::stopWatching()
+{
+    if (!m_watching) {
+        return;
+    }
+    m_watching = false;
+    m_pending.stop();
+    disconnect(workspace(), nullptr, this, nullptr);
+    for (Window *w : workspace()->windows()) {
+        disconnect(w, nullptr, this, nullptr);
+    }
+    if (m_canvas) {
+        disconnect(m_canvas, nullptr, this, nullptr);
+    }
+    m_canvas = nullptr;
+}
+
+void CanvasMap::maybeStop()
+{
+    if (m_holders.isEmpty() && !m_lease.isActive()) {
+        stopWatching();
+    }
+}
+
+void CanvasMap::hold(const QString &token)
+{
+    const QString service = calledFromDBus() ? message().service() : QString();
+    m_holders.insert(token, service);
+    if (!service.isEmpty()) {
+        m_holderWatch->addWatchedService(service);
+    }
+    startWatching();
+}
+
+void CanvasMap::release(const QString &token)
+{
+    m_holders.remove(token);
+    // The widget is gone: the plain reads it made are its own, so no lease outlives it.
+    m_lease.stop();
+    maybeStop();
+}
+
 QString CanvasMap::read()
 {
     QObject *effect = canvas();
     if (!effect) {
         return QString();
     }
-    if (!m_watching) {
-        m_watching = true;
-        for (Window *w : workspace()->windows()) {
-            watch(w);
-        }
-        connect(workspace(), &Workspace::windowAdded, this, [this](Window *w) {
-            watch(w);
-            touch();
-        });
-        connect(workspace(), &Workspace::windowRemoved, this, &CanvasMap::touch);
-        connect(workspace(), &Workspace::windowActivated, this, &CanvasMap::touch);
-        connect(workspace(), &Workspace::stackingOrderChanged, this, &CanvasMap::touch);
-        connect(workspace(), &Workspace::currentDesktopChanged, this, &CanvasMap::touch);
-        connect(workspace(), &Workspace::outputsChanged, this, &CanvasMap::touch);
+    startWatching();
+    if (m_holders.isEmpty()) {
+        m_lease.start();
     }
     if (m_canvas != effect) {
         watchCanvas(effect);

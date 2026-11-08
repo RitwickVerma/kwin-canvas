@@ -225,7 +225,7 @@ CanvasPassthrough::CanvasPassthrough()
     connect(&m_idleTimer, &QTimer::timeout, this, [this]() {
         if (m_active && !m_idle) {
             m_idle = true;
-            if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+            if (QObject *canvas = canvasEffect()) {
                 canvas->setProperty("passthroughIdle", true);
             }
         }
@@ -258,7 +258,7 @@ CanvasPassthrough::CanvasPassthrough()
         m_holdCandidate = false;
         m_holdDown = true;
         m_heldButton = m_candidateButton;
-        if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+        if (QObject *canvas = canvasEffect()) {
             canvas->setProperty("canvasHold", true);
         }
     });
@@ -280,13 +280,24 @@ QString CanvasPassthrough::probe() const
     return QStringLiteral("kwin-canvas-passthrough %1 kwin %2").arg(QStringLiteral(CANVAS_VERSION), KWIN_VERSION_STRING);
 }
 
+QObject *CanvasPassthrough::canvasEffect() const
+{
+    if (!m_canvasEffect && effects) {
+        m_canvasEffect = effects->findEffect(QStringLiteral("kwin-canvas"));
+        // A new effect object knows nothing of what the old one was told.
+        m_restPublished.clear();
+        m_hoverPublished.clear();
+    }
+    return m_canvasEffect;
+}
+
 void CanvasPassthrough::wakeFromIdle()
 {
     if (!m_idle) {
         return;
     }
     m_idle = false;
-    if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+    if (QObject *canvas = canvasEffect()) {
         canvas->setProperty("passthroughIdle", false);
     }
 }
@@ -315,9 +326,13 @@ void CanvasPassthrough::setActive(bool active)
         m_idleTimer.start();
     } else {
         m_idleTimer.stop();
-        clearGrab();
         leave();
+        // A key still held reaches the window natively once the canvas lets the input go.
+        m_keysToWindow.clear();
     }
+    // A grab or a ground gesture from before (a grasp opened with the canvas closed, at a
+    // zoom long gone) is not this activation's.
+    clearGrab();
 }
 
 void CanvasPassthrough::setCamera(double viewX, double viewY, double zoom, const QString &currentActivity, const QString &targetsJson)
@@ -352,6 +367,10 @@ void CanvasPassthrough::setCanvasState(const QString &state)
     // Written through QSaveFile: the shader polls this file, and an in-place
     // truncate-and-write lets it read a half-written plane. The save is a
     // rename, so a reader sees the old file or the new one, never a mix.
+    const QString key = QStringLiteral("%1,%2\n").arg(workspace()->geometry().width()).arg(workspace()->geometry().height()) + state;
+    if (key == m_canvasStateWritten) {
+        return;
+    }
     QSaveFile f(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + QStringLiteral("/kwin-canvas-state.txt"));
     if (!f.open(QIODevice::WriteOnly)) {
         return;
@@ -390,7 +409,9 @@ void CanvasPassthrough::setCanvasState(const QString &state)
         }
     }
     out.flush();
-    f.commit();
+    if (f.commit()) {
+        m_canvasStateWritten = key;
+    }
 }
 
 void CanvasPassthrough::setNavButtons(int buttons)
@@ -433,7 +454,7 @@ void CanvasPassthrough::setHoldButtons(int buttons)
     // canvas closes rather than waiting for a release that no longer counts.
     if (m_holdDown && !(mask & uint(m_heldButton))) {
         m_holdDown = false;
-        if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+        if (QObject *canvas = canvasEffect()) {
             canvas->setProperty("canvasHold", false);
         }
     }
@@ -532,7 +553,7 @@ bool CanvasPassthrough::setViewCaching(bool enabled)
     if (!KWin::effects) {
         return false;
     }
-    auto *effect = qobject_cast<KWin::QuickSceneEffect *>(KWin::effects->findEffect(QStringLiteral("kwin-canvas")));
+    auto *effect = qobject_cast<KWin::QuickSceneEffect *>(canvasEffect());
     if (!effect) {
         return false;
     }
@@ -549,25 +570,25 @@ void CanvasPassthrough::publishRest(KWin::Window *w)
     // while the plugin owns the canvas's input. A deactivation clears the
     // property through leave().
     if (!m_active) w = nullptr;
-    if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
-        if (w) {
-            // The window and the delay the hover clock is waiting out, so
-            // the canvas can fill a cue along the window's edge while the
-            // rest runs: the handoff is anticipated instead of a surprise.
-            canvas->setProperty("restStart", QStringLiteral("%1|%2").arg(w->internalId().toString()).arg(m_hoverTimer.interval()));
-        } else {
-            canvas->setProperty("restStart", QString());
-        }
+    // The window and the delay the hover clock is waiting out, so the canvas
+    // can fill a cue along the window's edge while the rest runs: the handoff
+    // is anticipated instead of a surprise.
+    const QString value = w ? QStringLiteral("%1|%2").arg(w->internalId().toString()).arg(m_hoverTimer.interval()) : QString();
+    if (QObject *canvas = canvasEffect(); canvas && value != m_restPublished) {
+        m_restPublished = value;
+        canvas->setProperty("restStart", value);
     }
 }
 
 void CanvasPassthrough::publishHover(KWin::Window *w)
 {
-    if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
-        // The window that holds the pointer wears the hand: the canvas
-        // keeps its cue's line full along that window's edge while the
-        // pass-through owns the input.
-        canvas->setProperty("hoverId", w ? w->internalId().toString() : QString());
+    // The window that holds the pointer wears the hand: the canvas keeps its
+    // cue's line full along that window's edge while the pass-through owns
+    // the input.
+    const QString value = w ? w->internalId().toString() : QString();
+    if (QObject *canvas = canvasEffect(); canvas && value != m_hoverPublished) {
+        m_hoverPublished = value;
+        canvas->setProperty("hoverId", value);
     }
 }
 
@@ -636,7 +657,7 @@ void CanvasPassthrough::windowAction(const QString &action)
         w->setMaximize(!full, !full);
     } else if (action == QLatin1String("float")) {
         // The float is the system's own "on all desktops" pin: one flag, so
-        // the canvas, the pill, a window rule and KDE's menu always agree.
+        // the canvas, the decoration, a window rule and KDE's menu always agree.
         w->setOnAllDesktops(!w->isOnAllDesktops());
     } else if (action == QLatin1String("keepabove")) {
         w->setKeepAbove(!w->keepAbove());
@@ -938,7 +959,7 @@ void CanvasPassthrough::publishChrome(const QPointF &screen)
         return;
     }
     m_chromeHover = chrome;
-    if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+    if (QObject *canvas = canvasEffect()) {
         canvas->setProperty("chromeHover", chrome);
     }
 }
@@ -1183,7 +1204,10 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     // A press is never a rest: whatever cue the hover clock was filling
     // stops the moment a button lands.
     publishRest(nullptr);
-    // A press wakes the passthrough as a motion does, and the effect hears it.
+    // A press wakes the passthrough as a motion does, and the effect hears it;
+    // the press itself is still the canvas's (the header's promise: the keys,
+    // the wheel and the clicks are the canvas's until the next touch).
+    const bool wasIdle = m_idle;
     wakeFromIdle();
     if (m_active) {
         m_idleTimer.start();
@@ -1197,7 +1221,7 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
         m_allButtons &= ~event->button;
     }
     if (wasAny != (m_allButtons != Qt::NoButton)) {
-        if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+        if (QObject *canvas = canvasEffect()) {
             canvas->setProperty("pointerButtons", int(m_allButtons));
         }
     }
@@ -1230,7 +1254,7 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
             if (m_holdDown) {
                 m_holdDown = false;
                 if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: hold released, canvas closes";
-                if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+                if (QObject *canvas = canvasEffect()) {
                     canvas->setProperty("canvasHold", false);
                 }
             } else if (m_holdCandidate) {
@@ -1254,16 +1278,22 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
         if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: click candidate at" << event->position.x() << "," << event->position.y() << "->" << (m_clickWindow ? m_clickWindow->caption() : QStringLiteral("-"));
         m_clickPos = event->position;
     } else if (event->state == PointerButtonState::Released && m_clickWindow && event->button == Qt::LeftButton) {
-        if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+        if (QObject *canvas = canvasEffect()) {
             canvas->setProperty("clickedWindow", QVariant::fromValue<QObject *>(m_clickWindow.data()));
         }
         m_clickWindow = nullptr;
     }
+    // A closed canvas, no hold: the press is the desktop's (a game's), and
+    // nothing below applies.
+    if (!m_active && !m_holdDown) {
+        return false;
+    }
     // The system's own chrome - a dock, a panel, an applet's dropdown -
     // owns its pixels. A press over it never enters or activates the
     // window drawn underneath; the scene's handlers stand back too (the
-    // chromeHover gate), so the chrome gets the click natively.
-    if (m_chromeHover) {
+    // chromeHover gate), so the chrome gets the click natively. A grab
+    // under way keeps its release, wherever the pointer let go.
+    if (m_chromeHover && !m_grab) {
         leave();
         m_grab = nullptr;
         m_grabGround = false;
@@ -1272,7 +1302,7 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     // The grasp's zoomed-out world owns the pointer outright (see
     // pointerMotion): a press over a sheet is the sheet's, never the real
     // window drawn under the map.
-    if (m_holdDown && m_zoom < 0.85) {
+    if (m_holdDown && m_zoom < 0.85 && !m_grab) {
         leave();
         m_grab = nullptr;
         m_grabGround = true;
@@ -1281,7 +1311,7 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     // The passthrough waits for the aim: until the pointer's first motion
     // after the activation, buttons belong to the canvas - the first click
     // after the overworld opens is the canvas's, not the window's.
-    if (!m_settled || m_idle) {
+    if (!m_settled || wasIdle) {
         return false;
     }
     const bool pressed = event->state == PointerButtonState::Pressed;
@@ -1291,6 +1321,12 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     // not see the release - and the button is left out of the bookkeeping that
     // decides when a grab is over.
     if (uint(event->button) & m_nav) {
+        // A rest under way is over: the pan moves the plane under the pointer,
+        // and the clock must not hand the input over at the press's old spot.
+        if (pressed) {
+            m_hoverTimer.stop();
+            m_hoverCandidate = nullptr;
+        }
         return false;
     }
     const bool first = pressed && m_buttons == Qt::NoButton;
@@ -1335,10 +1371,20 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
 bool CanvasPassthrough::keyboardKey(KeyboardKeyEvent *event)
 {
     if (m_verbose) qCDebug(KWIN_CANVAS) << "keyboardKey" << event->key;
+    // A key whose press went to the window is released there, whatever the pointer, the idle or
+    // the hover say by now (the pointer left for the ground with the key held).
+    if (event->state == KeyboardKeyState::Released && m_keysToWindow.remove(event->nativeScanCode)) {
+        SeatInterface *seat = waylandServer()->seat();
+        if (seat->focusedKeyboardSurface()) {
+            seat->notifyKeyboardKey(event->nativeScanCode, event->state, event->serial);
+            return true;
+        }
+        return false;
+    }
     // The idle's keys are the canvas's - the Esc the user reaches for is
     // the canvas's cancel, not the window's. Typing restarts the idle
-    // clock but hands no key over; the key itself stays the canvas's
-    // while the passthrough is idle. A closed canvas's keys are the desktop's.
+    // clock nor hands a key over: the key stays the canvas's while the
+    // passthrough is idle. A closed canvas's keys are the desktop's.
     if (!m_active || m_idle) {
         return false;
     }
@@ -1357,6 +1403,9 @@ bool CanvasPassthrough::keyboardKey(KeyboardKeyEvent *event)
         return false;
     }
     seat->notifyKeyboardKey(event->nativeScanCode, event->state, event->serial);
+    if (event->state == KeyboardKeyState::Pressed) {
+        m_keysToWindow.insert(event->nativeScanCode);
+    }
     return true;
 }
 
@@ -1368,7 +1417,7 @@ bool CanvasPassthrough::pointerAxis(PointerAxisEvent *event)
     // during a hold the wheel stays theirs.
     if (!m_active && m_door && !m_holdDown) {
         if (!windowUnder(event->position) && !chromeAt(event->position)) {
-            if (QObject *canvas = effects->findEffect(QStringLiteral("kwin-canvas"))) {
+            if (QObject *canvas = canvasEffect()) {
                 // An open canvas owns its own wheel: its QML handler zooms
                 // at the pointer. Consuming the step here would eat it -
                 // the door only opens the closed world.
@@ -1376,8 +1425,12 @@ bool CanvasPassthrough::pointerAxis(PointerAxisEvent *event)
                     return false;
                 }
                 // The raw delta is positive scrolling down (KWin maps the
-                // fake axis so), which is the zoom out - the door's step.
-                canvas->setProperty("doorStep", event->delta > 0 ? -1 : 1);
+                // fake axis so), which is the zoom out - the door's step. The
+                // zoom in, and a horizontal scroll or a tilt, are the desktop's.
+                if (event->orientation != Qt::Vertical || event->delta <= 0) {
+                    return false;
+                }
+                canvas->setProperty("doorStep", -1);
                 return true;
             }
         }

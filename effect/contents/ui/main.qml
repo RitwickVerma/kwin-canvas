@@ -77,11 +77,7 @@ KWin.SceneEffect {
     // when it opens and out over it when it lands, crossfading the two
     // instead of letting the cut flash every inactive title bar at once.
     property real sceneFade: 1
-    // The one-frame warm-up: the quiet slide opens opaque (a fade-in here
-    // would run through black - KWin composites the scene's framebuffer
-    // over black, not over the desktop), and the glide waits one
-    // event-loop turn so the scene's first paint warms the cold
-    // thumbnails under their real selves.
+    // The overview proper: up and not a quiet slide or grasp.
     readonly property bool canvasOpen: visible && !quiet
     // Pass-through: the optional binary plugin is live while the canvas is
     // open. Every key, and every click, drag and wheel over a window, goes
@@ -197,8 +193,8 @@ KWin.SceneEffect {
     readonly property real planeScale: zoom
     readonly property real planeOffsetX: { revision; return (peekTarget(currentActivity).x - viewX) * zoom; }
     readonly property real planeOffsetY: { revision; return (peekTarget(currentActivity).y - viewY) * zoom; }
-    // The buttons the canvas owns while they are down: the PanHold buttons and
-    // the middle button. The shim reads this and the plugin is told over D-Bus
+    // The buttons the canvas owns while they are down: the PanHold buttons, the
+    // middle button and the swap's button. The shim reads this and the plugin is told over D-Bus
     // (setNavButtons); both then hand the pointer to the canvas for those
     // buttons wherever it is, a window's client area included. That is what
     // makes a held button a portal into the canvas: the window under it never
@@ -261,12 +257,8 @@ KWin.SceneEffect {
     function graspPick() {
         if (!grasp) return;
         const p = cursorScreen();
-        const c = globalToCanvas(p.x, p.y);
-        let e = null;
-        for (let i = entries.length - 1; i >= 0; --i) {
-            const en = entries[i];
-            if (c.x >= en.x && c.x < en.x + en.width && c.y >= en.y && c.y < en.y + en.height) { e = en; break; }
-        }
+        // The window the eye sees under the pointer: a float is its picture, as the tap is.
+        const e = entryAtScreen(p.x, p.y);
         if (e !== graspTarget) graspTarget = e;
     }
     Timer {
@@ -277,6 +269,9 @@ KWin.SceneEffect {
     }
     onCanvasHoldChanged: {
         if (canvasHold) {
+            // A slide in flight, or holding its last paint, lands and closes first: the hold is a
+            // grasp of its own, not a grasp of the open overworld.
+            if (visible && quiet && !grasp) { finishSlide(); takeSlideClose(); }
             // Held while the overworld is open: the hold itself IS the
             // navigation - bring the grasp back, map and all.
             if (!visible) graspStart();
@@ -574,7 +569,7 @@ KWin.SceneEffect {
         if (!c || !c.ids || c.ids.length < 2) return entries;
         const pool = [];
         for (let i = 0; i < c.ids.length; ++i) {
-            const e = entries.find(en => en.window.internalId === c.ids[i]);
+            const e = entryById(c.ids[i]);
             if (e) pool.push(e);
         }
         return pool.length > 1 ? pool : entries;
@@ -653,9 +648,9 @@ KWin.SceneEffect {
     property var searchHitSet: ({})   // internalId -> true, for the thumbnails' dim
     property int searchIndex: 0
     function searchStart() {
-        if (visible && quiet) { if (grasp) graspEnd(); else finishSlide(); }
+        landQuiet();
         if (!visible) open(false, "fit");
-        if (!visible || quiet) return;
+        if (!canvasOpen || closing) return;
         searchActive = true;
         searchText = "";
         searchIndex = 0;
@@ -750,11 +745,6 @@ KWin.SceneEffect {
     // hold's zoom: the destination is the location itself, and the release
     // commits it.
     function graspFly(e) {
-        const others = [];
-        for (let i = 0; i < entries.length; ++i) {
-            if (entries[i] === e) continue;
-            others.push({ x: entries[i].x, y: entries[i].y, width: entries[i].width, height: entries[i].height });
-        }
         const d = Logic.smartPan({ x: e.x, y: e.y, width: e.width, height: e.height }, actionScreen().geometry, viewX, viewY, 1.0, 24);
         dbg("map", "flying to " + Math.round(viewX + d.dx) + "," + Math.round(viewY + d.dy) + " (" + Math.round(d.dx) + "," + Math.round(d.dy) + " delta)");
         camGo(1.0, viewX + d.dx, viewY + d.dy, undefined, undefined, 2.0);
@@ -778,7 +768,7 @@ KWin.SceneEffect {
         if (!c || !c.ids || !c.ids.length) return null;
         let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
         for (let i = 0; i < c.ids.length; ++i) {
-            const e = entries.find(en => en.window.internalId === c.ids[i]);
+            const e = entryById(c.ids[i]);
             if (!e) continue;
             x0 = Math.min(x0, e.x); y0 = Math.min(y0, e.y);
             x1 = Math.max(x1, e.x + e.width); y1 = Math.max(y1, e.y + e.height);
@@ -809,8 +799,7 @@ KWin.SceneEffect {
     // physics before settling against it; move the camera back and the
     // picture is the window again, at its coordinates. The flag is KWin's
     // own "on all desktops", repurposed - the title-bar menu's pin entry
-    // and the canvas agree on what floats - and the caption list
-    // persists the choice.
+    // and the canvas agree on what floats.
     // Float and "on all desktops" are one state: the window stays with you.
     // KWin holds it, so the title bar's own menu, the pill, the panel applet,
     // a window rule and the canvas all read and write the same flag and
@@ -850,8 +839,8 @@ KWin.SceneEffect {
     // window glides to the nearest spot on its monitor's work area that clears it
     // (Logic.dodgeSpot), and back to where it was once the focused window no longer needs that
     // spot. It waits for the focus to settle (dodgeTimer): a fly lands first, and with focus
-    // following the mouse a pointer crossing windows moves nothing. Only with the canvas closed:
-    // a settle that comes while it is up waits for the close (dodgePending). A focus that is not
+    // following the mouse a pointer crossing windows moves nothing. Only with the canvas closed;
+    // every close looks again (a slide or a commit moved the desk under the floats). A focus that is not
     // a free window of the plane (a launcher, a panel, the desktop, a maximized or tiled window,
     // a float) moves nothing either way. FloatDodge turns it off. floatHome: id -> { x, y }, the
     // screen spot a float left for the focused window. It is forgotten when the float moves by
@@ -860,7 +849,6 @@ KWin.SceneEffect {
     property var floatHome: ({})
     property var dodgeMoves: []        // [{ w, fx, fy, tx, ty }], the glide in flight
     property real dodgeT: 0
-    property bool dodgePending: false
     readonly property int dodgeGap: 12
     Timer {
         id: dodgeTimer
@@ -877,7 +865,7 @@ KWin.SceneEffect {
     }
     function dodgeFloats() {
         if (configuration.FloatDodge === false || safeMode) return;
-        if (visible) { dodgePending = true; return; }
+        if (visible) return;
         // A glide still in flight lands first, so every spot below is read where it ends.
         if (dodgeAnim.running) dodgeAnim.complete();
         const focus = KWin.Workspace.activeWindow;
@@ -901,16 +889,14 @@ KWin.SceneEffect {
             const area = { x: a.x, y: a.y, width: a.width, height: a.height };
             const others = [];
             for (let j = 0; j < floats.length; ++j) if (j !== i) others.push(floats[j].r);
-            const crowds = function (r) { for (let k = 0; k < others.length; ++k) if (Logic.rectsMeet(r, others[k])) return true; return false; };
             let to = null;
             const home = floatHome[id];
             if (home) {
                 const hr = { x: home.x, y: home.y, width: f.r.width, height: f.r.height };
-                const inside = hr.x >= area.x && hr.y >= area.y && hr.x + hr.width <= area.x + area.width && hr.y + hr.height <= area.y + area.height;
                 // Home is free again: go back, and there is no home any more. Still in the
                 // focused window's way, or taken by another float, the float stays where it
                 // stepped to (or steps on, below).
-                if (inside && !Logic.rectsMeet(hr, fr) && !crowds(hr)) {
+                if (Logic.rectInside(hr, area) && !Logic.rectsMeet(hr, fr) && !Logic.meetsAny(hr, others)) {
                     delete floatHome[id];
                     to = { x: hr.x, y: hr.y };
                 }
@@ -930,11 +916,12 @@ KWin.SceneEffect {
         dodgeAnim.restart();
     }
     // The glide: each float written along its way at every step, as the canvas's own write, so
-    // the frame authority takes it as the canvas's and the plane coordinate follows.
+    // the frame authority takes it as the canvas's and the plane coordinate follows. A float the
+    // hand takes mid-glide is the hand's: the glide stops writing it.
     onDodgeTChanged: {
         for (let i = 0; i < dodgeMoves.length; ++i) {
             const m = dodgeMoves[i];
-            if (!m.w || m.w.deleted) continue;
+            if (!m.w || m.w.deleted || m.w.move || m.w.resize) continue;
             const g = m.w.frameGeometry;
             setReal(m.w, Qt.rect(Math.round(m.fx + (m.tx - m.fx) * dodgeT), Math.round(m.fy + (m.ty - m.fy) * dodgeT), g.width, g.height));
         }
@@ -1077,6 +1064,7 @@ KWin.SceneEffect {
         // state behind: kept, it would keep the float walk and the thumbnails'
         // re-evaluation running every frame for a window that is gone.
         const live = {};
+        let moved = false;
         for (let i = 0; i < entries.length; ++i) live[entries[i].window.internalId] = true;
         for (const fid in floatOf) if (!live[fid]) { delete floatOf[fid]; floatRev++; }
         for (let i = 0; i < entries.length; ++i) {
@@ -1095,23 +1083,22 @@ KWin.SceneEffect {
             const tx = (e.x - viewX) * zoom, ty = (e.y - viewY) * zoom;
             const cx = Math.max(b.l, Math.min(b.r, tx)), cy = Math.max(b.t, Math.min(b.b, ty));
             let f = floatOf[id];
-            if (!f) { floatOf[id] = f = { x: tx, y: ty, vx: 0, vy: 0, wasInX: true, wasInY: true, out: null }; }
+            if (!f) { floatOf[id] = f = { x: tx, y: ty, vx: 0, vy: 0, wasInX: true, wasInY: true, out: null }; moved = true; }
             // Remembered for the ticks the window's centre is off every output.
             const held = screenAt(tx + e.width * zoom / 2, ty + e.height * zoom / 2);
             if (held) f.out = held;
             const dragging = dragIndex >= 0 && dragRaw[id];
             const camVX = dt > 0.0001 ? -(viewX - floatPrevViewX) / dt * zoom : 0;
             const camVY = dt > 0.0001 ? -(viewY - floatPrevViewY) / dt * zoom : 0;
+            const px = f.x, py = f.y;
             Logic.floatAdvance(f, tx, ty, cx, cy, b.l, b.r, b.t, b.b, camVX, camVY, dragging, dt);
+            if (f.x !== px || f.y !== py) moved = true;
         }
         floatPrevViewX = viewX;
         floatPrevViewY = viewY;
-        // Advances only while a window floats: its picture rides the camera.
-        // Every thumbnail's position binds to floatRev, so advancing it with
-        // nothing floating re-evaluated them all each frame for nothing.
-        let floating = false;
-        for (const fid in floatOf) { floating = true; break; }
-        if (floating) floatRev += dt * 62.5;
+        // Advances only when a float's picture moved: every thumbnail's position binds to floatRev,
+        // so advancing it for a float at rest re-evaluated them all each frame for nothing.
+        if (moved) floatRev += dt * 62.5;
     }
     // ---- hover navigation ----------------------------------------------------
     // The pointer rests on a window and the camera pans the least that brings
@@ -1152,17 +1139,8 @@ KWin.SceneEffect {
     // never rests in it.
     readonly property real seamMargin: 6
     property bool seamPark: false
-    function screensAsRects() {
-        const ss = KWin.Workspace.screens;
-        const out = [];
-        for (let i = 0; i < ss.length; ++i) {
-            const g = ss[i].geometry;
-            out.push({ x: g.x, y: g.y, width: g.width, height: g.height });
-        }
-        return out;
-    }
     function seamAt(p) {
-        return Logic.seamPoint(screensAsRects(), p.x, p.y, seamMargin);
+        return Logic.seamPoint(screenRects, p.x, p.y, seamMargin);
     }
 
     // ---- clusters -------------------------------------------------------------
@@ -1246,7 +1224,7 @@ KWin.SceneEffect {
             const at = focusAt[id] || 0;
             if (at > bestAt) { bestAt = at; dest = id; }
         }
-        const destEntry = dest !== null ? entries.find(function (en) { return en.window.internalId === dest; }) : null;
+        const destEntry = dest !== null ? entryById(dest) : null;
         if (destEntry) focusEntry = destEntry;
         // The remembered spot: the digit jumps return to it (the room's
         // place), the tour never does - a hop is a switch, and it lands on
@@ -1337,7 +1315,7 @@ KWin.SceneEffect {
     property var undoStack: []
     // The windows glide to the spots the plane gives them: the tidy (and
     // whatever else moves entries without the hand) animates the travel
-    // instead of teleporting it. Each anim is a straight 220 ms glide in
+    // instead of teleporting it. Each anim is a 150 to 320 ms glide, by distance, in
     // the physics tick; the commit finishes them instantly so a geometry
     // write never catches a window mid-flight.
     // The moves are physical. A window that the hand drops keeps the throw's
@@ -1548,15 +1526,15 @@ KWin.SceneEffect {
             rects.push({ x: e.x, y: e.y, w: e.width, h: e.height });
         }
         const out = [];
+        const litCluster = clusterIndex();
         for (let i = 0; i < clusters.length; ++i) {
             const c = clusters[i];
             if (!c || c.n < 2) continue;
-            const lit = clusterIndex() === i;
+            const lit = litCluster === i;
             const pts = [];
             for (let k = 0; k < c.ids.length; ++k) {
                 const e = entryById(c.ids[k]);
                 if (!e) continue;
-                const idx = entries.indexOf(e);
                     pts.push({
                     x: e.x + e.width / 2,
                     y: e.y + e.height / 2,
@@ -1602,6 +1580,17 @@ KWin.SceneEffect {
         clusterNames = n;
     }
     function saveClusterState() {
+        // A fingerprint is a set of window ids, and KWin makes new ids for every window it starts:
+        // a key naming a window that is gone can never match again, so it is dropped, not kept
+        // growing in kwinrc with every hop.
+        const live = {};
+        const all = KWin.Workspace.windows;
+        for (let i = 0; i < all.length; ++i) if (all[i]) live[String(all[i].internalId)] = true;
+        const prune = function (m) {
+            for (const k in m) if (!k || !k.split(",").every(function (id) { return live[id]; })) delete m[k];
+        };
+        prune(clusterHomes);
+        prune(clusterNames);
         configuration.ClusterHomes = JSON.stringify(clusterHomes);
         configuration.ClusterNames = JSON.stringify(clusterNames);
         configuration.writeConfig();
@@ -1868,7 +1857,18 @@ KWin.SceneEffect {
     property var focusEntry: null
     function noteGesture(hand) { lastGestureAt = Date.now(); handGesture = !!hand; }
     function hoverTick() {
-        if (closing || canvasMenus > 0 || camLive()) return;
+        if (closing) return;
+        // A parked close that has waited out its welcome is forced: a stuck gesture loses to the
+        // user's intent, wherever the pointer rests (the seam, a panel).
+        if (deferredClose !== null && Date.now() - deferredAt > 5000) {
+            const fn = deferredClose;
+            deferredClose = null;
+            deferredAt = 0;
+            sceneGestures = 0;
+            fn();
+            return;
+        }
+        if (canvasMenus > 0 || camLive()) return;
         const p = cursorScreen();
         // The seam bookkeeping runs whenever the canvas is up, grasp
         // included: the grasp's grips read seamPark, and the tick that keeps
@@ -1899,20 +1899,9 @@ KWin.SceneEffect {
             }
             return;
         }
-        // A pointer parked on the seam is not a hover: the desk put it there
-        // (deskflow handing the mouse to another machine), not the hand.
         // The pass-through's own rest shows the cue while its clock runs;
         // the canvas's glow waits for the handoff instead of duelling
         // with that cue, so the two never overlap.
-        // A parked close that has waited out its welcome is forced: a stuck gesture loses to the user's intent.
-        if (deferredClose !== null && Date.now() - deferredAt > 5000) {
-            const fn = deferredClose;
-            deferredClose = null;
-            deferredAt = 0;
-            sceneGestures = 0;
-            fn();
-            return;
-        }
         if (navHeld || quiet || pointerButtons !== Qt.NoButton || (restStart !== "" && passthroughLive)) return;
         // The window the eye sees under the pointer: a floated window is its
         // picture at the screen's edge, not its coordinates far away.
@@ -2227,14 +2216,6 @@ KWin.SceneEffect {
         return best;
     }
 
-    // The bindable handle the scene tree binds to: refreshed whenever the
-    // window set changes, so a video wallpaper's desktop window is picked
-    // up the moment it arrives. A bare function call in the ui.qml cannot
-    // bind, which is the QQmlExpression warning and the stale-null gray.
-    property QtObject desktopWindow: null
-    // One per output, by the output's name: the scene's layer binds to this
-    // (reassigned whole, so the binding re-evaluates) and not to a call.
-    property var desktopWindows: ({})
     // Bumped when a desktop window comes or goes (a plasmashell restart, a layout reload, a
     // monitor's own desktop arriving): the scene remakes its DesktopBackground items on it, since
     // KWin picks their window only when one is made (ui.qml's Wallpaper).
@@ -2247,27 +2228,13 @@ KWin.SceneEffect {
         }
         const key = ids.sort().join(",");
         if (key !== desktopsKey) { desktopsKey = key; desktopsRev++; }
-        desktopWindow = desktopWindowFor(null);
-        const m = {};
-        const screens = KWin.Workspace.screens;
-        for (let i = 0; i < screens.length; ++i) {
-            const w = desktopWindowFor(screens[i]);
-            if (w) m[screens[i].name] = w;
-        }
-        desktopWindows = m;
     }
 
-    // A window the fly covers: every window the user can click, wider than
-    // what the canvas draws - a utility window flies too. KWin's own
-    // keep-visible rule must never be the thing that moves a window the
-    // user clicked. Panels, docks, popups and the special overlays (an
-    // applet's dropdown, a notification) never fly: clicking them must not
-    // drag the desktop.
-    function isFlyableWindow(w) {
-        if (!w || w.deleted || !w.managed) return false;
-        if (w.desktopWindow || w.dock || w.popupWindow || w.specialWindow || w.minimized || w.hidden) return false;
-        return onDesktop(w);
-    }
+    // A window the fly covers: any window of the canvas, on any activity (an
+    // activation switches to its activity first). Panels, docks, popups and the
+    // special overlays (an applet's dropdown, a notification) never fly:
+    // clicking them must not drag the desktop.
+    function isFlyableWindow(w) { return isCanvasWindow(w, true); }
 
     function onDesktop(w) {
         if (w.onAllDesktops) return true;
@@ -2432,6 +2399,19 @@ KWin.SceneEffect {
         return Math.hypot(dx, dy);
     }
     // The monitor a real rect sits on: the one holding its centre, else the nearest.
+    // How far a window the canvas does not show (minimized, hidden, on another desktop) moves on
+    // the screen so it keeps its plane spot: by how far the target of the frame it sits in moved
+    // since the open, or null when it did not. With separate cameras that frame is its own
+    // monitor's, not the camera's.
+    function unshownShift(w, g) {
+        const a = activityOf(w);
+        const S = separate ? outputAtReal(g.x, g.y, g.width, g.height) : null;
+        const was = (S && entryTargets[outKey(a, S)]) || entryTargets[a];
+        if (!was) return null;
+        const now = S ? targetOn(a, S) : targetOf(a);
+        const dx = was.x - now.x, dy = was.y - now.y;
+        return dx === 0 && dy === 0 ? null : { dx: dx, dy: dy };
+    }
     function outputAtReal(x, y, w, h) {
         const ss = KWin.Workspace.screens;
         const cx = x + w / 2, cy = y + h / 2;
@@ -2499,10 +2479,9 @@ KWin.SceneEffect {
     // Keys are "activityId|outputName"; the set lives in HiddenFrames.
     property var hiddenFrames: ({})
     property int hiddenRev: 0
-    function frameKey(id, screen) { return id + "|" + screen.name; }
-    function isHidden(id, screen) { hiddenRev; return hiddenFrames[frameKey(id, screen)] === true; }
+    function isHidden(id, screen) { hiddenRev; return hiddenFrames[outKey(id, screen)] === true; }
     function setHidden(id, screen, on) {
-        const k = frameKey(id, screen);
+        const k = outKey(id, screen);
         if (on) hiddenFrames[k] = true; else delete hiddenFrames[k];
         hiddenRev++;
         const list = [];
@@ -2611,7 +2590,9 @@ KWin.SceneEffect {
         if (!id) return;
         const entry = pendingNewAt;
         pendingNewAt = null;
-        if (!entry) return;
+        // Asked for in the overview: once it has closed (a cancel before kactivitymanagerd
+        // answered), the last opening's entries are stale and nothing may be committed.
+        if (!entry || !visible || quiet) return;
         const g = actionScreen().geometry;
         targets[id] = { x: entry.x + entry.width / 2 - (g.x + g.width / 2),
                         y: entry.y + entry.height / 2 - (g.y + g.height / 2) };
@@ -2851,6 +2832,9 @@ KWin.SceneEffect {
     // where the hold began (the activity's target). Both wear the same
     // curve, so one skin reveals on every path.
     readonly property real skinReveal: {
+        // Closed there is no skin; and the binding must not run (it read the pointer's screen,
+        // so every motion of the session re-ran it, a game's included).
+        if (!effect.visible) return 0;
         effect.zoom; effect.viewX; effect.viewY; effect.revision;
         effect.quiet; effect.grasp; effect.currentActivity;
         effect.entryViewX; effect.entryViewY; effect.zoomRising; effect.camRate;
@@ -2874,7 +2858,8 @@ KWin.SceneEffect {
         if (effect.quiet && !effect.grasp) return zoomPart;
         const ref = effect.quiet ? effect.targetOf(effect.currentActivity)
                                  : { x: effect.entryViewX, y: effect.entryViewY };
-        const g = effect.actionScreen().geometry;
+        // Any screen's size is the scale here; the chrome's screen does not follow the pointer.
+        const g = (effect.chromeScr || effect.primaryScreen).geometry;
         const away = Math.hypot(effect.viewX - ref.x, effect.viewY - ref.y);
         return Math.min(1, Math.max(zoomPart, away / (Math.max(g.width, g.height) * 1.2)));
     }
@@ -2975,6 +2960,9 @@ KWin.SceneEffect {
             if (isSelected(entries[i])) { picked = true; break; }
         }
         if (!picked) switcherCycle(1);
+        // The release is one: the poll stops with the mask, so its next answers cannot restart the
+        // settle forever (they did, and the switcher never stepped in). A re-tap sets it again.
+        switcherModMask = 0;
         switcherSettle.restart();
     }
     Timer {
@@ -3072,6 +3060,9 @@ KWin.SceneEffect {
                 const w = pendingFly !== null ? pendingFly : clickedWindow;
                 pendingFly = null;
                 clickedWindow = null;
+                // A click is an activation: following it is FollowActivation's to say, and a
+                // fullscreen game keeps the screen.
+                if (configuration.FollowActivation === false || gameMode) return;
                 if (!w || w.deleted || !isFlyableWindow(w)) return;
                 const g = w.frameGeometry;
                 if (wholeOnOneMonitor(g)) return;
@@ -3226,6 +3217,10 @@ KWin.SceneEffect {
         dbg("camGo", "z=" + z + " goal=(" + Math.round(goalX) + "," + Math.round(goalY) + ")");
         z = clampZoom(z);
         const pinned = gx !== undefined && gx !== null;
+        // A new goal during a flight keeps the camera's speed: the spring turns toward it instead
+        // of starting again from rest, so wheel notches and pan steps in a burst ride as one motion
+        // (each one stopped the camera dead and the burst stuttered at the notch rate).
+        const carry = smoothZoom && camHasGoal ? { vx: camVX, vy: camVY, vz: camVZoom } : null;
         camStop();
         // The spring's rate follows the jump: a small correction glides at
         // the casual pace, a far flight (the home, the activity step) runs
@@ -3271,6 +3266,7 @@ KWin.SceneEffect {
             // glide. A push toward the goal here would snap the first
             // frame - a jump the eye reads as a cut, not a flight.
         }
+        if (carry) { camVZoom = carry.vz; if (!pinned) { camVX = carry.vx; camVY = carry.vy; } }
         camHasGoal = true;
     }
 
@@ -3443,6 +3439,9 @@ KWin.SceneEffect {
     property bool closing: false
     property var farewellThen: null
     function farewellHide(then) {
+        // The welcome may still be running (an open and a commit in one turn, a flight's arrival):
+        // left alone, it brought the chrome to full just before the close cut it.
+        welcomeAnim.stop();
         dropPassthrough();
         if (!smoothZoom) {
             then();
@@ -3507,6 +3506,12 @@ KWin.SceneEffect {
         bookmarks = b;
         configuration.Bookmarks = JSON.stringify(b);
         for (const fp in clusterHomes) shift(clusterHomes[fp]);
+        // Every other store of plane coordinates moves with the plane: an unmaximize's spot, an
+        // app's home, a parked window's plane spot (its real one, rx and ry, stays).
+        for (const id in planeRestore) shift(planeRestore[id]);
+        for (const k in appHomes) shift(appHomes[k]);
+        saveAppHomes();
+        for (const id in parked) shift(parked[id]);
         for (let i = 0; i < undoStack.length; ++i) {
             for (const k in undoStack[i].targets) shift(undoStack[i].targets[k]);
             for (let j = 0; j < undoStack[i].layout.length; ++j) shift(undoStack[i].layout[j]);
@@ -3562,16 +3567,23 @@ KWin.SceneEffect {
     function open(quietMode, spec) {
         // Asked again until it took: at load the plugin may not have found the effect yet.
         if (!viewCached && configuration.ViewCaching !== false && passthrough) publishViewCaching();
-        // The Rounded Corners settings may have changed since the last open (they are that effect's).
-        refreshCornerStyle();
-        refreshBlurStyle();
         if (safeMode) { dbg("open", "refused: safe mode, the scene failed to load"); return; }
-        refreshGroundWallpaper();
         if (visible) return;
+        // The Rounded Corners and blur settings (that effect's own) and the wallpaper may have
+        // changed since the last open: asked at every overview, and for the slides that follow
+        // one another at most every 3 s (three round trips to the plugin and plasmashell each).
+        if (!quietMode || Date.now() - styleCheckedAt > 3000) {
+            styleCheckedAt = Date.now();
+            refreshCornerStyle();
+            refreshBlurStyle();
+            refreshGroundWallpaper();
+        }
         // A float's glide lands before the scene reads the frames; in the overview the hand may
         // put a float anywhere, so the spots floats left are forgotten.
         if (dodgeAnim.running) dodgeAnim.complete();
-        if (!quietMode) floatHome = ({});
+        // A grasp is the hand's too: it can move a float, and what it commits is the canvas's
+        // own write, which the frame watch does not take for another hand.
+        if (!quietMode || grasp) floatHome = ({});
         tickFresh = true;
         { const cp = cursorScreen(); chromeScreen = screenAt(cp.x, cp.y) || null; chromeCandidate = null; }
         if (perf) {
@@ -3619,7 +3631,13 @@ KWin.SceneEffect {
         // The tour's anchor belongs to one visit: a digit jump or a bracket
         // tour sets it, and left alone it made the next visit's tour start
         // from the room the last one ended in, not from where the eye is.
+        // The hover and the focus are one visit's too: the last visit's held the
+        // switcher's card and the grasp's first hop on a window the eye left.
         travelCluster = -1;
+        focusEntry = null;
+        hoverEntry = null;
+        hoverSince = 0;
+        hoverBrought = false;
         loadHiddenFrames();
         refreshActivities();
         refreshNames();
@@ -3748,6 +3766,9 @@ KWin.SceneEffect {
     // still names the old one while the commit runs. Floats are landed against
     // dest's target, the frame they are written for; omitted, the current one.
     function commit(activate, dest) {
+        // The farewell is already running: a second commit (a wheel notch, a key) would push the
+        // layout on the undo stack again, write every window and kwinrc again, and restart the close.
+        if (closing) { if (activate && !activate.deleted) KWin.Workspace.activeWindow = activate; return; }
         dbg("commit", "entering at zoom " + zoom.toFixed(3) + ", activate=" + activate);
         // A commit on a closed canvas still writes and publishes (the debug
         // channel uses it so), but it is a second ask for a close that has
@@ -3816,13 +3837,10 @@ KWin.SceneEffect {
             const w = all[i];
             if (seen[w.internalId] || w.deleted || !w.managed) continue;
             if (w.desktopWindow || w.dock || w.popupWindow || w.specialWindow) continue;
-            const a = activityOf(w);
-            const was = (separate && entryTargets[outKey(a, activeOutput())]) || entryTargets[a], now = targetOf(a);
-            if (!was) continue;
-            const dx = was.x - now.x, dy = was.y - now.y;
-            if (dx === 0 && dy === 0) continue;
             const g = w.frameGeometry;
-            setReal(w, Qt.rect(g.x + dx, g.y + dy, g.width, g.height));
+            const d = unshownShift(w, g);
+            if (!d) continue;
+            setReal(w, Qt.rect(g.x + d.dx, g.y + d.dy, g.width, g.height));
         }
         // The frames now sit relative to these targets, so a later commit
         // (the chord, a stale click, an activity switch) must measure the
@@ -3865,7 +3883,7 @@ KWin.SceneEffect {
     // mid-flight keeps the canvas open where the hand left it. The debug
     // channel takes doCancel() directly, the instant path a script measures.
     function cancel() {
-        if (!visible) return;
+        if (!visible || closing) return;
         camStop();
         if (quiet || !smoothZoom
             || (Math.abs(zoom - 1) < 0.001 && Math.abs(viewX - entryViewX) < 0.5 && Math.abs(viewY - entryViewY) < 0.5)) {
@@ -3880,7 +3898,7 @@ KWin.SceneEffect {
         dbg("cancel", "switcher=" + switcherActive);
         endSwitcher();
         stopClickPan();
-        if (!visible) return;
+        if (!visible || closing) return;
         if (sceneGestures > 0) {
             deferredClose = doCancel;
             deferredAt = Date.now();
@@ -3954,7 +3972,11 @@ KWin.SceneEffect {
     // smooth camera and jumping with SmoothZoom off.
     function panKey(dx, dy) {
         const st = panStep();
-        camGo(zoom, viewX + dx * st.x / zoom, viewY + dy * st.y / zoom);
+        // Steps add up: a press during a step's flight steps on from where that one is going,
+        // not from where the camera happens to be (three quick presses covered about 2.4 steps).
+        const fromX = camHasGoal && !camAnchored ? camGoalX : viewX;
+        const fromY = camHasGoal && !camAnchored ? camGoalY : viewY;
+        camGo(zoom, fromX + dx * st.x / zoom, fromY + dy * st.y / zoom);
     }
 
     // Enter the location under the active screen's centre. The activity
@@ -4070,6 +4092,8 @@ KWin.SceneEffect {
     // windows on them and the wallpaper slide together, nothing on the plane
     // moves, and nothing is written.
     property var pendingFocus: null
+    property double styleCheckedAt: 0
+    property bool pendingFocusFly: false   // the pending focus also flies (the map's click)
     // Where the viewport goes when a window gesture applies with that window
     // focused, written into the activity's target. gx/gy is the point kept
     // under the pointer in "window" mode; without one (the swap), the
@@ -4837,9 +4861,15 @@ KWin.SceneEffect {
         dbusInterface: "org.kde.kwin.canvas.Passthrough"
         method: "cornerStyle"
         // An older plugin has no such method and answers nothing: the thumbnails stay square.
+        // A knob turned off while the call was out wins over its answer, and the same answer
+        // as last time (every open asks) rebinds nothing.
         onFinished: (ret) => {
+            if (effect.configuration.ThumbnailCorners === false) return;
+            const raw = String(ret && ret.length ? ret[0] : "");
+            if (raw === effect.cornerStyleRaw) return;
+            effect.cornerStyleRaw = raw;
             let s = { on: false };
-            try { s = JSON.parse(String(ret && ret.length ? ret[0] : "")); } catch (err) { s = { on: false }; }
+            try { s = JSON.parse(raw); } catch (err) { s = { on: false }; }
             effect.cornerStyle = s && typeof s === "object" ? s : { on: false };
         }
     }
@@ -4850,10 +4880,16 @@ KWin.SceneEffect {
         dbusInterface: "org.kde.kwin.canvas.Passthrough"
         method: "blurStyle"
         // An older plugin has no such method and answers nothing: no blur behind the thumbnails.
+        // As the corners: the knob wins, and an unchanged answer rebinds nothing.
         onFinished: (ret) => {
+            if (effect.configuration.ThumbnailBlur === false) return;
+            const raw = String(ret && ret.length ? ret[0] : "");
+            if (raw === effect.blurStyleRaw) return;
+            effect.blurStyleRaw = raw;
             let s = { effect: "" };
-            try { s = JSON.parse(String(ret && ret.length ? ret[0] : "")); } catch (err) { s = { effect: "" }; }
+            try { s = JSON.parse(raw); } catch (err) { s = { effect: "" }; }
             effect.blurStyle = s && typeof s === "object" ? s : { effect: "" };
+            effect.blurStyleRev++;
         }
     }
     KWin.DBusCall {
@@ -4997,7 +5033,7 @@ KWin.SceneEffect {
         passthroughLive = true;
         publishCamera();
         publishNav();
-        publishHold();
+        publishPlugin();
         publishVerbose();
         activeCall.arguments = [true];
         activeCall.call();
@@ -5007,10 +5043,15 @@ KWin.SceneEffect {
         cameraCall.arguments = [viewX, viewY, zoom, currentActivity, JSON.stringify(targets)];
         cameraCall.call();
         // Separate cameras: the plugin lets the other monitors' input through to their desk.
-        // A plugin without this method ignores the call.
-        separateCall.arguments = [separate && camScreen ? String(camScreen.name) : ""];
-        separateCall.call();
+        // A plugin without this method ignores the call. Sent when it changes, not every tick.
+        const sep = separate && camScreen ? String(camScreen.name) : "";
+        if (sep !== separatePublished) {
+            separatePublished = sep;
+            separateCall.arguments = [sep];
+            separateCall.call();
+        }
     }
+    property string separatePublished: ""
 
     // ---- the map widget ------------------------------------------------------
     // The plane as the map widget (applet-map) draws it, asked for by the
@@ -5096,7 +5137,11 @@ KWin.SceneEffect {
             camGo(zoom, x - (g.x + g.width / 2) / zoom, y - (g.y + g.height / 2) / zoom);
             return;
         }
-        slideTo(x - (g.x + g.width / 2) - viewX, y - (g.y + g.height / 2) - viewY);
+        // Closed with separate cameras, the slide's quiet open makes the pointer's monitor the
+        // camera and its own desk the view, so the step is measured from that desk, not from
+        // whichever monitor's camera the last open left in viewX.
+        const from = separate && !visible ? peekTargetOn(currentActivity, actionScreen()) : { x: viewX, y: viewY };
+        slideTo(x - (g.x + g.width / 2) - from.x, y - (g.y + g.height / 2) - from.y);
     }
     // The widget's click on a window: fly to it and focus it. Open, the canvas
     // steps into it as a click on its picture would; closed, it is focused and
@@ -5116,7 +5161,10 @@ KWin.SceneEffect {
             return;
         }
         if (!onActivity(w, currentActivity)) {
+            // The switch's handler activates it; the map asked to see it, so it flies there
+            // too, whatever FollowActivation says, as on this activity below.
             pendingFocus = w;
+            pendingFocusFly = true;
             KWin.Workspace.currentActivity = activityOf(w);
             return;
         }
@@ -5152,34 +5200,37 @@ KWin.SceneEffect {
         return configuration.FullscreenPause !== false && !visible && !!w && !w.deleted && w.fullScreen === true;
     }
     onGameModeChanged: { dbg("game", gameMode ? "a fullscreen window has the focus: standing aside" : "back"); publishHold(); }
+    // The hold mask and the door: what game mode changes, and all it sends.
     function publishHold() {
         holdCall.arguments = [gameMode ? 0 : holdButtons];
         holdCall.call();
+        publishDoor();
+    }
+    // Everything the plugin keeps a copy of: at load, on every reconfigure, and when the plugin
+    // answers its probe (it may have loaded after the effect). The corner and blur settings are
+    // asked at every open, where they are used.
+    function publishPlugin() {
+        publishHold();
         const delay = Number(configuration.HoldDelay) || 300;
         // The | 0 is load-bearing: QML numbers are doubles, and QDBus does
         // not demote a double argument to the plugin's int slot, so the call
         // would vanish. (holdButtons above is already an int property.)
-        publishViewCaching();
-        refreshCornerStyle();
-        refreshBlurStyle();
         holdDelayCall.arguments = [delay | 0];
         holdDelayCall.call();
         const hover = Number(configuration.HoverDelay) || 900;
         hoverDelayCall.arguments = [hover | 0];
         hoverDelayCall.call();
-        publishDoor();
+        publishViewCaching();
     }
-    // The zoom door's knob reaches the plugin too: the door needs the
-    // filter's eyes while the canvas is closed, and the plugin reads its
-    // own copy once at load - so the effect publishes the setting at every
-    // reconfigure (the same moments publishHold runs).
     // Rounded corners on the thumbnails: a thumbnail is drawn from the window's surface, past
     // KWin's effects, so a window the Rounded Corners effect shapes on the desktop came out square
     // on the canvas. The plugin reads that effect's settings; the scene shapes each thumbnail the
     // same way (ui.qml, shaders/corners.frag). ThumbnailCorners turns it off.
     property var cornerStyle: ({ on: false })
+    // The plugin's last answer as it came, so an unchanged one is not parsed and rebound.
+    property string cornerStyleRaw: ""
     function refreshCornerStyle() {
-        if (configuration.ThumbnailCorners === false) { if (cornerStyle.on) cornerStyle = ({ on: false }); return; }
+        if (configuration.ThumbnailCorners === false) { cornerStyleRaw = ""; if (cornerStyle.on) cornerStyle = ({ on: false }); return; }
         cornerCall.call();
     }
     function cornerRadiusOf(e) {
@@ -5197,16 +5248,36 @@ KWin.SceneEffect {
     // shows over the bare desk; another window behind shows through sharp, as it did.
     // ThumbnailBlur turns it off; the fidelity ladder drops it with the corners.
     property var blurStyle: ({ effect: "" })
+    property string blurStyleRaw: ""
     function refreshBlurStyle() {
-        if (configuration.ThumbnailBlur === false) { if (blurStyle.effect) blurStyle = ({ effect: "" }); return; }
+        if (configuration.ThumbnailBlur === false) { blurStyleRaw = ""; if (blurStyle.effect) { blurStyle = ({ effect: "" }); blurStyleRev++; } return; }
         blurCall.call();
     }
+    // The thumbnails ask on every revision (a drag bumps it each step), and the answer changes only
+    // with the window's size, its names and the blur effect's settings: the last answer per window
+    // is kept under those, so a drag compiles no class pattern and rebinds no patch.
+    property var blurMemo: ({})        // internalId -> { key, rects }
+    // Whether any window the canvas draws wears a blur patch: the scene builds the blurred
+    // wallpaper only then. Each answer is the memo's, so a drag step costs a key per window.
+    readonly property bool anyBlurred: {
+        revision; blurStyleRev; ql;
+        if (!visible || !blurStyle || !blurStyle.effect || ql >= 2) return false;
+        for (let i = 0; i < entries.length; ++i) if (blurRectsOf(entries[i]).length > 0) return true;
+        return false;
+    }
+    property int blurStyleRev: 0
     function blurRectsOf(e) {
         if (!e || !e.window || e.window.deleted || ql >= 2 || !blurStyle.effect) return [];
-        const w = e.window;
-        return Logic.blurRects({ id: String(w.internalId), cls: w.resourceClass, name: w.resourceName, width: e.width, height: e.height,
-                                 desktop: w.desktopWindow, dock: w.dock, menu: w.menu || w.popupMenu || w.dropdownMenu,
-                                 untitledUnknown: w.windowType === -1 && w.noBorder && !w.caption }, blurStyle);
+        const w = e.window, id = String(w.internalId);
+        const untitledUnknown = w.windowType === -1 && w.noBorder && !w.caption;
+        const key = blurStyleRev + "|" + e.width + "|" + e.height + "|" + w.resourceClass + "|" + w.resourceName + "|" + (untitledUnknown ? 1 : 0);
+        const hit = blurMemo[id];
+        if (hit && hit.key === key) return hit.rects;
+        const rects = Logic.blurRects({ id: id, cls: w.resourceClass, name: w.resourceName, width: e.width, height: e.height,
+                                        desktop: w.desktopWindow, dock: w.dock, menu: w.menu || w.popupMenu || w.dropdownMenu,
+                                        untitledUnknown: untitledUnknown }, blurStyle);
+        blurMemo[id] = { key: key, rects: rects };
+        return rects;
     }
     // The blur's corners: the window's own where the Rounded Corners effect gives it some, else
     // Better Blur DX's radius on a frame it blurs whole, which it squares off when maximized.
@@ -5221,6 +5292,8 @@ KWin.SceneEffect {
     // open resumes a built scene instead of creating one (about half of an overview's first
     // frame). ViewCaching turns it off. Asked at every reconfigure and until it took.
     property bool viewCached: false
+    // Turned off while a scene is kept: let it go now, not at the next open and close.
+    onViewCachedChanged: if (!viewCached && !visible && sceneKept) releaseScene("view caching is off")
     // A kept scene holds GPU memory while the canvas is closed: each view's buffers, the size of
     // its screen, and every window's last picture. That is cheap until something else wants the
     // card, and a game filling it is what wedged the driver on 2026-11-02. So while a scene is
@@ -5230,12 +5303,12 @@ KWin.SceneEffect {
     // ViewCaching off. Without NVML, or with an older plugin, the scene is kept.
     property bool sceneKept: false
     property bool gpuMemoryReadable: true
-    function releaseScene() {
+    function releaseScene(why) {
         if (visible || !sceneKept) return;
         sceneKept = false;
         effect.delegate = null;
         effect.delegate = sceneDelegate;
-        dbg("scene", "released the kept scene: the GPU's memory is short");
+        dbg("scene", "released the kept scene: " + why);
     }
     Timer {
         interval: 5000
@@ -5245,13 +5318,17 @@ KWin.SceneEffect {
             const used = typeof canvasPlugin !== "undefined" && canvasPlugin && typeof canvasPlugin.gpuMemory === "function" ? canvasPlugin.gpuMemory() : -1;
             if (used < 0) { effect.gpuMemoryReadable = false; return; }
             const at = Number(effect.configuration.VramReduced);
-            if (used >= (Number.isFinite(at) ? at : 80)) effect.releaseScene();
+            if (used >= (Number.isFinite(at) ? at : 80)) effect.releaseScene("the GPU's memory is short");
         }
     }
     function publishViewCaching() {
         viewCachingCall.arguments = [configuration.ViewCaching !== false];
         viewCachingCall.call();
     }
+    // The zoom door's knob reaches the plugin too: the door needs the
+    // filter's eyes while the canvas is closed, and the plugin reads its
+    // own copy once at load - so the effect publishes the setting at every
+    // reconfigure (the same moments publishHold runs).
     function publishDoor() {
         doorCall.arguments = [configuration.WheelDoor !== false && !gameMode];
         doorCall.call();
@@ -5267,10 +5344,12 @@ KWin.SceneEffect {
     function dropPassthrough() {
         if (!passthroughLive) return;
         passthroughLive = false;
+        handOnWindow = false;
         activeCall.arguments = [false];
         activeCall.call();
         separateCall.arguments = [""];
         separateCall.call();
+        separatePublished = "";
     }
     onViewXChanged: if (passthroughLive) Qt.callLater(publishCamera)
     onViewYChanged: if (passthroughLive) Qt.callLater(publishCamera)
@@ -5533,29 +5612,19 @@ KWin.SceneEffect {
     // ---- backdrop: the desktop's own wallpaper on the plane ------------------
     // The canvas's background is the wallpaper, not a void. On the desks it is
     // exact - every frame draws the real desktop window, so at 1:1 the
-    // overworld is pixel-identical to the desktop under the effect. Beyond the
-    // desks the plane shows the same wallpaper blurred (BackdropBlur) and
-    // dimmed (BackdropDim), screen-fixed like an overview's backdrop, with the
-    // ground grid over it: the desktop dissolving into a haze instead of the
-    // wallpaper repeating in tiles. The blur layer is the desktop window
-    // itself, live - a slideshow, a picture of the day or an animated
-    // wallpaper keeps going in the haze too - and it is hidden while the
-    // current activity's frame covers the view, which is where the blur would
-    // be invisible anyway (open at 1:1, an idle slide), so it costs nothing
-    // until the camera moves. Only the effect draws this; while the canvas is
-    // closed the wallpaper is the real one, and the ground wallpaper plugin
-    // (with a grid, at 1:1) stands in for the plane.
+    // overworld is pixel-identical to the desktop under the effect - and beyond
+    // them the same wallpaper is drawn once per output, screen-fixed and
+    // untouched, under the ground grid (ui.qml's deskBg). BackdropBlur and
+    // BackdropDim are no longer read. While the canvas is closed the wallpaper
+    // is the real one, and the ground wallpaper plugin stands in for the plane.
     property int screensRev: 0
 
     function backdropMode() {
         const m = String(configuration.Backdrop || "wallpaper").trim().toLowerCase();
         return m === "grid" ? "grid" : "wallpaper";
     }
-    // The wallpaper rides through untouched now: the backdrop's half-res
-    // copy and its blur are gone, so the real desktop behind the plane is
-    // the haze-free, grey-free continuation at every zoom.
-    // The blur layers drawn: one per output, in wallpaper mode. The state
-    // line reports this, so a scenario can see which mode is up.
+    // The wallpaper layers drawn: one per output, in wallpaper mode. The
+    // state line reports this, so a scenario can see which mode is up.
     readonly property int backdropLayers: backdropMode() === "wallpaper" ? KWin.Workspace.screens.length : 0
 
     // ---- 1:1 behaviours (effect closed) ------------------------------------
@@ -5654,11 +5723,7 @@ KWin.SceneEffect {
         // the landed canvas: its entry state is the old slide's, and the
         // landing would shift the windows by the first slide a second time.
         // The close is taken now, and the new slide opens fresh.
-        if (slideCloseTimer.running) {
-            slideCloseTimer.stop();
-            visible = false;
-            quiet = false;
-        }
+        takeSlideClose();
         if (!visible) {
             // The quiet scene opens instantly, opaque: KWin composites the
             // scene's framebuffer over black, so a fade-in here would flash
@@ -5737,15 +5802,16 @@ KWin.SceneEffect {
                 setReal(e.window, Qt.rect(fx, fy, g.width, g.height));
             }
         }
-        // With separate cameras the windows the canvas does not show stay where they
-        // are: they are not on the sliding monitor's desk.
-        if ((dx !== 0 || dy !== 0) && !separate) {
+        // The windows the canvas does not show ride with the frame they sit in, as in commit:
+        // with separate cameras only the sliding monitor's frame moved.
+        if (dx !== 0 || dy !== 0) {
             const all = KWin.Workspace.stackingOrder;
             for (let i = 0; i < all.length; ++i) {
                 const w = all[i];
                 if (seen[w.internalId] || !isViewportWindow(w)) continue;
                 const g = w.frameGeometry;
-                setReal(w, Qt.rect(g.x - dx, g.y - dy, g.width, g.height));
+                const d = unshownShift(w, g);
+                if (d) setReal(w, Qt.rect(g.x + d.dx, g.y + d.dy, g.width, g.height));
             }
         }
         viewX = cur.x;
@@ -5776,6 +5842,31 @@ KWin.SceneEffect {
         }
     }
 
+    // A landed slide holds its scene one paint more (slideCloseTimer); an action that wants the
+    // canvas next takes that close now.
+    function takeSlideClose() {
+        if (!slideCloseTimer.running) return;
+        slideCloseTimer.stop();
+        floatAnchor = ({});
+        visible = false;
+        quiet = false;
+    }
+    // A quiet slide (not a grasp) let go without landing: nothing of it written in flight.
+    function dropSlide() {
+        if (!quiet || grasp) return;
+        slideAnim.stop();
+        slideCloseTimer.stop();
+        swiping = false;
+        floatAnchor = ({});
+        visible = false;
+        quiet = false;
+    }
+    // A slide or grasp under way lands, and its close is taken: the canvas is closed, or open as
+    // the grasp's commit left it.
+    function landQuiet() {
+        if (quiet) { if (grasp) graspEnd(); else finishSlide(); }
+        takeSlideClose();
+    }
     // Jump to the destination and settle now (another action wants the canvas).
     function finishSlide() {
         if (!quiet) return;
@@ -5892,7 +5983,9 @@ KWin.SceneEffect {
     // the pointer. NewWindowsInView turns it off; a window on another activity is left alone.
     property var newWindows: []
     function noteNewWindow(w) {
-        if (!w) return;
+        // Only what bringNewWindowIntoView takes: a tooltip or a menu arriving every few hundred
+        // milliseconds kept restarting the clock, and the window waited as long as they came.
+        if (!w || !w.normalWindow || w.popupWindow) return;
         newWindows.push(w);
         newWindowTimer.restart();
     }
@@ -5946,10 +6039,14 @@ KWin.SceneEffect {
         if (!isViewportWindow(w) || windowPinned(w)) return;
         const home = appHomes[appKey(w)];
         if (home && !visible) {
-            const t = targetOf(currentActivity), g0 = w.frameGeometry;
+            const g0 = w.frameGeometry;
             dbg("newwindow", w.caption + " opens at its app's home (" + home.x + "," + home.y + ")");
-            setReal(w, Qt.rect(home.x - t.x, home.y - t.y, g0.width, g0.height));
-            if (!wholeOnOneMonitor(w.frameGeometry)) flyToWindow(w);
+            // Mapped as every plane spot is: with separate cameras the frame that holds the home
+            // says where it shows, not the camera the last open left.
+            const pj = projectEntry({ x: home.x, y: home.y, width: g0.width, height: g0.height, out: null }, activityOf(w));
+            setReal(w, Qt.rect(Math.round(pj.x), Math.round(pj.y), g0.width, g0.height));
+            // A fullscreen game keeps the screen: the window waits at its home.
+            if (!gameMode && !wholeOnOneMonitor(w.frameGeometry)) flyToWindow(w);
             return;
         }
         if (configuration.NewWindowsInView === false) return;
@@ -6020,7 +6117,7 @@ KWin.SceneEffect {
     Connections {
         target: KWin.Workspace
         function onWindowActivated(w) {
-            // Remember the focus for the cluster tour's destination.
+            // When the last activation came, for the Perf lines (the tour reads focusAt).
             effect.lastActivationAt = Date.now();
             effect.noteFocusSettling();
             // The lit cluster follows the active window.
@@ -6051,24 +6148,34 @@ KWin.SceneEffect {
         }
         function onActivitiesChanged(id) { Qt.callLater(effect.activitiesChanged); }
         // App popups come and go with these too; resync() refreshes them.
-        function onWindowAdded(w) { if (w && w.dock) effect.lastDockAt = Date.now(); effect.watchWindow(w); effect.noteNewWindow(w); Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
-        function onWindowRemoved(w) { if (w && w.dock) effect.lastDockAt = Date.now(); if (w) { delete effect.focusAt[w.internalId]; delete effect.watchedWindows[w.internalId]; delete effect.planeRestore[w.internalId]; delete effect.holdTrack[w.internalId]; delete effect.dirtyWindows[w.internalId]; } Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
+        function onWindowAdded(w) { if (w && w.dock) effect.lastDockAt = Date.now(); effect.watchWindow(w); effect.noteNewWindow(w); if (w && w.desktopWindow) Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
+        function onWindowRemoved(w) { if (w && w.dock) effect.lastDockAt = Date.now(); if (w) { delete effect.focusAt[w.internalId]; delete effect.floatHome[w.internalId]; delete effect.blurMemo[String(w.internalId)]; delete effect.revertLog[w.internalId]; delete effect.parked[w.internalId]; delete effect.watchedWindows[w.internalId]; delete effect.planeRestore[w.internalId]; delete effect.holdTrack[w.internalId]; delete effect.dirtyWindows[w.internalId]; } if (w && w.desktopWindow) Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
         // Switching activities at 1:1 switches viewport: the ground follows.
         function onCurrentActivityChanged(id) {
+            // A slide belongs to the activity it began on: in flight it has written nothing and
+            // is dropped, held for its last paint it has written everything; either way the
+            // new activity's view is taken below, closed.
+            effect.dropSlide();
             if (effect.refreshActivities()) effect.ensureTargets();
             // A focus fly that crossed activities waits for this signal, and
             // the canvas may still be visible (a smooth close is mid-flight):
             // take the window before any early return, or the focus waits for
             // the next activity switch.
-            const w = effect.pendingFocus;
+            const w = effect.pendingFocus, fly = effect.pendingFocusFly;
             effect.pendingFocus = null;
+            effect.pendingFocusFly = false;
             if (!effect.visible) {
                 const t = effect.targetOf(KWin.Workspace.currentActivity || "");
                 effect.viewX = t.x;
                 effect.viewY = t.y;
                 effect.publishGround();
             }
-            if (w && !w.deleted) KWin.Workspace.activeWindow = w;
+            if (w && !w.deleted) {
+                // The fly first, as mapFocus does on one activity: its slide opens the quiet
+                // scene, so the activation is not flown a second time.
+                if (fly && !effect.visible && effect.isFlyableWindow(w)) effect.flyToWindow(w);
+                KWin.Workspace.activeWindow = w;
+            }
         }
         // Another desktop's windows are a different set on the same plane.
         function onCurrentDesktopChanged() { if (effect.visible) Qt.callLater(effect.resync); }
@@ -6114,9 +6221,12 @@ KWin.SceneEffect {
         text: "Canvas: return this activity to the origin"
         sequence: effect.configuration.HomeShortcut
         onActivated: {
-            if (effect.quiet) { if (effect.grasp) effect.graspEnd(); else effect.finishSlide(); }
-            if (effect.visible) { effect.home(); return; }
+            effect.landQuiet();
+            if (effect.canvasOpen && !effect.closing) { effect.home(); return; }
             effect.open();
+            // Safe mode opens nothing, and a closing canvas is not open again: only a fresh
+            // snapshot may be committed.
+            if (!effect.canvasOpen || effect.closing) return;
             const t = effect.targetOf(effect.currentActivity);
             t.x = 0;
             t.y = 0;
@@ -6428,7 +6538,7 @@ KWin.SceneEffect {
             + " away=" + entries.filter(entryAway).length
             + " deskfor=" + KWin.Workspace.screens.map(function (sc) { const w = desktopWindowFor(sc); return sc.name + ":" + (w ? Math.round(w.frameGeometry.x) + "," + Math.round(w.frameGeometry.y) : "-"); }).join(";")
             + " search=" + (searchActive ? "\"" + searchText + "\"" + ":" + searchHits.length : "-")
-            + " deskwin=" + Object.keys(desktopWindows).length
+            + " deskwin=" + KWin.Workspace.screens.filter(function (sc) { return desktopWindowFor(sc) !== null; }).length
             + " hoverDelay=" + (configuration.HoverDelay === undefined ? "undef" : configuration.HoverDelay)
             + " map=" + (mapMinimap ? "minimap" : "-")
             + " ql=" + ql
@@ -6483,8 +6593,11 @@ KWin.SceneEffect {
             lastCloseAt = Date.now();
             // KWin kept the views (view caching); releaseScene lets them go when the card fills.
             sceneKept = viewCached;
+            // NVML can fail once (a driver reset) and answer again later: every close asks anew.
+            gpuMemoryReadable = true;
             if (perf) perfTicksReport();
-            if (dodgePending) { dodgePending = false; noteFocusSettling(); }
+            // The desk may have moved under the floats (a slide, a commit): they look again.
+            noteFocusSettling();
         }
     }
 

@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
-scenario_desc="keyboard navigation in the open canvas: the arrow keys pan the camera one step, Tab steps the selection through the windows with the camera following, Shift+Tab steps back, and Enter with a window selected steps into it"
+scenario_desc="keyboard navigation in the open canvas: the arrow keys pan the camera one step (quick presses add up), Tab steps the selection through the windows with the camera following, Shift+Tab steps back, and Enter with a window selected steps into it"
 selected() { grep -c "^  \[[0-9]*\] \*" <<<"$LAST_STATE"; }
 selcap() { grep -a "^  \[[0-9]*\] \*" <<<"$LAST_STATE" | head -1; }
 run_scenario() {
@@ -27,6 +27,14 @@ run_scenario() {
     printf 'key w\n' | input
     sleep 0.4; c state
     assert_near "w pans up one step" "$(sget viewy)" "$(awk -v y="$vy" 'BEGIN{print y-1080}')" 2
+    # With the camera springing, steps pressed during each other's flight add up: three quick
+    # presses travel three steps (each one counted from where the camera was, and they fell short).
+    setcfg SmoothZoom true
+    vx=$(sget viewx)
+    printf 'key a\nsleep 60\nkey a\nsleep 60\nkey a\n' | input
+    sleep 1.6; c state
+    assert_near "three quick a presses pan three steps" "$(sget viewx)" "$(awk -v x="$vx" 'BEGIN{print x-3*1920}')" 2
+    setcfg SmoothZoom false
 
     # Tab steps the selection through the entries in stacking order - KWrite
     # first - and Enter with it selected steps into that window, focused.

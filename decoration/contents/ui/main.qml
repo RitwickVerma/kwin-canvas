@@ -75,10 +75,6 @@ Decoration {
     }
     readonly property var leftButtons: glyphCodes(options.titleButtonsLeft)
     readonly property var rightButtons: glyphCodes(options.titleButtonsRight)
-    // The ink as a canvas style, at an alpha.
-    function css(c, a) {
-        return "rgba(" + Math.round(c.r * 255) + "," + Math.round(c.g * 255) + "," + Math.round(c.b * 255) + "," + a + ")";
-    }
 
     // The title item: the whole bar drags the window (and takes the title
     // bar's clicks, double-click and wheel as configured).
@@ -211,8 +207,8 @@ Decoration {
                     ctx.clearRect(0, 0, width, height);
                     const code = parent.modelData;
                     const lit = parent.lit;
-                    ctx.strokeStyle = lit ? "#2a6ddf" : root.css(root.ink, 1);
-                    ctx.fillStyle = lit ? "#2a6ddf" : root.css(root.ink, 1);
+                    ctx.strokeStyle = lit ? "#2a6ddf" : root.ink;
+                    ctx.fillStyle = lit ? "#2a6ddf" : root.ink;
                     ctx.lineWidth = (code === "S" || code === "F" || code === "B") ? 1.3 : 1.2;
                     if (code === "X") {
                         ctx.beginPath();

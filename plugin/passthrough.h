@@ -14,6 +14,7 @@
 #include <QMatrix4x4>
 #include <QPointF>
 #include <QPointer>
+#include <QSet>
 #include <QString>
 #include <QTimer>
 
@@ -173,8 +174,8 @@ public Q_SLOTS:
      * canvas, whose QML then owns the whole gesture - drag the ground to pan,
      * drag a window to move it on the plane, hold still at a screen edge to
      * keep panning. Motion and wheel while one is down stay the canvas's too.
-     * Zero restores the plain pass-through of every button. (A double because
-     * the effect's DBusCall marshals its numbers that way.)
+     * Zero restores the plain pass-through of every button. (An int: the effect
+     * sends it as one, since QDBus does not demote a double to an int slot.)
      */
     Q_SCRIPTABLE void setNavButtons(int buttons);
     /**
@@ -251,7 +252,7 @@ public Q_SLOTS:
     // The panel applet's window decor: one of close, minimize, maximize,
     // float, applied to the focused window through the real KWin::Window
     // API - in-process, so it works with the canvas closed too, including
-    // on maximized windows where the decoration's pill stays tucked away.
+    // on maximized windows, which wear no decoration bar.
     Q_SCRIPTABLE void windowAction(const QString &action);
     // The shader channel: the effect pushes the plane's remembered state
     // (the view, the clusters, the day-trail) at each commit; the plugin
@@ -289,6 +290,12 @@ private:
     void publishChrome(const QPointF &screen);
     /** Out of idle, if it was: the input is live again, and the effect hears it (passthroughIdle). */
     void wakeFromIdle();
+    /**
+     * The kwin-canvas effect, or nullptr: looked up once and kept, since the filter publishes on
+     * most events and findEffect walks every loaded effect. A reloaded effect is a new object;
+     * the pointer goes null with the old one and the next call looks again.
+     */
+    QObject *canvasEffect() const;
     void publishRest(KWin::Window *w);
     void publishHover(KWin::Window *w);
     bool atSeam(const QPointF &screen) const;
@@ -334,6 +341,17 @@ private:
      * canvas has it back - the keys, the wheel and the clicks are the
      * canvas's until the next touch. */
     bool m_idle = false;
+    mutable QPointer<QObject> m_canvasEffect;
+    // What publishRest and publishHover last told the effect: an unchanged value is not written
+    // again (the filter asks on every motion). Cleared when the effect is looked up afresh.
+    mutable QString m_restPublished;
+    mutable QString m_hoverPublished;
+    // The state the shader file last got: an unchanged one is not written (a save is an fsync on
+    // the compositor's thread, and the effect sends it every second while open).
+    QString m_canvasStateWritten;
+    // Keys whose press went to a window: their release goes there too, wherever the pointer is by
+    // then, or the client's own repeat runs on. Cleared when the canvas lets the input go.
+    QSet<quint32> m_keysToWindow;
     /** The D-Bus object is registered: the startup retries stop once it is. */
     bool m_registered = false;
     /** The map widget's object (/KWinCanvas/Map), registered by the same retries. */

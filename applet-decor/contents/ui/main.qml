@@ -25,6 +25,7 @@ import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PlasmaComponents3
 import org.kde.plasma.plasma5support as Plasma5Support
+import org.kde.plasma.workspace.dbus as DBus
 
 PlasmoidItem {
     id: root
@@ -76,6 +77,45 @@ PlasmoidItem {
         return out;
     }
 
+    // The plugin's state and its window actions, over D-Bus in plasmashell's own process (no
+    // process per poll, and no introspection: a call without arguments needs no signature, a
+    // call with one names it as a tuple).
+    function call(member, args, signature, then) {
+        const reply = DBus.SessionBus.asyncCall({ service: "org.kde.KWin", path: "/KWinCanvas", iface: "org.kde.kwin.canvas.Passthrough",
+                                                  member: member, arguments: args, signature: signature });
+        reply.finished.connect(() => {
+            if (then) then(reply.isError ? null : String(reply.value));
+            reply.destroy();
+        });
+    }
+    // One read in flight at a time: a plugin that is slow to answer is not asked again meanwhile.
+    property bool reading: false
+    function readState() {
+        if (reading) return;
+        reading = true;
+        call("state", [], "", function (out) { root.reading = false; root.applyState(out || ""); });
+    }
+    function applyState(out) {
+        const i = out.indexOf(" win=");
+        if (i < 0) {
+            root.winMax = false;
+            root.winFloat = false;
+            root.winAbove = false;
+            root.winBelow = false;
+            root.winCapture = false;
+            return;
+        }
+        const p = out.slice(i + 5).trim().split("|");
+        root.winMax = p.length > 2 && p[2] === "1";
+        root.winFloat = p.length > 3 && p[3] === "1";
+        root.winAbove = p.length > 4 && p[4] === "1";
+        root.winBelow = p.length > 5 && p[5] === "1";
+        root.winCapture = p.length > 6 && p[6] === "1";
+    }
+    // A button's action reads the state back at once, not at the next poll.
+    function action(name) { call("windowAction", [name], "(s)", function () { root.readState(); }); }
+
+    // The native button order, from kwinrc: the one thing still asked of a process, on a slow beat.
     Plasma5Support.DataSource {
         id: executable
         engine: "executable"
@@ -83,28 +123,7 @@ PlasmoidItem {
         onNewData: (sourceName, data) => {
             disconnectSource(sourceName);
             const out = data.stdout || "";
-            // A button's action just ran: read the state back now, not at the next poll.
-            if (sourceName.indexOf("Passthrough.windowAction") >= 0) {
-                run("qdbus6 org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.state");
-                return;
-            }
-            if (sourceName.indexOf("Passthrough.state") >= 0) {
-                const i = out.indexOf(" win=");
-                if (i < 0) {
-                    root.winMax = false;
-                    root.winFloat = false;
-                    root.winAbove = false;
-                    root.winBelow = false;
-                    root.winCapture = false;
-                    return;
-                }
-                const p = out.slice(i + 5).trim().split("|");
-                root.winMax = p.length > 2 && p[2] === "1";
-                root.winFloat = p.length > 3 && p[3] === "1";
-                root.winAbove = p.length > 4 && p[4] === "1";
-                root.winBelow = p.length > 5 && p[5] === "1";
-                root.winCapture = p.length > 6 && p[6] === "1";
-            } else if (sourceName.indexOf("ButtonsOnLeft") >= 0) {
+            if (sourceName.indexOf("ButtonsOnLeft") >= 0) {
                 root.buttonsLeft = out.trim();
             } else if (sourceName.indexOf("ButtonsOnRight") >= 0) {
                 root.buttonsRight = out.trim();
@@ -113,21 +132,18 @@ PlasmoidItem {
         function run(cmd) {
             connectSource(cmd);
         }
-        function action(name) {
-            run("qdbus6 org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.windowAction " + name);
-        }
     }
 
-    // The focused window + its states, polled four times a second (a change made
-    // elsewhere - KDE's menu, a window rule - shows within a quarter second; a
-    // button's own action reads back at once); the native
-    // button order, polled on a slower beat (it only changes when the
-    // titlebar buttons KCM is applied).
+    // The focused window + its states, asked four times a second over D-Bus (a
+    // change made elsewhere - KDE's menu, a window rule - shows within a quarter
+    // second; a button's own action reads back at once); the native button
+    // order, read on a slower beat (it only changes when the titlebar buttons
+    // KCM is applied).
     Timer {
         interval: 250
         repeat: true
         running: true
-        onTriggered: executable.run("qdbus6 org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.state")
+        onTriggered: root.readState()
     }
     Timer {
         interval: 5000
@@ -143,7 +159,7 @@ PlasmoidItem {
     // the button order must be fetched immediately - otherwise the width
     // computes zero and the applet paints over its neighbours.
     Component.onCompleted: {
-        executable.run("qdbus6 org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.state");
+        root.readState();
         executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnLeft --default MS");
         executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnRight --default HIAX");
     }
@@ -341,18 +357,18 @@ PlasmoidItem {
                 onPressed: parent.pressed = true
                 onReleased: parent.pressed = false
                 onClicked: {
-                    if (parent.modelData === "X") executable.action("close");
-                    else if (parent.modelData === "I") executable.action("minimize");
-                    else if (parent.modelData === "A") executable.action("maximize");
-                    else if (parent.modelData === "S") executable.action("float");
-                    else if (parent.modelData === "F") executable.action("keepabove");
-                    else if (parent.modelData === "B") executable.action("keepbelow");
-                    else if (parent.modelData === "E") executable.action("capture");
+                    if (parent.modelData === "X") root.action("close");
+                    else if (parent.modelData === "I") root.action("minimize");
+                    else if (parent.modelData === "A") root.action("maximize");
+                    else if (parent.modelData === "S") root.action("float");
+                    else if (parent.modelData === "F") root.action("keepabove");
+                    else if (parent.modelData === "B") root.action("keepbelow");
+                    else if (parent.modelData === "E") root.action("capture");
                 }
             }
         }
     }
 
     // The single representation is the content itself: the row of the
-    // caption and the glyphs, sized by the Layout attachments above.
+    // glyphs, sized by the Layout attachments above.
 }

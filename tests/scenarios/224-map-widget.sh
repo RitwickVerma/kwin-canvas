@@ -48,8 +48,15 @@ run_scenario() {
     # Read once, the map watches: the next move is a signal.
     kwinjs "$FIND_KWRITE if (w) { const g = w.frameGeometry; w.frameGeometry = { x: g.x - 40, y: g.y, width: g.width, height: g.height }; }"
     assert_true "once read, a move says changed" "$(grep -c 'member=changed' "$OUT/map-signals.txt")" -ge 1
-    kill "$mon" 2>/dev/null
-    wait "$mon" 2>/dev/null
+    # A holder lets go and nobody else holds: the map stops watching, and a move says nothing.
+    mq hold scenario-token >/dev/null
+    mq release scenario-token >/dev/null
+    sleep 0.3
+    local before; before=$(grep -c 'member=changed' "$OUT/map-signals.txt")
+    kwinjs "$FIND_KWRITE if (w) { const g = w.frameGeometry; w.frameGeometry = { x: g.x + 40, y: g.y, width: g.width, height: g.height }; }"
+    sleep 0.4
+    assert_eq "released, a move says nothing" "$(grep -c 'member=changed' "$OUT/map-signals.txt")" "$before"
+    kwinjs "$FIND_KWRITE if (w) { const g = w.frameGeometry; w.frameGeometry = { x: g.x - 40, y: g.y, width: g.width, height: g.height }; }"
 
     # wait_view X Y: the desk has landed with the view at (X, Y).
     wait_view() {
@@ -116,9 +123,21 @@ run_scenario() {
         skip "a click on the widget: fakeinput not built (make tools)"
     fi
 
-    # Leave the desk as found: the widget off the desktop, the view home.
+    # Leave the desk as found: the widget off the desktop, the view home. The widget lets the map
+    # go as it is removed, so a move says nothing after it (Plasma may keep a removed widget a
+    # while for its undo: waited for).
     nq org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript \
         "for (const d of desktops()) for (const w of d.widgets('org.kde.kwin.canvas.map')) w.remove();" >/dev/null
+    local quietNow=0
+    for i in $(seq 1 30); do
+        sleep 0.5
+        before=$(grep -c 'member=changed' "$OUT/map-signals.txt")
+        kwinjs "$FIND_KWRITE if (w) { const g = w.frameGeometry; w.frameGeometry = { x: g.x + 1, y: g.y, width: g.width, height: g.height }; }" 0.4
+        [ "$(grep -c 'member=changed' "$OUT/map-signals.txt")" = "$before" ] && { quietNow=1; break; }
+    done
+    assert_eq "the removed widget let the map go: a move says nothing" "$quietNow" 1
+    kill "$mon" 2>/dev/null
+    wait "$mon" 2>/dev/null
     mq go $((vx + WIDTH / 2)) $((vy + HEIGHT / 2)) >/dev/null
     wait_view "$vx" "$vy"
     rm -f "$OUT"/map-*.png "$OUT/map-signals.txt"

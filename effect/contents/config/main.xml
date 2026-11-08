@@ -44,11 +44,11 @@
             <default>wallpaper</default>
         </entry>
         <entry name="BackdropDim" type="Double">
-            <label>How far the blurred backdrop wallpaper is dimmed toward Background: 0 leaves it as it is, 0.45 (the default) keeps the desks and the windows reading on top of it, 1 hides it. Always 0 while the canvas slides at 1:1, where the plane and the desktop have to look identical. The desks themselves are never dimmed.</label>
+            <label>No longer read: the wallpaper beyond the desks is drawn untouched. The knob stays declared so a config that has it still loads.</label>
             <default>0.45</default>
         </entry>
         <entry name="BackdropBlur" type="Int">
-            <label>How blurred the backdrop continuation of the wallpaper is, in pixels: 0 draws it sharp (which reads as the wallpaper repeating, since it does not move with the plane), 48 (the default) is a soft haze the desks read on top of, higher is softer. The wallpaper on the desks themselves is always exact.</label>
+            <label>No longer read: the wallpaper beyond the desks is drawn untouched. The knob stays declared so a config that has it still loads.</label>
             <default>48</default>
         </entry>
         <entry name="BorderActivate" type="IntList">

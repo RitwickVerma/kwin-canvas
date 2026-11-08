@@ -4,10 +4,14 @@
 */
 #pragma once
 
+#include <QDBusContext>
+#include <QHash>
 #include <QObject>
 #include <QPointer>
 #include <QString>
 #include <QTimer>
+
+class QDBusServiceWatcher;
 
 namespace KWin
 {
@@ -24,11 +28,14 @@ class Window;
  * widget's clicks to the effect. What it adds is the change signal. The effect
  * notices a window's move only while the canvas is open, so the map watches
  * KWin's windows itself, and the effect's camera and entries, and says
- * changed() at most once per 100 ms. It starts watching at the first read, so
- * a session that never had the widget pays nothing, and does not stop: after a
- * removed widget the signal goes on, at most ten a second, to no listener.
+ * changed() at most once per 100 ms. It watches only while someone wants the
+ * signal: a widget holds the map (hold) from its creation and lets go (release)
+ * when it is removed, and a holder whose bus connection goes (plasmashell quit
+ * or crashed) lets go with it. A read without a hold (a script, qdbus) keeps it
+ * watching for a minute after that read. With no holder and no recent read the
+ * map watches nothing, so a session without the widget, or after it, pays nothing.
  */
-class CanvasMap : public QObject
+class CanvasMap : public QObject, protected QDBusContext
 {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.kde.kwin.canvas.Map")
@@ -48,6 +55,10 @@ public Q_SLOTS:
     Q_SCRIPTABLE void go(double x, double y);
     /** Fly to the window with this internalId and focus it. */
     Q_SCRIPTABLE void focus(const QString &id);
+    /** A widget wants the change signal until it releases this token (or its bus connection goes). */
+    Q_SCRIPTABLE void hold(const QString &token);
+    /** The widget that held with this token is gone. */
+    Q_SCRIPTABLE void release(const QString &token);
 
 Q_SIGNALS:
     /** Something on the map moved: at most one per 100 ms, and only after a first read. */
@@ -60,8 +71,17 @@ private:
     QObject *canvas() const;
     void watch(KWin::Window *window);
     void watchCanvas(QObject *canvas);
+    void startWatching();
+    void stopWatching();
+    /** Stop when nobody holds and the last plain read is a minute old. */
+    void maybeStop();
 
     bool m_watching = false;
+    /** Holders: token -> the holder's unique bus name. */
+    QHash<QString, QString> m_holders;
+    QDBusServiceWatcher *m_holderWatch = nullptr;
+    /** A plain read's lease: the watch outlives it by this timer. */
+    QTimer m_lease;
     /** The effect whose notify signals are connected (a reloaded effect is a new object). */
     QPointer<QObject> m_canvas;
     QTimer m_pending;

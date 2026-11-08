@@ -91,7 +91,14 @@ PlasmoidItem {
     function go(x, y) { send("go", [x, y], "(dd)"); }
     function focusWindow(id) { send("focus", [id], "(s)"); }
 
-    Component.onCompleted: read()
+    // The map watches the windows only while a widget holds it: held from here on, let go when
+    // the widget is removed (and by the plugin itself when plasmashell's connection goes). Each
+    // widget holds with its own token, so two maps let go one by one.
+    readonly property string holdToken: Plasmoid.id + "-" + Math.floor(Math.random() * 1e9)
+    function hold() { send("hold", [holdToken], "(s)"); }
+    Component.onCompleted: { hold(); read(); }
+    // Fired as the widget goes: the reply is not waited for, the widget will not be there.
+    Component.onDestruction: DBus.SessionBus.asyncCall(message("release", [holdToken], "(s)"))
     DBus.SignalWatcher {
         service: root.mapObject.service
         path: root.mapObject.path
@@ -102,13 +109,14 @@ PlasmoidItem {
     // moment after KWin takes its name, which the retry below covers.
     DBus.DBusServiceWatcher {
         watchedService: root.mapObject.service
-        onRegisteredChanged: if (registered) root.read()
+        onRegisteredChanged: if (registered) { root.hold(); root.read(); }
     }
     Timer {
         interval: 10000
         repeat: true
         running: root.plane === null
-        onTriggered: root.read()
+        // The plugin came late (its Map object registers after KWin takes its name): hold now too.
+        onTriggered: { root.hold(); root.read(); }
     }
 
     // The map itself, for both forms: the compact one in a panel is a glance
@@ -141,15 +149,19 @@ PlasmoidItem {
             border.width: map.interactive ? 1 : 0
             border.color: "#3affffff"
         }
+        // The Repeaters count, and each delegate reads its own item: every read is a new plane
+        // object, and a list model would destroy and make every delegate on each change (ten
+        // times a second while a window is dragged); by index they update in place.
         Repeater {
-            model: root.plane ? root.plane.frames : []
+            model: root.plane ? root.plane.frames.length : 0
             delegate: Rectangle {
-                required property var modelData
-                readonly property color accent: modelData[4]
-                x: map.mx(modelData[0])
-                y: map.my(modelData[1])
-                width: modelData[2] * map.sc
-                height: modelData[3] * map.sc
+                required property int index
+                readonly property var f: (root.plane && root.plane.frames[index]) || [0, 0, 0, 0, "#000000", 0]
+                readonly property color accent: f[4]
+                x: map.mx(f[0])
+                y: map.my(f[1])
+                width: f[2] * map.sc
+                height: f[3] * map.sc
                 color: Qt.rgba(accent.r, accent.g, accent.b, 0.30)
                 border.width: 1
                 border.color: Qt.rgba(accent.r, accent.g, accent.b, 0.75)
@@ -158,29 +170,31 @@ PlasmoidItem {
         // The sheets, bottom to top. Another activity's windows are fainter:
         // they are on the plane, but not on the desk the screen shows.
         Repeater {
-            model: root.plane ? root.plane.windows : []
+            model: root.plane ? root.plane.windows.length : 0
             delegate: Rectangle {
-                required property var modelData
-                x: map.mx(modelData.x)
-                y: map.my(modelData.y)
-                width: Math.max(1.6, modelData.w * map.sc)
-                height: Math.max(1.6, modelData.h * map.sc)
+                required property int index
+                readonly property var w: (root.plane && root.plane.windows[index]) || ({ id: "", x: 0, y: 0, w: 0, h: 0 })
+                x: map.mx(w.x)
+                y: map.my(w.y)
+                width: Math.max(1.6, w.w * map.sc)
+                height: Math.max(1.6, w.h * map.sc)
                 radius: 1
-                color: Qt.rgba(1, 1, 1, modelData.here ? 0.5 : 0.22)
+                color: Qt.rgba(1, 1, 1, w.here ? 0.5 : 0.22)
                 border.width: map.interactive ? 0.6 : 0
-                border.color: modelData.active ? "#e8ffffff" : (hover.hoveredId === modelData.id ? "#b8ffffff" : "#4affffff")
+                border.color: w.active ? "#e8ffffff" : (hover.hoveredId === w.id ? "#b8ffffff" : "#4affffff")
             }
         }
         // What the screens show now: a soft halo under a white outline, the
         // lens's camera rectangle.
         Repeater {
-            model: root.plane ? root.plane.camera : []
+            model: root.plane ? root.plane.camera.length : 0
             delegate: Rectangle {
-                required property var modelData
-                x: map.mx(modelData[0])
-                y: map.my(modelData[1])
-                width: modelData[2] * map.sc
-                height: modelData[3] * map.sc
+                required property int index
+                readonly property var c: (root.plane && root.plane.camera[index]) || [0, 0, 0, 0]
+                x: map.mx(c[0])
+                y: map.my(c[1])
+                width: c[2] * map.sc
+                height: c[3] * map.sc
                 radius: 2
                 color: Qt.rgba(1, 1, 1, 0.08)
                 border.width: 1

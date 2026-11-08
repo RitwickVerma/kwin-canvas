@@ -644,7 +644,7 @@ perf() {
         if [ -n "$from" ]; then
             printf '%s\n' "$lines" | grep '^stall ' | tail -12 | sed 's/^/  /'
         else
-            journalctl --user -b --since "$since" -g "kwin-canvas perf: stall" -o short-iso --no-pager 2>/dev/null \
+            journalctl --user $boot --since "$since" -g "kwin-canvas perf: stall" -o short-iso --no-pager 2>/dev/null \
                 | sed -n 's/^\([0-9T:-]*\)[-+][0-9:]* [^ ]* [^ ]*: kwin-canvas perf: stall /  \1 /p' | tail -12
         fi
     fi
@@ -836,7 +836,10 @@ plugin_hook() {
                 echo "kwin-canvas: the hook was not installed"; return 1
             fi ;;
         remove)
-            $sudo rm -f "$hookdir/kwin-canvas-plugin.hook" "$libdir/rebuild-plugin" && $sudo rmdir "$libdir" 2>/dev/null
+            if ! $sudo rm -f "$hookdir/kwin-canvas-plugin.hook" "$libdir/rebuild-plugin"; then
+                echo "kwin-canvas: the hook could not be removed"; return 1
+            fi
+            $sudo rmdir "$libdir" 2>/dev/null
             echo "kwin-canvas: the pacman hook is removed; after a KWin update run kwin-canvas fix-plugin" ;;
         *) echo "kwin-canvas: plugin-hook takes install or remove"; return 2 ;;
     esac
@@ -850,7 +853,7 @@ check() {
     while [ $# -gt 0 ]; do
         case "$1" in
             --notify) notify=1; args+=(--notify); shift ;;
-            --after) sleep "${2:-0}"; shift 2 ;;
+            --after) [ -n "${2:-}" ] || { echo "kwin-canvas: --after needs a number of seconds"; return 2; }; sleep "$2"; shift 2 ;;
             *) echo "kwin-canvas: check takes --notify and --after SECONDS"; return 2 ;;
         esac
     done
@@ -874,7 +877,7 @@ plugincheck() {
     while [ $# -gt 0 ]; do
         case "$1" in
             --notify) notify=1; shift ;;
-            --after) sleep "${2:-0}"; shift 2 ;;
+            --after) [ -n "${2:-}" ] || { echo "kwin-canvas: --after needs a number of seconds"; return 2; }; sleep "$2"; shift 2 ;;
             *) echo "kwin-canvas: plugincheck takes --notify and --after SECONDS"; return 2 ;;
         esac
     done
