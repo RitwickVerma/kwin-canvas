@@ -9,7 +9,7 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, searchFilter, inReach, onAMonitor, rectsMeet, rectInside, meetsAny, dodgeSpot, isPull, fightStep, cornerRadius, blurRects, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows };")();
+const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, searchFilter, inReach, onAMonitor, isGameWindow, rectsMeet, rectInside, meetsAny, dodgeSpot, isPull, fightStep, cornerRadius, blurRects, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -111,6 +111,14 @@ ok("the dynamic gap reads the same scaled up",
     const c0 = { n: 1, at: 1000 }; L.fightStep(c0, 1100, 500);
     ok("the step does not change the chain it was given", c0.n === 1 && c0.at === 1000);
 }
+
+// ---- game mode: the windows the canvas stands aside for ----
+ok("a fullscreen window is a game's", L.isGameWindow({ fullScreen: true, cls: "mpv" }));
+ok("a Steam game in borderless mode is a game's", L.isGameWindow({ fullScreen: false, cls: "steam_app_1422450" }));
+ok("Steam's own window is not", !L.isGameWindow({ fullScreen: false, cls: "steam" }));
+ok("a maximized editor is not", !L.isGameWindow({ fullScreen: false, cls: "com.microsoft.VSCode" }));
+ok("a class that only starts like one is not", !L.isGameWindow({ fullScreen: false, cls: "steam_app_helper" }));
+ok("no window is not", !L.isGameWindow(null));
 
 // ---- a float steps aside for the focused window ----
 {

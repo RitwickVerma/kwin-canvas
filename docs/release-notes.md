@@ -1,5 +1,9 @@
 Unreleased:
 
+- A Steam game in borderless mode gets the mouse's side buttons. Game mode, where the canvas stands
+  aside, needed a fullscreen window, and a borderless game is maximized: the back button (the
+  canvas's hold) was taken by the canvas, so the game could not bind it or see it held. A Steam
+  game's window (class `steam_app_<id>`) now counts however it runs.
 - The chord switcher steps in again on its own. With the pass-through plugin, releasing Meta+Tab
   left the switcher waiting for Enter or Esc.
 - The camera keeps its speed across a burst. Wheel notches and pan steps a moment apart ride as

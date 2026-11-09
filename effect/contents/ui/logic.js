@@ -191,6 +191,14 @@ function inReach(r, monitors) {
     return false;
 }
 
+// Whether a window is a game the canvas stands aside for: a fullscreen window, or a Steam game's
+// window (Steam gives every game the class steam_app_<id>) however it runs. A game in borderless
+// mode is maximized, not fullscreen, and kept the mouse's side buttons the canvas's.
+function isGameWindow(w) {
+    if (!w) return false;
+    return w.fullScreen === true || /^steam_app_\d+$/.test(String(w.cls || ""));
+}
+
 // Whether two rects share any area; a null one meets nothing.
 function rectsMeet(a, b) {
     return !!a && !!b && a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;

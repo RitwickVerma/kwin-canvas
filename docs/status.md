@@ -155,6 +155,15 @@ the plugin reading the item's own bounds, 0.49% and 0.38%, the Rounded Corners o
 does not draw. `222` pins it: a window moved on the open canvas shows its own picture (rmse 0
 fixed, 0.26 with HEAD's plugin). Needs the rebuilt plugin live (`fix-plugin`, a relogin).
 
+**MB4 in a borderless game (2026-11-08).** The owner could not bind MB4 in Deadlock. Deadlock ran
+borderless (KWin: maximized, `fullscreen: false`, 4096x1152, class `steam_app_1422450`), so game
+mode, which needed `fullScreen`, stayed off; the plugin's hold mask was `72` (BackButton, the
+default `CanvasHold`), and it took every MB4 press: under 300 ms replayed as a click, longer
+never reaching the game. `Logic.isGameWindow` now also takes a Steam game's window
+(`steam_app_<id>`) however it runs. Verified: `make unit` 205 (the new cases), `make lint`.
+Not verified: the nest (no Steam game there) and the live game. Games outside Steam (Lutris,
+Heroic) that run borderless still need fullscreen or another `CanvasHold`.
+
 **Whole-codebase review (2026-11-07).** Five read-only reviewers over all the code (main.qml in three
 parts, ui.qml with logic.js, the plugin with the CLI, applets and decoration) plus a review of the
 last week found about 70 issues; all are fixed in one commit except the narrow timing of a hold

@@ -285,7 +285,7 @@
             <default>true</default>
         </entry>
         <entry name="FullscreenPause" type="Bool">
-            <label>While a fullscreen window (a game, a video) has the focus and the canvas is closed, the canvas stands aside: the screen corners are released, an activation does not fly, and the canvas's hold buttons and the wheel on the wallpaper go to the window.</label>
+            <label>While a game has the focus and the canvas is closed - a fullscreen window (a game, a video), or a Steam game's window however it runs (borderless too) - the canvas stands aside: the screen corners are released, an activation does not fly, and the canvas's hold buttons and the wheel on the wallpaper go to the window.</label>
             <default>true</default>
         </entry>
         <entry name="SearchShortcut" type="String">

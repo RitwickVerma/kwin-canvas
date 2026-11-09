@@ -5190,16 +5190,17 @@ KWin.SceneEffect {
     // effect loads, on every reconfigure, and again whenever the plugin
     // answers its probe.
     readonly property int holdButtons: bindings.hold || 0
-    // Game mode: a fullscreen window has the focus and the canvas is closed. The canvas then
-    // stands fully aside: the corners are released to the game, an activation does not fly,
-    // and the plugin is told to let the canvas's hold buttons and the wheel's door through,
-    // so a game gets every button and the wheel (a mouse's side buttons are a game's too).
-    // FullscreenPause turns it off.
+    // Game mode: a game has the focus (a fullscreen window, or a Steam game's window however it
+    // runs: Logic.isGameWindow) and the canvas is closed. The canvas then stands fully aside:
+    // the corners are released to the game, an activation does not fly, and the plugin is told
+    // to let the canvas's hold buttons and the wheel's door through, so a game gets every button
+    // and the wheel (a mouse's side buttons are a game's too). FullscreenPause turns it off.
     readonly property bool gameMode: {
         const w = KWin.Workspace.activeWindow;
-        return configuration.FullscreenPause !== false && !visible && !!w && !w.deleted && w.fullScreen === true;
+        return configuration.FullscreenPause !== false && !visible && !!w && !w.deleted
+            && Logic.isGameWindow({ fullScreen: w.fullScreen, cls: w.resourceClass });
     }
-    onGameModeChanged: { dbg("game", gameMode ? "a fullscreen window has the focus: standing aside" : "back"); publishHold(); }
+    onGameModeChanged: { dbg("game", gameMode ? "a game has the focus: standing aside" : "back"); publishHold(); }
     // The hold mask and the door: what game mode changes, and all it sends.
     function publishHold() {
         holdCall.arguments = [gameMode ? 0 : holdButtons];
