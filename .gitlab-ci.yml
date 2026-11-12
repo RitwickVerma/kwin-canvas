@@ -23,6 +23,7 @@ workflow:
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 default:
+  interruptible: true # A newer push cancels this pipeline's unfinished jobs: the shared runner is busiest exactly when pushes come quickly.
   before_script:
     # The job runs as root in a checkout the runner owns.
     # ORDER MATTERS: pacman installs git, so it must run before the first git call.
