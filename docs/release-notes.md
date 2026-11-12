@@ -8,6 +8,11 @@ float, dodge and snap; two monitors share one plane; a panel decor, a map widget
 decoration come with it; and `kwin-canvas doctor` and `setup` keep the install and KDE's settings
 honest. The lines below are the detail, newest first.
 
+- The mouse's back button works in windows again. A quick press of the canvas modifier's button
+  is handed back to the window as a click, and that hand-back turned a mouse's back button into a
+  code no browser, file manager or Qt app reads as Back (and a mouse that sends the rarer code got
+  Forward). The window now gets the button the mouse sent, press and release; a hold still opens
+  the grasp.
 - The switcher enters without the plugin too. A tap of Alt+Tab or Meta+Tab on a canvas without
   the pass-through plugin opened the switcher and left it open; now the switcher shows and enters
   on its own after a short beat, as the notes said it would. With the plugin a tap flips at once.

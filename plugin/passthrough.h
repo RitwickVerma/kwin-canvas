@@ -392,6 +392,9 @@ private:
     bool m_holdCandidate = false;
     /** The candidate's button, for the replay and the mask check. */
     Qt::MouseButton m_candidateButton = Qt::NoButton;
+    /** The candidate's button as the device sent it (evdev code), which the replay hands on
+     *  unchanged: see sendButton in passthrough.cpp. */
+    quint32 m_candidateNativeButton = 0;
     /** Every button currently down, whatever owns it: published to the effect, which defers a focus fly until the hand lets go. */
     Qt::MouseButtons m_allButtons;
     /** The hold threshold: a hold button must stay down this long to open the canvas. */

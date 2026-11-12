@@ -52,6 +52,21 @@ static QString replyField(const QString &caption)
     return s;
 }
 
+// A button handed to a window, as the device sent it. The seat's Qt::MouseButton
+// overload goes through KWin's qtToWaylandButton, which is not the inverse of
+// KWin's own input mapping for the side buttons: a mouse's back button (BTN_SIDE)
+// comes in as Qt::BackButton, which is ExtraButton1, and goes back out as
+// BTN_BACK, which QtWayland, GTK and Chromium do not read as Back - so a replayed
+// back click reached no window as Back. The evdev code goes out unchanged; the
+// Qt value is only the fallback for an event that carries none.
+static void sendButton(SeatInterface *seat, quint32 native, Qt::MouseButton button, PointerButtonState state)
+{
+    if (native) {
+        seat->notifyPointerButton(native, state);
+    } else {
+        seat->notifyPointerButton(button, state);
+    }
+}
 // The canvas-modifier buttons as a mask, from the effect's config. The
 // plugin reads this itself at startup: the effect publishes the mask over
 // D-Bus, but its publish can race the plugin's own startup, and a missed
@@ -700,9 +715,9 @@ void CanvasPassthrough::replayClick()
 {
     if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: replaying the click the hold threshold did not outlast";
     SeatInterface *seat = waylandServer()->seat();
-    seat->notifyPointerButton(m_candidateButton, PointerButtonState::Pressed);
+    sendButton(seat, m_candidateNativeButton, m_candidateButton, PointerButtonState::Pressed);
     seat->notifyPointerFrame();
-    seat->notifyPointerButton(m_candidateButton, PointerButtonState::Released);
+    sendButton(seat, m_candidateNativeButton, m_candidateButton, PointerButtonState::Released);
     seat->notifyPointerFrame();
 }
 
@@ -1414,6 +1429,7 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
                 // released first, it is replayed as the click it was.
                 m_holdCandidate = true;
                 m_candidateButton = Qt::MouseButton(uint(event->button));
+                m_candidateNativeButton = event->nativeButton;
                 m_holdTimer.start();
                 if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: hold candidate pressed, waiting the delay";
             }
@@ -1547,7 +1563,7 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     bool consumed = false;
     if (m_grab) {
         SeatInterface *seat = waylandServer()->seat();
-        seat->notifyPointerButton(event->button, event->state);
+        sendButton(seat, event->nativeButton, event->button, event->state);
         seat->notifyPointerFrame();
         consumed = true;
     }

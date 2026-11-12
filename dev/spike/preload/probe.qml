@@ -1,7 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Aaron Bockelie <aaronsb@gmail.com>
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Probe client: logs every press, release and key it receives with
-// surface-local coordinates, so the harness can check where input landed.
+// surface-local coordinates and the Qt button value, so the harness can
+// check where input landed and as which button (Back is 8, Forward 16).
 // A right press opens a menu at the pointer as its own window (an
 // xdg_popup with a grab), with a submenu; the menus log opening, closing
 // and the item triggered. Their backgrounds are flat colours a screenshot
@@ -27,10 +28,10 @@ Window {
         anchors.fill: parent
         acceptedButtons: Qt.AllButtons
         onPressed: (m) => {
-            console.log("PROBE", win.title, "press", m.x.toFixed(1), m.y.toFixed(1));
+            console.log("PROBE", win.title, "press", m.x.toFixed(1), m.y.toFixed(1), "button", m.button);
             if (m.button === Qt.RightButton) menu.popup();
         }
-        onReleased: (m) => console.log("PROBE", win.title, "release", m.x.toFixed(1), m.y.toFixed(1))
+        onReleased: (m) => console.log("PROBE", win.title, "release", m.x.toFixed(1), m.y.toFixed(1), "button", m.button)
     }
 
     component ProbeItem : MenuItem {

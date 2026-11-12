@@ -25,7 +25,12 @@ decoration scenarios with `NEST_DECOR=canvas`): 375 pass, 0 fail, 0 skip, after 
 (the plugin's new ` buttons=` token had gone after ` win=`, which the decor applet's contract and
 `137` read as the reply's last; it now goes before). The runner's repair now names what it
 repaired: thirteen of those scenarios leave another window above KCalc and `111` leaves KCalc
-moved, all put right before the next scenario (see Next candidates). Not seen live: everything
+moved, all put right before the next scenario (see Next candidates). **Side buttons**
+(2026-11-12): the hold button's quick-press replay and the overworld's hand-over of a button went
+through KWin's `SeatInterface::notifyPointerButton(Qt::MouseButton)`, whose Qt-to-evdev table is
+not the inverse of KWin's input mapping for the side buttons, so a real mouse's back button
+(BTN_SIDE) reached windows as BTN_BACK and a BTN_BACK one as Forward; both now hand on
+`nativeButton`, pinned by `229-side-buttons`. Not seen live: everything
 after f2bf19e (a relogin is pending).
 
 **Working, verified in the nest and seen live:** the quiet slide and the auto fly

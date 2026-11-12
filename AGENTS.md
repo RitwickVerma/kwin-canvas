@@ -254,6 +254,12 @@ first:
   blocks until its stream ends, the injector exiting *is* a release, and `sleep`
   in the stream is milliseconds (`sleep 5` is 5 ms, not 5 s). To read state
   during a hold, background it with a long tail.
+- **A run of clicks needs one injector too.** A `fakeinput` per click makes KWin drop and
+  re-add the seat's pointer around each one (40 capability changes for 10 clicks), and a
+  client loses about a third of its presses and releases while it rebinds - which reads as a
+  bug in whatever you are testing. Put the clicks in one stream with `sleep` between them.
+  And a real mouse's side buttons are `side` and `extra` (BTN_SIDE, BTN_EXTRA); `back` and
+  `forward` are the rarer BTN_BACK and BTN_FORWARD.
 - **A drag needs motion events**: `glide X Y 1 1` is a jump and pans nothing,
   while `glide X Y 10 20` pans by the full delta.
 - **Read the effect's log, not `visible=true`**: a JS exception mid-commit leaves

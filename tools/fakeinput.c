@@ -13,9 +13,12 @@
  *   move X Y                       absolute pointer position, instantly
  *   glide X Y [STEPS] [MS]         eased travel from the last position (demos)
  *   rel DX DY                      relative pointer motion
- *   down [left|middle|right|forward|back]  button press (default left)
- *   up [left|middle|right]         button release
- *   click [left|middle|right|forward|back] press, ~30 ms, release
+ *   down [BUTTON]                  button press (default left); BUTTON is left, middle, right,
+ *                                  side, extra, forward or back. A real mouse's back and forward
+ *                                  side buttons are side (BTN_SIDE) and extra (BTN_EXTRA);
+ *                                  back and forward are the rarer BTN_BACK and BTN_FORWARD
+ *   up [BUTTON]                    button release
+ *   click [BUTTON]                 press, ~30 ms, release
  *   drag X1 Y1 X2 Y2 [STEPS] [MS]  left-drag, eased, STEPS (20) steps MS (10) apart
  *   wheel N                        N notches; positive = scroll up
  *   key NAME [down|up]             evdev key by name or decimal code
@@ -41,6 +44,8 @@
 #define BTN_LEFT   0x110
 #define BTN_RIGHT  0x111
 #define BTN_MIDDLE 0x112
+#define BTN_SIDE   0x113
+#define BTN_EXTRA  0x114
 #define BTN_BACK   0x116
 #define BTN_FORWARD 0x115
 
@@ -196,6 +201,10 @@ static bool parse_button(const char *s, uint32_t *out)
         *out = BTN_FORWARD;
     } else if (strcmp(s, "back") == 0) {
         *out = BTN_BACK;
+    } else if (strcmp(s, "side") == 0) {
+        *out = BTN_SIDE;
+    } else if (strcmp(s, "extra") == 0) {
+        *out = BTN_EXTRA;
     } else {
         return false;
     }
