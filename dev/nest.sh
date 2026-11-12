@@ -211,6 +211,19 @@ theme=Breeze
 Number=2
 Rows=1
 CFG
+    # The canvas's chords are KWin's defaults for its own switcher and directional focus
+    # (Alt+Tab, Meta+Tab and their reverses; Meta+Alt+arrows): the first to register a key keeps
+    # it, and KWin registers before an effect loads. The nest unbinds KWin's, as the README asks
+    # of a user, so the scenarios press the canvas's real chords.
+    cat > "$CONF/kglobalshortcutsrc" <<'CFG'
+[kwin]
+Switch Window Down=none,Meta+Alt+Down,Switch to Window Below
+Switch Window Left=none,Meta+Alt+Left,Switch to Window to the Left
+Switch Window Right=none,Meta+Alt+Right,Switch to Window to the Right
+Switch Window Up=none,Meta+Alt+Up,Switch to Window Above
+Walk Through Windows=none,Alt+Tab\tMeta+Tab,Walk Through Windows
+Walk Through Windows (Reverse)=none,Alt+Shift+Tab\tMeta+Shift+Tab,Walk Through Windows (Reverse)
+CFG
     # The canvas decoration is a QML theme: the aurorae engine must be
     # asked for it by name (the library + the theme), and the nest only
     # wears it when 135 asks (NEST_DECOR=canvas) - every other scenario
@@ -498,8 +511,8 @@ clean() {
 }
 
 run() {
-    alive || { echo "not up"; exit 1; }
-    local b; b=$(nestbus) || exit 1
+    alive || { echo "not up"; return 1; }
+    local b; b=$(nestbus) || return 1
     # The session exports QT_WAYLAND_RECONNECT=1 (startplasma sets it for the
     # whole desktop), and Qt treats the variable's PRESENCE - not its value -
     # as the reconnect switch. When the nest's compositor goes away at
@@ -513,14 +526,22 @@ run() {
 }
 
 cmd() {
-    alive || { echo "not up"; exit 1; }
-    local seq
+    alive || { echo "not up"; return 1; }
+    local seq i
     seq=$(kreadconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key DebugSeq --default 0)
     seq=$((seq + 1))
     kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key DebugCommand "$1"
     kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key DebugSeq "$seq"
     nq org.kde.KWin /Effects org.kde.kwin.Effects.reconfigureEffect kwin-canvas
-    sleep 0.3
+    # The command is cleared once it ran, so a KWin that starts later does not find it.
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key DebugCommand --delete
+    # The state block this command printed, not the previous one: the state line carries the
+    # sequence number of the last command it ran (seq=), polled for up to 3 s.
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        sleep 0.15
+        if [ "$(state | head -1 | sed -n 's/.* seq=\([0-9]*\).*/\1/p')" = "$seq" ]; then break; fi
+        [ "$i" = 20 ] && echo "cmd: no state for '$1' (seq $seq) within 3 s; the block below may be stale" >&2
+    done
     state
 }
 
@@ -529,7 +550,7 @@ toggle() {
 }
 
 shot() {
-    alive || { echo "not up"; exit 1; }
+    alive || { echo "not up"; return 1; }
     local out=${1:-$STATE/shot-$(date +%H%M%S).png}
     local b; b=$(nestbus) || return 1
     env -u DISPLAY DBUS_SESSION_BUS_ADDRESS="$b" WAYLAND_DISPLAY=$SOCKET QT_QPA_PLATFORM=wayland $(nest_env client) \
@@ -584,7 +605,9 @@ fixtures() {
     local n; n=$(nwindows)
     run kcalc >/dev/null; mapped $((n + 1)) || echo "fixtures: kcalc did not map in time" >&2
     run kwrite "$FIXTURES/sample.txt" >/dev/null; mapped $((n + 2)) || echo "fixtures: kwrite did not map in time" >&2
-    run konsole -e sh -c "cat '$FIXTURES/konsole.txt'; exec sleep 1d" >/dev/null; mapped $((n + 3)) || echo "fixtures: konsole did not map in time" >&2
+    # The tab title is given, so the caption (which the goldens show) does not depend on the
+    # checkout's directory name, which Konsole would otherwise put there.
+    run konsole -p "tabtitle=kwin-canvas : sleep" -e sh -c "cat '$FIXTURES/konsole.txt'; exec sleep 1d" >/dev/null; mapped $((n + 3)) || echo "fixtures: konsole did not map in time" >&2
     run dolphin "$FIXTURES" >/dev/null; mapped $((n + 4)) || echo "fixtures: dolphin did not map in time" >&2
     run gwenview "$FIXTURES/wallpaper.png" >/dev/null; mapped $((n + 5)) || echo "fixtures: gwenview did not map in time" >&2
     sleep 1

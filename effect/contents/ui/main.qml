@@ -324,7 +324,8 @@ KWin.SceneEffect {
     property real perfSettleDist: 0   // what the open's flight had to cover, screen px
     property real perfSlideAt: 0      // Date.now() when the slide animation started
     property int perfTickN: 0
-    property int perfMoves: 0         // moved lines written this session (capped)
+    property int perfMoves: 0         // moved lines written this session with the canvas open (capped)
+    property int perfMovesClosed: 0   // and with it closed
     property int perfStalls: 0        // stall lines written this canvas session (capped)
     property real perfTickMax: 0
     property int perfBuilt: 0         // scene items created this session (thumbnails, web spans, chips)
@@ -542,37 +543,233 @@ KWin.SceneEffect {
     }
     function activityColor(id) { return palette[activityIndex(id) % palette.length]; }
 
-    // Keyboard navigation over the windows: Tab steps the selection through
-    // the entries, wrapping, and brings the chosen window into view;
-    // Shift+Tab steps the other way. Overview-like, on a canvas: the camera
-    // follows the selection, so the next window is always where the eye goes.
+    // Keyboard navigation over the windows: Tab steps the selection through the entries, wrapping,
+    // and brings the chosen window into view; Shift+Tab steps the other way. In the switcher the
+    // steps go through its pool, the windows in the order they were last used.
     function cycleSelection(dir) {
-        // The cluster switcher steps only among the windows of the cluster
-        // the eye is on; the plain Tab cycle and the world switcher walk
-        // every entry.
-        const pool = (switcherActive && switcherCluster) ? switcherMembers() : entries;
+        let pool = entries;
+        if (switcherActive) {
+            pool = [];
+            for (let i = 0; i < switcherPool.length; ++i) { const e = entryFor(switcherPool[i]); if (e) pool.push(e); }
+            if (pool.length === 0) pool = entries;
+        }
         if (pool.length === 0) return;
         let idx = -1;
         for (let i = 0; i < pool.length; ++i) if (isSelected(pool[i])) { idx = i; break; }
+        // The switcher's first step is from the active window, the pool's first; the overview's
+        // first step is from the focused window too, not from the bottom of the stack.
+        if (idx < 0 && switcherActive && pool[0].window === KWin.Workspace.activeWindow) idx = 0;
+        if (idx < 0 && !switcherActive && focusEntry) idx = pool.indexOf(focusEntry);
         const n = idx < 0 ? (dir > 0 ? 0 : pool.length - 1) : (idx + dir + pool.length) % pool.length;
         selectOnly(pool[n]);
         dbg("sel", "cycle " + dir + " -> " + pool[n].window.caption);
         bringIntoView(pool[n]);
     }
 
-    // The cluster the switcher scopes to: the active window's, or the
-    // focus's, whichever the eye is on. A lone window's cluster (or none)
-    // falls back to the whole plane - there is nothing to scope to.
-    function switcherMembers() {
-        const ci = clusterIndex();
-        const c = ci >= 0 ? clusters[ci] : null;
-        if (!c || !c.ids || c.ids.length < 2) return entries;
-        const pool = [];
-        for (let i = 0; i < c.ids.length; ++i) {
-            const e = entryById(c.ids[i]);
-            if (e) pool.push(e);
+    // ---- the window graph: the walk and the carry ---------------------------------------------
+    // The windows of the plane are a graph: each joined to its neighbour left, right, above and
+    // below inside its cluster (Logic.walkStep, KWin's own directional choice held to the cluster),
+    // and the cluster's edge windows to the nearest window that way in the next cluster. The walk
+    // keys (WalkLeftShortcut..., Meta+Alt+arrows) step the focus along it - or the selection, in
+    // the open canvas - and the camera follows; the carry keys (with Shift) take the focused window
+    // into the next cluster that way. The threads draw the same steps (clusterThreads).
+    //
+    // The graph's nodes: open, the canvas's entries (every activity's frames are on the plane) less
+    // the floated windows, which ride the screen; closed, the current activity's windows at their
+    // plane spots (frame plus the camera's target), clustered now from the same rects. Ids are the
+    // windows' internalIds as strings; win maps them back to the windows.
+    function planeGraph() {
+        const nodes = [], win = {};
+        if (visible && entries.length) {
+            for (let i = 0; i < entries.length; ++i) {
+                const e = entries[i];
+                if (!e.window || e.window.deleted || isPinnedEntry(e)) continue;
+                const id = String(e.window.internalId);
+                nodes.push({ id: id, x: e.x, y: e.y, width: e.width, height: e.height });
+                win[id] = e.window;
+            }
+            return { nodes: nodes, win: win, clusterOf: clusterOf };
         }
-        return pool.length > 1 ? pool : entries;
+        const stack = KWin.Workspace.stackingOrder;
+        for (let i = 0; i < stack.length; ++i) {
+            const w = stack[i];
+            if (!isCanvasWindow(w) || windowPinned(w)) continue;
+            const g = w.frameGeometry;
+            const t = separate ? peekTargetOn(activityOf(w), outputAtReal(g.x, g.y, g.width, g.height)) : peekTarget(activityOf(w));
+            const id = String(w.internalId);
+            // The target the spot was read through rides along (tx, ty), so a write back (the
+            // carry) goes through the same one, whichever monitor's camera that is.
+            nodes.push({ id: id, x: g.x + t.x, y: g.y + t.y, width: g.width, height: g.height, tx: t.x, ty: t.y });
+            win[id] = w;
+        }
+        const r = Logic.recluster(nodes, clusterOf, Object.assign({}, threadRank), configuration.ClusterGap);
+        return { nodes: nodes, win: win, clusterOf: r.clusterOf };
+    }
+    // Where the walk starts: the switcher's pick or the selection in the open canvas, else the
+    // active window; with neither on the plane, the window nearest the middle of the view, which the
+    // first step only takes (fresh).
+    function walkFrom(g) {
+        if (canvasOpen) {
+            for (let i = 0; i < entries.length; ++i) {
+                const id = String(entries[i].window.internalId);
+                if (isSelected(entries[i]) && g.win[id]) return { id: id, fresh: false };
+            }
+        }
+        const a = KWin.Workspace.activeWindow;
+        if (a && g.win[String(a.internalId)]) return { id: String(a.internalId), fresh: false };
+        if (g.nodes.length === 0) return null;
+        const sg = actionScreen().geometry;
+        const vx = visible ? viewX : peekTarget(currentActivity).x, vy = visible ? viewY : peekTarget(currentActivity).y;
+        const z = visible ? zoom : 1;
+        const cx = vx + (sg.x + sg.width / 2) / z, cy = vy + (sg.y + sg.height / 2) / z;
+        let best = null, bestD = Infinity;
+        for (let i = 0; i < g.nodes.length; ++i) {
+            const n = g.nodes[i];
+            const d = Math.hypot(n.x + n.width / 2 - cx, n.y + n.height / 2 - cy);
+            if (d < bestD) { bestD = d; best = n; }
+        }
+        return { id: best.id, fresh: true };
+    }
+    function dirWord(dir) { return dir === "left" ? "to the left" : dir === "right" ? "to the right" : dir === "up" ? "above" : "below"; }
+    function oppositeDir(dir) { return dir === "left" ? "right" : dir === "right" ? "left" : dir === "up" ? "down" : "up"; }
+    // One step of the walk.
+    function walk(dir) {
+        if (gameMode || safeMode) return;
+        if (searchActive) searchEnd();
+        landQuiet();
+        const g = planeGraph();
+        const from = walkFrom(g);
+        if (!from) { notify("No window on the plane to walk to"); return; }
+        let id = from.id;
+        if (!from.fresh) {
+            const s = Logic.walkStep(from.id, g.nodes, g.clusterOf, dir);
+            if (!s) { notify("Nothing " + dirWord(dir)); return; }
+            id = s.id;
+            dbg("walk", dir + " -> " + g.win[id].caption + (s.cross ? " (the next cluster)" : ""));
+        }
+        const w = g.win[id];
+        if (canvasOpen) {
+            // The open canvas: the selection steps (Enter enters it) and the camera keeps it in view.
+            const e = entryFor(w);
+            if (!e) return;
+            selectOnly(e);
+            bringIntoView(e);
+            travelCluster = clusterIndexOfEntry(e);
+            return;
+        }
+        focusAndFly(w);
+    }
+    // The carry: the focused window (the selected one in the open canvas) goes into the next
+    // cluster that way, beside it on the side it arrives from (Logic.carrySpot), and the camera
+    // follows it. Carried straight back while its old spot is still clear, it lands on that spot.
+    property var lastCarry: null
+    function carry(dir) {
+        if (gameMode || safeMode) return;
+        if (searchActive) searchEnd();
+        landQuiet();
+        const g = planeGraph();
+        const from = walkFrom(g);
+        if (!from || from.fresh) { notify("Nothing focused to carry"); return; }
+        const w = g.win[from.id];
+        if (!isPlaneWindow(w)) { notify("A maximized, tiled or fullscreen window stays where it is"); return; }
+        let f = null;
+        for (let i = 0; i < g.nodes.length; ++i) if (g.nodes[i].id === from.id) f = g.nodes[i];
+        // In the open canvas a selection of several windows is carried as one piece: its box
+        // finds the spot and every window keeps its place inside it.
+        let piece = [f];
+        if (canvasOpen) {
+            const sel = [];
+            for (let i = 0; i < entries.length; ++i) if (isSelected(entries[i]) && isPlaneWindow(entries[i].window)) {
+                const id = String(entries[i].window.internalId);
+                for (let k = 0; k < g.nodes.length; ++k) if (g.nodes[k].id === id) sel.push(g.nodes[k]);
+            }
+            if (sel.length > 1 && sel.some(function (n) { return n.id === from.id; })) piece = sel;
+        }
+        const pieceIds = piece.map(function (n) { return n.id; });
+        const box = Logic.boundsOf(piece);
+        const rest = g.nodes.filter(function (n) { return pieceIds.indexOf(n.id) < 0; });
+        let spot = null;
+        // Carried straight back soon after: the spot it left, when nothing has moved onto it since
+        // (what overlapped it then may still). A window that was alone has no cluster to come
+        // back to, so this comes before the cluster is looked for.
+        const lc = lastCarry;
+        if (lc && lc.ids.join() === pieceIds.join() && lc.dir === oppositeDir(dir) && Date.now() - lc.at < 300000) {
+            const back = { x: lc.x, y: lc.y, width: box.width, height: box.height };
+            const blocked = rest.some(function (n) { return Logic.clusterDist(back, n) < 8 && lc.over.indexOf(n.id) < 0; });
+            if (!blocked) spot = { x: lc.x, y: lc.y };
+        }
+        if (!spot) {
+            const ci = Logic.carryCluster(from.id, g.nodes, g.clusterOf, dir);
+            if (ci < 0) { notify("No cluster " + dirWord(dir)); return; }
+            const members = rest.filter(function (n) { return g.clusterOf[n.id] === ci; });
+            const others = rest.filter(function (n) { return g.clusterOf[n.id] !== ci; });
+            spot = Logic.carrySpot(box, members, others, dir, configuration.ClusterGap);
+            if (!spot) { notify("No room beside the cluster " + dirWord(dir)); return; }
+        }
+        lastCarry = { ids: pieceIds, dir: dir, x: box.x, y: box.y, at: Date.now(),
+                      over: rest.filter(function (n) { return Logic.clusterDist(box, n) < 8; }).map(function (n) { return n.id; }) };
+        const dx = spot.x - box.x, dy = spot.y - box.y;
+        dbg("carry", w.caption + (piece.length > 1 ? " +" + (piece.length - 1) : "") + " " + dir + " to (" + Math.round(spot.x) + "," + Math.round(spot.y) + ")");
+        if (canvasOpen) {
+            const es = [];
+            for (let i = 0; i < piece.length; ++i) { const e = entryFor(g.win[piece[i].id]); if (e) es.push(e); }
+            if (!es.length) return;
+            noteBeforeChange(es);
+            for (let i = 0; i < es.length; ++i) animateEntry(es[i], es[i].x + dx, es[i].y + dy);
+            const e = entryFor(w);
+            if (e) selectOnly(e);
+            for (let i = 0; i < es.length; ++i) if (es[i] !== e) selected[es[i].window.internalId] = true;
+            if (es.length > 1) selectionRev++;
+            const around = [];
+            for (let i = 0; i < entries.length; ++i) if (es.indexOf(entries[i]) < 0) around.push({ x: entries[i].x, y: entries[i].y, width: entries[i].width, height: entries[i].height });
+            const d = smartPan({ x: spot.x, y: spot.y, width: box.width, height: box.height }, around, 24);
+            camGo(zoom, viewX + d.dx, viewY + d.dy);
+            revision++;
+            return;
+        }
+        // Closed: the window is written at its new plane spot (off the screen, likely), through
+        // the target planeGraph read it with, and the camera flies to it, the cluster around it.
+        setReal(w, Qt.rect(Math.round(f.x + dx - f.tx), Math.round(f.y + dy - f.ty), f.width, f.height));
+        flyToWindow(w);
+    }
+    // What just happened, said where the eye is: the toast in the open canvas, Plasma's OSD on the
+    // closed desktop (a walk with nowhere to go, a carry refused, a digit with no cluster).
+    function notify(text) {
+        if (canvasOpen) { toast(text); return; }
+        osdCall.arguments = ["view-grid", text];
+        osdCall.call();
+    }
+    KWin.DBusCall {
+        id: osdCall
+        service: "org.kde.plasmashell"
+        path: "/org/kde/osdService"
+        dbusInterface: "org.kde.osdService"
+        method: "showText"
+    }
+    // The selected windows are closed (the arrange menu's Close, the Delete key): asked of each
+    // the way its own close button would, so an app that wants to save still asks.
+    function closeSelection() {
+        const sel = [];
+        for (let i = 0; i < entries.length; ++i) if (isSelected(entries[i]) && entries[i].window && !entries[i].window.deleted) sel.push(entries[i].window);
+        if (!sel.length) { toast("Nothing selected to close"); return; }
+        for (let i = 0; i < sel.length; ++i) sel[i].closeWindow();
+        toast(sel.length === 1 ? "Closing " + String(sel[0].caption).slice(0, 40) : "Closing " + sel.length + " windows");
+    }
+    // The selection comes to the camera: its box lands centred on the screen, every window
+    // keeping its place in it, one undo step. The way to fetch a far window instead of going to it.
+    function bringHere() {
+        const es = [];
+        for (let i = 0; i < entries.length; ++i) if (isSelected(entries[i]) && isPlaneWindow(entries[i].window)) es.push(entries[i]);
+        if (!es.length) { toast("Nothing selected to bring here"); return; }
+        const box = Logic.boundsOf(es);
+        const sg = actionScreen().geometry;
+        const cx = viewX + (sg.x + sg.width / 2) / zoom, cy = viewY + (sg.y + sg.height / 2) / zoom;
+        const dx = Math.round(cx - box.width / 2 - box.x), dy = Math.round(cy - box.height / 2 - box.y);
+        if (dx === 0 && dy === 0) return;
+        noteBeforeChange(es);
+        for (let i = 0; i < es.length; ++i) animateEntry(es[i], es[i].x + dx, es[i].y + dy);
+        revision++;
+        toast(es.length === 1 ? "Brought here" : es.length + " windows brought here");
     }
 
     // The switcher's pick: the selected window while the cycle runs, the
@@ -709,8 +906,9 @@ KWin.SceneEffect {
             return true;
         }
         if (k === Qt.Key_Backspace) { searchText = searchText.slice(0, -1); searchIndex = 0; searchUpdate(); return true; }
-        if (k === Qt.Key_Tab || k === Qt.Key_Down || k === Qt.Key_Right) { if (searchHits.length) { searchIndex++; searchUpdate(); } return true; }
-        if (k === Qt.Key_Backtab || k === Qt.Key_Up || k === Qt.Key_Left) { if (searchHits.length) { searchIndex--; searchUpdate(); } return true; }
+        // Shift+Tab arrives as Tab with the Shift modifier, whatever the platform does about Backtab.
+        const back = k === Qt.Key_Backtab || (k === Qt.Key_Tab && (mods & Qt.ShiftModifier)) || k === Qt.Key_Up || k === Qt.Key_Left;
+        if (k === Qt.Key_Tab || k === Qt.Key_Down || k === Qt.Key_Right || back) { if (searchHits.length) { searchIndex += back ? -1 : 1; searchUpdate(); } return true; }
         if ((mods & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier)) === 0 && text && text.length === 1 && text.charCodeAt(0) >= 32) {
             searchText += text;
             searchIndex = 0;
@@ -1295,7 +1493,7 @@ KWin.SceneEffect {
     // remembers the spot, like the tour's departure.
     function clusterJumpTo(n) {
         dbg("jump", "digit " + n + " of " + clusters.length);
-        if (n < 1 || n > clusters.length) return;
+        if (n < 1 || n > clusters.length) { toast("No cluster " + n + (clusters.length ? " (there are " + clusters.length + ")" : "")); return; }
         const cur = clusterIndex();
         if (cur >= 0 && cur < clusters.length && cur !== n - 1) {
             const fp = clusterFingerprint(clusters[cur]);
@@ -1344,6 +1542,9 @@ KWin.SceneEffect {
     function stepEntryAnims() {
         const now = Date.now();
         let any = false;
+        // A glide that lands is a layout change: the clusters and their threads follow it (a carry, a
+        // tidy, an undo), where the frames of the glide itself only redraw the windows.
+        let landed = false;
         for (const id in entryAnims) {
             const a = entryAnims[id];
             const e = entries.find(function (en) { return String(en.window.internalId) === id; });
@@ -1355,6 +1556,7 @@ KWin.SceneEffect {
                 e.y = a.ty;
                 delete entryAnims[id];
                 delete entryGhosts[id];
+                landed = true;
             } else if (p <= 0) {
                 e.x = a.sx;
                 e.y = a.sy;
@@ -1370,6 +1572,7 @@ KWin.SceneEffect {
             any = true;
         }
         if (any) moveRev++;
+        if (landed) revision++;
     }
     function finishEntryAnims() {
         const keys = Object.keys(entryAnims);
@@ -1461,24 +1664,23 @@ KWin.SceneEffect {
     function windowZ(e) {
         return e === focusEntry ? 2000 : 1000 + entries.indexOf(e);
     }
-    // The cluster webs, flattened: every pair of windows in every cluster,
-    // in this screen's coordinates, one entry per thread. The z only counts
-    // at the view level - a child's z cannot lift it out of its parent - so
-    // the threads are one flat list, not nested under the clusters. Each
-    // thread is cut at every window crossing and each stretch carries the z
-    // the thread has at that point - the linear mix of its two windows' z -
-    // so the web weaves over the lower, under the higher, and ducks under
-    // any window that covers a middle stretch. The geometry lives in the
-    // plane's own coordinates: the camera is a uniform transform and the
-    // segment-rect cuts are invariant under it, so the O(N^2) clipping runs
-    // only when the layout changes (the stack, the clusters, the
-    // hover) and the delegates apply the camera per frame.
+    // The threads, flattened: the window graph's edges (clusterThreads), one entry per stretch.
+    // The z only counts at the view level - a child's z cannot lift it out of its parent - so the
+    // threads are one flat list, not nested under the clusters. Each thread is cut at every window
+    // crossing and each stretch carries the z the thread has at that point - the linear mix of its
+    // two windows' z - so it weaves over the lower, under the higher, and ducks under any window
+    // that covers a middle stretch. The geometry lives in the plane's own coordinates: the camera
+    // is a uniform transform and the cuts are invariant under it, so the weave runs only when the
+    // layout changes (the stack, the clusters, the hover) and the delegates apply the camera per
+    // frame.
     // The web every view draws, woven once by the effect and published here. The
     // triggers are explicit (below) and coalesced to one weave per turn of the event
     // loop: a binding in each view re-ran clusterThreads whenever anything it read
     // changed (KWin's active window, a window's flags, the configuration), once per
     // output, and each clustering published four properties, each a separate re-run.
     property var threadData: []
+    // The graph the threads draw, for the state line: "edges/bridges" at the last weave.
+    property string graphShape: "-"
     property bool weavePending: false
     function scheduleWeave() {
         if (weavePending) return;
@@ -1525,31 +1727,38 @@ KWin.SceneEffect {
             const e = entries[k];
             rects.push({ x: e.x, y: e.y, w: e.width, h: e.height });
         }
+        // The threads are the window graph's edges (Logic.walkEdges): each window joined to its
+        // neighbour left, right, above and below inside its cluster - exactly the steps the walk
+        // keys take - and, from the lit cluster, the bridges its edge windows take to the next
+        // clusters. Each runs between the two windows' facing sides (Logic.edgeSegment), never
+        // across its own windows, and is cut where another window crosses it.
         const out = [];
         const litCluster = clusterIndex();
-        for (let i = 0; i < clusters.length; ++i) {
-            const c = clusters[i];
-            if (!c || c.n < 2) continue;
-            const lit = litCluster === i;
-            const pts = [];
-            for (let k = 0; k < c.ids.length; ++k) {
-                const e = entryById(c.ids[k]);
-                if (!e) continue;
-                    pts.push({
-                    x: e.x + e.width / 2,
-                    y: e.y + e.height / 2,
-                    z: windowZ(e)
-                });
-            }
-            for (let a = 0; a < pts.length; ++a) {
-                for (let b = a + 1; b < pts.length; ++b) {
-                    const spans = Logic.threadSpans(pts[a].x, pts[a].y, pts[b].x, pts[b].y, pts[a].z, pts[b].z, rects);
-                    for (let s = 0; s < spans.length; ++s) {
-                        const sp = spans[s];
-                        out.push({ x1: sp.x1, y1: sp.y1, x2: sp.x2, y2: sp.y2,
-                                   z: sp.z, lit: lit, co: c.co });
-                    }
-                }
+        const nodes = [];
+        const byId = {};
+        for (let k = 0; k < entries.length; ++k) {
+            const e = entries[k];
+            if (!e.window || e.window.deleted || isPinnedEntry(e)) continue;
+            const n = { id: String(e.window.internalId), x: e.x, y: e.y, width: e.width, height: e.height, z: windowZ(e) };
+            nodes.push(n);
+            byId[n.id] = n;
+        }
+        const edges = Logic.walkEdges(nodes, clusterOf, litCluster);
+        const nb = edges.filter(function (ed) { return ed.bridge; }).length;
+        graphShape = (edges.length - nb) + "/" + nb;
+        for (let k = 0; k < edges.length; ++k) {
+            const A = byId[edges[k].a], B = byId[edges[k].b];
+            const seg = Logic.edgeSegment(A, B);
+            if (!seg) continue;
+            const ci = clusterOf[A.id];
+            const c = clusters[ci];
+            const bridge = edges[k].bridge;
+            const lit = ci === litCluster || (bridge && clusterOf[B.id] === litCluster);
+            const spans = Logic.threadSpans(seg.x1, seg.y1, seg.x2, seg.y2, A.z, B.z, rects);
+            for (let s = 0; s < spans.length; ++s) {
+                const sp = spans[s];
+                out.push({ x1: sp.x1, y1: sp.y1, x2: sp.x2, y2: sp.y2, z: sp.z, lit: lit,
+                           co: bridge ? 1 : (c ? c.co : 1), bridge: bridge });
             }
         }
         return out;
@@ -1680,8 +1889,13 @@ KWin.SceneEffect {
         w.maximizedChanged.connect(function () { effect.noteReturnedFree(w); effect.noteFocusedReshaped(w); });
         w.tileChanged.connect(function () { effect.noteReturnedFree(w); effect.noteFocusedReshaped(w); });
         // The focused window moved or resized by the hand: a float may now be in its way.
-        w.interactiveMoveResizeFinished.connect(function () { effect.noteFocusedReshaped(w); });
+        w.interactiveMoveResizeFinished.connect(function () { effect.handAt[w.internalId] = Date.now(); effect.noteFocusedReshaped(w); });
     }
+    // When each window last gained or lost the focus, and when the hand last let go of it: the
+    // echo net reverts a move only after a focus flip and never right after the hand.
+    property var focusFlipAt: ({})
+    property var handAt: ({})
+    property var lastActive: null
     // ---- Frame authority ---------------------------------------------------------
     // The plane is the truth. A window's plane coordinate belongs to the canvas, and its real
     // frame is that coordinate seen through the camera's target. Two things may change the plane
@@ -1710,11 +1924,42 @@ KWin.SceneEffect {
     // Every real window the canvas writes goes through setReal, so the handler can tell the canvas's
     // own write from somebody else's move. The frame signal is emitted from inside the assignment,
     // so a counter around it is exact.
+    //
+    // A write at the window's own size is a move, made through the plugin (canvasPlugin.moveWindow,
+    // Window::move). A script's frameGeometry write is a move-and-resize, and at an unchanged size
+    // KWin moves the frame at once but leaves every configure it already sent the client with the
+    // place the window had then; when the client commits one, KWin puts the window there. A focus
+    // change sends one to the window gaining the focus and to the one losing it, and a busy client,
+    // or one the open canvas covers, commits it after a slide has landed: the window went back by
+    // the slide's whole length, and the canvas took that for the window's own move. It drifted on
+    // the plane a little more with every fly. A move takes the queued configures along. Without
+    // the plugin's move (none, or an older one) the spot each write leaves is noted, and a window
+    // that comes back to it is put back (classifyFrame, the echo).
     property int selfWriting: 0
     function setReal(w, rect) {
+        const g = w.frameGeometry;
         selfWriting++;
-        try { w.frameGeometry = rect; } finally { selfWriting--; }
+        try {
+            if (rect.width === g.width && rect.height === g.height) {
+                if (pluginMove(w, rect.x, rect.y)) return;
+                if (rect.x !== g.x || rect.y !== g.y) noteLeftSpot(w, g);
+            }
+            w.frameGeometry = rect;
+        } finally { selfWriting--; }
     }
+    function pluginMove(w, x, y) {
+        return typeof canvasPlugin !== "undefined" && !!canvasPlugin && typeof canvasPlugin.moveWindow === "function"
+            && canvasPlugin.moveWindow(w, x, y) === true;
+    }
+    // The echo's spots: a window's id -> Logic.noteLeftSpot's record. Kept 30 s: a client the canvas
+    // parks off every monitor can commit long after the write.
+    readonly property int echoMs: 30000
+    property var leftSpots: ({})
+    function noteLeftSpot(w, g) {
+        leftSpots[w.internalId] = Logic.noteLeftSpot(leftSpots[w.internalId],
+            { x: g.x, y: g.y, width: g.width, height: g.height }, Date.now(), 150, 8, echoMs);
+    }
+    function firstSpotAt(rec) { return rec && rec.spots.length ? rec.spots[0].at : Infinity; }
     // A window no monitor shows at the camera as it is (floated windows never count: they ride
     // the screen). The overview's edge markers and the state line read it.
     function entryAway(e) {
@@ -1765,22 +2010,44 @@ KWin.SceneEffect {
         revertLog[w.internalId] = step.chain;
         return step.allow;
     }
-    // "revert" or "adopt" for a frame that went from `was` to `now`.
+    // "adopt", "revert" (KWin's rule) or "echo" (a configure from before the canvas's own write,
+    // setReal) for a frame that went from `was` to `now`. Both of the last are put back.
     function classifyFrame(w, was, now) {
         if (!was || !isPlaneWindow(w)) return "adopt";
-        if (!Logic.isPull(was, now, outputRects(), layoutBefore)) return "adopt";
+        // An echo is a configure a focus change sent, committed late: so only a move that
+        // follows a focus flip of this window since the canvas's write, and not one right
+        // after the hand let go of it (a tiler writing where the hand dropped it).
+        const t = Date.now(), id = w.internalId, rec = leftSpots[id];
+        if (rec && (focusFlipAt[id] || 0) > rec.last - echoMs && (focusFlipAt[id] || 0) >= firstSpotAt(rec)
+            && t - (handAt[id] || 0) > 300 && Logic.isEcho(rec, was, now, t, echoMs)) return mayRevert(w) ? "echo" : "adopt";
+        if (!Logic.isPull(was, now, screenRects, layoutBefore)) return "adopt";
         // With following the activation turned off, KDE brings the activated window in: leave it.
         if (configuration.FollowActivation === false && w === KWin.Workspace.activeWindow) return "adopt";
         return mayRevert(w) ? "revert" : "adopt";
     }
-    function revertFrame(w, was) {
+    function revertFrame(w, was, why) {
         const g = w.frameGeometry;
         if (perf) perfLog("reverted", "win=" + String(w.caption).replace(/[ =]/g, "_").slice(0, 30)
             + " cls=" + String(w.resourceClass).replace(/[ =]/g, "_").slice(0, 20)
             + " dx=" + Math.round(g.x - was.x) + " dy=" + Math.round(g.y - was.y)
+            + " why=" + (why || "revert")
             + " open=" + (visible ? 1 : 0) + " quiet=" + (quiet ? 1 : 0) + " " + perfSince());
-        dbg("revert", w.caption + " moved by something else from (" + Math.round(was.x) + "," + Math.round(was.y) + ") to (" + Math.round(g.x) + "," + Math.round(g.y) + "): put back");
+        dbg("revert", w.caption + " moved by something else from (" + Math.round(was.x) + "," + Math.round(was.y) + ") to (" + Math.round(g.x) + "," + Math.round(g.y) + "): put back" + (why === "echo" ? " (a configure from before the canvas's write)" : ""));
         setReal(w, Qt.rect(was.x, was.y, g.width, g.height));
+    }
+    // A move the canvas adopted, for the Perf lines: every one changes the window's plane
+    // coordinate, so a drift shows here. The first 60 of a session.
+    function perfMoved(w, was, f) {
+        // Open and closed moves have a budget each: a tiler's moves on the closed desktop must not
+        // spend the lines the drift evidence (a move right after a landing) needs.
+        if (!perf || (f.x === was.x && f.y === was.y)) return;
+        if (visible) { if (perfMoves >= 60) return; perfMoves++; }
+        else { if (perfMovesClosed >= 60) return; perfMovesClosed++; }
+        perfLog("moved", "win=" + String(w.caption).replace(/[ =]/g, "_").slice(0, 30)
+            + " cls=" + String(w.resourceClass).replace(/[ =]/g, "_").slice(0, 20)
+            + " dx=" + (f.x - was.x) + " dy=" + (f.y - was.y)
+            + " open=" + (visible ? 1 : 0) + " quiet=" + (quiet ? 1 : 0)
+            + " pinned=" + (windowPinned(w) ? 1 : 0) + " floats=" + pinnedCount + " " + perfSince());
     }
     // The one handler of a window's frame changes (watchWindow connects it).
     function frameChanged(w, was) {
@@ -1788,7 +2055,11 @@ KWin.SceneEffect {
         if (w && w.dock) lastDockAt = Date.now();
         if (selfWriting > 0 || !was) return;
         if (floatHome[w.internalId] && (w.frameGeometry.x !== was.x || w.frameGeometry.y !== was.y)) forgetFloatHome(w);
-        if (classifyFrame(w, was, w.frameGeometry) === "revert") revertFrame(w, was);
+        const kind = classifyFrame(w, was, w.frameGeometry);
+        if (kind !== "adopt") revertFrame(w, was, kind);
+        // Closed, the real frame is the plane coordinate, so an adopted move is one; open, syncEntry
+        // takes it into the entry and logs it.
+        else if (!visible && isPlaneWindow(w)) perfMoved(w, was, w.frameGeometry);
     }
     // What happened just before a window moved, for the Perf lines only: milliseconds since the last
     // open, close, activation, dock event and layout change, "-" when none in the last five seconds.
@@ -2111,7 +2382,10 @@ KWin.SceneEffect {
 
     // Legend text for an action: the configured names, lower-cased.
     function keyLabel(spec) {
-        return String(spec || "").split(",").map(function (n) { return n.trim().toLowerCase(); }).join("/");
+        return String(spec || "").split(",").map(function (n) {
+            const k = n.trim().toLowerCase();
+            return k === "backtab" ? "shift+tab" : k === "bracketleft" ? "[" : k === "bracketright" ? "]" : k === "plus" ? "+" : k === "equal" ? "=" : k === "minus" ? "-" : k;
+        }).join("/");
     }
 
     // The primary display: first in the order plasmashell set, else the first screen.
@@ -2864,21 +3138,40 @@ KWin.SceneEffect {
         return Math.min(1, Math.max(zoomPart, away / (Math.max(g.width, g.height) * 1.2)));
     }
     property var pendingFly: null
-    // Set when the switcher opened from the chord (Meta+Tab / Alt+Tab), not
-    // the debug verb, so the chord's release is the enter only for real holds.
+    // ---- the switcher -----------------------------------------------------------------------
+    // Alt+Tab and Meta+Tab, the way a task switcher works. A tap flips to the window used last and
+    // opens nothing. A hold shows the canvas fitted (the cluster the eye is on for Alt+Tab, the
+    // whole plane for Meta+Tab) with the pick lit; each further Tab steps the pick through the
+    // windows in the order they were last used (Shift+Tab or the reverse chord steps back), the
+    // walk keys step it across the plane, and letting the chord go enters the pick at once. Esc
+    // steps back out.
+    //
+    // A tap is told from a hold by the chord's release. For SwitcherShowMs (130 ms) after the press
+    // nothing is shown (switcherPending); a release inside that beat flips straight to the pick, and
+    // a hold past it, or a second Tab, shows the switcher. The release comes from the plugin
+    // (chordUp, bumped from its key filter the moment the chord's last modifier goes up), from its
+    // modifier poll (the 80 ms timer below), or from the scene's own key-up; without any of them
+    // (no plugin) the old beat enters SwitcherSettleMs after the last step.
+    //
+    // Set when the switcher opened from the chord (Meta+Tab / Alt+Tab), not the debug verb, so the
+    // chord's release is the enter only for real holds.
     property bool switcherFromChord: false
-    // The keyboard-focus request from the switcher to the view (an effect
-    // function cannot name the view delegate's id - it bumps this instead).
+    // The keyboard-focus request from the switcher to the view (an effect function cannot name the
+    // view delegate's id - it bumps this instead).
     property int switcherFocusReq: 0
-    // The cluster switcher: the alternate chord steps only among the
-    // windows of the cluster the eye is on and fits that cluster, where
-    // the primary chord sweeps the whole plane. Set by the chord that
-    // opened the switcher, cleared when it closes.
+    // The cluster switcher: the alternate chord steps only among the windows of the cluster the eye
+    // is on and fits that cluster, where the primary chord sweeps the whole plane. Set by the chord
+    // that opened the switcher, cleared when it closes.
     property bool switcherCluster: false
-    // The switcher's z-rise: the windows come up in z the moment the
-    // switcher opens, on this ramp, instead of waiting for the zoom-out
-    // to reveal the depth - the switch-in reads as the pile rising to
-    // meet the eye while the camera flies out.
+    // The chord is down and nothing is shown yet: a release now is a tap.
+    property bool switcherPending: false
+    // The steps the chord has taken before the switcher shows: one per Tab, minus one per Shift+Tab.
+    property int switcherSteps: 0
+    // The windows the chord switches among, the one used last first (mruWindows), fixed at the press
+    // so the order does not shift under the hand.
+    property var switcherPool: []
+    // The switcher's z-rise: the windows come up in z the moment the switcher opens, on this ramp,
+    // instead of waiting for the zoom-out to reveal the depth.
     property real switcherRise: 0
     NumberAnimation {
         id: switcherRiseAnim
@@ -2890,19 +3183,23 @@ KWin.SceneEffect {
     }
     function endSwitcher() {
         switcherActive = false;
+        switcherPending = false;
         switcherCluster = false;
+        switcherModMask = 0;
+        chordBlind = false;
         switcherRise = 0;
         switcherRiseAnim.stop();
         switcherSettle.stop();
+        switcherShowTimer.stop();
     }
-    // The beat the enter waits after the chord's release: the pick settles
-    // under the eye for this long, then the canvas steps in by itself. A
-    // re-tap of the chord during the beat steps on, and Esc steps out.
-    // The settle arms on every chord event and the modifier poll keeps it
-    // at bay while the chord is held, so the enter cannot be missed:
-    // whatever link of the release chain works - the scene's key-up, the
-    // seat's modifier poll, or nothing at all - the beat still fires and
-    // the switcher steps in.
+    Timer {
+        id: switcherShowTimer
+        interval: Math.max(0, Number(effect.configuration.SwitcherShowMs) || 130)
+        repeat: false
+        onTriggered: effect.showSwitcher()
+    }
+    // The no-plugin beat: with no way to see the chord's release (chordBlind), the pick enters this
+    // long after the last step.
     Timer {
         id: switcherSettle
         interval: Math.max(100, Number(configuration.SwitcherSettleMs) || 450)
@@ -2911,33 +3208,64 @@ KWin.SceneEffect {
             if (effect.switcherActive) effect.applyKey();
         }
     }
-    // The last time the switcher cycled. The chord refires on every key
-    // repeat of a held Tab, and a deliberate re-tap is the only cycle
-    // worth taking: the gate passes real re-taps and swallows auto-repeat
-    // (and any double delivery of one press), so a hold never machine-guns.
+    // The last time the switcher cycled. The chord refires on every key repeat of a held Tab, and a
+    // deliberate re-tap is the only cycle worth taking: the gate passes real re-taps and swallows
+    // auto-repeat (and any double delivery of one press), so a hold never machine-guns.
     property real lastSwitchAt: 0
-    // One cycle of the switcher, gated: whatever path the press took (the
-    // chord's re-fire or the scene's key), at most one cycle lands per
-    // 150 ms window.
-    function switcherCycle(dir) {
+    // A press the scene saw (and found not to be a repeat) rides past the gate: a re-tap can be
+    // quicker than the gate's 150 ms, and the scene knows a repeat from a tap.
+    function switcherCycle(dir, fromScene) {
         const now = Date.now();
-        if (now - lastSwitchAt < 150) return;
+        if (!fromScene && now - lastSwitchAt < 150) return;
         lastSwitchAt = now;
         cycleSelection(dir);
-        // Every step re-arms the enter's beat: the settle fires a moment
-        // after the last chord activity, whatever that activity was. The
-        // plain Tab cycle (no chord) keeps the manual Enter instead.
-        if (effect.switcherFromChord) switcherSettle.restart();
+        if (switcherFromChord && chordBlind) switcherSettle.restart();
     }
-    // The modifier mask the open chord held, and the release detection.
-    // The scene cannot always see the release of a key the global
-    // shortcut consumed - KWin feeds the chord's own key-ups back on
-    // some setups and swallows them on others - so the effect asks the
-    // pass-through plugin for the seat's live modifier mask instead:
-    // while a chord-held switcher is up, a small poll watches the mask,
-    // and the chord's end is the moment its modifier clears. The
-    // scene's own key-up remains the fast path.
+    // The windows the switcher steps through, the one used last first: the current activity's
+    // windows (the cluster switcher: those of the cluster the eye is on, when it has more than one),
+    // the active window first, then by when each last had the focus, and windows not focused since
+    // the canvas loaded by the stacking order, the higher first.
+    function mruWindows(cluster) {
+        const stack = KWin.Workspace.stackingOrder;
+        const list = [];
+        const rank = {};
+        for (let i = 0; i < stack.length; ++i) {
+            if (!isCanvasWindow(stack[i])) continue;
+            list.push(stack[i]);
+            rank[String(stack[i].internalId)] = i;
+        }
+        let pool = list;
+        const a = KWin.Workspace.activeWindow;
+        if (cluster) {
+            const g = planeGraph();
+            let ci = visible ? clusterIndex() : -1;
+            if (ci < 0 && a) { const k = g.clusterOf[String(a.internalId)]; if (k !== undefined) ci = k; }
+            if (ci >= 0) {
+                const mem = list.filter(function (w) { return g.clusterOf[String(w.internalId)] === ci; });
+                if (mem.length > 1) pool = mem;
+            }
+        }
+        return pool.slice().sort(function (p, q) {
+            if (p === a) return -1;
+            if (q === a) return 1;
+            const fp = focusAt[p.internalId] || 0, fq = focusAt[q.internalId] || 0;
+            if (fp !== fq) return fq - fp;
+            return rank[String(q.internalId)] - rank[String(p.internalId)];
+        });
+    }
+    // The window the chord's steps land on: the pool's first is the active window, so one step is
+    // the window used before it.
+    function switcherPickWindow() {
+        const pool = switcherPool.filter(function (w) { return w && !w.deleted; });
+        if (pool.length === 0) return null;
+        const base = pool[0] === KWin.Workspace.activeWindow ? 0 : -1;
+        const n = pool.length;
+        return pool[(((base + switcherSteps) % n) + n) % n];
+    }
+    // The modifier mask the open chord holds (its modifiers less Shift, so Shift+Tab does not count
+    // as letting go), and whether the release can be seen at all.
     property int switcherModMask: 0
+    property bool chordBlind: false
     function modMaskOf(spec) {
         let m = 0;
         const parts = String(spec || "").split("+");
@@ -2946,32 +3274,67 @@ KWin.SceneEffect {
             if (t === "meta" || t === "super" || t === "win") m |= Qt.MetaModifier;
             else if (t === "alt") m |= Qt.AltModifier;
             else if (t === "ctrl" || t === "control") m |= Qt.ControlModifier;
-            else if (t === "shift") m |= Qt.ShiftModifier;
         }
         return m;
     }
-    // The release itself: a release with nothing picked lands on the
-    // next window - the tabbox's plain Alt+Tab - and the settle beat
-    // begins (the enter fires from the settle, not the release).
-    function chordRelease() {
-        if (!switcherActive) return;
-        let picked = false;
-        for (let i = 0; i < entries.length; ++i) {
-            if (isSelected(entries[i])) { picked = true; break; }
+    // A chord press: Tab (dir 1) or the reverse chord (dir -1). The mask holds the modifiers of
+    // both chords (a reverse bound with other modifiers than the forward one still ends when
+    // its own modifiers go up).
+    function chordPress(cluster, dir, spec, reverseSpec) {
+        if (switcherActive) { switcherCycle(dir); return; }
+        if (switcherPending) {
+            // One press delivered twice is not two steps (the cycle's gate, before the show).
+            const now = Date.now();
+            if (now - lastSwitchAt < 150) return;
+            lastSwitchAt = now;
+            switcherSteps += dir; showSwitcher(); return;
         }
-        if (!picked) switcherCycle(1);
-        // The release is one: the poll stops with the mask, so its next answers cannot restart the
-        // settle forever (they did, and the switcher never stepped in). A re-tap sets it again.
-        switcherModMask = 0;
-        switcherSettle.restart();
+        if (canvasHold || closing || gameMode || safeMode) return;
+        if (searchActive) searchEnd();
+        landQuiet();
+        switcherFromChord = true;
+        switcherCluster = cluster;
+        switcherModMask = modMaskOf(spec) | modMaskOf(reverseSpec);
+        // Without the plugin the release cannot be seen (its D-Bus object is not there to ask).
+        chordBlind = switcherModMask === 0 || !pluginPresent();
+        switcherPool = mruWindows(cluster);
+        switcherSteps = dir;
+        if (switcherPool.length < 2 && !canvasOpen) { switcherModMask = 0; return; }
+        dbg("switcher", "chord down: " + switcherPool.length + " windows, " + (cluster ? "cluster" : "plane") + (chordBlind ? ", blind" : ""));
+        switcherPending = true;
+        // The open canvas has nothing to flip past: the switcher shows at once.
+        if (canvasOpen || chordBlind) showSwitcher();
+        else switcherShowTimer.restart();
     }
+    // The chord's end: a tap flips to the pick, a hold enters it.
+    function chordRelease() {
+        if (switcherPending) {
+            const w = switcherPickWindow();
+            endSwitcher();
+            dbg("switcher", "tap: " + (w ? w.caption : "nothing"));
+            if (w) focusAndFly(w);
+            return;
+        }
+        if (!switcherActive) return;
+        switcherModMask = 0;
+        switcherSettle.stop();
+        // Nothing picked yet (a debug open, a pick that closed): the release lands on the window
+        // used before this one, the task switcher's plain Alt+Tab.
+        let picked = false;
+        for (let i = 0; i < entries.length; ++i) if (isSelected(entries[i])) { picked = true; break; }
+        if (!picked) cycleSelection(1);
+        dbg("switcher", "release: entering");
+        applyKey();
+    }
+    // The chord's channel through the plugin: chordUp is bumped by its key filter when the last of
+    // the chord's modifiers goes up (the fast path), and the poll below asks for the seat's live mask.
+    property int chordUp: 0
+    onChordUpChanged: if (switcherModMask !== 0) chordRelease()
     Timer {
         interval: 80
         repeat: true
-        running: effect.switcherActive && effect.switcherFromChord && effect.switcherModMask !== 0
-        onTriggered: {
-            if (effect.passthroughLive) modifiersCall.call();
-        }
+        running: (effect.switcherActive || effect.switcherPending) && effect.switcherFromChord && effect.switcherModMask !== 0 && !effect.chordBlind
+        onTriggered: modifiersCall.call()
     }
     KWin.DBusCall {
         id: modifiersCall
@@ -2980,52 +3343,91 @@ KWin.SceneEffect {
         dbusInterface: "org.kde.kwin.canvas.Passthrough"
         method: "modifiers"
         onFinished: (result) => {
-            if (!effect.switcherActive || !effect.switcherFromChord || effect.switcherModMask === 0) return;
+            if (effect.switcherModMask === 0 || effect.chordBlind) return;
             const m = Number(result);
-            if (isNaN(m)) {
-                // The channel is gone (an older plugin without modifiers):
-                // treat it as the release - the settle's beat is the only
-                // path left, and it must never leave the switcher stuck.
-                effect.chordRelease();
-                return;
-            }
+            if (isNaN(m)) { effect.goChordBlind(); return; }
             if ((m & effect.switcherModMask) === 0) effect.chordRelease();
-            else switcherSettle.restart();
         }
+        // No plugin to ask (the call fails rather than answering): the release cannot be seen.
+        onFailed: effect.goChordBlind()
     }
-    // The switcher: the whole plane fitted to the screen. The chord opens
-    // the canvas fitted to the world; Tab and Shift+Tab step the selection
-    // - the camera and the map's highlight follow - Enter enters the chosen
-    // window, Esc or the chord again steps back out.
+    // The chord's release cannot be seen (no plugin): the switcher shows at once and the beat
+    // (switcherSettle) enters after the last step.
+    function goChordBlind() {
+        if (switcherModMask === 0 || chordBlind) return;
+        chordBlind = true;
+        if (switcherPending) showSwitcher();
+        else if (switcherActive) switcherSettle.restart();
+    }
+    function pluginPresent() { return typeof canvasPlugin !== "undefined" && !!canvasPlugin; }
+    // A window gets the focus and the camera brings it in: the walk's, a tap's. With FollowActivation
+    // on the activation flies by itself; off, the fly is asked here, since these are moves the hand
+    // made to reach that window.
+    function focusAndFly(w) {
+        if (!w || w.deleted) return;
+        landQuiet();
+        if (canvasOpen) { const e = entryFor(w); if (e) { selectOnly(e); focusWindow(e); } return; }
+        if (configuration.FollowActivation === false && isFlyableWindow(w) && !wholeOnOneMonitor(w.frameGeometry)) flyToWindow(w);
+        KWin.Workspace.activeWindow = w;
+    }
+    // The switcher: shown on a hold (or a second Tab, or at once with the canvas open).
     property bool switcherActive: false
+    function showSwitcher() {
+        switcherShowTimer.stop();
+        if (!switcherPending) return;
+        switcherPending = false;
+        openSwitcherView();
+        if (!switcherActive) return;
+        const w = switcherPickWindow();
+        const e = w ? entryFor(w) : null;
+        if (e) { selectOnly(e); bringIntoView(e); }
+        if (switcherFromChord && chordBlind) switcherSettle.restart();
+    }
+    // Esc in the switcher steps back out of the switcher, not out of the canvas: the overview
+    // and its camera come back as they were, and a switcher that opened the canvas closes it
+    // with nothing moved.
+    function switcherEsc() {
+        if (!switcherActive) return false;
+        const opened = switcherOpened, cam = switcherCamBefore;
+        endSwitcher();
+        if (opened) cancel();
+        else if (cam) camGo(cam.z, cam.x, cam.y, undefined, undefined, 2.5);
+        return true;
+    }
+    // The debug channel's switcher (no chord held): shown at once, stepped by Tab, entered by Enter.
     function switcherToggle() {
-        if (switcherActive) {
-            // A repeat of the chord while the switcher is up steps the
-            // selection, the way Alt+Tab cycles while the key is held -
-            // through the gate, so a held key's repeats are ignored and
-            // only a deliberate re-tap moves it.
-            switcherCycle(1);
-            return;
-        }
-        if (effect.canvasHold) return;
-        // The world is the map: the switcher opens the canvas fitted to
-        // the whole plane, from the closed location or the open overworld
-        // alike - the chord is the switcher wherever it fires, and only a
-        // hold in progress stands it down. The selection cycle still rides
-        // Tab and Enter to step in. The fit rides a brisk flight and the
-        // windows rise in z at the same time, so the switch-in is a snap,
-        // not a wait.
+        if (switcherActive) { switcherCycle(1); return; }
+        if (canvasHold) return;
+        switcherPool = mruWindows(switcherCluster);
+        switcherSteps = 0;
+        openSwitcherView();
+    }
+    // Where the camera was before the switcher showed, and whether the switcher opened the
+    // canvas: Esc steps back out of the switcher to that, not out of the canvas.
+    property var switcherCamBefore: null
+    property bool switcherOpened: false
+    function openSwitcherView() {
+        // The world is the map: the switcher opens the canvas fitted to the whole plane (or the
+        // cluster), from the closed location or the open overworld alike. The fit rides a brisk
+        // flight and the windows rise in z at the same time, so the switch-in is a snap, not a wait.
+        switcherOpened = !visible;
+        switcherCamBefore = visible ? { z: camHasGoal ? camGoalZoom : zoom, x: camHasGoal ? camGoalX : viewX, y: camHasGoal ? camGoalY : viewY } : null;
         if (!visible) open();
+        // Refused (safe mode, game mode): nothing is armed, or the chord's release would be
+        // waited for by a switcher that never shows.
+        if (!visible) { endSwitcher(); return; }
         switcherActive = true;
         switcherRiseAnim.restart();
+        // The cluster switcher fits the cluster the eye is on, not the whole plane: the pick is a
+        // short hop among neighbours. A cluster of one (or none) steps the whole plane (mruWindows),
+        // so it fits the world, as the plane switcher does.
+        let poolInCluster = false;
         if (switcherCluster) {
-            // The cluster switcher fits the cluster the eye is on, not the
-            // whole plane: the pick is a short hop among neighbours. A
-            // cluster of one (or none) has nothing to scope to - the world
-            // fit stands in.
             const ci = clusterIndex();
             const r = ci >= 0 ? clusterRect(ci) : null;
-            if (r && (r.width > 0 || r.height > 0)) {
+            poolInCluster = !!r && (r.width > 0 || r.height > 0) && switcherPool.length > 0
+                && switcherPool.every(function (w) { const e = entryFor(w); return !e || clusterOf[String(w.internalId)] === ci; });
+            if (poolInCluster) {
                 const sg = actionScreen().geometry;
                 const z = Math.min(1.0, Math.max(0.2, Math.min(sg.width / (r.width + 48), sg.height / (r.height + 48))));
                 camGo(z, r.x + r.width / 2 - (sg.x + sg.width / 2) / z, r.y + r.height / 2 - (sg.y + sg.height / 2) / z, undefined, undefined, 3.0);
@@ -3035,19 +3437,11 @@ KWin.SceneEffect {
         } else {
             zoomExtents(true, 3.0);
         }
-        // The overworld's chrome can take the scene's keyboard focus (the
-        // menus' focus scopes) - the switcher needs the keys, so the view
-        // takes the focus back once the fit is on screen.
+        // The overworld's chrome can take the scene's keyboard focus (the menus' focus scopes) - the
+        // switcher needs the keys, so the view takes the focus back once the fit is on screen.
         switcherFocusReq++;
         clickPanEntry = null;
         clickPanTimer.stop();
-        // The chord's own beat: the settle arms here, every step re-arms
-        // it, and the modifier poll keeps it at bay while the chord is
-        // held - so the enter always comes, whatever link of the release
-        // chain survives. The debug channel's switch (no chord held)
-        // keeps the manual Enter instead, so the scenarios drive it
-        // deterministically.
-        if (switcherFromChord) switcherSettle.restart();
     }
     property var clickedWindow: null
     onPointerButtonsChanged: {
@@ -3098,7 +3492,7 @@ KWin.SceneEffect {
     // window must stay inside the torch's reach) plus a margin, so the
     // plane can keep growing before the sphere follows it.
     function panBy(dx, dy) {
-        effect.dbg("pan", "panBy dx=" + dx + " dy=" + dy);
+        if (verb) effect.dbg("pan", "panBy dx=" + dx + " dy=" + dy);
         // The hand moves the plane exactly, at every zoom: the eye and the
         // hand agree everywhere. (The arc - the camera riding a sphere the
         // tan accelerated - left with the sphere.)
@@ -3214,7 +3608,7 @@ KWin.SceneEffect {
     property real lastZoom: 1
     property real skinFromZoom: 1
     function camGo(z, goalX, goalY, gx, gy, rate) {
-        dbg("camGo", "z=" + z + " goal=(" + Math.round(goalX) + "," + Math.round(goalY) + ")");
+        if (verb) dbg("camGo", "z=" + z + " goal=(" + Math.round(goalX) + "," + Math.round(goalY) + ")");
         z = clampZoom(z);
         const pinned = gx !== undefined && gx !== null;
         // A new goal during a flight keeps the camera's speed: the spring turns toward it instead
@@ -3559,8 +3953,13 @@ KWin.SceneEffect {
     // (make hot) or a relogin tries. `kwin-canvas check` and doctor name the error.
     property bool safeMode: false
     function sceneFailed() {
-        if (!safeMode) console.warn("kwin-canvas: the scene (ui.qml) failed to load; the canvas stays closed until it loads again (kwin-canvas doctor names the error)");
+        if (!safeMode) {
+            console.warn("kwin-canvas: the scene (ui.qml) failed to load; the canvas stays closed until it loads again (kwin-canvas doctor names the error)");
+            notify("Canvas: the scene failed to load, so the canvas stays closed (kwin-canvas doctor)");
+        }
         safeMode = true;
+        // The plugin must not keep the pointer and the keys for a canvas that is not there.
+        dropPassthrough();
         Qt.callLater(function () { visible = false; quiet = false; camStop(); });
     }
     onHotRevChanged: safeMode = false
@@ -3919,7 +4318,12 @@ KWin.SceneEffect {
 
     // The chord: step out to the canvas, or enter the location in view.
     function toggle() {
-        if (quiet) { if (grasp) graspEnd(); else finishSlide(); return; }
+        // A chord during a slide lands the slide first and then does what it says (as Home, the
+        // walk and the search do); the grasp's hold is its own gesture and the chord only ends it.
+        if (quiet) { if (grasp) { graspEnd(); return; } finishSlide(); }
+        // Pushed again with the camera where the open left it (the border's own rule): nothing was
+        // chosen, so the way out is the way back, not the plane's middle.
+        if (visible && untouchedSinceOpen()) { cancel(); return; }
         if (visible) enterHere(); else open();
     }
 
@@ -4787,17 +5191,11 @@ KWin.SceneEffect {
         if (f.x !== e.frameX || f.y !== e.frameY) {
             // Against the frame the canvas knows: KWin's reachability rule is not a move to follow.
             const was = { x: e.frameX, y: e.frameY, width: e.width, height: e.height };
-            if (classifyFrame(e.window, was, f) === "revert") { revertFrame(e.window, was); return false; }
+            const kind = classifyFrame(e.window, was, f);
+            if (kind !== "adopt") { revertFrame(e.window, was, kind); return false; }
             // Something else moved the real window (an app, a rule, a tiler, the hand): its plane
             // coordinates follow. Logged with Perf.
-            if (perf && perfMoves < 60) {
-                perfMoves++;
-                perfLog("moved", "win=" + String(e.window.caption).replace(/[ =]/g, "_").slice(0, 30)
-                    + " cls=" + String(e.window.resourceClass).replace(/[ =]/g, "_").slice(0, 20)
-                    + " dx=" + (f.x - e.frameX) + " dy=" + (f.y - e.frameY)
-                    + " open=" + (visible ? 1 : 0) + " quiet=" + (quiet ? 1 : 0)
-                    + " pinned=" + (isPinnedEntry(e) ? 1 : 0) + " floats=" + pinnedCount + " " + perfSince());
-            }
+            perfMoved(e.window, was, f);
             e.x += f.x - e.frameX;
             e.y += f.y - e.frameY;
             e.frameX = f.x;
@@ -6083,11 +6481,18 @@ KWin.SceneEffect {
         // focused window lands with its cluster around it, not pinned at
         // the screen edge (the plain least-pan parked the window at the
         // edge with the cluster just outside).
+        // Closed, the entries are the last open's snapshot, not where the windows are now: the
+        // neighbours come from the live windows (planeGraph).
         const others = [];
-        for (let i = 0; i < entries.length; ++i) {
-            const e = entries[i];
-            if (e.window === w) continue;
-            others.push({ x: e.x, y: e.y, width: e.width, height: e.height });
+        if (visible) {
+            for (let i = 0; i < entries.length; ++i) {
+                const e = entries[i];
+                if (e.window === w) continue;
+                others.push({ x: e.x, y: e.y, width: e.width, height: e.height });
+            }
+        } else {
+            const g = planeGraph();
+            for (let i = 0; i < g.nodes.length; ++i) if (g.win[g.nodes[i].id] !== w) others.push(g.nodes[i]);
         }
         const d = smartPan(rect, others, 24);
         if (d.dx !== 0 || d.dy !== 0) slideTo(d.dx, d.dy);
@@ -6123,7 +6528,11 @@ KWin.SceneEffect {
             effect.noteFocusSettling();
             // The lit cluster follows the active window.
             effect.scheduleWeave();
-            if (w && !w.deleted) { focusAt[w.internalId] = Date.now(); }
+            // The window gaining the focus and the one losing it: KWin sends each a configure
+            // now, which the echo net (classifyFrame) asks about.
+            if (w && !w.deleted) { focusAt[w.internalId] = Date.now(); focusFlipAt[w.internalId] = Date.now(); }
+            if (effect.lastActive && !effect.lastActive.deleted && effect.lastActive !== w) focusFlipAt[effect.lastActive.internalId] = Date.now();
+            effect.lastActive = w && !w.deleted ? w : null;
             // Open: a raise (pass-through clicks) restacks the thumbnails.
             // The plane transform is only ever live while open, so the
             // on-screen test below always sees geometry as drawn.
@@ -6150,7 +6559,7 @@ KWin.SceneEffect {
         function onActivitiesChanged(id) { Qt.callLater(effect.activitiesChanged); }
         // App popups come and go with these too; resync() refreshes them.
         function onWindowAdded(w) { if (w && w.dock) effect.lastDockAt = Date.now(); effect.watchWindow(w); effect.noteNewWindow(w); if (w && w.desktopWindow) Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
-        function onWindowRemoved(w) { if (w && w.dock) effect.lastDockAt = Date.now(); if (w) { delete effect.focusAt[w.internalId]; delete effect.floatHome[w.internalId]; delete effect.blurMemo[String(w.internalId)]; delete effect.revertLog[w.internalId]; delete effect.parked[w.internalId]; delete effect.watchedWindows[w.internalId]; delete effect.planeRestore[w.internalId]; delete effect.holdTrack[w.internalId]; delete effect.dirtyWindows[w.internalId]; } if (w && w.desktopWindow) Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
+        function onWindowRemoved(w) { if (w && w.dock) effect.lastDockAt = Date.now(); if (w) { delete effect.focusAt[w.internalId]; delete effect.floatHome[w.internalId]; delete effect.blurMemo[String(w.internalId)]; delete effect.revertLog[w.internalId]; delete effect.leftSpots[w.internalId]; delete effect.parked[w.internalId]; delete effect.watchedWindows[w.internalId]; delete effect.planeRestore[w.internalId]; delete effect.holdTrack[w.internalId]; delete effect.dirtyWindows[w.internalId]; } if (w && w.desktopWindow) Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
         // Switching activities at 1:1 switches viewport: the ground follows.
         function onCurrentActivityChanged(id) {
             // A slide belongs to the activity it began on: in flight it has written nothing and
@@ -6199,18 +6608,43 @@ KWin.SceneEffect {
         sequence: effect.configuration.ToggleShortcut
         onActivated: effect.toggle()
     }
+    // The switchers (chordPress): a tap flips to the window used last, a hold shows the switcher,
+    // the release enters. The reverse chords step back; they hold the same modifiers.
     KWin.ShortcutHandler {
         name: "Canvas Switcher"
-        text: "Canvas: the switcher - the whole plane as a map; hold the chord and step with Tab, release or press Enter to enter"
+        text: "Canvas: the switcher - tap for the window used last; hold for the whole plane as a map, step with Tab, release to enter"
         sequence: effect.configuration.SwitcherShortcut
-        onActivated: { effect.switcherFromChord = true; effect.switcherCluster = false; effect.switcherModMask = effect.modMaskOf(effect.configuration.SwitcherShortcut); effect.switcherToggle() }
+        onActivated: effect.chordPress(false, 1, effect.configuration.SwitcherShortcut, effect.configuration.SwitcherReverseShortcut)
+    }
+    KWin.ShortcutHandler {
+        name: "Canvas Switcher Reverse"
+        text: "Canvas: the switcher, stepping back (bind over KWin's Walk Through Windows (Reverse))"
+        sequence: effect.configuration.SwitcherReverseShortcut
+        onActivated: effect.chordPress(false, -1, effect.configuration.SwitcherShortcut, effect.configuration.SwitcherReverseShortcut)
     }
     KWin.ShortcutHandler {
         name: "Canvas Switcher Alternate"
-        text: "Canvas: the cluster switcher - steps among the windows of the cluster the eye is on, fitted to it (bind over KWin's own Alt+Tab)"
+        text: "Canvas: the cluster switcher - tap for the window used last; hold to step among the windows of the cluster the eye is on (bind over KWin's own Alt+Tab)"
         sequence: effect.configuration.SwitcherAltShortcut
-        onActivated: { effect.switcherFromChord = true; effect.switcherCluster = true; effect.switcherModMask = effect.modMaskOf(effect.configuration.SwitcherAltShortcut); effect.switcherToggle() }
+        onActivated: effect.chordPress(true, 1, effect.configuration.SwitcherAltShortcut, effect.configuration.SwitcherAltReverseShortcut)
     }
+    KWin.ShortcutHandler {
+        name: "Canvas Switcher Alternate Reverse"
+        text: "Canvas: the cluster switcher, stepping back (bind over KWin's Walk Through Windows (Reverse))"
+        sequence: effect.configuration.SwitcherAltReverseShortcut
+        onActivated: effect.chordPress(true, -1, effect.configuration.SwitcherAltShortcut, effect.configuration.SwitcherAltReverseShortcut)
+    }
+    // The window graph (walk, carry): Meta+Alt+arrows step the focus to the next window that way,
+    // through the cluster and on to the next one; with Shift the focused window is carried into the
+    // next cluster that way. In the open canvas they move and carry the selection.
+    KWin.ShortcutHandler { name: "Canvas Walk Left";  text: "Canvas: walk to the window to the left";  sequence: effect.configuration.WalkLeftShortcut;  onActivated: effect.walk("left") }
+    KWin.ShortcutHandler { name: "Canvas Walk Right"; text: "Canvas: walk to the window to the right"; sequence: effect.configuration.WalkRightShortcut; onActivated: effect.walk("right") }
+    KWin.ShortcutHandler { name: "Canvas Walk Up";    text: "Canvas: walk to the window above";       sequence: effect.configuration.WalkUpShortcut;    onActivated: effect.walk("up") }
+    KWin.ShortcutHandler { name: "Canvas Walk Down";  text: "Canvas: walk to the window below";       sequence: effect.configuration.WalkDownShortcut;  onActivated: effect.walk("down") }
+    KWin.ShortcutHandler { name: "Canvas Carry Left";  text: "Canvas: carry the window into the next cluster to the left";  sequence: effect.configuration.CarryLeftShortcut;  onActivated: effect.carry("left") }
+    KWin.ShortcutHandler { name: "Canvas Carry Right"; text: "Canvas: carry the window into the next cluster to the right"; sequence: effect.configuration.CarryRightShortcut; onActivated: effect.carry("right") }
+    KWin.ShortcutHandler { name: "Canvas Carry Up";    text: "Canvas: carry the window into the next cluster above";       sequence: effect.configuration.CarryUpShortcut;    onActivated: effect.carry("up") }
+    KWin.ShortcutHandler { name: "Canvas Carry Down";  text: "Canvas: carry the window into the next cluster below";       sequence: effect.configuration.CarryDownShortcut;  onActivated: effect.carry("down") }
     KWin.ShortcutHandler {
         name: "Canvas Search"
         text: "Canvas: find a window by typing its title or app"
@@ -6475,6 +6909,9 @@ KWin.SceneEffect {
             break;
         }
         case "switch": switcherFromChord = false; switcherCluster = false; switcherToggle(); break;
+        // walk DIR | carry DIR: the walk and carry keys (left, right, up, down).
+        case "walk": if (["left", "right", "up", "down"].indexOf(a[1]) >= 0) walk(a[1]); break;
+        case "carry": if (["left", "right", "up", "down"].indexOf(a[1]) >= 0) carry(a[1]); break;
         case "switchcluster": switcherFromChord = false; switcherCluster = true; switcherToggle(); break;
         case "clusterjump": if (numok(1)) clusterJumpTo(Number(a[1])); break;
         case "clustername": {
@@ -6512,9 +6949,11 @@ KWin.SceneEffect {
             + " cam=" + (camHasGoal ? "goal" : (camLive() ? "glide" : "-"))
             + " focus=" + (focusEntry ? JSON.stringify(focusEntry.window.caption) : "-")
             + " clusters=" + clusters.length + " cluster=" + (clusterIndex() >= 0 ? "#" + (clusterIndex() + 1) : "-")
+            + " graph=" + graphShape + " switcher=" + (switcherActive ? "shown" : switcherPending ? "pending" : "-")
             + " draglag=" + Math.round(Math.sqrt(dragLagX * dragLagX + dragLagY * dragLagY)) + " lean=" + dragLean.toFixed(2)
             + " idle=" + (passthroughIdle ? "1" : "0")
             + " seam=" + (seamPark ? "1" : "0")
+            + " seq=" + lastDebugSeq
             + " graspTarget=" + (graspTarget ? entries.indexOf(graspTarget) : "-")
             + " outcome=" + (grasp ? (zoom < 0.72 ? "world" : "land") : "-")
             + " rest=" + (restStart ? "1" : "0")
@@ -6532,6 +6971,9 @@ KWin.SceneEffect {
             // The plugin's scene helper (ui.qml's frameTex): with it the corners are cut from
             // KWin's own texture, without it through a layer per window.
             + " scenehelper=" + (typeof canvasPlugin !== "undefined" && canvasPlugin ? 1 : 0)
+            // How the canvas moves a window: "plugin" (Window::move, queued configures re-aimed), or
+            // "frame" (a frame write, the echo caught after it; setReal).
+            + " mover=" + (typeof canvasPlugin !== "undefined" && canvasPlugin && typeof canvasPlugin.moveWindow === "function" ? "plugin" : "frame")
             // Application windows KWin draws offscreen for a thumbnail, the canvas's or anyone's:
             // each costs a copy per changed frame, so a closed canvas holds none (ui.qml's picture).
             + " offscreen=" + (typeof canvasPlugin !== "undefined" && canvasPlugin && canvasPlugin.offscreenWindows ? canvasPlugin.offscreenWindows() : "-")
@@ -6606,7 +7048,7 @@ KWin.SceneEffect {
         hotRev = Number(configuration.HotRev) || 0;
         rebuildBindings();
         readSwipeFingers();
-        publishHold();
+        publishPlugin();
         refreshGroundWallpaper();
         Qt.callLater(recluster);
         const seq = configuration.DebugSeq;
@@ -6629,20 +7071,16 @@ KWin.SceneEffect {
         refreshActivities();
         refreshDesktopWindow();
         lastDebugSeq = configuration.DebugSeq;
-        publishHold();
+        publishPlugin();
         refreshGroundWallpaper();
         // The last committed viewport: the plane comes back where it was.
         viewX = Number(configuration.ViewX) || 0;
         viewY = Number(configuration.ViewY) || 0;
         const t0 = targets[currentActivity];
         if (t0) { t0.x = viewX; t0.y = viewY; }
-        // The harness can write a command before the QML completes: KWin
-        // reports the effect loaded first, and a reconfigure that lands
-        // before onCompleted never fires onConfigurationChanged. Run the
-        // pending command here, once, so the first command of a nest is
-        // never lost.
-        const cmd = configuration.DebugCommand;
-        if (cmd && cmd.length > 0) runDebug(cmd);
+        // A command left in kwinrc is not run at load: the CLI and the harness send one only once
+        // the effect answers as loaded, and clear it once it ran (an `open` left there used to open
+        // the canvas at every login).
         if (configuration.AutoActivate) {
             Qt.callLater(open);
         }

@@ -173,6 +173,24 @@ QVariantList CanvasSceneHelper::frameInTexture(QObject *window) const
     return {-bounds.x(), -bounds.y(), frame.width(), frame.height(), bounds.width(), bounds.height()};
 }
 
+bool CanvasSceneHelper::moveWindow(QObject *window, qreal x, qreal y)
+{
+    Window *w = qobject_cast<Window *>(window);
+    if (!w || w->isDeleted()) {
+        return false;
+    }
+    // A window under the hand snaps back to the pointer at its next motion, and an X11
+    // override-redirect window refuses a move: the effect's frame write (its fallback) is the
+    // honest path for both.
+    if (workspace()->moveResizeWindow() == w || w->isUnmanaged()) {
+        return false;
+    }
+    // XdgSurfaceWindow::moveResizeInternal: only MoveResizeMode::Move moves the queued
+    // configures' bounds along; a commit of one sent before the move then keeps the new place.
+    w->move(QPointF(x, y));
+    return true;
+}
+
 int CanvasSceneHelper::offscreenWindows() const
 {
     int count = 0;
@@ -192,29 +210,29 @@ CanvasPassthrough::CanvasPassthrough()
 {
     input()->installInputEventFilter(this);
     // The session bus can still be starting when the plugin loads; a failed
-    // registration is retried a few times rather than lost, since the effect
-    // only ever finds the plugin through this object.
-    for (int i = 1; i <= 5; ++i) {
-        QTimer::singleShot(200 * i, this, [this]() {
-            if (!m_registered) {
-                m_registered = QDBusConnection::sessionBus().registerObject(s_path, this, QDBusConnection::ExportScriptableSlots);
-            }
-            // The map widget's object beside it, with its change signal exported.
-            if (!m_mapRegistered) {
-                m_mapRegistered = QDBusConnection::sessionBus().registerObject(s_mapPath, &m_map, QDBusConnection::ExportScriptableSlots | QDBusConnection::ExportScriptableSignals);
-            }
-            // The scene's helper goes on KWin's QML engine the same way: the effects handler and
-            // the workspace may still be coming up when the plugin loads. The scene reads it when
-            // its views are made, at the first open, well after this.
-            if (!m_sceneHelper && effects && effects->qmlEngine() && workspace()) {
-                m_sceneHelper = new CanvasSceneHelper(this);
-                effects->qmlEngine()->rootContext()->setContextProperty(QStringLiteral("canvasPlugin"), m_sceneHelper);
-            }
-        });
-    }
+    // registration is retried rather than lost, since the effect only ever
+    // finds the plugin through this object: five quick tries, then every two
+    // seconds for half a minute, and a warning in the journal when the quick
+    // ones did not take (a half-registered plugin used to fail in silence).
+    registerLater(1);
     // The hold mask from the config, so a missed publish cannot leave the
     // modifier dead; the effect's setHoldButtons keeps it current.
     m_hold = parseHoldButtons(KSharedConfig::openConfig(QStringLiteral("kwinrc"))->group(QStringLiteral("Effect-kwin-canvas")).readEntry("CanvasHold", QStringLiteral("BackButton")));
+    // The decor applet draws the native title-bar buttons in the panel; their order is read
+    // here once and again whenever the Window Decorations page writes it, so the applet asks
+    // no process for it.
+    readButtonOrder();
+    m_configWatcher = KConfigWatcher::create(KSharedConfig::openConfig(QStringLiteral("kwinrc")));
+    connect(m_configWatcher.data(), &KConfigWatcher::configChanged, this, [this](const KConfigGroup &group) {
+        if (group.name() == QLatin1String("org.kde.kdecoration2")) {
+            readButtonOrder();
+            Q_EMIT windowChanged();
+        }
+    });
+    // The focused window and its flags, told to whoever listens (the decor applet) as they
+    // change, so nothing has to poll for them.
+    connect(workspace(), &Workspace::windowActivated, this, &CanvasPassthrough::watchActive);
+    watchActive(workspace()->activeWindow());
     // The passthrough lets go on its own: after a while with no input -
     // the pointer still, no keys - the canvas takes the input back, so
     // the Esc the user reaches for is the canvas's, not the window's,
@@ -275,6 +293,39 @@ CanvasPassthrough::~CanvasPassthrough()
     }
 }
 
+void CanvasPassthrough::registerLater(int attempt)
+{
+    const int delay = attempt <= 5 ? 200 : 2000;
+    QTimer::singleShot(delay, this, [this, attempt]() {
+        if (!m_registered) {
+            m_registered = QDBusConnection::sessionBus().registerObject(s_path, this, QDBusConnection::ExportScriptableSlots | QDBusConnection::ExportScriptableSignals);
+        }
+        // The map widget's object beside it, with its change signal exported.
+        if (!m_mapRegistered) {
+            m_mapRegistered = QDBusConnection::sessionBus().registerObject(s_mapPath, &m_map, QDBusConnection::ExportScriptableSlots | QDBusConnection::ExportScriptableSignals);
+        }
+        // The scene's helper goes on KWin's QML engine the same way: the effects handler and
+        // the workspace may still be coming up when the plugin loads. The scene reads it when
+        // its views are made, at the first open, well after this.
+        if (!m_sceneHelper && effects && effects->qmlEngine() && workspace()) {
+            m_sceneHelper = new CanvasSceneHelper(this);
+            effects->qmlEngine()->rootContext()->setContextProperty(QStringLiteral("canvasPlugin"), m_sceneHelper);
+        }
+        const bool done = m_registered && m_mapRegistered && m_sceneHelper;
+        if (done) {
+            return;
+        }
+        if (attempt == 5) {
+            qCWarning(KWIN_CANVAS) << "canvas-passthrough: not fully registered after 1 s (bus" << m_registered << "map" << m_mapRegistered << "scene helper" << bool(m_sceneHelper) << "); still trying";
+        }
+        if (attempt < 20) {
+            registerLater(attempt + 1);
+        } else {
+            qCWarning(KWIN_CANVAS) << "canvas-passthrough: gave up registering after 30 s; the canvas runs without the plugin (kwin-canvas doctor)";
+        }
+    });
+}
+
 QString CanvasPassthrough::probe() const
 {
     return QStringLiteral("kwin-canvas-passthrough %1 kwin %2").arg(QStringLiteral(CANVAS_VERSION), KWIN_VERSION_STRING);
@@ -284,11 +335,57 @@ QObject *CanvasPassthrough::canvasEffect() const
 {
     if (!m_canvasEffect && effects) {
         m_canvasEffect = effects->findEffect(QStringLiteral("kwin-canvas"));
-        // A new effect object knows nothing of what the old one was told.
+        // A new effect object knows nothing of what the old one was told: every flag the filter
+        // keeps and publishes on change is written out afresh.
         m_restPublished.clear();
         m_hoverPublished.clear();
+        if (m_canvasEffect) {
+            m_canvasEffect->setProperty("chromeHover", m_chromeHover);
+            m_canvasEffect->setProperty("pointerButtons", int(m_allButtons));
+            m_canvasEffect->setProperty("passthroughIdle", m_idle);
+            m_canvasEffect->setProperty("canvasHold", m_holdDown);
+        } else if (m_active) {
+            // The effect went away (turned off, reloaded) with the canvas open: nothing will ask
+            // the passthrough to stand down, so it stands down now, at a plain camera, or the
+            // closed desktop would get the hover and the grab through the last overview's zoom.
+            qCDebug(KWIN_CANVAS) << "canvas-passthrough: the effect is gone while active; standing down";
+            auto *self = const_cast<CanvasPassthrough *>(this);
+            self->setActive(false);
+            self->m_viewX = 0;
+            self->m_viewY = 0;
+            self->m_zoom = 1;
+        }
     }
     return m_canvasEffect;
+}
+
+// The decor applet's half: the native title-bar button order, and the focused window's flags
+// told as they change.
+void CanvasPassthrough::readButtonOrder()
+{
+    KSharedConfig::Ptr cfg = KSharedConfig::openConfig(QStringLiteral("kwinrc"));
+    cfg->reparseConfiguration();
+    const KConfigGroup g = cfg->group(QStringLiteral("org.kde.kdecoration2"));
+    m_buttonsLeft = g.readEntry("ButtonsOnLeft", QStringLiteral("MS"));
+    m_buttonsRight = g.readEntry("ButtonsOnRight", QStringLiteral("HIAX"));
+}
+
+void CanvasPassthrough::watchActive(Window *w)
+{
+    if (m_watchedActive) {
+        disconnect(m_watchedActive, nullptr, this, nullptr);
+    }
+    m_watchedActive = w;
+    if (w) {
+        const auto tell = [this]() { Q_EMIT windowChanged(); };
+        connect(w, &Window::maximizedChanged, this, tell);
+        connect(w, &Window::keepAboveChanged, this, tell);
+        connect(w, &Window::keepBelowChanged, this, tell);
+        connect(w, &Window::desktopsChanged, this, tell);
+        connect(w, &Window::excludeFromCaptureChanged, this, tell);
+        connect(w, &Window::captionChanged, this, tell);
+    }
+    Q_EMIT windowChanged();
 }
 
 void CanvasPassthrough::wakeFromIdle()
@@ -421,7 +518,9 @@ void CanvasPassthrough::setNavButtons(int buttons)
 
 void CanvasPassthrough::setHoldDelay(int ms)
 {
-    if (ms > 0) {
+    // As setHoverDelay: the effect publishes it on every reconfigure, and an unchanged value
+    // must not restart a hold's running clock.
+    if (ms > 0 && m_holdTimer.interval() != ms) {
         m_holdTimer.setInterval(ms);
     }
 }
@@ -625,6 +724,9 @@ QString CanvasPassthrough::state() const
                   .arg(w->keepBelow() ? QStringLiteral("1") : QStringLiteral("0"))
                   .arg(w->excludeFromCapture() ? QStringLiteral("1") : QStringLiteral("0"));
     }
+    // The native title-bar button order rides along too, for the decor applet (replyField keeps
+    // the letters plain). It goes before the window, so " win=" stays the trailing token.
+    const QString buttons = QStringLiteral(" buttons=%1|%2").arg(replyField(m_buttonsLeft), replyField(m_buttonsRight));
     return QStringLiteral("active=%1 view=(%2,%3) zoom=%4 grab=%5 ground=%6 hover=%7 nav=%8 hold=%9 seam=%10")
                .arg(m_active ? QStringLiteral("true") : QStringLiteral("false"))
                .arg(m_viewX)
@@ -636,7 +738,7 @@ QString CanvasPassthrough::state() const
                .arg(m_nav)
                .arg(m_hold)
                .arg(atSeam(waylandServer()->seat()->pointerPos()) ? QStringLiteral("1") : QStringLiteral("0"))
-        + win;
+        + buttons + win;
 }
 
 // The panel applet's window decor: the four glyph actions, applied to the
@@ -931,7 +1033,9 @@ Window *CanvasPassthrough::chromeAt(const QPointF &screen) const
     const QList<Window *> &stack = workspace()->stackingOrder();
     for (auto it = stack.crbegin(); it != stack.crend(); ++it) {
         Window *w = *it;
-        if (!w->isClient() || w->isDeleted()) {
+        // An X11 override-redirect window (an Xwayland menu, a tooltip) is not a client and
+        // is chrome all the same, so it is kept before the client test.
+        if (w->isDeleted() || (!w->isClient() && !w->isUnmanaged())) {
             continue;
         }
         if (w->isDesktop()) {
@@ -1096,22 +1200,70 @@ void CanvasPassthrough::clearGrab()
 
 // ---- the filter --------------------------------------------------------------
 
+void CanvasPassthrough::reconcileButtons(Qt::MouseButtons down)
+{
+    // A release this filter never saw - a drag-and-drop the client started, the lock screen,
+    // a VT switch, each of them a filter ahead of this one that kept the release - would leave
+    // the tally, the grab and the hold believing a button is still down for the rest of the
+    // session. The event's own button state is the truth; everything kept here follows it.
+    if (m_allButtons != down) {
+        const bool wasAny = m_allButtons != Qt::NoButton;
+        m_allButtons = down;
+        if (wasAny != (down != Qt::NoButton)) {
+            if (QObject *canvas = canvasEffect()) {
+                canvas->setProperty("pointerButtons", int(down));
+            }
+        }
+    }
+    if (m_buttons & ~down) {
+        m_buttons &= down;
+        if (m_buttons == Qt::NoButton) {
+            if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: a release went past this filter; the grab is over";
+            m_grab = nullptr;
+            m_grabGround = false;
+        }
+    }
+    if (m_holdDown && !(down & m_heldButton)) {
+        m_holdDown = false;
+        if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: the hold's release went past this filter; the hold is over";
+        if (QObject *canvas = canvasEffect()) {
+            canvas->setProperty("canvasHold", false);
+        }
+    }
+    if (m_holdCandidate && !(down & m_candidateButton)) {
+        // The candidate's release was taken elsewhere: neither a hold nor a click to replay.
+        m_holdCandidate = false;
+        m_holdTimer.stop();
+    }
+}
+
 bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
 {
-    // The chrome flag is published on every event, active or not: the quiet
-    // grasp's scene needs it too, and the scene's handlers read it fresh for
-    // each press.
-    publishChrome(event->position);
+    reconcileButtons(event->buttons);
     // A candidate click turned drag: the effect must not fly to it.
     if (m_clickWindow && (event->position - m_clickPos).manhattanLength() > 6) {
         m_clickWindow = nullptr;
     }
-    // A closed canvas has nothing to hover, rest or wake: past the chrome and
-    // the click candidate the motion is the desktop's. This filter sees every
-    // motion of the session, a game's included (a gaming mouse sends a
-    // thousand a second), so it stops here. The hold opens the canvas from
-    // the closed desktop and keeps the whole path.
+    // A closed canvas has nothing to hover, rest or wake: past the click
+    // candidate the motion is the desktop's. This filter sees every motion of
+    // the session, a game's included (a gaming mouse sends a thousand a
+    // second), so it stops here, before the chrome walk over the stack (a
+    // press publishes the chrome itself, and nothing reads it while the
+    // canvas is closed). The hold opens the canvas from the closed desktop
+    // and keeps the whole path.
     if (!m_active && !m_holdDown) {
+        return false;
+    }
+    // The chrome flag is published on every event while the canvas is up: the quiet grasp's
+    // scene needs it too, and the scene's handlers read it fresh for each press.
+    publishChrome(event->position);
+    // A client the passthrough handed a press to asked KWin to move or resize it (a CSD title
+    // bar's drag, xdg_toplevel.move): KWin's own filter, which comes after this one, must get
+    // the motion and the release, or the move runs with nothing driving it.
+    if (workspace()->moveResizeWindow()) {
+        if (m_grab) {
+            clearGrab();
+        }
         return false;
     }
     wakeFromIdle();
@@ -1142,10 +1294,17 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
     const QPointF canvas = toCanvas(event->position);
     m_lastPosition = event->position;
     if (m_grab) {
-        // Implicit grab: the window keeps the pointer until the buttons are up.
-        if (!enter(m_grab, canvas)) {
-            waylandServer()->seat()->notifyPointerMotion(canvas - targetOf(m_grab));
-            waylandServer()->seat()->notifyPointerFrame();
+        // Implicit grab: the window keeps the pointer until the buttons are up, and so does the
+        // surface the press went to - a drag that crosses into a subsurface (a video, a
+        // popover) must not leave and re-enter mid-press, as a Wayland client expects its
+        // implicit grab to hold (KWin's own pointer blocks focus changes while a button is down).
+        SeatInterface *seat = waylandServer()->seat();
+        if (m_hoverSurface) {
+            seat->notifyPointerMotion(canvas - targetOf(m_grab));
+            seat->notifyPointerFrame();
+        } else if (!enter(m_grab, canvas)) {
+            seat->notifyPointerMotion(canvas - targetOf(m_grab));
+            seat->notifyPointerFrame();
         }
         return true;
     }
@@ -1200,6 +1359,14 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
 
 bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
 {
+    // The other buttons' state is reconciled first (this event's own button is handled below,
+    // as it always was), so a release that went past this filter cannot wedge the tally.
+    {
+        const Qt::MouseButtons others = event->state == PointerButtonState::Pressed
+            ? (event->buttons & ~Qt::MouseButtons(event->button))
+            : (event->buttons | Qt::MouseButtons(event->button));
+        reconcileButtons(others);
+    }
     publishChrome(event->position);
     // A press is never a rest: whatever cue the hover clock was filling
     // stops the moment a button lands.
@@ -1252,6 +1419,11 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
             }
         } else {
             if (m_holdDown) {
+                // Only the button that made the hold ends it; a second mask button pressed and
+                // released meanwhile was swallowed and means nothing.
+                if (Qt::MouseButton(uint(event->button)) != m_heldButton) {
+                    return true;
+                }
                 m_holdDown = false;
                 if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: hold released, canvas closes";
                 if (QObject *canvas = canvasEffect()) {
@@ -1314,7 +1486,25 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     if (!m_settled || wasIdle) {
         return false;
     }
+    // A move or resize KWin runs (a CSD drag a passed-on press started) gets its release
+    // from KWin's own filter, not from here (see pointerMotion).
+    if (workspace()->moveResizeWindow()) {
+        clearGrab();
+        return false;
+    }
     const bool pressed = event->state == PointerButtonState::Pressed;
+    // A popup holding a grab (a menu, a combo's list) is dismissed by a press outside it, and
+    // KWin's popup filter, which comes after this one, is what dismisses it: a press delivered
+    // to another window from here would leave the menu standing.
+    if (pressed && !m_grab) {
+        const QList<Window *> &all = workspace()->windows();
+        for (Window *w : all) {
+            if (w->hasPopupGrab() && !w->isDeleted()) {
+                if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: a popup holds a grab; the press is KWin's to dismiss it";
+                return false;
+            }
+        }
+    }
     // A canvas button belongs to the canvas: it never starts a grab, never
     // reaches a window, and never leaves one, wherever the pointer is. The
     // release is the canvas's too - the window never saw the press, so it must
@@ -1371,6 +1561,26 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
 bool CanvasPassthrough::keyboardKey(KeyboardKeyEvent *event)
 {
     if (m_verbose) qCDebug(KWIN_CANVAS) << "keyboardKey" << event->key;
+    // The chord's end, as it happens: while a switcher the chord opened is up, the effect holds the
+    // chord's modifiers in switcherModMask, and the release that lets the last of them go is the
+    // enter. Read once the event has been taken in (the seat's mask then has the release), and told
+    // to the effect by bumping its chordUp. Its poll of modifiers() stays as the fallback.
+    if (event->state == KeyboardKeyState::Released) {
+        if (QObject *canvas = canvasEffect()) {
+            const int mask = canvas->property("switcherModMask").toInt();
+            if (mask != 0) {
+                QTimer::singleShot(0, this, [this, mask]() {
+                    QObject *c = canvasEffect();
+                    if (!c || c->property("switcherModMask").toInt() != mask) {
+                        return;
+                    }
+                    if ((int(input()->keyboardModifiers()) & mask) == 0) {
+                        c->setProperty("chordUp", c->property("chordUp").toInt() + 1);
+                    }
+                });
+            }
+        }
+    }
     // A key whose press went to the window is released there, whatever the pointer, the idle or
     // the hover say by now (the pointer left for the ground with the key held).
     if (event->state == KeyboardKeyState::Released && m_keysToWindow.remove(event->nativeScanCode)) {
@@ -1400,6 +1610,13 @@ bool CanvasPassthrough::keyboardKey(KeyboardKeyEvent *event)
     }
     SeatInterface *seat = waylandServer()->seat();
     if (!seat->focusedKeyboardSurface()) {
+        return false;
+    }
+    // And only while the hovered window is the one the keys would reach: the seat delivers
+    // to the focused window, which with click-to-focus can be another than the one wearing
+    // the hand. Keys typed at a window the rest has not focused stay the canvas's rather than
+    // land in the window behind.
+    if (m_hover->surface() != seat->focusedKeyboardSurface()) {
         return false;
     }
     seat->notifyKeyboardKey(event->nativeScanCode, event->state, event->serial);

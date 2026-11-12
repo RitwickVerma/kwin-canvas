@@ -18,6 +18,14 @@ Kirigami.FormLayout {
     property alias cfg_ShowLabels: showLabels.checked
     property alias formLayout: root
 
+    // The Canvas effect writes these from its own settings at every move (its "Publish the ground"
+    // knob, on by default), so a change made here is overwritten the next time the desktop slides.
+    QQC2.Label {
+        Kirigami.FormData.isSection: true
+        width: Math.min(root.width, 560)
+        wrapMode: Text.WordWrap
+        text: "With the Canvas effect on, these follow the effect's own settings (Desktop Effects → Canvas → configure → The ground) at every move of the desktop. Set them there, or turn off \"Publish the ground\" in the effect to keep what you set here."
+    }
     KQuickControls.ColorButton {
         id: backgroundButton
         Kirigami.FormData.label: "Background:"

@@ -10,6 +10,7 @@
 #include <input_event.h>
 #include <plugin.h>
 
+#include <KConfigWatcher>
 #include <QHash>
 #include <QMatrix4x4>
 #include <QPointF>
@@ -104,6 +105,16 @@ public:
      * scene, and lets the scene go when a game fills the card.
      */
     Q_INVOKABLE int gpuMemory() const;
+    /**
+     * Moves @p window's frame so its top-left is (@p x, @p y), as a move (Window::move), keeping
+     * its size. A script's frameGeometry write is a move-and-resize: at an unchanged size KWin
+     * moves the frame at once, but every configure already sent to the client keeps the place
+     * the window had when it was sent, and when the client commits one (a focus change's,
+     * committed late by a busy client or one the canvas covered) KWin puts the window back
+     * there. A move re-aims those configures at the new place. False when @p window is not a
+     * KWin window or is gone.
+     */
+    Q_INVOKABLE bool moveWindow(QObject *window, qreal x, qreal y);
 
 Q_SIGNALS:
     void revisionChanged();
@@ -260,6 +271,12 @@ public Q_SLOTS:
     // hand to a fragment shader as uniforms, screen-projected here.
     Q_SCRIPTABLE void setCanvasState(const QString &state);
 
+Q_SIGNALS:
+    // The focused window changed, or one of its flags did (maximized, floating, keep above or
+    // below, excluded from capture, the caption), or the title-bar button order was written:
+    // the decor applet reads state() on this instead of polling for it.
+    Q_SCRIPTABLE void windowChanged();
+
 public:
     bool pointerMotion(KWin::PointerMotionEvent *event) override;
     bool pointerButton(KWin::PointerButtonEvent *event) override;
@@ -290,6 +307,14 @@ private:
     void publishChrome(const QPointF &screen);
     /** Out of idle, if it was: the input is live again, and the effect hears it (passthroughIdle). */
     void wakeFromIdle();
+    /** The startup registrations (the D-Bus objects, the scene helper), tried again until they take. */
+    void registerLater(int attempt);
+    /** The tally, the grab and the hold follow the buttons an event says are down (a release can pass this filter by). */
+    void reconcileButtons(Qt::MouseButtons down);
+    /** The native title-bar button order, from kwinrc, for the decor applet. */
+    void readButtonOrder();
+    /** Follow the focused window's flags, and tell the decor applet when any of them change. */
+    void watchActive(KWin::Window *w);
     /**
      * The kwin-canvas effect, or nullptr: looked up once and kept, since the filter publishes on
      * most events and findEffect walks every loaded effect. A reloaded effect is a new object;
@@ -383,6 +408,12 @@ private:
      * the effect flies to on the release - a click on an already-active window
      * raises no activation, so the press is the only trace of it. */
     QPointer<KWin::Window> m_clickWindow;
+    /** The native title-bar button order (kwinrc, org.kde.kdecoration2), kept current by a config watcher. */
+    QString m_buttonsLeft;
+    QString m_buttonsRight;
+    KConfigWatcher::Ptr m_configWatcher;
+    /** The focused window whose flag changes are told to the decor applet (windowChanged). */
+    QPointer<KWin::Window> m_watchedActive;
     /** Where the candidate press landed: motion beyond a few pixels makes it a drag. */
     QPointF m_clickPos;
     /** The pointer sits over the system's own chrome (a dock, a panel, a

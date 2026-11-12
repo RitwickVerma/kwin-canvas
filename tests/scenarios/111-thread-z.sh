@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
 # SPDX-License-Identifier: GPL-2.0-or-later
-scenario_desc="the threads respect z: the web renders over the lower window of a pair, and the hover lifts its window above the whole web while the raise reorders the entries under it"
+scenario_desc="the threads respect z: a thread runs over the open ground between the facing sides of a pair, never across either window's body, and the hover lifts its window above the whole web while the raise reorders the entries under it"
 region_rmse() {   # before after region
     magick "$1" -crop "$3" +repage "$OUT/tz-a.png"
     magick "$2" -crop "$3" +repage "$OUT/tz-b.png"
@@ -24,19 +24,14 @@ run_scenario() {
     c "activate Konsole"; c "activate KCalc"; c "activate Dolphin"
     c "zoom 0.6 960 540"
     for _ in 1 2 3 4 5 6 7 8 9 10; do c state; [ "$(sget cam)" = "-" ] && break; sleep 0.15; done
-    # The probe: a point on the Konsole-KCalc thread, inside Konsole's body.
-    # The thread sits at the z between its endpoints (1000 and 1001) - over
-    # Konsole, under KCalc - so at this point the line must be visible
-    # whenever the web is lit.
-    local kx ky kw kh px py vx vy z bx by
+    # The probe: the middle of the Konsole-KCalc thread. A thread is the walk's step, drawn
+    # from where the centre line leaves Konsole to where it enters KCalc, so it lies over the
+    # ground between them and must be visible there whenever the web is lit. A point inside
+    # either body is never on it.
+    local kx ky kw kh vx vy z bx by
     kx=$(eget Konsole x); ky=$(eget Konsole y)
-    px=$(eget KCalc x); py=$(eget KCalc y)
     kw=$(eget Konsole w); kh=$(eget Konsole h)
-    read -r bx by <<<"$(awk -v ax="$kx" -v ay="$ky" -v aw="$kw" -v ah="$kh" -v bx="$px" -v by="$py" 'BEGIN{
-        cx = ax + aw / 2 + 0.25 * (bx - ax)
-        cy = ay + ah / 2 + 0.25 * (by - ay)
-        printf "%d %d\n", cx, cy
-    }')"
+    read -r bx by <<<"$(thread_mid "$kx" "$ky" "$kw" "$kh" "$(eget KCalc x)" "$(eget KCalc y)" "$(eget KCalc w)" "$(eget KCalc h)")"
     # The cluster is unlit: the active window is Gwenview's, far away.
     c "activate Gwenview"
     sleep 0.6
@@ -51,7 +46,7 @@ run_scenario() {
         sx = (x - vx) * z; sy = (y - vy) * z
         printf "%dx%d+%d+%d\n", 10, 10, sx - 5, sy - 5
     }')
-    assert_eq "the lit web draws the thread over the lower window" \
+    assert_eq "the lit web draws the thread over the ground between the pair" \
         "$(changed "$(region_rmse "$OUT/tz-unlit.png" "$OUT/tz-lit.png" "$box")")" 1
     # The hover lifts Konsole above the whole web: its z jumps to the web's
     # roof, the raise reorders the entries under it, and the threads to it

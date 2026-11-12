@@ -112,7 +112,7 @@ stage:
 	cp shared/Ground.qml $(BUILD)/effect/contents/ui/Ground.qml
 	cp shared/Ground.qml $(BUILD)/wallpaper/contents/ui/Ground.qml
 
-install: stage ## Install the effect, the ground wallpaper and the applet as user packages, and the CLI into ~/.local/bin
+install: stage ## Install the effect, the ground wallpaper, the three applets and the decoration as user packages, the CLI into ~/.local/bin, and the login check
 	@$(KPT) --type KWin/Effect --upgrade $(BUILD)/effect >/dev/null 2>&1 || $(KPT) --type KWin/Effect --install $(BUILD)/effect >/dev/null
 	@$(KPT) --type Plasma/Wallpaper --upgrade $(BUILD)/wallpaper >/dev/null 2>&1 || $(KPT) --type Plasma/Wallpaper --install $(BUILD)/wallpaper >/dev/null
 	@$(MAKE) -s copy-packages DATA_HOME=$(DATA_HOME)
@@ -136,13 +136,19 @@ nest-install: stage ## Install the packages into build/nest-data for the nests o
 	@rm -rf $(NEST_DATA)/plasma/wallpapers/$(WALL_ID) && cp -r $(BUILD)/wallpaper $(NEST_DATA)/plasma/wallpapers/$(WALL_ID)
 	@$(MAKE) -s copy-packages DATA_HOME=$(NEST_DATA)
 
-uninstall: disable ## Turn the effect off and remove the user packages and the CLI
+uninstall: disable ## Turn the effect off and remove every user package (effect, wallpaper, three applets, decoration), the CLI and the login check
 	@$(KPT) --type KWin/Effect --remove $(EFFECT_ID) >/dev/null 2>&1 && echo "removed: $(EFFECT_ID)" || echo "not installed: $(EFFECT_ID)"
 	@$(KPT) --type Plasma/Wallpaper --remove $(WALL_ID) >/dev/null 2>&1 && echo "removed: $(WALL_ID)" || echo "not installed: $(WALL_ID)"
-	@rm -rf $(APPLET_DIR)/$(APPLET_ID) && echo "removed: $(APPLET_ID)" || echo "not installed: $(APPLET_ID)"
-	@rm -rf $(APPLET_DIR)/$(APPLET_DECOR_ID) && echo "removed: $(APPLET_DECOR_ID)" || echo "not installed: $(APPLET_DECOR_ID)"
-	@rm -rf $(APPLET_DIR)/$(APPLET_MAP_ID) && echo "removed: $(APPLET_MAP_ID)" || echo "not installed: $(APPLET_MAP_ID)"
-	@rm -f $(BIN_DIR)/kwin-canvas $(AUTOSTART_DIR)/kwin-canvas-plugincheck.desktop
+	@for id in $(APPLET_ID) $(APPLET_DECOR_ID) $(APPLET_MAP_ID); do \
+		if [ -d $(APPLET_DIR)/$$id ]; then rm -rf $(APPLET_DIR)/$$id && echo "removed: $$id"; else echo "not installed: $$id"; fi; done
+	@if [ -d $(DECOR_DIR)/$(DECOR_ID) ]; then rm -rf $(DECOR_DIR)/$(DECOR_ID) && echo "removed: $(DECOR_ID)"; else echo "not installed: $(DECOR_ID)"; fi
+	@if [ "$$(kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key theme)" = "$(DECOR_ID)" ]; then \
+		kwriteconfig6 --notify --file kwinrc --group org.kde.kdecoration2 --key theme --delete; \
+		kwriteconfig6 --notify --file kwinrc --group org.kde.kdecoration2 --key library org.kde.breeze; \
+		echo "window decoration: back to Breeze (it was $(DECOR_ID))"; fi
+	@if [ -f /etc/pacman.d/hooks/kwin-canvas-plugin.hook ]; then echo "left: the pacman hook (run: kwin-canvas plugin-hook remove, before this CLI is gone)"; fi
+	@ls /usr/lib/qt6/plugins/kwin/plugins/*canvas*.so >/dev/null 2>&1 && echo "left: the pass-through plugin in /usr/lib/qt6/plugins/kwin/plugins is root's (sudo rm it)" || true
+	@rm -f $(BIN_DIR)/kwin-canvas $(AUTOSTART_DIR)/kwin-canvas-plugincheck.desktop && echo "removed: $(BIN_DIR)/kwin-canvas, the login check"
 
 # System-wide layout, the same paths kpackagetool6 --global uses; KPackage
 # finds them through XDG_DATA_DIRS. DESTDIR is for distro packaging.
@@ -202,7 +208,10 @@ status: ## Show whether the packages are installed, enabled and loaded
 	@echo "wallpaper package: $$($(KPT) --type Plasma/Wallpaper --list 2>/dev/null | grep -x $(WALL_ID) || echo not installed)"
 	@echo "applet package:    $$($(KPT) --type Plasma/Applet --list 2>/dev/null | grep -x $(APPLET_ID) || echo not installed)"
 	@echo "decor applet:      $$($(KPT) --type Plasma/Applet --list 2>/dev/null | grep -x $(APPLET_DECOR_ID) || echo not installed)"
+	@echo "map applet:        $$($(KPT) --type Plasma/Applet --list 2>/dev/null | grep -x $(APPLET_MAP_ID) || echo not installed)"
+	@echo "decoration:        $$([ -d $(DECOR_DIR)/$(DECOR_ID) ] && echo $(DECOR_ID) || echo not installed)"
 	@echo "cli:               $$(command -v kwin-canvas 2>/dev/null || echo not on PATH)"
+	@echo "login check:       $$([ -f $(AUTOSTART_DIR)/kwin-canvas-plugincheck.desktop ] && echo $(AUTOSTART_DIR)/kwin-canvas-plugincheck.desktop || echo not installed)"
 	@echo "enabled in kwinrc: $$(kreadconfig6 --file kwinrc --group Plugins --key $(EFFECT_ID)Enabled --default false)"
 	@echo "loaded in KWin:    $$($(QDBUS) org.kde.KWin /Effects org.kde.kwin.Effects.isEffectLoaded $(EFFECT_ID) 2>/dev/null || echo no session)"
 	@$(MAKE) -s plugin-status
@@ -319,16 +328,23 @@ video: ## Assemble build/demo frames into demo.mp4 and demo.gif (run `make demo`
 	demo/demo.sh --video-only
 
 # ---- distribution -----------------------------------------------------------
-dist: stage ## Tarballs of the three packages for kpackagetool6 or the KDE Store (dist/)
+dist: stage ## Tarballs of the six packages (effect, wallpaper, three applets, decoration) for kpackagetool6 or the KDE Store (dist/)
 	rm -rf $(DIST); mkdir -p $(DIST)
 	tar -C $(BUILD)/effect -czf $(DIST)/kwin-canvas-$(VERSION).kwineffect.tar.gz .
 	tar -C $(BUILD)/wallpaper -czf $(DIST)/kwin-canvas-ground-$(VERSION).tar.gz .
 	tar -C $(BUILD)/applet -czf $(DIST)/kwin-canvas-toggle-$(VERSION).tar.gz .
+	tar -C $(BUILD)/applet-decor -czf $(DIST)/kwin-canvas-decor-$(VERSION).tar.gz .
+	tar -C $(BUILD)/applet-map -czf $(DIST)/kwin-canvas-map-$(VERSION).tar.gz .
+	tar -C $(BUILD)/decoration -czf $(DIST)/kwin-canvas-decoration-$(VERSION).tar.gz .
 	@cd $(DIST) && sha256sum *.tar.gz > SHA256SUMS && cat SHA256SUMS
 	@echo
 	@echo "install:  kpackagetool6 --type KWin/Effect --install $(DIST)/kwin-canvas-$(VERSION).kwineffect.tar.gz"
 	@echo "          kpackagetool6 --type Plasma/Wallpaper --install $(DIST)/kwin-canvas-ground-$(VERSION).tar.gz"
 	@echo "          kpackagetool6 --type Plasma/Applet --install $(DIST)/kwin-canvas-toggle-$(VERSION).tar.gz"
+	@echo "          kpackagetool6 --type Plasma/Applet --install $(DIST)/kwin-canvas-decor-$(VERSION).tar.gz"
+	@echo "          kpackagetool6 --type Plasma/Applet --install $(DIST)/kwin-canvas-map-$(VERSION).tar.gz"
+	@echo "          kpackagetool6 --type KWin/Decoration --install $(DIST)/kwin-canvas-decoration-$(VERSION).tar.gz"
+	@echo "the CLI:  install -m 755 tools/kwin-canvas ~/.local/bin/ (or make install from a checkout, which does all of this)"
 
 pkgbuild: ## Write dist/PKGBUILD (effect) and dist/passthrough/PKGBUILD (plugin) for the AUR at this VERSION
 	mkdir -p $(DIST)/passthrough

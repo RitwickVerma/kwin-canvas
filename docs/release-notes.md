@@ -1,5 +1,100 @@
 Unreleased:
 
+The short version of everything since 0.4.0, for the reader in a hurry: the canvas opens at 1:1 and
+is a live desktop with the pass-through plugin; windows gather in clusters joined by threads, with
+a keyboard walk and carry between them; Alt+Tab and Meta+Tab are the task switcher; a hold on a
+mouse button makes the location itself the canvas, and a grasp turns the world into a map; windows
+float, dodge and snap; two monitors share one plane; a panel decor, a map widget and a window
+decoration come with it; and `kwin-canvas doctor` and `setup` keep the install and KDE's settings
+honest. The lines below are the detail, newest first.
+
+- The switcher enters without the plugin too. A tap of Alt+Tab or Meta+Tab on a canvas without
+  the pass-through plugin opened the switcher and left it open; now the switcher shows and enters
+  on its own after a short beat, as the notes said it would. With the plugin a tap flips at once.
+- Esc in the switcher steps out of the switcher, not out of the canvas: the overview and its camera
+  come back as they were, and a switcher that opened the canvas closes it with nothing moved.
+- A cluster of one steps the whole plane in the cluster switcher, and fits the world to show it;
+  it used to fit the lone window and pick one off the screen.
+- A carried window comes back. Carried straight back it returns to its exact spot even when it
+  was alone before (it had no cluster to come back to, so the carry refused), and even when a
+  window that overlapped the spot before still does. A selection of several windows is carried as
+  one piece in the open canvas, keeping its shape.
+- A walk with nowhere to go, a carry refused, a digit with no cluster: the closed desktop says so
+  on Plasma's on-screen display, the open canvas in a toast. They used to do nothing in silence.
+- Close and Bring here in a window's arrange menu, and Delete for the selection: close the selected
+  windows the way their own button would, or fetch them to the middle of the screen, their places
+  kept, as one undo step.
+- The chord during a slide lands the slide and then does what it says (it only landed the slide);
+  pressed again with the camera where the open left it, it steps back out instead of entering the
+  plane's middle, the rule the screen corners already had.
+- Shift+Tab in the search steps back through the matches; it stepped forward.
+- The help panel in the toolbar lists the switcher, the walk, the carry, the search, the cluster
+  keys, Ctrl+Z and Delete, and spells Shift+Tab and the bracket keys as keys.
+- Removing an activity from its frame tag takes two taps: the first arms the trash for three
+  seconds and says so, the second removes. One tap on an 18 px button lost an activity.
+- A window a tiler or a script puts back where it was within half a minute of a fly is no longer
+  mistaken for a late configure and reverted: the echo net only acts after a focus change of that
+  window, and never right after the hand let go of it.
+- The settings form shows the switcher chords and their tap-or-hold threshold, the rest delay of the
+  pass-through, the wheel door, the glide of a landing and the tidy gap, each in its group; five
+  labels said what the knobs no longer did (the swap button, the Home chord, the toolbar's monitor,
+  the backdrop, the auto-open).
+- The pass-through plugin keeps its footing: a release that another filter took (a drag-and-drop
+  the app started, the lock screen, a VT switch) no longer leaves it believing a button is down for
+  the rest of the session, with every later press going to one window; a title-bar drag inside an
+  app that asks KWin to move the window is handed to KWin instead of running with nothing driving
+  it; a press outside an open menu dismisses the menu; keys typed at a window the rest has not
+  focused stay the canvas's instead of landing in the window behind; a drag inside a window no
+  longer leaves and re-enters its video or popover; the plugin stands down when the effect goes
+  away with the canvas open; and the hold ends only on the button that made it.
+- The plugin says in the journal when it could not register on the bus at start, and keeps
+  trying for half a minute; it used to go half-dead in silence after one second.
+- The Canvas Decor panel widget draws in the panel's own colours (it was white on everything), dims
+  and says what it needs when the plugin is missing, follows the panel's thickness, and no longer
+  polls: the plugin tells it when the focused window or its flags change and sends the title-bar
+  button order with its reply, so no process is started for it any more.
+- The Canvas panel button asks kglobalaccel over D-Bus instead of starting a process per click,
+  and dims with a note when the effect is not loaded.
+- `kwin-canvas doctor` names each chord a KDE action holds over a Canvas one (KDE registers first,
+  so the canvas never got it: Alt+Shift+Tab, Meta+Alt+arrows), and `kwin-canvas setup` offers to
+  take each over through kglobalaccel, live, leaving KDE's action its other chords. `setup` also
+  offers the Canvas window decoration, no longer asks to set an animation speed that is already at
+  KDE's default, and tells the running session about what it wrote.
+- `kwin-canvas doctor` finds a system install (the AUR package, `make install-system`) instead of
+  failing it, compares the plugin with the KWin that is running (not the one just installed), and
+  `kwin-canvas help` works without qdbus6. `kwin-canvas status` exits 1 when KWin does not answer.
+- A debug command sent by the CLI or the harness no longer runs again at every login: `kwin-canvas
+  open` once meant the canvas opened itself at every start.
+- `./configure.sh uninstall` removes the window decoration too, puts Breeze back if the Canvas
+  decoration was in use, and names the two root-owned parts it cannot remove (the plugin, the pacman
+  hook); `make status` lists the map widget, the decoration and the login check; `make dist` makes
+  a tarball per package, six in all; `make deps` lists what the plugin build, the CLI and the unit
+  tests need.
+- The ground wallpaper's own settings page says that the Canvas effect overwrites those knobs from
+  its own settings at every move, and where to set them instead.
+- The arrange menu supplies its own item delegate, so the journal no longer shows a `Menu.qml`
+  TypeError at every open of the overview.
+- Walk the windows with the keyboard. Meta+Alt+arrows move the focus to the next window that
+  way, through its cluster and on into the next cluster, and the desk slides to bring it in; in
+  the open canvas they move the selection. With Shift the focused window is carried into the next
+  cluster that way, landing beside it on the side it arrives from; carried straight back it
+  returns to its spot. These keys were KDE's own *Switch to Window Left/Right/Above/Below*: unbind
+  those in System Settings → Shortcuts → KWin.
+- The threads between windows show where the keys go: each window is joined to its neighbours
+  left, right, above and below inside its cluster, from side to side, instead of every pair
+  centre to centre. The cluster you are on also shows dashed bridges to the next clusters.
+- Alt+Tab and Meta+Tab work like a task switcher. A tap flips to the window you used last
+  without opening anything; held, the switcher shows with that window picked, Tab steps through
+  the windows in the order you used them, Shift+Tab steps back, and letting go enters the pick at
+  once (it used to wait, and with the plugin it could wait forever). The canvas now owns
+  Alt+Shift+Tab and Meta+Shift+Tab too: unbind KDE's *Walk Through Windows (Reverse)*.
+- Windows keep their place on the canvas. After a fly or a slide a window could jump back by the
+  slide's whole length a moment after landing, and the canvas then kept it there, so windows drifted
+  a little further from where you put them every time you moved around. The cause: KWin sends an
+  app a note with the window's place whenever its focus changes, and puts the window back there when
+  the app answers; a busy app answered after the canvas had moved the window. The canvas now moves
+  windows through the pass-through plugin so KWin updates those notes, and without the plugin it
+  puts such a window back. Run `kwin-canvas fix-plugin` and log in again to get the plugin's half.
 - A Steam game in borderless mode gets the mouse's side buttons. Game mode, where the canvas stands
   aside, needed a fullscreen window, and a borderless game is maximized: the back button (the
   canvas's hold) was taken by the canvas, so the game could not bind it or see it held. A Steam

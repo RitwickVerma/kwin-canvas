@@ -57,13 +57,39 @@ setcfg() {
 # (0.8). The script finds windows by caption: FIND_KWRITE sets w to KWrite's.
 FIND_KWRITE='var w = null; workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("KWrite") >= 0) w = x; });'
 kwinjs() {
-    local f id; f="$OUT/kwinjs.js"
+    # Each call is its own script (a per-call name and file): a script still loaded from an
+    # earlier call (a backgrounded one) cannot make this one's load fail silently, and a
+    # failed load is said rather than passed over, since the caller's grep would then read the
+    # previous call's line and compare two stale values.
+    local f id name; KWINJS_SEQ=$((${KWINJS_SEQ:-0} + 1)); name="kwinjs$KWINJS_SEQ$$"; f="$OUT/$name.js"
     printf '%s\n' "$1" > "$f"
-    id=$(nq org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript "$f" kwinjs | tail -1)
+    id=$(nq org.kde.KWin /Scripting org.kde.kwin.Scripting.loadScript "$f" "$name" | tail -1)
+    case "$id" in ''|*[!0-9]*|-*) echo "kwinjs: the script did not load (id '$id')" >&2; rm -f "$f"; return 1 ;; esac
     nq org.kde.KWin /Scripting/Script"$id" org.kde.kwin.Script.run >/dev/null
     sleep "${2:-0.8}"
-    nq org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript kwinjs >/dev/null
+    nq org.kde.KWin /Scripting org.kde.kwin.Scripting.unloadScript "$name" >/dev/null
     rm -f "$f"
+}
+
+# thread_mid AX AY AW AH BX BY BW BH: the middle of the thread between two windows, which runs
+# along the centre line from where it leaves the first rect to where it enters the second
+# (Logic.edgeSegment). Prints "x y" in plane px; a pair whose centres lie inside each other has
+# no thread and prints nothing.
+thread_mid() {
+    awk -v ax="$1" -v ay="$2" -v aw="$3" -v ah="$4" -v bx="$5" -v by="$6" -v bw="$7" -v bh="$8" 'BEGIN {
+        x1 = ax + aw / 2; y1 = ay + ah / 2; x2 = bx + bw / 2; y2 = by + bh / 2
+        t0 = -1; t1 = -1
+        for (i = 0; i <= 400; i++) {
+            t = i / 400; px = x1 + (x2 - x1) * t; py = y1 + (y2 - y1) * t
+            ina = (px >= ax && px <= ax + aw && py >= ay && py <= ay + ah)
+            inb = (px >= bx && px <= bx + bw && py >= by && py <= by + bh)
+            if (t0 < 0 && !ina) t0 = t
+            if (t0 >= 0 && t1 < 0 && inb) t1 = t
+        }
+        if (t0 < 0 || t1 < 0 || t1 - t0 < 0.001) exit
+        t = (t0 + t1) / 2
+        printf "%d %d\n", x1 + (x2 - x1) * t, y1 + (y2 - y1) * t
+    }'
 }
 
 # sget zoom|viewx|viewy|visible|activity|entries|popups|nactivities  -> value from the last state line
@@ -101,6 +127,9 @@ sget() {
         mem)      sed -n 's/.* mem=\([0-9]*\).*/\1/p' <<<"$line" ;;
         vram)     sed -n 's/.* vram=\([0-9]*\).*/\1/p' <<<"$line" ;;
         offscreen) sed -n 's/.* offscreen=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        mover)    sed -n 's/.* mover=\([a-z]*\).*/\1/p' <<<"$line" ;;
+        graph)    sed -n 's/.* graph=\([-0-9/]*\).*/\1/p' <<<"$line" ;;
+        switcher) sed -n 's/.* switcher=\([a-z-]*\).*/\1/p' <<<"$line" ;;
         kept)     sed -n 's/.* kept=\([0-9]*\).*/\1/p' <<<"$line" ;;
         active)   sed -n 's/.* active=\(.*\)$/\1/p' <<<"$line" ;;
         nactivities) grep -c '^  {' <<<"$LAST_STATE" ;;
@@ -309,6 +338,10 @@ arrange() {
     c cancel >/dev/null 2>&1 || true
     c resetview
     open_1to1
+    # Twice: placeby sizes through the user-resize path, which snaps an edge to a neighbour still
+    # standing at its old place (12 px); the second pass places against neighbours already moved,
+    # so the layout comes out exact whatever the windows were doing before.
+    for cap in "${!LAYOUT[@]}"; do c "placeby $cap ${LAYOUT[$cap]}"; done
     for cap in "${!LAYOUT[@]}"; do c "placeby $cap ${LAYOUT[$cap]}"; done
     sleep 0.6
     c commit

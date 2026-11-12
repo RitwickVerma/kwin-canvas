@@ -22,6 +22,11 @@ run_scenario() {
     kwriteconfig6 --file "$CONF/kwinrc" --group Round-Corners --key Exclusions gwenview
     if [ "$(nq org.kde.KWin /Effects org.kde.kwin.Effects.loadEffect kwin4_effect_shapecorners 2>/dev/null)" != true ] \
         && [ "$(nq org.kde.KWin /Effects org.kde.kwin.Effects.isEffectLoaded kwin4_effect_shapecorners 2>/dev/null)" != true ]; then
+        # The keys written above are not left for the next nest's config diff.
+        kwriteconfig6 --file "$CONF/kwinrc" --group Round-Corners --key Size --delete
+        kwriteconfig6 --file "$CONF/kwinrc" --group Round-Corners --key InactiveCornerRadius --delete
+        kwriteconfig6 --file "$CONF/kwinrc" --group Round-Corners --key Squircleness --delete
+        kwriteconfig6 --file "$CONF/kwinrc" --group Round-Corners --key Exclusions --delete
         skip "the Rounded Corners effect (kwin4_effect_shapecorners) is not installed or not built for this KWin"; return
     fi
     arrange >/dev/null

@@ -20,9 +20,10 @@ is real window geometry, not a picture of it.
   `Alt+1..9` to fly back.
 - **Feels physical.** Spring camera, flick-to-pan inertia, windows you can throw,
   edges that snap like magnets, a soft float on pinned windows.
-- **Stays out of the way.** With the canvas closed nothing of it runs: games and
-  fullscreen apps get KWin's native path. An idle open canvas costs about
-  nothing.
+- **Stays out of the way.** With the canvas closed it stays out of the way:
+  games and fullscreen apps get KWin's native path, and what still runs is
+  small (the plugin's rest clock, the float dodge, the activation pan). An
+  idle open canvas costs about nothing.
 - **Plays with KDE.** Activities, KWin tiles, maximize and the title bar's pin
   stay in sync with the plane.
 - **Built on KWin's public scripting API.** No compositor patches; an optional
@@ -100,7 +101,7 @@ with the grid over it. `Backdrop=grid` is the old plane.
 | `wallpaper/` | Plasma/Wallpaper | The ground at 1:1, offset by the last committed pan |
 | `shared/Ground.qml` | copied into both | One renderer for the ground so both views match |
 | `plugin/` | KWin plugin (C++, optional) | Pass-through: while the canvas is open, clicks, drags, the wheel and keys reach the real windows |
-| `tools/kwin-canvas` | CLI (bash) | Step in, cancel, open or toggle from a terminal or a VT; status; doctor and perf, which only read |
+| `tools/kwin-canvas` | CLI (bash) | Step in, cancel, open, toggle or reset from a terminal or a VT; status; doctor, check and perf, which only read; setup, fix-plugin and plugin-hook, which change things and say so first (the table under Troubleshooting) |
 | `applet/` | Plasma/Applet | A panel button that fires the Toggle Canvas chord |
 | `applet-decor/` | Plasma/Applet | The decor applet: the focused window's glyphs in the panel, in the decoration's language |
 | `applet-map/` | Plasma/Applet | The canvas's minimap as a widget, on the desktop or in a panel: a click flies there (needs the plugin) |
@@ -156,16 +157,20 @@ each row says what the setting does for the canvas.
 | Window Behavior → Focus | **Raise on hover**, delayed **300 ms**; **Click raises active window** off | The canvas raises the window an auto fly lands on itself, so this only has to agree with it. |
 | Screen Edges | The four corners set to **Canvas**; in the Canvas settings, *View when a screen edge or corner opens it* set to **fit** | A corner push shows every window and frame, fitted to the monitor the pointer is on; push again to leave. The wheel on the bare wallpaper opens it too. |
 | Virtual Desktops | **One** desktop | The plane takes the place of desktops; activities are the separate desks on it. |
-| Shortcuts | Unbind KDE's **Walk Through Windows** (Alt+Tab) | The canvas's switcher uses Meta+Tab and Alt+Tab. `kwin-canvas doctor` lists any key that two actions share. |
+| Shortcuts | Unbind KDE's **Walk Through Windows** and **Walk Through Windows (Reverse)** (Alt+Tab, Meta+Tab, with Shift) and **Switch to Window Left / Right / Above / Below** (Meta+Alt+arrows) | The canvas's switcher uses Meta+Tab and Alt+Tab and their reverses, and its walk and carry use Meta+Alt+arrows (with Shift). KDE registers its keys first, so the canvas only gets them once KDE's are unbound. `kwin-canvas doctor` names each chord a KDE action holds over a Canvas one (and any key two actions share); `kwin-canvas setup` offers to take each over, live. |
 | Desktop Effects | Stock **Zoom** off | It owns Meta+wheel, Meta+= and Meta+-. |
 | Animations | Global speed at the **default**, not faster or slower | The slide, the camera and the fades follow it (below 1 is faster); at a quarter of the default KDE's own slide effects blink. |
 | Panels | **Auto hide** or **Dodge windows** | An always-visible panel reserves screen space, and KWin recalculates its work area whenever the panel changes; it then pulls windows parked outside the monitors back in. The canvas puts them back, but a panel that reserves no space never triggers it. |
 | Window Decorations | **Canvas**, with buttons *close, on all desktops, keep above, maximize, minimize* | The bar shows the same five as the panel applet; *on all desktops* is the float. |
 | Window Rules | Picture-in-picture, a lyrics window or a monitor: **Keep above** and **All desktops** | A window that is on all desktops floats: it stays on the screen while you fly. |
 
-`kwin-canvas setup` walks through these: it shows each setting that differs, with what it does for
-the canvas, and changes it only when you answer `y` (`kwin-canvas setup --check` lists them and changes
-nothing). A shortcut that two actions share is reported for you to rebind. The same, by hand:
+`kwin-canvas setup` walks through the settings rows of this table (focus, raise, the corners, Zoom,
+the animation speed, the decoration; panels, window rules and the colour scheme it only notes): it
+shows each setting that differs, with what it does for the canvas, and changes it only when you
+answer `y` (`kwin-canvas setup --check` lists them and changes nothing). For the Shortcuts row it
+names each chord a KDE action still holds over the canvas's and, on a `y`, takes it from that action
+through kglobalaccel and gives it to the canvas, live (KDE's action keeps its other chords). A
+shortcut two actions share at once is reported for you to rebind. The same, by hand:
 
 ```bash
 kwriteconfig6 --file kwinrc --group Windows --key FocusPolicy FocusFollowsMouse
@@ -193,7 +198,7 @@ tile, a maximized window) moves as a whole room on the plane.
 | Key | At 1:1 (in a location) | Canvas open (the overworld) |
 |---|---|---|
 | Meta+Ctrl+Alt+Space | step out: the overworld opens at the current viewport, 1:1 | step in: enter the location under the screen centre; another activity's frame switches to that activity |
-| Meta+Ctrl+Space | jump home | jump home |
+| Meta+Ctrl+Space (`HomeShortcut`) | return this activity to the plane's origin: its viewport becomes (0, 0), the windows ride along | look through this activity's frames |
 | Meta+Ctrl+F (or `/` when the canvas has the keys) | find a window: the overview opens fitted | type words of a window's title or app: the others dim, the camera brings the match to the middle; Tab steps the matches, Enter flies into the chosen one, Esc ends the search |
 | pan chords (no default; bind under Shortcuts → KWin) | slide the desktop half a screen that way | move the camera |
 | three-finger touchpad swipe | the desktop follows the fingers, then settles half a screen that way | |
@@ -231,7 +236,15 @@ tile, a maximized window) moves as a whole room on the plane.
 | hold MB4 and tap MB5 (`SwapButton`) | on the desktop: the location becomes the canvas | tour the clusters: the camera and the focus land on the next cluster's most-recently-focused window, smart-placed so the windows around it come into view; release opens the location there |
 | hold MB4, wheel out, release | on the desktop: the location becomes the canvas | the grasp's keyhole: the world itself is the map as the camera zooms out - the windows shrink live into its sheets, the cluster chips float on the plane, a click on a window flies it to 1:1, and the hint strip names the release; zoomed in, the release commits the location instead |
 | [ / ] | | fly the camera to the next / previous cluster of nearby windows, in reading order on the plane |
-| the switcher chord (`SwitcherShortcut`, Meta+Tab, and `SwitcherAltShortcut`, Alt+Tab - bind them over KWin's Tabbox) | | Meta+Tab fits the whole plane, Alt+Tab the cluster the eye is on; Tab and Shift+Tab step the highlighted window, the release or Enter enters it, Esc steps back out |
+| the switcher chord (`SwitcherShortcut`, Meta+Tab, and `SwitcherAltShortcut`, Alt+Tab, with Shift to step back - bind them over KWin's Tabbox) | a tap: the window used last, nothing opens (without the plugin the switcher shows and enters after a beat) | a tap enters the window used last; held: Meta+Tab fits the whole plane, Alt+Tab the cluster the eye is on (a cluster of one steps the whole plane), with the window used last picked; Tab and Shift+Tab step in the order the windows were last used, letting go enters the pick at once, Esc steps back out of the switcher to the view you had |
+| Meta+Alt+arrows (`WalkLeftShortcut`...) | the focus walks to the next window that way, through its cluster and on to the next cluster; the camera brings it in | the selection walks the same way; Enter enters it |
+| Meta+Alt+Shift+arrows (`CarryLeftShortcut`...) | the focused window is carried into the next cluster that way, beside it on the side it arrives from; carried straight back it returns to its spot (a window that was alone too) | the selected windows are carried as one piece |
+| Ctrl+Z | | undo the last move or commit on the plane |
+| 1..9 | | jump straight to that cluster (its number on the badge); the camera returns to the spot you left |
+| Delete, or Close in a window's arrange menu | | close the selected windows, as their own close button would |
+| Bring here (a window's arrange menu) | | the selected windows come to the camera, centred on the screen, their places kept; one undo step - the way to fetch a far window instead of going to it |
+| Open new windows of this app here (a window's arrange menu) | | a new window of that app opens at this spot on the plane from now on; the same item forgets it |
+| a walk, a carry or a digit with nowhere to go | Plasma's on-screen display says so | a toast says so |
 | Float (a window's arrange menu) | | the window keeps its coordinates on the plane - only the hand moves them - and when the camera pushes it partly off the screen its picture floats at the edge, bouncing off it with real physics; move the camera back and the picture is the window again. The same flag as "on all desktops", so it follows you across virtual desktops too, and anything that sets that flag floats the window: a rule, an app, or a script that restores it (Remember Window Positions does, for a window it saw pinned once). If a window never follows the canvas, check that first |
 
 Activating a window from the task manager - or anything else that focuses it,
@@ -277,22 +290,34 @@ that fires the Toggle Canvas chord, and **Canvas Map** (`applet-map/`, with
 the plugin) is the minimap as a widget on the desktop or in a panel: the
 whole plane at a glance, and a click flies there.
 
-**Troubleshooting: `kwin-canvas doctor`.** When something does not behave, run
-`kwin-canvas doctor` first. It only reads, so it is safe to run mid-game, and
+## Troubleshooting
+
+**`kwin-canvas doctor` first.** When something does not behave, run
+`kwin-canvas doctor`. It only reads, so it is safe to run mid-game, and
 prints one OK, WARN or FAIL line per check: whether each installed part (the
 effect, the ground wallpaper, the three applets, the window decoration, the CLI and
-the plugin) is the same as the repo's, whether the running session is older than
-the files it loaded (`main.qml` and the plugin need a relogin, `ui.qml` a
-`make hot`), whether a global shortcut is bound to a Canvas action and another
-action at once, whether KDE's Zoom effect still owns Meta+wheel, where the
-fidelity ladder stands, and what is enabled. It exits 1 if anything FAILs. It
-changes nothing, with one footnote: reading the ladder calls the plugin's `load`
-once, which moves the plugin's cpu sample window forward (the effect's own
-reading in the next two seconds covers a shorter span), and the `ui.qml` check
-can only say it does not know whether a hot reload happened.
-`kwin-canvas perf [--since WHEN]` summarizes the timings the effect writes to
-the journal, when its `Perf` setting is on (`kwriteconfig6 --file kwinrc --group
-Effect-kwin-canvas --key Perf true`, then reconfigure the effect).
+the plugin) is the same as the repo's (a system install under `/usr/share` counts),
+whether the running session is older than the files it loaded (`main.qml` and the
+plugin need a relogin, `ui.qml` a `make hot`), whether a chord the canvas wants is
+held by a KDE action or shared with another, whether KDE's Zoom effect still owns
+Meta+wheel, where the fidelity ladder stands, what is enabled, and the effect's QML
+errors since boot. It exits 1 if anything FAILs. It changes nothing, with one
+footnote: reading the ladder calls the plugin's `load` once, which moves the
+plugin's cpu sample window forward (the effect's own reading in the next two
+seconds covers a shorter span), and the `ui.qml` check can only say it does not
+know whether a hot reload happened. `kwin-canvas perf [--since WHEN]` summarises
+the timings the effect writes to the journal, when its `Perf` setting is on
+(`kwriteconfig6 --file kwinrc --group Effect-kwin-canvas --key Perf true`, then
+reconfigure the effect).
+
+| `kwin-canvas ...` | What it does |
+|---|---|
+| `exit`, `cancel`, `open`, `toggle` | step into the location under the screen centre; back with nothing moved; step out (waits up to 10 s for the effect at login); either way |
+| `reset` | recentre the plane on where you are: the view becomes (0, 0), no window moves |
+| `status` | whether the effect is loaded and the plugin answers; exit 1 when KWin does not answer |
+| `doctor`, `check [--notify]`, `plugincheck`, `perf` | read only: the health check above; the login check (the plugin's version and the QML errors, as desktop notifications); the plugin's version alone; the timings |
+| `setup [--check]` | the recommended KDE settings and the chords KDE holds over the canvas's, one question each (`--check` only lists) |
+| `fix-plugin`, `plugin-hook install\|remove` | rebuild and install the pass-through plugin (asks sudo); a pacman hook that does so after every KWin update |
 
 **After a KWin update.** The pass-through plugin is a binary built against one exact KWin version, and KWin refuses it after an update (a minor release such as 6.7 to 6.8 for certain, probably a patch release too). The canvas then runs without pass-through: the grasp over windows and the pill's pin buttons stop working. `kwin-canvas doctor` prints a `FAIL plugin` line naming both versions, `kwin-canvas plugincheck` does the same alone, and `make install` adds a login autostart (`kwin-canvas check`) that raises a desktop notification when they differ, and another when the effect logged QML errors since login, so a half-built canvas is reported instead of found. The fix is `kwin-canvas fix-plugin` (it rebuilds the plugin in the checkout and installs it, asking for your password), then a relogin. To never see this again, `kwin-canvas plugin-hook install` adds a pacman hook that rebuilds and installs the plugin whenever KWin is installed or upgraded (the build runs as you, in the checkout; only the install is root's); `kwin-canvas plugin-hook remove` takes it out. Packaged through the AUR, rebuild `kwin-canvas-passthrough` after the kwin upgrade.
 
@@ -312,19 +337,24 @@ pointer in toggles it. In the nest the top-left corner is preconfigured.
 
 Everything above is reassignable the KDE way:
 
-- **Global chords** live in System Settings → Shortcuts → KWin: Toggle Canvas,
-  Canvas Home, the pan chords (Canvas Pan Left, Right, Up, Down), and the
-  in-canvas actions (Enter, Cancel, Fit, Origin, Zoom In, Zoom Out). Every
-  Meta+arrow chord is taken by KWin, so the pan chords have no default until
-  you give them one.
+- **Global chords** live in System Settings → Shortcuts → KWin, the entries
+  starting with "Canvas": Toggle Canvas, Canvas Home, Canvas Search, the four
+  switcher chords, the walk and carry chords, the pan chords (Canvas Pan Left,
+  Right, Up, Down; every Meta+arrow chord is taken by KWin, so these have no
+  default until you give them one) and the in-canvas actions (Canvas Apply,
+  Cancel, Fit, Origin, Zoom In, Zoom Out; no default). The effect registers
+  its defaults once; KDE's own actions register first, so a chord KDE holds
+  never reaches the canvas until KDE's is unbound (`kwin-canvas setup`).
 - **Effect settings** are in Desktop Effects → Canvas → configure: the opening
   view, the keys the open canvas listens for, the mouse gestures, pass-through,
-  snapping, the activity colour scheme (including colour-blind safe sets),
-  hidden frames, and the ground. They are entries in the `[Effect-kwin-canvas]`
-  group of `kwinrc`.
+  the switcher's and the walk's chords, motion, snapping, the activity colour
+  scheme (including colour-blind safe sets) and the ground. They are entries in
+  the `[Effect-kwin-canvas]` group of `kwinrc`, and apply on Apply. A frame is
+  hidden or shown with the eye on its tag, not here.
 - **Screen edges** are assigned on the Screen Edges page.
 
-The toolbar inside the canvas sits on the primary display, at any edge or
+The toolbar inside the canvas sits on the monitor the pointer rests on (the
+primary until the pointer has rested on another for half a second), at any edge or
 corner (`HudPosition`), horizontal, vertical or square (`HudShape`, default
 auto: square in a corner, vertical on a side, horizontal top or bottom). It
 offers the same actions, a help panel built from the same entries, and a menu

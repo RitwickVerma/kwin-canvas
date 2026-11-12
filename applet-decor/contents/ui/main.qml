@@ -16,7 +16,11 @@
     decoration's request methods).
     The glyphs act on the focused window through the pass-through
     plugin's windowAction channel, which works with the canvas closed
-    too, including on maximized windows, which wear no bar.
+    too, including on maximized windows, which wear no bar. The plugin
+    says when the focused window or its flags change (windowChanged), so
+    the applet reads its state on that and polls nothing; the native
+    button order rides the same reply. Without the plugin the glyphs dim
+    and say what they need. The colours are the panel's own.
 */
 
 import QtQuick
@@ -24,8 +28,8 @@ import QtQuick.Layouts
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PlasmaComponents3
-import org.kde.plasma.plasma5support as Plasma5Support
 import org.kde.plasma.workspace.dbus as DBus
+import org.kde.kirigami as Kirigami
 
 PlasmoidItem {
     id: root
@@ -59,14 +63,21 @@ PlasmoidItem {
     property bool winAbove: false
     property bool winBelow: false
     property bool winCapture: false
+    // The plugin answered the last read; false dims the glyphs and names what they need.
+    property bool pluginUp: true
+    // The panel's own colours: the ink the marks are drawn in, the accent a lit glyph wears.
+    readonly property color ink: Kirigami.Theme.textColor
+    readonly property color accent: Kirigami.Theme.highlightColor
 
     // The native titlebar-buttons configuration, the same source the
     // bar reads - the left set first, then the right, as the bar shows
     // them from its left end to its right. The menu, the app-menu and
     // the help letters are skipped: the panel's channel cannot act on
-    // them (see the header).
-    property string buttonsLeft: ""
-    property string buttonsRight: ""
+    // them (see the header). The plugin reads kwinrc for it and sends it
+    // in its state reply (" buttons=L|R"); until the first reply the
+    // defaults keep the slot's width sane.
+    property string buttonsLeft: "MS"
+    property string buttonsRight: "HIAX"
     readonly property var glyphs: {
         const s = buttonsLeft + buttonsRight;
         const out = [];
@@ -96,85 +107,73 @@ PlasmoidItem {
         call("state", [], "", function (out) { root.reading = false; root.applyState(out || ""); });
     }
     function applyState(out) {
-        const i = out.indexOf(" win=");
-        if (i < 0) {
-            root.winMax = false;
-            root.winFloat = false;
-            root.winAbove = false;
-            root.winBelow = false;
-            root.winCapture = false;
-            return;
+        root.pluginUp = out !== "";
+        // The window token is the reply's last: the grab and hover captions before it could carry
+        // either token's text, so the real ones are the last of each (the buttons before the window).
+        const i = out.lastIndexOf(" win=");
+        const head = i >= 0 ? out.slice(0, i) : out;
+        const b = head.lastIndexOf(" buttons=");
+        if (b >= 0) {
+            const bp = head.slice(b + 9).trim().split(" ")[0].split("|");
+            root.buttonsLeft = bp[0] || "";
+            root.buttonsRight = bp.length > 1 ? bp[1] : "";
         }
-        const p = out.slice(i + 5).trim().split("|");
-        root.winMax = p.length > 2 && p[2] === "1";
-        root.winFloat = p.length > 3 && p[3] === "1";
-        root.winAbove = p.length > 4 && p[4] === "1";
-        root.winBelow = p.length > 5 && p[5] === "1";
-        root.winCapture = p.length > 6 && p[6] === "1";
+        // The window's five flags close the reply; reading them from the end keeps a caption that
+        // happens to hold " win=" from shifting them.
+        const p = i >= 0 ? out.slice(i + 5).trim().split("|") : [];
+        const flag = k => p.length >= 6 && p[p.length - 5 + k] === "1";
+        root.winMax = flag(0);
+        root.winFloat = flag(1);
+        root.winAbove = flag(2);
+        root.winBelow = flag(3);
+        root.winCapture = flag(4);
     }
     // A button's action reads the state back at once, not at the next poll.
     function action(name) { call("windowAction", [name], "(s)", function () { root.readState(); }); }
 
-    // The native button order, from kwinrc: the one thing still asked of a process, on a slow beat.
-    Plasma5Support.DataSource {
-        id: executable
-        engine: "executable"
-        connectedSources: []
-        onNewData: (sourceName, data) => {
-            disconnectSource(sourceName);
-            const out = data.stdout || "";
-            if (sourceName.indexOf("ButtonsOnLeft") >= 0) {
-                root.buttonsLeft = out.trim();
-            } else if (sourceName.indexOf("ButtonsOnRight") >= 0) {
-                root.buttonsRight = out.trim();
-            }
-        }
-        function run(cmd) {
-            connectSource(cmd);
-        }
+    // The plugin says when the focused window or its flags change; the state is read then.
+    // A plugin too old to say so (or one that answers late) is covered by a slow beat, and KWin
+    // coming (back) onto the bus by a read of its own.
+    DBus.SignalWatcher {
+        service: "org.kde.KWin"
+        path: "/KWinCanvas"
+        iface: "org.kde.kwin.canvas.Passthrough"
+        function dbuswindowChanged() { root.readState(); }
     }
-
-    // The focused window + its states, asked four times a second over D-Bus (a
-    // change made elsewhere - KDE's menu, a window rule - shows within a quarter
-    // second; a button's own action reads back at once); the native button
-    // order, read on a slower beat (it only changes when the titlebar buttons
-    // KCM is applied).
+    DBus.DBusServiceWatcher {
+        watchedService: "org.kde.KWin"
+        onRegisteredChanged: root.readState()
+    }
     Timer {
-        interval: 250
+        interval: root.pluginUp ? 5000 : 10000
         repeat: true
         running: true
         onTriggered: root.readState()
     }
-    Timer {
-        interval: 5000
-        repeat: true
-        running: true
-        onTriggered: {
-            executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnLeft --default MS");
-            executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnRight --default HIAX");
-        }
-    }
-    // The first layout happens before either timer fires: the panel sizes
-    // the applet from its implicit width at creation, so the state and
-    // the button order must be fetched immediately - otherwise the width
-    // computes zero and the applet paints over its neighbours.
-    Component.onCompleted: {
-        root.readState();
-        executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnLeft --default MS");
-        executable.run("kreadconfig6 --file kwinrc --group org.kde.kdecoration2 --key ButtonsOnRight --default HIAX");
-    }
+    // The first layout happens before any signal lands: the panel sizes
+    // the applet from its implicit width at creation, so the state is
+    // fetched immediately - otherwise the width computes zero and the
+    // applet paints over its neighbours.
+    Component.onCompleted: root.readState()
 
     // The width is a function of the state, not of the row's own layout:
     // a glyph occupies 22 px plus the 6 px spacing (28 per glyph, the
     // trailing spacing dropped) and the 4 px side margins close the sum -
     // so the slot is correct from the first layout, before either poll
     // has landed.
+    // A glyph is 22 px in a panel of the usual thickness and shrinks with a thinner one (the
+    // hovered pop needs a fifth more), never below 14; the pitch follows it.
+    readonly property int glyphSize: Math.max(14, Math.min(22, Math.round((height > 0 ? height : 30) / 1.3)))
     fullRepresentation: Item {
         id: content
-        implicitWidth: 8 + (root.glyphs.length * 28 - (root.glyphs.length > 0 ? 6 : 0))
+        implicitWidth: 8 + (root.glyphs.length * (root.glyphSize + 6) - (root.glyphs.length > 0 ? 6 : 0))
         implicitHeight: 30
+        opacity: root.pluginUp ? 1 : 0.4
         onImplicitWidthChanged: root.appletWidth = implicitWidth
         Component.onCompleted: root.appletWidth = implicitWidth
+        PlasmaComponents3.ToolTip.text: i18n("Needs the kwin-canvas pass-through plugin (kwin-canvas fix-plugin, then log in again)")
+        PlasmaComponents3.ToolTip.visible: !root.pluginUp && hover.hovered
+        HoverHandler { id: hover }
 
         Row {
             id: row
@@ -204,8 +203,8 @@ PlasmoidItem {
             property bool pressed: false
             readonly property bool lit: (modelData === "S" && root.winFloat) || (modelData === "A" && root.winMax) || (modelData === "F" && root.winAbove) || (modelData === "B" && root.winBelow) || (modelData === "E" && root.winCapture)
             scale: pressed ? 0.86 : (hovered ? 1.2 : 1)
-            width: 22
-            height: 22
+            width: root.glyphSize
+            height: root.glyphSize
             Behavior on scale {
                 NumberAnimation {
                     duration: 150
@@ -215,11 +214,11 @@ PlasmoidItem {
 
             Rectangle {
                 anchors.centerIn: parent
-                width: 16
-                height: 16
-                radius: 8
+                width: Math.round(root.glyphSize * 16 / 22)
+                height: width
+                radius: width / 2
                 visible: parent.modelData !== "_"
-                color: parent.pressed ? Qt.rgba(1, 1, 1, 0.42) : (parent.hovered ? Qt.rgba(1, 1, 1, 0.28) : (parent.lit ? Qt.rgba(0.16, 0.43, 0.87, 0.30) : "transparent"))
+                color: parent.pressed ? Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.42) : (parent.hovered ? Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.28) : (parent.lit ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.30) : "transparent"))
                 Behavior on color {
                     ColorAnimation {
                         duration: 140
@@ -227,7 +226,7 @@ PlasmoidItem {
                     }
                 }
                 border.width: 1
-                border.color: parent.hovered || parent.pressed ? Qt.rgba(1, 1, 1, 0.95) : (parent.lit ? "#2a6ddf" : Qt.rgba(1, 1, 1, 0.6))
+                border.color: parent.hovered || parent.pressed ? Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.95) : (parent.lit ? root.accent : Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.6))
                 Behavior on border.color {
                     ColorAnimation {
                         duration: 140
@@ -247,6 +246,7 @@ PlasmoidItem {
                 anchors.centerIn: parent
                 width: 10
                 height: 10
+                scale: root.glyphSize / 22
                 visible: parent.modelData !== "_"
                 onPaint: {
                     const ctx = getContext("2d");
@@ -255,8 +255,8 @@ PlasmoidItem {
                     ctx.clearRect(0, 0, width, height);
                     const code = parent.modelData;
                     const lit = parent.lit;
-                    ctx.strokeStyle = lit ? "#2a6ddf" : "#ffffff";
-                    ctx.fillStyle = lit ? "#2a6ddf" : "#ffffff";
+                    ctx.strokeStyle = lit ? String(root.accent) : String(root.ink);
+                    ctx.fillStyle = lit ? String(root.accent) : String(root.ink);
                     ctx.lineWidth = (code === "S" || code === "F" || code === "B") ? 1.3 : 1.2;
                     if (code === "X") {
                         ctx.beginPath();
@@ -333,6 +333,12 @@ PlasmoidItem {
                     target: mark.parent
                     function onLitChanged() { mark.requestPaint(); }
                 }
+                // The panel's colours changed (a theme switch): the marks are redrawn in them.
+                Connections {
+                    target: root
+                    function onInkChanged() { mark.requestPaint(); }
+                    function onAccentChanged() { mark.requestPaint(); }
+                }
             }
 
             PlasmaComponents3.ToolTip.text: {
@@ -351,7 +357,7 @@ PlasmoidItem {
                 anchors.fill: parent
                 hoverEnabled: true
                 acceptedButtons: Qt.LeftButton
-                enabled: parent.modelData !== "_"
+                enabled: parent.modelData !== "_" && root.pluginUp
                 onEntered: parent.hovered = true
                 onExited: parent.hovered = false
                 onPressed: parent.pressed = true

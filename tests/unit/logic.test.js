@@ -9,7 +9,10 @@ const fs = require("fs");
 const path = require("path");
 
 const src = fs.readFileSync(path.join(__dirname, "..", "..", "effect", "contents", "ui", "logic.js"), "utf8");
-const L = new Function(src + "\nreturn { clusterGapFor, clusterDist, recluster, sameClustering, webLayers, searchFilter, inReach, onAMonitor, isGameWindow, rectsMeet, rectInside, meetsAny, dodgeSpot, isPull, fightStep, cornerRadius, blurRects, floatStep, floatAdvance, fitRange, smartPan, smartPanNeighbourhood, canvasOf, zoomView, fitBox, seamPoint, seamNeighbour, segRectT, threadSpans, qualityFor, tidyRows };")();
+// Every top-level function of logic.js, exported as found, so the census at the end can ask that
+// each one is called by a test here (a hand-kept list once named two functions no test called).
+const names = Array.from(src.matchAll(/^function ([A-Za-z0-9_]+)\(/gm), (m) => m[1]);
+const L = new Function(src + "\nreturn { " + names.join(", ") + " };")();
 
 let pass = 0, fail = 0;
 function ok(name, cond) {
@@ -110,6 +113,34 @@ ok("the dynamic gap reads the same scaled up",
     ok("a move after a pause starts a new chain", st.allow);
     const c0 = { n: 1, at: 1000 }; L.fightStep(c0, 1100, 500);
     ok("the step does not change the chain it was given", c0.n === 1 && c0.at === 1000);
+}
+
+// ---- the configure echo: a window back on a spot the canvas's own write moved it from ----
+{
+    const R = (x, y, w, h) => ({ x, y, width: w || 480, height: h || 420 });
+    let rec = L.noteLeftSpot(null, R(300, -60), 1000, 150, 8, 30000);
+    ok("the first write notes the spot it left", rec.spots.length === 1 && rec.spots[0].y === -60);
+    ok("a commit taking the window back there is an echo", L.isEcho(rec, R(300, 40), R(300, -60), 1300, 30000));
+    ok("a fractional snap of that spot is one too", L.isEcho(rec, R(300, 40), R(300.4, -59.6), 1300, 30000));
+    ok("a move elsewhere is not", !L.isEcho(rec, R(300, 40), R(300, 200), 1300, 30000));
+    ok("a resize onto the spot is not", !L.isEcho(rec, R(300, 40, 600, 500), R(300, -60), 1300, 30000));
+    ok("the spot at another size is not", !L.isEcho(rec, R(300, 40, 600), R(300, -60, 600), 1300, 30000));
+    ok("no move is not", !L.isEcho(rec, R(300, -60), R(300, -60), 1300, 30000));
+    ok("a spot older than the limit is not", !L.isEcho(rec, R(300, 40), R(300, -60), 40000, 30000));
+    ok("no record is not", !L.isEcho(null, R(300, 40), R(300, -60), 1300, 30000));
+    // An animation writes every frame: its first spot stands for the burst.
+    let a = L.noteLeftSpot(null, R(0, 0), 1000, 150, 8, 30000);
+    for (let t = 1016; t <= 1200; t += 16) a = L.noteLeftSpot(a, R(t - 1000, 0), t, 150, 8, 30000);
+    ok("a burst of writes keeps the spot it started from", a.spots.length === 1 && a.spots[0].x === 0);
+    a = L.noteLeftSpot(a, R(500, 0), 1500, 150, 8, 30000);
+    ok("a write after a pause notes its own", a.spots.length === 2 && a.spots[1].x === 500);
+    let c = null;
+    for (let i = 0; i < 12; ++i) c = L.noteLeftSpot(c, R(i * 10, 0), 1000 + i * 1000, 150, 8, 30000);
+    ok("at most eight spots, newest kept", c.spots.length === 8 && c.spots[0].x === 40 && c.spots[7].x === 110);
+    c = L.noteLeftSpot(c, R(999, 0), 60000, 150, 8, 30000);
+    ok("old spots go", c.spots.length === 1 && c.spots[0].x === 999);
+    const r0 = L.noteLeftSpot(null, R(1, 1), 1000, 150, 8, 30000); L.noteLeftSpot(r0, R(2, 2), 2000, 150, 8, 30000);
+    ok("noting does not change the record it was given", r0.spots.length === 1 && r0.last === 1000);
 }
 
 // ---- game mode: the windows the canvas stands aside for ----
@@ -563,6 +594,107 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
             [{ x: 100, y: 120, width: 480, height: 420 }], g1920, 0, 0, 1, 24);
         return near(d.dx, 2564) && near(d.dy, 0);
     })());
+}
+
+// ---- the window graph: the walk, the threads, the carry ----
+{
+    const N = (id, x, y, w, h) => ({ id, x, y, width: w || 400, height: h || 300 });
+    // A 2x2 grid (one cluster) and a lone window far to the right (another).
+    const A = N("A", 0, 0), B = N("B", 420, 0), C = N("C", 0, 320), D = N("D", 420, 320), E = N("E", 2000, 0);
+    const nodes = [A, B, C, D, E];
+    const of = { A: 0, B: 0, C: 0, D: 0, E: 1 };
+    const step = (id, d) => { const s = L.walkStep(id, nodes, of, d); return s ? s.id + (s.cross ? "*" : "") : "-"; };
+    ok("right from A is B", step("A", "right") === "B");
+    ok("down from A is C", step("A", "down") === "C");
+    ok("left from D is C, up from D is B", step("D", "left") === "C" && step("D", "up") === "B");
+    ok("past the cluster's edge the walk crosses to the next cluster", step("B", "right") === "E*");
+    ok("and back again lands on the window facing it", step("E", "left") === "B*");
+    ok("nothing that way is no step", step("A", "left") === "-" && step("A", "up") === "-");
+    ok("inside the cluster comes first, however near the other cluster", step("A", "right") === "B");
+    // The cone: a window down and to the right, facing nothing of the window, is not below it.
+    const F = N("F", 0, 0, 200, 200), G = N("G", 600, 260, 200, 200);
+    ok("a window 66 degrees off the axis is not that way", L.dirScore(F, G, "down") === Infinity);
+    ok("but it is to the right (24 degrees)", L.dirScore(F, G, "right") < Infinity);
+    const T = N("T", 300, 150, 200, 900);
+    ok("a tall window whose span meets the window's counts at any angle", L.dirScore(F, T, "right") < Infinity);
+    ok("straight ahead beats nearer but off to the side",
+        L.dirStep(N("S", 0, 0, 100, 100), [N("p", 300, 0, 100, 100), N("q", 200, 140, 100, 100)], "right").id === "p");
+    // The threads: the grid's four sides, no diagonals; the lit cluster's bridges.
+    const key = (e) => [e.a, e.b].sort().join("-") + (e.bridge ? "~" : "");
+    const unlit = L.walkEdges(nodes, of, -1).map(key).sort().join(" ");
+    ok("the grid's threads are its four sides: " + unlit, unlit === "A-B A-C B-D C-D");
+    const lit = L.walkEdges(nodes, of, 0).map(key).sort().join(" ");
+    ok("the lit cluster adds its bridges out: " + lit, lit === "A-B A-C B-D B-E~ C-D D-E~");
+    const lit1 = L.walkEdges(nodes, of, 1).map(key).sort().join(" ");
+    ok("a lone lit window bridges to the window facing it: " + lit1, lit1 === "A-B A-C B-D B-E~ C-D");
+    const seg = L.edgeSegment(A, B);
+    ok("a thread joins facing sides", seg && seg.x1 === 400 && seg.x2 === 420 && seg.y1 === 150 && seg.y2 === 150);
+    ok("windows that meet draw no thread", L.edgeSegment(N("m", 0, 0), N("n", 300, 0)) === null);
+    // The carry: the cluster it goes into, and where it lands.
+    ok("a carry right from B goes into E's cluster", L.carryCluster("B", nodes, of, "right") === 1);
+    ok("from A too: the carry skips its own cluster's windows", L.carryCluster("A", nodes, of, "right") === 1);
+    ok("a carry with nothing that way goes nowhere", L.carryCluster("A", nodes, of, "up") === -1);
+    const spot = L.carrySpot(B, [E], [A, C, D], "right", 0);
+    ok("it lands on the near side of the cluster, in its row: " + JSON.stringify(spot), spot && spot.x === 1576 && spot.y === 0);
+    // The near side taken by another cluster's window: it lands elsewhere around the cluster.
+    const blocker = N("X", 1300, -200, 200, 700);
+    const spot2 = L.carrySpot(B, [E], [A, C, D, blocker], "right", 0);
+    ok("a near side too close to another window lands elsewhere: " + JSON.stringify(spot2),
+        spot2 && !(spot2.x === 1576 && spot2.y === 0) && L.clusterDist({ x: spot2.x, y: spot2.y, width: 400, height: 300 }, blocker) > 225);
+    ok("it never lands on a window", spot2 && L.clusterDist({ x: spot2.x, y: spot2.y, width: 400, height: 300 }, E) >= 8);
+    ok("no cluster, no spot", L.carrySpot(B, [], [], "right", 0) === null);
+    const up = L.carrySpot(N("w", 0, 2000), [N("t", 0, 0)], [], "up", 0);
+    ok("carried up it lands below the cluster, in its column: " + JSON.stringify(up), up && up.x === 0 && up.y === 324);
+}
+
+// ---- the box around a set of rects (boundsOf) ----
+{
+    const b = L.boundsOf([rect(1, 100, 200, 300, 100), rect(2, 50, 400, 100, 100)]);
+    ok("boundsOf: the box spans every rect", b.x === 50 && b.y === 200 && b.width === 350 && b.height === 300);
+    const one = L.boundsOf([rect(1, 7, 8, 9, 10)]);
+    ok("boundsOf: one rect is its own box", one.x === 7 && one.y === 8 && one.width === 9 && one.height === 10);
+    const none = L.boundsOf([]);
+    ok("boundsOf: no rects is a zero box", none.width === 0 && none.height === 0);
+}
+
+// ---- where a window may sit on a screen (fitRange) ----
+{
+    const g = { x: 0, y: 0, width: 1920, height: 1080 };
+    const r = L.fitRange(400, 300, g, 24);
+    ok("fitRange: the window's top-left may run from the margin to the far edge less the margin",
+        r.x0 === 24 && r.x1 === 1496 && r.y0 === 24 && r.y1 === 756 && r.fits);
+    ok("fitRange: the centred spot is the middle", r.cx === 760 && r.cy === 390);
+    const big = L.fitRange(2000, 300, g, 24);
+    ok("fitRange: a window wider than the screen does not fit", !big.fits && big.x1 < big.x0);
+    ok("fitRange: a window exactly the screen's size fits at no margin", L.fitRange(1920, 1080, g, 0).fits);
+}
+
+// ---- a screen edge that is a seam to another monitor (seamNeighbour) ----
+{
+    const left = { x: 0, y: 0, width: 1920, height: 1080 }, right = { x: 1920, y: 0, width: 1920, height: 1080 };
+    const below = { x: 0, y: 1080, width: 1920, height: 1080 };
+    ok("seamNeighbour: the right edge of the left monitor meets the right monitor", L.seamNeighbour([left, right], left, "x", 1920));
+    ok("seamNeighbour: the left edge of the left monitor meets nothing", !L.seamNeighbour([left, right], left, "x", 0));
+    ok("seamNeighbour: the bottom edge meets a monitor stacked below", L.seamNeighbour([left, below], left, "y", 1080));
+    ok("seamNeighbour: a monitor that only touches at a corner is no neighbour",
+        !L.seamNeighbour([left, { x: 1920, y: 1080, width: 1920, height: 1080 }], left, "x", 1920));
+    ok("seamNeighbour: alone, no edge is a seam", !L.seamNeighbour([left], left, "y", 1080));
+}
+
+// ---- the blur list's entries (blurClassHit: a class, a caption, /a regex/, $blank) ----
+{
+    ok("blurClassHit: a plain entry matches the class", L.blurClassHit("konsole", "konsole", "Shell"));
+    ok("blurClassHit: or the caption", L.blurClassHit("Shell", "konsole", "Shell"));
+    ok("blurClassHit: and nothing else", !L.blurClassHit("dolphin", "konsole", "Shell"));
+    ok("blurClassHit: a /regex/ matches either", L.blurClassHit("/^kons/", "konsole", "Shell") && L.blurClassHit("/ell$/", "konsole", "Shell"));
+    ok("blurClassHit: a broken regex matches nothing", !L.blurClassHit("/[/", "konsole", "[" ));
+    ok("blurClassHit: $blank matches an empty class", L.blurClassHit("$blank", "", "x") && !L.blurClassHit("$blank", "konsole", "x"));
+}
+
+// ---- the census: every function of logic.js is called by a test above ----
+{
+    const self = fs.readFileSync(__filename, "utf8");
+    for (const n of names) ok("logic.js: " + n + " has a unit test that calls it", self.indexOf("L." + n + "(") >= 0);
 }
 
 console.log("== unit pass " + pass + "  fail " + fail);

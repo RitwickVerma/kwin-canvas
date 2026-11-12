@@ -178,7 +178,17 @@ them at fixed canvas positions with `placeby`, then sources each
 `tests/scenarios/NN-name.sh` and calls its `run_scenario`. Scenarios use
 `tests/lib.sh`:
 
-- `c "command"` sends a debug command and keeps the state it printed.
+- `c "command"` sends a debug command and keeps the state it printed: the one
+  it printed, not the block before (the state line carries `seq=`, the number
+  of the last command the effect ran, and `cmd` polls for it up to 3 s and
+  says when it never came). The command is cleared from the config once it
+  ran, so a KWin that starts later does not run it again.
+- `kwinjs 'CODE' [SETTLE]` runs a KWin script in the nest under a per-call name
+  and file, and returns 1 loudly when the load fails (a stale marker read was
+  a false green on every "nothing moved" comparison). `thread_mid AX AY AW AH
+  BX BY BW BH` is the middle of the thread between two windows, which runs
+  along their centre line from where it leaves the first to where it enters
+  the second (`111`, `113`).
 - `sget zoom|viewx|viewy|visible|activity|entries|nactivities|screens|backdrop|cam|draglag|lean`
   reads the state line: `screens` is the output count, `backdrop` the number of
   wallpaper haze layers the plane is drawing (one per output in wallpaper mode,
@@ -340,7 +350,8 @@ recording, point OBS at the nest window while `DEMO_FRAMES=0 make demo` runs.
   the settings, remembered state, pointer and layout, `desk_reset` in
   `tests/run.sh` puts back what an arrange cannot: the current activity (the
   first), any extra activity, an open canvas, the panel count (plasmashell
-  shaped again by `shell_shape`) and the windows' sizes (`sizes_off`). Each
+  shaped again by `shell_shape`), the layout and the stacking (`layout_moved`,
+  arranged again) and the windows' sizes (`sizes_off`). Each
   correction prints `desk reset after NAME: ...` under the scenario that needed
   it, so the offender is named instead of found by bisecting; a clean run prints
   none, and a scenario that prints one is a bug to fix at its source. Windows

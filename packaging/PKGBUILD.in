@@ -5,7 +5,7 @@
 pkgname=kwin-canvas
 pkgver=@VERSION@
 pkgrel=1
-pkgdesc="Infinite canvas for KDE Plasma: windows on one pannable plane, activities as monitor frames, as a KWin QML effect plus a ground wallpaper, a panel applet and a terminal CLI"
+pkgdesc="Infinite canvas for KDE Plasma: windows on one pannable plane, activities as monitor frames, as a KWin QML effect plus a ground wallpaper, three panel applets (toggle, window glyphs, minimap), a window decoration and a terminal CLI"
 arch=('any')
 url="https://github.com/aaronsb/kwin-canvas"
 license=('GPL-2.0-or-later')

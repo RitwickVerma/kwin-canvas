@@ -412,6 +412,16 @@ Verified against the 6.7.5 source, in `src/`:
   opening or closing on it, its activity becoming current), and the rule it
   applies is to keep 100 px of the width on a monitor and the top inside
   `[0, screen height - 28]`: see *KWin pulls parked windows back inside*.
+- That write is `MoveResizeMode::MoveResize` even at an unchanged size; only
+  `Window::move` (C++, not reachable from a script) is `MoveResizeMode::Move`.
+  Read in the 6.8.2 source (`xdgshellwindow.cpp`): every configure KWin sends
+  keeps `moveResizeGeometry()` as its `bounds`, and when the client commits it
+  `XdgToplevelWindow::handleRoleCommit` puts the frame at those bounds (through
+  the configure's gravity). `XdgSurfaceWindow::moveResizeInternal` moves the
+  queued configures' bounds along only for a Move. So a script's write at the
+  same size moves the frame at once, and a client that then commits a configure
+  sent before the write takes the window back to where it was: see *Frame
+  authority*, the configure echo.
 - `WindowThumbnail` takes `client` and `refOffscreenRendering()`s it, so
   windows that are off-screen or minimized still render live
   (`scripting/windowthumbnailitem.cpp`).
@@ -600,12 +610,12 @@ what the screen shows. The hover pan waits out half of the pass-through's own pa
 hand is navigating, so it never fights a drag, and it settles once the
 window is visible, so it never oscillates.
 
-The swap is an Alt-Tab on the plane: while the canvas modifier is held,
-pressing `SwapButton` (MB5) flies the camera to the other of the two most
-recent windows and focuses it, and releasing the modifier opens the location
-there - the target is placed as a pick would place it, focused on the
-swapped-to window. The swap is a TapHandler on the screen root that only the
-grasp acts on; elsewhere MB5 is the window's own back/forward button.
+The swap is a tour of the clusters: while the canvas modifier is held, a tap
+of `SwapButton` (MB5) flies the camera to the next cluster's most recently
+focused window and focuses it (`clusterTravel(1)`, the same step as `]`),
+placed so the windows around it come into view, and releasing the modifier
+opens the location there. The swap is a TapHandler on the screen root that
+only the grasp acts on; elsewhere MB5 is the window's own back/forward button.
 
 ### Clusters
 
@@ -625,18 +635,89 @@ away leaves it, and the cluster travels with its windows. Every entry is in
 some cluster; a lone window is a cluster of one, which is what makes the
 tour below stop at every window.
 
-The thread is the cluster's picture: a Catmull-Rom curve through the
-members in their stable order - each window keeps a rank, so the curve
-never re-routes while the hand only moves windows - dashed, with the dashes
-marching along it (`clusterPath()`, an SVG path in view coordinates). The
-path binding depends on the camera as well as the revision, so the thread
-rides every glide and pan exactly as the windows do; it is drawn above the
-windows, a constellation over the desk. It is lit - near full strength -
-for the cluster the eye is on (the hovered window's, else the selected
-one's, else the focused one's, else the last travel stop), and the rest
-are a faint constellation below half zoom, where the plane is the subject.
-A glass badge floats over the active cluster's centroid - springing to it -
-naming its number and size.
+The threads are the window graph (below) drawn: each window joined to its neighbour left,
+right, above and below inside its cluster, from one window's facing side to the other's
+(`Logic.walkEdges`, `Logic.edgeSegment`), never across its own windows, and woven through the
+stack where another window crosses one. A 2x2 cluster has four threads, its sides, not the six of
+every pair (the web before 2026-11 joined every pair centre to centre, 28 lines for eight windows,
+showing nothing a hand could act on). The cluster the eye is on (the hovered window's, else the
+selected one's, else the focused one's, else the last travel stop) is lit, near full strength, and
+also shows its bridges: the steps its edge windows take out to the next clusters, dashed and
+fainter. The rest are a faint constellation below half zoom, where the plane is the subject. A glass
+badge floats over the active cluster's centroid - springing to it - naming its number and size.
+
+### The window graph: walk and carry
+
+The windows of the plane are a graph, and the keys move along it. **Walk** (`WalkLeftShortcut`
+and its three siblings, Meta+Alt+arrows) moves the focus to the next window that way: inside the
+window's own cluster first, and past the cluster's edge to the nearest window that way in another
+cluster. The step is KWin's own directional choice (`Workspace::switchWindow`: the centres'
+distance along the axis plus the offset across it plus the offset squared over the distance,
+lowest wins), held to a 60 degree cone unless the candidate's span faces the window's
+(`Logic.dirScore`), so a window below and to the side is not "below". Closed, the focus moves and
+the activation's fly brings the window in with its cluster around it (with FollowActivation off the
+walk asks the fly itself); in the open canvas the selection moves and the camera keeps it in view,
+and Enter enters it. With nothing focused on the plane the first step takes the window nearest the
+middle of the view. Meta+Alt+arrows were KWin's own *Switch to Window Left/Right/Above/Below*,
+the same idea without clusters; the canvas takes them over and they must be unbound in KWin.
+
+**Carry** (Meta+Alt+Shift+arrows) takes the focused window (the selected one, open) into the next
+cluster that way, whatever lies inside its own cluster: the cluster of the nearest window that way
+outside its own (`Logic.carryCluster`). It lands beside one of that cluster's windows, 24 px off
+(less when the cluster's gap is smaller), clear of every window, near enough to join the cluster
+and further than one and a half gaps from every other window so it joins no other, as near as can
+be to the side it arrives from at the height it left (`Logic.carrySpot`). The camera follows it.
+Carried straight back (the opposite direction, within five minutes) while nothing has moved onto
+its old spot since (what overlapped it then may still), it lands on that exact spot, so a carry is
+undone by its reverse; this is looked at before any cluster is, so a window that was alone, with no
+cluster to come back to, comes back all the same. In the open canvas a selection of several windows
+that holds the selected one is carried as one piece: its box finds the spot and each keeps its place
+in the box. A maximized, tiled or fullscreen window is not carried. Open, the carry glides and is one
+step of the overview's Ctrl+Z; closed, the window is written at its new spot through the target
+`planeGraph` read it with (its own monitor's, under separate cameras) and the camera flies. A carry
+or a walk with nowhere to go says so: a toast in the open canvas, Plasma's on-screen display on the
+closed desktop (`notify`).
+
+The pure half is in `logic.js` and unit-tested (`dirScore`, `dirStep`, `walkStep`, `walkEdges`,
+`edgeSegment`, `carryCluster`, `carrySpot`); `planeGraph()` in `main.qml` builds the nodes (open,
+the entries less the floated windows; closed, the current activity's windows at frame plus target,
+clustered on the spot). Scenario `227` walks, carries and counts the threads with the real chords.
+
+### The switcher
+
+Alt+Tab (`SwitcherAltShortcut`, the cluster the eye is on) and Meta+Tab (`SwitcherShortcut`, the
+whole plane) behave as a task switcher does. The windows are in the order they were last used (the
+active window first, then by `focusAt`, then by the stacking order), fixed at the press so the order
+does not shift under the hand. A **tap** flips to the window used last and opens nothing; a
+**hold** past `SwitcherShowMs` (130 ms), or a second Tab, shows the canvas fitted to the cluster or
+the plane with that window picked and brought into view; each Tab steps on, Shift+Tab (or the reverse
+chords, `SwitcherReverseShortcut` and `SwitcherAltReverseShortcut`) steps back, the walk keys step
+across the plane (a Tab after one resumes from the pool's head), and **letting the chord go enters
+the pick at once**. Esc steps back out of the switcher: the overview and its camera as they were
+(`switcherCamBefore`), or, for a switcher that opened the canvas, the location with nothing moved.
+A cluster of one has nothing to step among, so the cluster switcher steps the whole plane then and
+fits the world, as the plane switcher does. The mask the chord's end is read against holds the
+modifiers of the forward and the reverse chord both, so a reverse bound with other modifiers ends
+on its own.
+
+The release is the hard part: KWin's global-shortcut filter takes the chord's key, and the scene
+does not always see the modifier go up. Three paths, any of which ends the chord: the plugin's key
+filter sees every key release and, while the effect's `switcherModMask` is set, bumps its `chordUp`
+the moment the seat's modifiers no longer hold the chord's (`keyboardKey`); the effect polls the
+plugin's `modifiers()` every 80 ms; and the scene's own key-up of Alt, Ctrl or Meta, when it comes.
+Only the chord's own modifiers count (the mask leaves Shift out), so letting Shift go between
+Shift+Tab steps does not enter. Without the plugin the release cannot be seen while nothing is
+open: the switcher shows at once and enters `SwitcherSettleMs` after the last step (`chordBlind`,
+set at the press when the plugin's QML helper is absent, and again should the `modifiers()` call
+fail: KWin's `DBusCall` reports a missing object through `failed`, never through `finished`).
+
+Before 2026-11 the release only armed a 450 ms beat and the poll restarted it on every answer while
+the modifier was held; the poll kept answering after the release too, so the beat restarted forever
+and Alt+Tab never entered (fixed in 4d76af3, replaced here). The pool walked the windows in the
+cluster's thread order, so a quick Alt+Tab did not reach the window used last, and KWin's own
+reverse chord (Alt+Shift+Tab) opened KWin's switcher over the canvas's. The canvas now owns both
+reverse chords; KWin's *Walk Through Windows* and its reverse must be unbound. Scenario `228`
+presses the real chords: a tap, a second tap, a hold with Tab and Shift+Tab, the release, Meta+Tab.
 
 The bracket keys (`ClusterNextKey`, `ClusterPrevKey`; `[` and `]`) fly the
 camera between clusters in reading order - the centroids sorted top to
@@ -716,7 +797,8 @@ about what came before is consulted: no focus, area, activity or open/close corr
 
 The pure half lives in `logic.js` and is unit-tested: `inReach` (the rule as measured), `isPull`
 (the shape of a pull: same size, moved, out of reach before and after the last layout change, in
-reach now) and `fightStep` (the chain of reverts below). `classifyFrame` adds what only the scene
+reach now), `fightStep` (the chain of reverts below), and `noteLeftSpot` and `isEcho` (the
+configure echo, below). `classifyFrame` adds what only the scene
 knows: the canvas's own write, the window's state, FollowActivation.
 
 Three edges, each deliberate:
@@ -740,6 +822,29 @@ that relies on dragging far windows in by script will not get its way, and the P
 says what was undone (the window's class and the milliseconds since the last open, close, focus
 change, dock event and layout change).
 
+**The other somebody: a configure sent before the canvas's own write.** KWin sends a client a
+configure whenever the window's state changes (a focus change sends one to the window gaining the
+focus and one to the window losing it) and keeps the window's place with it; when the client commits
+it, KWin puts the window at that place. A script's frame write is a move-and-resize, which leaves the
+configures already sent where they were (*KWin API facts*). A busy client, or one the open scene
+covers, commits after a fly has landed, so the window went back by the slide's whole length, from one
+place in reach to another, and was adopted: it drifted on the plane, a little more with every fly.
+The maintainer's Perf log showed it as `slide dist=316` then `moved … dy=316` (and 632/632, 822/822),
+each in the 32 ms the landed scene holds; once the canvas had closed the same adoption was silent.
+
+So `setReal` moves a window at its own size through the plugin's `moveWindow` (`Window::move`), which
+takes the queued configures along. Without it (no plugin, or one older than the effect) `setReal`
+notes the spot each such write leaves (`noteLeftSpot`: the first spot of a burst of writes within
+150 ms, at most eight, for 30 s, since a client parked off every monitor can commit late), and a
+plain move back onto one of them is the echo, put back through the same fight chain (`isEcho`; the
+Perf line `reverted … why=echo`). Two more things must hold, or a tiler writing a window back to
+where it was would be mistaken for one: the window gained or lost the focus since the spot was
+noted (a focus change is what sends the configure; `focusFlipAt`), and the hand did not let go of
+the window within the last 300 ms (`handAt`, from `interactiveMoveResizeFinished`). The state line's
+`mover=` says which path is in use (`plugin` or `frame`), and Perf's `moved` logs a closed canvas's
+adoptions as well (open and closed each have a budget of 60 lines), so a drift shows wherever it
+happens.
+
 **What replaced what.** This section replaced three detectors that grew one after another and keyed
 on a cause each (a work-area correlation, a focus change, an activity change or an open or close),
 with their timers, maps and about twelve call sites. They missed whatever the next cause was: the
@@ -751,7 +856,8 @@ away, scenario `205`) pulls only the window that gets focus. The classifier does
 
 Scenarios: `180` (a scale change; a script's move is undone; a move between places on the screen is
 not), `181` (a real panel resize, `make test-panel`), `182` to `184` (the commit, open and close, the
-activity switch), `204` (a fly to a window above or past the screen, from an activation or a hover), `206` (a pull right after an
+activity switch), `204` (a fly to a window above or past the screen, from an activation or a hover), `226` (the
+configure echo: KCalc's process stopped across a fly, gaining the focus and losing it), `206` (a pull right after an
 open, in the overview and a fly), `207` (the edges above), `205` (a stress at the maintainer's layout).
 
 ### A fly leaves a floated window where it is
@@ -865,8 +971,8 @@ growing list.
 | `hover-fetch` | `ms` | the rest that made the camera fetch a hovered window (the pointer's rest, which is the fetch's latency) |
 | `ticks` | `n`, `p50`, `p95`, `max` | physics tick spacing in ms over the session, written when the canvas closes |
 | `built` | `n`, `moving`, `frames`, `of`, and a count per kind (`thumb`, `web`, `badge`, `chip`, `weave`) | scene items created in the session, written when the canvas closes; `moving` counts those created while the camera or a drag was moving (a re-weave of the cluster web counts as `weave`), `frames` in how many of the session's `of` frames that happened. A rebuild on the frame path builds in most moving frames; a window that opens mid-flight builds its badge in one. Doctor and `perf --week` call it a rebuild at 5 frames and a tenth of the session's |
-| `moved` | `win`, `cls`, `dx`, `dy`, `open`, `quiet`, `pinned`, `floats`, `since …` | a real window's position changed by something other than the canvas and was adopted into the plane (a move the classifier did not take for KWin's reachability rule: see *Frame authority*) |
-| `reverted` | `win`, `cls`, `dx`, `dy`, `open`, `quiet`, `since …` | something other than the hand or the canvas moved a window from out of reach to in reach, and the canvas put it back (*Frame authority*); `since` is the milliseconds since the last open, close, focus change, dock event and layout change, `-` when none in five seconds |
+| `moved` | `win`, `cls`, `dx`, `dy`, `open`, `quiet`, `pinned`, `floats`, `since …` | a real window's position changed by something other than the canvas and was adopted into the plane (a move the classifier did not take for KWin's reachability rule or an echo: see *Frame authority*), open or closed; the first 60 of a session |
+| `reverted` | `win`, `cls`, `dx`, `dy`, `why`, `open`, `quiet`, `since …` | something other than the hand or the canvas moved a window from out of reach to in reach (`why=revert`), or back onto a spot the canvas's own write had moved it from (`why=echo`, a late configure), and the canvas put it back (*Frame authority*); `since` is the milliseconds since the last open, close, focus change, dock event and layout change, `-` when none in five seconds |
 | `landed` | `win`, `dx`, `dy` | a floated window took its picture's spot as its plane coordinates when the canvas was left |
 | `stall` | `ms`, `cam`, `quiet`, `entries`, `ql`, `cpu`, `gpu`, `mem`, `vram` | a physics tick 60 ms or more late, with what the camera was doing (`goal`, `fling`, `-`) and the effect's last load readings (`vram` how full the GPU's memory is); at most 40 a session; `kwin-canvas perf` lists the last 12 with their times |
 
@@ -1119,8 +1225,9 @@ pointer crossing at speed passes through. Both are what the KVM case needs, and
 ## HUD
 
 A Plasma toolbar (`org.kde.plasma.components`, Kirigami theme colours) on
-the primary display only, which is the first output in
-`Workspace.screenOrder`, the order plasmashell sets. `HudPosition` picks an
+one monitor: the one the pointer rests on (`chromeScr`, taken after the
+pointer has rested 450 ms on it), the primary until then, which is the first
+output in `Workspace.screenOrder`, the order plasmashell sets. `HudPosition` picks an
 edge or corner, and `HudShape` the flow: one `GridLayout` whose flow, rows
 and columns follow the shape, with the label spanning the square's width and
 the separators hidden there. It shows the current activity and zoom, one swatch per activity, the camera
@@ -1243,9 +1350,6 @@ write and the real keys.
   it rather than a constant.
 - Auto-pan when dragging a window to the screen edge at 1:1. The move is
   KWin's; the effect can watch `Window.move` and shift the plane on a timer.
-- Restore the persisted `view` at startup: the config's `ViewX`/`ViewY` are
-  written on commit, but nothing reads them back, so a KWin restart resets
-  the camera.
 - Cluster gestures beyond the badge: dragging the web's lines to move the
   cluster conflicts with the windows' own drags in Qt's handler
   arbitration (the badge is the reliable handle), so the web drag stays

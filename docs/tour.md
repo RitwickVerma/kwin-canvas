@@ -13,12 +13,14 @@ this state alone until you open it.
 
 ## Open
 
-Meta+Space, or the hot corner. The canvas opens zoomed to fit everything:
-the ground grid with its coordinate labels, one group of monitor frames per
-activity, and every window as a live thumbnail where it sits on the plane.
-Here Gwenview lives in Activity 2 and KCalc floats on the plane outside
-every frame. The toolbar on the primary display shows the current activity,
-the zoom, and a swatch per activity.
+Meta+Ctrl+Alt+Space, or a screen corner. The canvas opens at 1:1, so it
+looks like the desktop until you move; a wheel notch out (or `OpenZoom=fit`
+in its settings) shows everything, as here: the ground grid with its
+coordinate labels, one group of monitor frames per activity, and every
+window as a live thumbnail where it sits on the plane. Gwenview lives in
+Activity 2 and KCalc sits on the plane outside every frame. The toolbar, on
+the monitor the pointer rests on, shows the current activity, the zoom, and
+a swatch per activity.
 
 ![The canvas, zoomed to fit](images/02-hero.png)
 
@@ -63,7 +65,8 @@ held: Gwenview, where the frame had it, on that activity's own wallpaper.
 
 ## The toolbar goes where you want it
 
-Any edge or corner of the primary display, horizontal, vertical, or square.
-In a corner it defaults to square.
+Any edge or corner of the monitor the pointer rests on (the primary until the
+pointer has rested on another for half a second), horizontal, vertical, or
+square. In a corner it defaults to square.
 
 ![Square toolbar in the corner](images/08-corner-toolbar.png)

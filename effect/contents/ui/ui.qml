@@ -237,12 +237,21 @@ Item {
                 onClicked: effect.addActivity()
             }
             IconButton {
+                id: trashButton
                 visible: effect.activityIds.length > 1
                 anchors.verticalCenter: parent.verticalCenter
                 viewItem: tag.viewItem
-                icon: "edit-delete"
+                icon: armed ? "dialog-warning" : "edit-delete"
                 hoverColor: "#80ff4040"
-                onClicked: effect.removeActivity(tag.activity)
+                // Removing an activity takes two taps: the first arms the button for three
+                // seconds (it shows a warning), the second removes. One tap on an 18 px button
+                // beside the plus is too little to lose an activity on.
+                property bool armed: false
+                Timer { id: trashArm; interval: 3000; onTriggered: trashButton.armed = false }
+                onClicked: {
+                    if (armed) { armed = false; trashArm.stop(); effect.removeActivity(tag.activity); }
+                    else { armed = true; trashArm.restart(); effect.toast("Remove " + effect.labelOf(tag.activity) + "? Tap the warning again within 3 s"); }
+                }
             }
         }
     }
@@ -947,6 +956,8 @@ Item {
                 // change re-runs nothing.
                 readonly property real cornerR: {
                     if (!effect.cornerStyle || !effect.cornerStyle.on) return 0;
+                    // Closed, nothing shows the corners: no focus or caption change re-runs this.
+                    if (!effect.visible) return 0;
                     KWin.Workspace.activeWindow; effect.ql; effect.revision;
                     return effect.cornerRadiusOf ? effect.cornerRadiusOf(thumb.entry) : 0;
                 }
@@ -1394,6 +1405,9 @@ Item {
                 id: layer
                 required property int index
                 readonly property var t: effect.threadData[index] || ({ z: 0, lit: false, co: 0, d: "" })
+                // A bridge (a step out of the lit cluster, to the next) is a fainter, dashed thread:
+                // the way out, not part of the cluster. An older effect has no bridges.
+                readonly property bool bridge: t.bridge === true
                 // The paths are in the plane's own coordinates; the camera is a
                 // uniform translate-plus-scale, applied here once per layer per frame.
                 x: -(effect.viewX * effect.zoom) - view.sg.x
@@ -1405,7 +1419,7 @@ Item {
                 // between 0.45 and 0.5 instead of cutting out at half zoom, while a
                 // lit thread (the cluster the focus is in) draws at every zoom; a
                 // quiet hold carries no web at all.
-                readonly property real want: (t.lit ? Math.max(0.3, 0.55 * t.co) * Math.min(1, Math.max(0, (1 - effect.zoom) * 4)) : (effect.ql >= 2 ? 0 : 0.22 * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20)) * t.co)) * effect.skinReveal
+                readonly property real want: (t.lit ? Math.max(0.3, 0.55 * t.co) * Math.min(1, Math.max(0, (1 - effect.zoom) * 4)) : (effect.ql >= 2 ? 0 : 0.22 * Math.min(1, Math.max(0, (0.5 - effect.zoom) * 20)) * t.co)) * effect.skinReveal * (bridge ? 0.5 : 1)
                 property real show: 0
                 opacity: show
                 Behavior on show { NumberAnimation { duration: 350; easing.type: Easing.InOutCubic } }
@@ -1431,6 +1445,8 @@ Item {
                         fillColor: "transparent"
                         capStyle: ShapePath.RoundCap
                         joinStyle: ShapePath.RoundJoin
+                        strokeStyle: layer.bridge ? ShapePath.DashLine : ShapePath.SolidLine
+                        dashPattern: [3, 4]
                         PathSvg { path: layer.t.d }
                     }
                 }
@@ -1524,18 +1540,23 @@ Item {
                     // In the switcher the cycle rides the gate, so a held
                     // key's repeats can never machine-gun it whatever the
                     // delivery; the plain overview keeps its own Tab cycle.
-                    if (effect.switcherActive) effect.switcherCycle(1);
+                    if (effect.switcherActive) effect.switcherCycle(1, true);
                     else effect.cycleSelection(1);
                 }
             } else if (effect.bound("prev", k) || (effect.bound("next", k) && (event.modifiers & Qt.ShiftModifier))) {
                 // Shift+Tab arrives as Tab with the shift modifier, whatever
                 // the platform does about Backtab, so both count as previous.
                 if (!event.isAutoRepeat) {
-                    if (effect.switcherActive) effect.switcherCycle(-1);
+                    if (effect.switcherActive) effect.switcherCycle(-1, true);
                     else effect.cycleSelection(-1);
                 }
             } else if (effect.bound("cancel", k)) {
-                effect.cancel();
+                // In the switcher, Esc steps out of the switcher, not out of the canvas (the
+                // function lives on the effect; a hot reload may precede it).
+                if (!(effect.switcherActive && effect.switcherEsc && effect.switcherEsc())) effect.cancel();
+            } else if (k === Qt.Key_Delete && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier))) {
+                // Delete closes the selected windows, as the arrange menu's Close does.
+                if (!event.isAutoRepeat && effect.closeSelection) effect.closeSelection();
             } else if (effect.bound("apply", k)) {
                 effect.applyKey();
             } else if (effect.bound("home", k)) {
@@ -1545,8 +1566,10 @@ Item {
             } else if (effect.bound("fit", k)) {
                 effect.zoomExtents(true);
             } else if (effect.bound("zoomIn", k)) {
+                // At 1:1 a step in is the door the wheel takes: the location under the pointer.
                 const p = effect.cursorScreen();
-                effect.camZoomTo(effect.zoom * effect.zoomStep, p.x, p.y);
+                if (effect.zoom >= 0.999 && !effect.quiet && !effect.switcherActive) effect.enterHere();
+                else effect.camZoomTo(effect.zoom * effect.zoomStep, p.x, p.y);
             } else if (effect.bound("zoomOut", k)) {
                 const p = effect.cursorScreen();
                 effect.camZoomTo(effect.zoom / effect.zoomStep, p.x, p.y);
@@ -1584,20 +1607,15 @@ Item {
                 view.spaceHeld = false;
                 event.accepted = true;
             }
-            // Releasing the switcher's chord enters the selected window, the
-            // way releasing Alt+Tab lands on the tabbox's pick - but it
-            // waits a human beat first, so the pick settles under the eye
-            // instead of jumping in at the tab keyup (a re-tap mid-hold
-            // carries the modifiers, so its keyup is neither a modifier
-            // nor a bare Tab, and can never arm it). The scene cannot
-            // always see the release of a key the global shortcut consumed,
-            // so this is only the fast path: the modifier key-up arms the
-            // settle through the shared handler, and the plugin's live
-            // modifier poll is the slow, always-works path.
+            // Releasing the switcher's chord enters the selected window, the way releasing Alt+Tab
+            // lands on a task switcher's pick. The scene cannot always see the release of a key the
+            // global shortcut consumed, so this is one path of three: the plugin's key filter
+            // (chordUp) and its modifier poll are the others (main.qml, chordRelease).
             if (effect.switcherActive && effect.switcherFromChord && !event.isAutoRepeat) {
-                const mod = event.key === Qt.Key_Alt || event.key === Qt.Key_Control
-                        || event.key === Qt.Key_Meta || event.key === Qt.Key_Shift;
-                if (mod) {
+                // Only the chord's own modifiers end it: Shift goes up between Shift+Tab steps.
+                const flag = event.key === Qt.Key_Alt ? Qt.AltModifier : event.key === Qt.Key_Control ? Qt.ControlModifier
+                        : (event.key === Qt.Key_Meta || event.key === Qt.Key_Super_L || event.key === Qt.Key_Super_R) ? Qt.MetaModifier : 0;
+                if (flag !== 0 && (effect.switcherModMask & flag) !== 0) {
                     effect.chordRelease();
                     event.accepted = true;
                 }
@@ -2055,6 +2073,8 @@ Item {
                             PC3.MenuItem { text: "Plane, outside every activity"; icon.name: "edit-none"; onTriggered: effect.sendTo(null) }
                         }
                         PC3.MenuSeparator {}
+                        PC3.MenuItem { text: "Bring here";           icon.name: "go-jump";               onTriggered: if (effect.bringHere) effect.bringHere() }
+                        PC3.MenuItem { text: "Close";                icon.name: "window-close";          onTriggered: if (effect.closeSelection) effect.closeSelection() }
                         PC3.MenuItem { text: "Clear selection";      icon.name: "edit-select-none";      onTriggered: effect.clearSelection() }
                         PC3.MenuSeparator {}
                         PC3.MenuItem { text: effect.pinTargetsPinned() ? "Unfloat" : "Float"; icon.name: "window-pin"; onTriggered: effect.togglePin() }
@@ -2358,6 +2378,13 @@ Item {
                             PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseGotoActivity) + " frame" }    PC3.Label { text: "apply with that activity current" }
                             PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.gestureLabel(effect.configuration.MouseNewActivityAt) + " window outside frames" } PC3.Label { text: "new activity centred on it" }
                             PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyNext) + " / " + effect.keyLabel(effect.configuration.KeyPrev) } PC3.Label { text: "step the selection through the windows; the camera follows" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.WalkLeftShortcut) + " ... " + effect.keyLabel(effect.configuration.WalkDownShortcut) } PC3.Label { text: "walk to the next window that way, through the cluster and on to the next; closed, the focus walks" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.CarryLeftShortcut) + " ... " + effect.keyLabel(effect.configuration.CarryDownShortcut) } PC3.Label { text: "carry the selected window (closed: the focused one) into the next cluster that way; straight back returns it" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.SwitcherShortcut) + " / " + effect.keyLabel(effect.configuration.SwitcherAltShortcut) } PC3.Label { text: "the switcher: a tap flips to the window used last; held, step with Tab (Shift+Tab back), let go to enter, Esc to step out" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: "/ or " + effect.keyLabel(effect.configuration.SearchShortcut) } PC3.Label { text: "find a window by typing its title or app; Tab steps the matches, Enter enters, Esc ends" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.ClusterNextKey) + " / " + effect.keyLabel(effect.configuration.ClusterPrevKey) } PC3.Label { text: "fly to the next / previous cluster, in reading order" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: "ctrl+z" }                                        PC3.Label { text: "undo the last move or commit on the plane" }
+                            PC3.Label { font.family: "monospace"; opacity: 0.85; text: "delete" }                                        PC3.Label { text: "close the selected windows (the arrange menu's Close)" }
                             PC3.Label { font.family: "monospace"; opacity: 0.85; text: effect.keyLabel(effect.configuration.KeyPanLeft) + " / " + effect.keyLabel(effect.configuration.KeyPanRight) + " / " + effect.keyLabel(effect.configuration.KeyPanUp) + " / " + effect.keyLabel(effect.configuration.KeyPanDown) } PC3.Label { text: "pan the camera one step" }
                             PC3.Label { font.family: "monospace"; opacity: 0.85; text: "1..9" }                                          PC3.Label { text: "jump straight to that cluster - its number on the badge; the camera returns to the spot you left it at" }
                             PC3.Label { font.family: "monospace"; opacity: 0.85; text: "Ctrl+1..9 / Alt+1..9" }                    PC3.Label { text: "keep this view in that slot / fly back to it - the camera's place and how far out" }

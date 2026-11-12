@@ -105,8 +105,10 @@ cat > "$T/bin/qdbus6" <<'EOF'
 #!/bin/sh
 case "$*" in
     *isEffectLoaded\ zoom) [ -n "${FAKE_ZOOM:-}" ] && echo "$FAKE_ZOOM" || exit 1 ;;
-    *isEffectLoaded\ kwin-canvas) echo "${FAKE_LOADED:-true}" ;;
+    *isEffectLoaded\ kwin-canvas) [ "${FAKE_LOADED:-true}" = fail ] && exit 1; echo "${FAKE_LOADED:-true}" ;;
     *Passthrough.load) [ -n "${FAKE_LOAD:-}" ] && echo "$FAKE_LOAD" || exit 1 ;;
+    *Passthrough.probe) echo yes ;;
+    *reconfigureEffect*) exit 0 ;;
     *) exit 1 ;;
 esac
 EOF
@@ -211,7 +213,7 @@ exit_is "no diffutils: still not a failure" 0
 # a CLI run from outside a checkout has nothing to compare with
 mkdir -p "$T/loose"
 cp "$CLI" "$T/loose/kwin-canvas"
-out=$(env PATH="$T/bin:$PATH" DOCTOR_HOME="$H" DOCTOR_PLUGIN_DIR="$PLUG" DOCTOR_KWIN_START=$((NOW + 1000)) DOCTOR_PLASMA_START=$((NOW + 1000)) FAKE_LOAD="cpu=1 load=0 mem=1 gpu=-1" bash "$T/loose/kwin-canvas" doctor 2>&1)
+out=$(env PATH="$T/bin:$PATH" DOCTOR_HOME="$H" DOCTOR_PLUGIN_DIR="$PLUG" DOCTOR_KWIN_START=$((NOW + 1000)) DOCTOR_PLASMA_START=$((NOW + 1000)) FAKE_LOAD="cpu=1 load=0 mem=1 gpu=-1" DOCTOR_PERF_FILE="$T/perf-none" DOCTOR_JOURNAL_FILE="$T/journal-none" bash "$T/loose/kwin-canvas" doctor 2>&1)
 rc=$?
 has "no checkout: says so" "no source tree to compare with"
 exit_is "no checkout: not a failure" 0
@@ -480,6 +482,78 @@ has "perf stall: a late tick is listed with its cause" "  stall ms=120 cam=goal 
 head -3 "$T/stall.log" | sed -n '1p;4p' > "$T/nostall.log"
 out=$(bash "$CLI" perf --from "$T/nostall.log" 2>&1)
 lacks "perf stall: no list without a stall" "late ticks"
+
+# ---- doctor: a chord KDE's own action holds over a Canvas action ----
+# kglobalaccel gives a chord to the first action that asks; KWin's own actions register before
+# the effect's. The action table in the CLI must name what main.qml registers.
+while IFS='=' read -r action knob; do
+    [ -n "$action" ] || continue
+    grep -qF "name: \"$action\"" "$HERE/effect/contents/ui/main.qml"; check "action table: \"$action\" is a ShortcutHandler in main.qml" $?
+    grep -qF "configuration.$knob" "$HERE/effect/contents/ui/main.qml"; check "action table: $knob is read by main.qml" $?
+done <<<"$(sed -n '/^CANVAS_ACTIONS="/,/"$/p' "$CLI" | sed 's/^CANVAS_ACTIONS="//; s/"$//')"
+write_held_shortcuts() { # KDE holds Meta+Alt+Left and both reverse chords; the canvas's walk is registered with none
+    cat > "$CFG/kglobalshortcutsrc" <<'EOF'
+[kwin]
+Canvas Walk Left=none,none,Canvas: walk to the window to the left
+Switch Window Left=Meta+Alt+Left,Meta+Alt+Left,Switch to Window to the Left
+Walk Through Windows (Reverse)=Alt+Shift+Tab\tMeta+Shift+Tab,Alt+Shift+Tab\tMeta+Shift+Tab,Walk Through Windows (Reverse)
+Canvas Switcher=Meta+Tab,none,Canvas: the switcher
+EOF
+}
+write_held_shortcuts
+doctor
+exit_is "held: exit 1" 1
+has "held: the registered action with none names its holder" 'FAIL  shortcuts  Canvas Walk Left wants Meta+Alt+Left, which "Switch to Window to the Left" (KWin) holds'
+has "held: an action not yet registered (the effect predates it) is named too" 'FAIL  shortcuts  Canvas Switcher Alternate Reverse wants Alt+Shift+Tab, which "Walk Through Windows (Reverse)" (KWin) holds'
+has "held: the other reverse chord too" 'Canvas Switcher Reverse wants Meta+Shift+Tab, which "Walk Through Windows (Reverse)"'
+lacks "held: a chord the canvas holds itself is fine" "Canvas Switcher wants"
+lacks "held: a chord nobody holds is fine" "Canvas Walk Right wants"
+printf '[Effect-kwin-canvas]\nWalkLeftShortcut=Meta+Alt+Home\n' >> "$CFG/kwinrc"
+doctor
+lacks "held: kwinrc's own chord for the knob is what counts" "Canvas Walk Left wants"
+write_kwinrc; write_shortcuts; write_clean_shortcuts
+doctor
+has "held: none held is OK" "OK    shortcuts  no key sequence is active on a Canvas action and another action, and no chord the canvas wants is held"
+
+# ---- setup: taking a held chord over through kglobalaccel ----
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "%s/kga"\n' "$T" > "$T/bin/busctl"; chmod 755 "$T/bin/busctl"
+mkdir -p "$SC" "$T/setupdata"; cp -r "$DATA/kwin" "$T/setupdata/"
+cp "$CFG/kglobalshortcutsrc" "$SC/kglobalshortcutsrc"; write_held_shortcuts; mv "$CFG/kglobalshortcutsrc" "$SC/kglobalshortcutsrc"
+printf '[Windows]\nFocusPolicy=FocusFollowsMouse\nDelayFocusInterval=150\nAutoRaise=true\nAutoRaiseInterval=300\nClickRaise=false\n[Effect-kwin-canvas]\nBorderActivate=1,3,5,7\nBorderZoom=fit\n[Plugins]\nzoomEnabled=false\n[org.kde.kdecoration2]\nlibrary=org.kde.kwin.aurorae\ntheme=kwin-canvas-decoration\n' > "$SC/kwinrc"
+: > "$SC/kdeglobals"
+sd() { out=$(printf "$1" | env PATH="$T/bin:$PATH" SETUP_CONFIG="$SC" SETUP_DATA="$T/setupdata" SETUP_NO_RECONFIGURE=1 bash "$CLI" setup "${@:2}" 2>&1); rc=$?; }
+sd "" --check
+has "setup --check: an absent key at KDE's default is ok (AnimationDurationFactor)" "ok    AnimationDurationFactor"
+has "setup --check: a held chord is listed" 'take? "Switch to Window to the Left" holds Meta+Alt+Left, which Canvas Walk Left wants'
+has "setup --check: a held chord counts as pending" "3 to change"
+[ ! -e "$T/kga" ]; check "setup --check: kglobalaccel is not called" $?
+# The held chords come in the action table's order: Switcher Reverse, Switcher Alternate Reverse, Walk Left.
+sd "n\nn\ny\n"
+exit_is "setup: taking a chord exits 0" 0
+grep -qx -- '--user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel setForeignShortcutKeys asa(ai) 4 kwin Switch Window Left KWin Switch to Window to the Left 0' "$T/kga"; check "setup: KDE's action loses the chord (its only one)" $?
+grep -qx -- '--user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel setForeignShortcutKeys asa(ai) 4 kwin Canvas Walk Left KWin Canvas Walk Left 1 1 419430418' "$T/kga"; check "setup: the registered Canvas action gets it as Qt's integer (Meta+Alt+Left)" $?
+has "setup: says the action has it" "Canvas Walk Left has it now"
+[ "$(grep -c . "$T/kga")" -eq 2 ]; check "setup: the two answered n touch nothing" $?
+rm -f "$T/kga"; sd "y\nn\nn\n"
+grep -qx -- '--user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel setForeignShortcutKeys asa(ai) 4 kwin Walk Through Windows (Reverse) KWin Walk Through Windows (Reverse) 1 1 184549377' "$T/kga"; check "setup: KDE's action keeps its other chord (Alt+Shift+Tab stays when Meta+Shift+Tab is taken)" $?
+has "setup: an unregistered Canvas action takes it at the next login" "Canvas Switcher Reverse takes it at the next login"
+rm -f "$T/kga" "$T/bin/busctl"
+
+# ---- status, help, the debug channel ----
+out=$(env PATH="$T/bin:$PATH" bash "$CLI" status 2>&1); rc=$?
+exit_is "status: a reading exits 0" 0
+has "status: says loaded and the plugin" "effect loaded: true; pass-through plugin: yes"
+out=$(env PATH="$T/bin:$PATH" FAKE_LOADED=fail bash "$CLI" status 2>&1); rc=$?
+exit_is "status: no answer from KWin exits 1" 1
+has "status: and says so" "no session"
+out=$(env PATH="$T/nodiff" "$BASH" "$CLI" help 2>&1); rc=$?
+exit_is "help: needs no qdbus6" 0
+has "help: prints the commands" "kwin-canvas doctor"
+mkdir -p "$T/sendcfg"
+out=$(env PATH="$T/bin:$PATH" XDG_CONFIG_HOME="$T/sendcfg" bash "$CLI" toggle 2>&1); rc=$?
+exit_is "send: toggle exits 0" 0
+grep -q '^DebugSeq=1$' "$T/sendcfg/kwinrc"; check "send: the sequence number is kept" $?
+! grep -q '^DebugCommand=' "$T/sendcfg/kwinrc"; check "send: the command is cleared once sent (it ran again at every login)" $?
 
 echo "cli: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

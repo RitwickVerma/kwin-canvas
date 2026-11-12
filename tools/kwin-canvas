@@ -9,7 +9,7 @@
 #   kwin-canvas cancel    back to where you were, nothing moved
 #   kwin-canvas open      step out to the overworld (waits up to 10 s for the effect at login)
 #   kwin-canvas toggle    step out, or in when the canvas is open
-#   kwin-canvas status    whether the effect is loaded and the plugin answers
+#   kwin-canvas status    whether the effect is loaded and the plugin answers (exit 1 when KWin does not answer)
 #   kwin-canvas reset     recentre the plane on where you are (canvas closed): the view becomes (0, 0), no window moves
 #   kwin-canvas doctor    read-only health check: what is installed, loaded, bound, enabled
 #   kwin-canvas plugincheck [--notify] [--after N]   is the pass-through plugin built for the running KWin (exit 1 if not)
@@ -17,11 +17,12 @@
 #   kwin-canvas check [--notify] [--after N]   the plugin check plus the effect's QML errors since boot (exit 1 on either)
 #   kwin-canvas fix-plugin   rebuild the pass-through plugin in the checkout and install it (asks sudo)
 #   kwin-canvas plugin-hook install|remove   rebuild the plugin by itself after every KWin update (a pacman hook; asks sudo)
-#   kwin-canvas setup [--check]   the recommended KDE settings, one question each before any change (--check only lists)
+#   kwin-canvas setup [--check]   the recommended KDE settings and the chords KDE holds over the canvas's, one question each before any change (--check only lists)
 #
 # Commands travel the effect's debug channel: DebugCommand and DebugSeq in
 # the [Effect-kwin-canvas] group of kwinrc, read by the effect when KWin
-# reconfigures it. From a VT the session bus is found at the user's runtime
+# reconfigures it, and cleared once it has (a command left in kwinrc ran again
+# at every login). From a VT the session bus is found at the user's runtime
 # directory; qdbus6 needs the bus and nothing else. `open` retries until the
 # effect is loaded, so an autostart entry can run it before KWin is done.
 #
@@ -127,7 +128,7 @@ tree_diff() {
 doctor_package() {
     local tag=$1 name=$2 src=$3 dst=$4 shared=${5:-} diffs n first
     if [ ! -d "$dst" ]; then
-        verdict FAIL "$tag" "$name is not installed ($dst is missing): make install"
+        verdict FAIL "$tag" "$name is not installed ($dst is missing, and no system copy on XDG_DATA_DIRS): make install"
         return
     fi
     diffs=$(tree_diff "$src" "$dst")
@@ -150,10 +151,22 @@ doctor_package() {
 plugin_built_for() {
     grep -a -o 'PluginFactoryInterface[0-9][0-9.]*' "$1" 2>/dev/null | head -1 | sed 's/^PluginFactoryInterface//'
 }
-# running_kwin: the KWin version this session runs (DOCTOR_KWIN_VERSION stands in for tests).
+# running_kwin: the KWin version this session runs, asked of the session itself; when nothing
+# answers, the installed binary's, which after an upgrade is the version the NEXT login runs.
+# KWIN_SRC says which ("running" or "installed"). DOCTOR_KWIN_VERSION stands in for tests.
+KWIN_SRC=running
 running_kwin() {
-    if [ -n "${DOCTOR_KWIN_VERSION+x}" ]; then printf '%s' "$DOCTOR_KWIN_VERSION"; return; fi
+    local v
+    if [ -n "${DOCTOR_KWIN_VERSION+x}" ]; then KWIN_SRC=running; printf '%s' "$DOCTOR_KWIN_VERSION"; return; fi
+    v=$(qdbus6 org.kde.KWin /KWin org.kde.KWin.supportInformation 2>/dev/null | awk '/^KWin version: / { print $3; exit }')
+    if [ -n "$v" ]; then KWIN_SRC=running; printf '%s' "$v"; return; fi
+    KWIN_SRC=installed
     kwin_wayland --version 2>/dev/null | awk 'NR == 1 { print $NF }'
+}
+# kwin_is: "this is KWin X" or "the installed KWin is X" (the session running now keeps what it loaded).
+kwin_is() {
+    if [ "$KWIN_SRC" = running ]; then printf 'this is KWin %s: KWin refuses it' "$1"
+    else printf 'the installed KWin is %s: the next login refuses it (the session running now keeps the plugin it loaded)' "$1"; fi
 }
 # plugin_mismatch: prints "BUILT KWIN FILE" and returns 0 when an installed canvas plugin carries
 # a version other than the running KWin's; returns 1 when it matches, is absent, or either version
@@ -172,7 +185,7 @@ doctor_plugin_version() {
     local m built kw found
     if m=$(plugin_mismatch); then
         read -r built kw found <<<"$m"
-        verdict FAIL plugin "built for KWin $built but this is KWin $kw: KWin refuses it, so the grasp over windows, input pass-through and the panel applet's buttons are off. Run kwin-canvas fix-plugin (or make plugin, then as root: install -m 755 build/plugin/bin/kwin/plugins/$(basename "$found") $(dirname "$found")/), then relogin"
+        verdict FAIL plugin "built for KWin $built but $(kwin_is "$kw"), so the grasp over windows, input pass-through and the panel applet's buttons are off. Run kwin-canvas fix-plugin (or make plugin, then as root: install -m 755 build/plugin/bin/kwin/plugins/$(basename "$found") $(dirname "$found")/), then relogin"
     else
         found=""
         for f in "${DOCTOR_PLUGIN_DIR:-/usr/lib/qt6/plugins/kwin/plugins}"/*canvas*.so; do [ -e "$f" ] && found=$f; done
@@ -186,6 +199,17 @@ doctor_plugin_version() {
     fi
 }
 
+# installed_dir DATA REL: where a package is installed: the user's copy under DATA, else the first
+# system copy on XDG_DATA_DIRS (the AUR package, make install-system), else the user's path for
+# the "missing" verdict.
+installed_dir() {
+    local d dirs
+    [ -d "$1/$2" ] && { echo "$1/$2"; return; }
+    IFS=: read -ra dirs <<<"${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+    for d in "${dirs[@]}"; do [ -n "$d" ] && [ -d "$d/$2" ] && { echo "$d/$2"; return; }; done
+    echo "$1/$2"
+}
+
 doctor_installed() {
     local repo=$1 data=$2 home=$3 cli built plugdir f found=""
     if [ -z "$repo" ]; then
@@ -196,15 +220,17 @@ doctor_installed() {
         verdict WARN installed "diffutils missing, install comparison skipped (diff and cmp are needed; Arch: pacman -S diffutils)"
         return
     fi
-    doctor_package installed "effect" "$repo/effect" "$data/kwin/effects/kwin-canvas" "$repo/shared/Ground.qml"
-    doctor_package installed "wallpaper" "$repo/wallpaper" "$data/plasma/wallpapers/kwin-canvas-ground" "$repo/shared/Ground.qml"
-    doctor_package installed "toggle applet" "$repo/applet" "$data/plasma/plasmoids/org.kde.kwin.canvas.toggle"
-    doctor_package installed "decor applet" "$repo/applet-decor" "$data/plasma/plasmoids/org.kde.kwin.canvas.decor"
-    doctor_package installed "map applet" "$repo/applet-map" "$data/plasma/plasmoids/org.kde.kwin.canvas.map"
-    doctor_package installed "decoration" "$repo/decoration" "$data/kwin/decorations/kwin-canvas-decoration"
+    doctor_package installed "effect" "$repo/effect" "$(installed_dir "$data" kwin/effects/kwin-canvas)" "$repo/shared/Ground.qml"
+    doctor_package installed "wallpaper" "$repo/wallpaper" "$(installed_dir "$data" plasma/wallpapers/kwin-canvas-ground)" "$repo/shared/Ground.qml"
+    doctor_package installed "toggle applet" "$repo/applet" "$(installed_dir "$data" plasma/plasmoids/org.kde.kwin.canvas.toggle)"
+    doctor_package installed "decor applet" "$repo/applet-decor" "$(installed_dir "$data" plasma/plasmoids/org.kde.kwin.canvas.decor)"
+    doctor_package installed "map applet" "$repo/applet-map" "$(installed_dir "$data" plasma/plasmoids/org.kde.kwin.canvas.map)"
+    doctor_package installed "decoration" "$repo/decoration" "$(installed_dir "$data" kwin/decorations/kwin-canvas-decoration)"
     cli="$home/.local/bin/kwin-canvas"
+    # A system install (install-system, the AUR package) puts the CLI on the PATH instead.
+    [ -f "$cli" ] || cli=$(command -v kwin-canvas 2>/dev/null || echo "$cli")
     if [ ! -f "$cli" ]; then
-        verdict FAIL installed "the CLI is not installed ($cli is missing): make install"
+        verdict FAIL installed "the CLI is not installed ($cli is missing, and none on the PATH): make install"
     # The install writes the checkout's path into its copy; that line is not a difference.
     elif cmp -s <(grep -v '^INSTALLED_FROM=' "$repo/tools/kwin-canvas") <(grep -v '^INSTALLED_FROM=' "$cli"); then
         verdict OK installed "the CLI matches the repo ($cli)"
@@ -290,50 +316,62 @@ doctor_session() {
     fi
 }
 
+# The awk that reads kglobalshortcutsrc, shared by the two checks below. A line is
+# NAME=ACTIVE,DEFAULT,FRIENDLY; ACTIVE holds tab-separated chords, "none" or nothing.
+# comp(group) is the component kglobalaccel knows the group by: [kwin] is "kwin",
+# [services][x.desktop] is "x.desktop".
+KGA_AWK='
+    # kglobalshortcutsrc escapes twice: the file turns a backslash into two,
+    # and the list inside the value turns a comma into backslash-comma.
+    function unescape(s,   i, c, n, out) {
+        out = ""; n = length(s)
+        for (i = 1; i <= n; i++) {
+            c = substr(s, i, 1)
+            if (c == "\\" && i < n) {
+                i++; c = substr(s, i, 1)
+                if (c == "t") out = out "\t"
+                else if (c == "s" || c == "n" || c == "r") out = out " "
+                else if (c == "\\") out = out "\\"
+                else out = out "\\" c
+            } else out = out c
+        }
+        return out
+    }
+    function fields(s, f,   i, c, n, k) {
+        k = 1; f[1] = ""; n = length(s)
+        for (i = 1; i <= n; i++) {
+            c = substr(s, i, 1)
+            if (c == "\\" && i < n) { i++; f[k] = f[k] substr(s, i, 1) }
+            else if (c == ",") { k++; f[k] = "" }
+            else f[k] = f[k] c
+        }
+        return k
+    }
+    # Meta+Ctrl+Space and Ctrl+Meta+Space are one chord.
+    function norm(key,   rest, t, meta, ctrl, alt, shift) {
+        rest = key; meta = ctrl = alt = shift = 0
+        while (match(rest, /^[A-Za-z]+\+./)) {
+            t = tolower(substr(rest, 1, RLENGTH - 2))
+            if (t == "meta") meta = 1
+            else if (t == "ctrl") ctrl = 1
+            else if (t == "alt") alt = 1
+            else if (t == "shift") shift = 1
+            else break
+            rest = substr(rest, RLENGTH)
+        }
+        return (meta ? "Meta+" : "") (ctrl ? "Ctrl+" : "") (alt ? "Alt+" : "") (shift ? "Shift+" : "") rest
+    }
+    function comp(group,   g, n, parts) {
+        g = group; sub(/^\[/, "", g); sub(/\]$/, "", g)
+        n = split(g, parts, /\]\[/)
+        return parts[n]
+    }
+'
+
 # shortcut_conflicts FILE: "KEY<TAB>action | action" for every active key sequence that
 # two or more actions hold, at least one of them a Canvas action.
 shortcut_conflicts() {
-    awk '
-        # kglobalshortcutsrc escapes twice: the file turns a backslash into two,
-        # and the list inside the value turns a comma into backslash-comma.
-        function unescape(s,   i, c, n, out) {
-            out = ""; n = length(s)
-            for (i = 1; i <= n; i++) {
-                c = substr(s, i, 1)
-                if (c == "\\" && i < n) {
-                    i++; c = substr(s, i, 1)
-                    if (c == "t") out = out "\t"
-                    else if (c == "s" || c == "n" || c == "r") out = out " "
-                    else if (c == "\\") out = out "\\"
-                    else out = out "\\" c
-                } else out = out c
-            }
-            return out
-        }
-        function fields(s, f,   i, c, n, k) {
-            k = 1; f[1] = ""; n = length(s)
-            for (i = 1; i <= n; i++) {
-                c = substr(s, i, 1)
-                if (c == "\\" && i < n) { i++; f[k] = f[k] substr(s, i, 1) }
-                else if (c == ",") { k++; f[k] = "" }
-                else f[k] = f[k] c
-            }
-            return k
-        }
-        # Meta+Ctrl+Space and Ctrl+Meta+Space are one chord.
-        function norm(key,   rest, t, meta, ctrl, alt, shift) {
-            rest = key; meta = ctrl = alt = shift = 0
-            while (match(rest, /^[A-Za-z]+\+./)) {
-                t = tolower(substr(rest, 1, RLENGTH - 2))
-                if (t == "meta") meta = 1
-                else if (t == "ctrl") ctrl = 1
-                else if (t == "alt") alt = 1
-                else if (t == "shift") shift = 1
-                else break
-                rest = substr(rest, RLENGTH)
-            }
-            return (meta ? "Meta+" : "") (ctrl ? "Ctrl+" : "") (alt ? "Alt+" : "") (shift ? "Shift+" : "") rest
-        }
+    awk "$KGA_AWK"'
         /^\[/ { group = $0; next }
         /^[^#=]+=/ {
             i = index($0, "=")
@@ -362,19 +400,157 @@ shortcut_conflicts() {
         }' "$1" 2>/dev/null
 }
 
+# The global actions the effect registers (main.qml's ShortcutHandlers) and the knob each takes
+# its chord from; the unit test checks every name against main.qml.
+CANVAS_ACTIONS="Toggle Canvas=ToggleShortcut
+Canvas Home=HomeShortcut
+Canvas Search=SearchShortcut
+Canvas Switcher=SwitcherShortcut
+Canvas Switcher Reverse=SwitcherReverseShortcut
+Canvas Switcher Alternate=SwitcherAltShortcut
+Canvas Switcher Alternate Reverse=SwitcherAltReverseShortcut
+Canvas Walk Left=WalkLeftShortcut
+Canvas Walk Right=WalkRightShortcut
+Canvas Walk Up=WalkUpShortcut
+Canvas Walk Down=WalkDownShortcut
+Canvas Carry Left=CarryLeftShortcut
+Canvas Carry Right=CarryRightShortcut
+Canvas Carry Up=CarryUpShortcut
+Canvas Carry Down=CarryDownShortcut
+Canvas Pan Left=PanLeftShortcut
+Canvas Pan Right=PanRightShortcut
+Canvas Pan Up=PanUpShortcut
+Canvas Pan Down=PanDownShortcut"
+
+# schema_default XML KNOB: the <default> of one entry of a KConfigXT schema.
+schema_default() {
+    awk -v name="$2" '
+        /<entry / { e = ($0 ~ ("name=\"" name "\"")) }
+        e && /<default>/ { sub(/.*<default>/, ""); sub(/<\/default>.*/, ""); print; exit }' "$1" 2>/dev/null
+}
+
+# canvas_wants DATA CFG: "ACTION<TAB>CHORD" for every Canvas action that wants a chord: kwinrc's
+# value for its knob, else the default of the installed effect's schema. Nothing when the
+# effect is not installed.
+canvas_wants() {
+    local xml action knob want
+    xml="$(installed_dir "$1" kwin/effects/kwin-canvas)/contents/config/main.xml"
+    [ -f "$xml" ] || return 0
+    while IFS='=' read -r action knob; do
+        [ -n "$action" ] || continue
+        want=$(ini_get "$2/kwinrc" Effect-kwin-canvas "$knob" "$(schema_default "$xml" "$knob")")
+        [ -n "$want" ] && [ "$want" != none ] && printf '%s\t%s\n' "$action" "$want"
+    done <<<"$CANVAS_ACTIONS"
+}
+
+# shortcut_held SHORTCUTS WANTS: kglobalaccel gives a chord to the first action that asks for it,
+# and KDE's own actions register before the effect's, so a Canvas action whose chord another
+# action holds is registered with none and never fires. For each such chord, one line:
+# ACTION<TAB>CHORD<TAB>COMPONENT<TAB>HOLDER<TAB>HOLDER-FRIENDLY<TAB>COMPONENT-FRIENDLY<TAB>REGISTERED<TAB>HOLDER-CHORDS
+# (REGISTERED is yes when the Canvas action is in the file, so a rebind can reach it now; HOLDER-CHORDS
+# is every chord the holder has, tab-separated, so the others can be kept).
+shortcut_held() {
+    awk "$KGA_AWK"'
+        FNR == NR {
+            if ($0 ~ /^\[/) { group = $0; cf[comp(group)] = ""; next }
+            if ($0 !~ /^[^#=]+=/) next
+            i = index($0, "=")
+            name = substr($0, 1, i - 1)
+            if (name == "_k_friendly_name") { cf[comp(group)] = unescape(substr($0, i + 1)); next }
+            if (name ~ /^_/) next
+            nf = fields(unescape(substr($0, i + 1)), f)
+            friendly = (nf >= 3 && f[3] != "") ? f[3] : name
+            canvas = (name ~ /Canvas/ || friendly ~ /^Canvas/)
+            if (canvas) registered[name] = 1
+            m = split(f[1], keys, "\t")
+            for (j = 1; j <= m; j++) {
+                if (keys[j] == "" || keys[j] == "none") continue
+                nk = norm(keys[j])
+                if (canvas) { has[name SUBSEP nk] = 1; continue }
+                if (!(nk in holder)) {
+                    holder[nk] = name; hfriendly[nk] = friendly; hcomp[nk] = comp(group); hkeys[nk] = f[1]
+                }
+            }
+            next
+        }
+        {
+            i = index($0, "\t"); action = substr($0, 1, i - 1); chord = substr($0, i + 1); nk = norm(chord)
+            if ((action SUBSEP nk) in has || !(nk in holder)) next
+            print action "\t" chord "\t" hcomp[nk] "\t" holder[nk] "\t" hfriendly[nk] "\t" (cf[hcomp[nk]] != "" ? cf[hcomp[nk]] : (hcomp[nk] == "kwin" ? "KWin" : hcomp[nk])) "\t" (registered[action] ? "yes" : "no") "\t" hkeys[nk]
+        }' "$1" "$2" 2>/dev/null
+}
+
+# keyint CHORD: the chord as the integer kglobalaccel keeps (Qt key | modifiers), or nothing
+# for a key this table does not know.
+keyint() {
+    local mods=0 key k tok toks
+    IFS='+' read -ra toks <<<"$1"
+    key=${toks[${#toks[@]} - 1]}
+    for tok in "${toks[@]:0:${#toks[@]} - 1}"; do
+        case "${tok,,}" in
+            meta) mods=$((mods | 0x10000000)) ;;
+            ctrl) mods=$((mods | 0x04000000)) ;;
+            alt) mods=$((mods | 0x08000000)) ;;
+            shift) mods=$((mods | 0x02000000)) ;;
+            *) return 1 ;;
+        esac
+    done
+    case "${key,,}" in
+        tab) k=$((0x01000001)) ;;
+        backtab) k=$((0x01000002)) ;;
+        left) k=$((0x01000012)) ;;
+        up) k=$((0x01000013)) ;;
+        right) k=$((0x01000014)) ;;
+        down) k=$((0x01000015)) ;;
+        space) k=32 ;;
+        escape|esc) k=$((0x01000000)) ;;
+        return) k=$((0x01000004)) ;;
+        enter) k=$((0x01000005)) ;;
+        home) k=$((0x01000010)) ;;
+        end) k=$((0x01000011)) ;;
+        pgup|pageup) k=$((0x01000016)) ;;
+        pgdown|pagedown) k=$((0x01000017)) ;;
+        f[1-9]|f1[0-2]) k=$((0x01000030 + ${key:1} - 1)) ;;
+        [a-z0-9]) k=$(printf '%d' "'${key^^}") ;;
+        *) return 1 ;;
+    esac
+    echo $((mods | k))
+}
+
+# kga_keys COMPONENT ACTION COMPONENT-FRIENDLY ACTION-FRIENDLY [KEYINT...]: set the active chords
+# of one global action through kglobalaccel, the way the Shortcuts page does: live, and written
+# to kglobalshortcutsrc by kglobalaccel itself (writing the file by hand is undone at its next save).
+kga_keys() {
+    local comp=$1 action=$2 cf=$3 af=$4 k args
+    shift 4
+    args=("$#")
+    for k in "$@"; do args+=(1 "$k"); done
+    busctl --user call org.kde.kglobalaccel /kglobalaccel org.kde.KGlobalAccel setForeignShortcutKeys 'asa(ai)' 4 "$comp" "$action" "$cf" "$af" "${args[@]}" >/dev/null
+}
+
 doctor_shortcuts() {
-    local cfg=$1 hits key who zoom zoom_src
+    local cfg=$1 data=$2 hits held key who zoom zoom_src action chord comp holder hf cf reg rest
     if [ ! -f "$cfg/kglobalshortcutsrc" ]; then
         verdict WARN shortcuts "$cfg/kglobalshortcutsrc is missing: nothing to check"
     else
         hits=$(shortcut_conflicts "$cfg/kglobalshortcutsrc")
-        if [ -z "$hits" ]; then
-            verdict OK shortcuts "no key sequence is active on a Canvas action and another action"
-        else
+        held=$(shortcut_held "$cfg/kglobalshortcutsrc" <(canvas_wants "$data" "$cfg"))
+        if [ -z "$hits" ] && [ -z "$held" ]; then
+            verdict OK shortcuts "no key sequence is active on a Canvas action and another action, and no chord the canvas wants is held by another action"
+        fi
+        if [ -n "$hits" ]; then
             while IFS=$'\t' read -r key who; do
                 verdict FAIL shortcuts "$key is bound to $who: rebind one in System Settings > Shortcuts"
             done <<EOF
 $hits
+EOF
+        fi
+        if [ -n "$held" ]; then
+            while IFS=$'\t' read -r action chord comp holder hf cf reg rest; do
+                [ -n "$action" ] || continue
+                verdict FAIL shortcuts "$action wants $chord, which \"$hf\" ($cf) holds, so the canvas never gets it: kwin-canvas setup takes it over (or unbind it in System Settings > Shortcuts, then relogin)"
+            done <<EOF
+$held
 EOF
         fi
     fi
@@ -393,7 +569,7 @@ EOF
         fi
     fi
     if [ "$zoom" = true ]; then
-        verdict WARN shortcuts "KDE's Zoom effect is on (${zoom_src}) and owns Meta+wheel, Meta+= and Meta+-: turn it off yourself in System Settings > Desktop Effects (nothing here does)"
+        verdict WARN shortcuts "KDE's Zoom effect is on (${zoom_src}) and owns Meta+wheel, Meta+= and Meta+-: kwin-canvas setup offers to turn it off, or System Settings > Desktop Effects"
     else
         verdict OK shortcuts "KDE's Zoom effect is not on (${zoom_src}), so Meta+wheel, Meta+= and Meta+- are free"
     fi
@@ -559,7 +735,7 @@ doctor() {
     doctor_installed "$repo" "$home/.local/share" "$home"
     doctor_plugin_version
     doctor_session "$home/.local/share" "$home/.config"
-    doctor_shortcuts "$home/.config"
+    doctor_shortcuts "$home/.config" "$home/.local/share"
     doctor_ladder "$home/.config"
     doctor_enabled "$home/.config"
     doctor_frames
@@ -747,18 +923,22 @@ fix_plugin() {
 
 # setup [--check]: walk through the KDE settings the README recommends. Each that differs is shown
 # with what it does for the canvas and changed only on a "y"; --check lists and changes nothing.
-# Conflicts that need a person (a shared shortcut) are reported, not touched. SETUP_CONFIG points
-# at another config directory (the tests), SETUP_NO_RECONFIGURE skips asking KWin to reload.
+# A chord KDE's own action holds over a Canvas action is offered too: on a "y" kglobalaccel takes
+# it from KDE's action (its other chords stay) and gives it to the canvas's, live. A shortcut two
+# actions hold at once is reported, not touched. SETUP_CONFIG points at another config directory
+# (the tests), SETUP_NO_RECONFIGURE skips asking KWin to reload.
 setup() {
     set +e +o pipefail
-    local only=0 cfg changed=0 pending=0 line file group key want why cur ans
+    local only=0 cfg data changed=0 pending=0 file group key want why absent cur ans
     [ "${1:-}" = --check ] && only=1
     cfg=${SETUP_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}}
+    data=${SETUP_DATA:-${XDG_DATA_HOME:-$HOME/.local/share}}
     echo "kwin-canvas setup: the recommended KDE settings for the canvas$([ $only = 1 ] && echo ", listed only")"
-    # The list comes in on fd 3, so the answers are read from the person on stdin.
-    while IFS='|' read -r file group key want why <&3; do
+    # The list comes in on fd 3, so the answers are read from the person on stdin. ABSENT is what
+    # a missing key means (KDE's default), so a machine at the default is not told to change.
+    while IFS='|' read -r file group key want why absent <&3; do
         [ -n "$file" ] || continue
-        cur=$(ini_get "$cfg/$file" "$group" "$key" "")
+        cur=$(ini_get "$cfg/$file" "$group" "$key" "$absent")
         if [ "$cur" = "$want" ]; then
             printf '  ok    %-28s %s\n' "$key" "$want"
             continue
@@ -770,32 +950,72 @@ setup() {
         read -r ans || ans=""
         case "$ans" in
             y|Y|yes)
-                kwriteconfig6 --file "$cfg/$file" --group "$group" --key "$key" -- "$want" && changed=$((changed + 1))
+                # --notify: a running KWin, plasmashell or kglobalaccel that watches the file learns of it.
+                kwriteconfig6 --notify --file "$cfg/$file" --group "$group" --key "$key" -- "$want" && changed=$((changed + 1))
                 echo "        set" ;;
             *) echo "        left as it is" ;;
         esac
     done 3<<'LIST'
-kwinrc|Windows|FocusPolicy|FocusFollowsMouse|resting on a window hands it the input
-kwinrc|Windows|DelayFocusInterval|150|a pass-over does not steal the focus
-kwinrc|Windows|AutoRaise|true|the window you rest on comes up, as the canvas raises a fly's landing
-kwinrc|Windows|AutoRaiseInterval|300|the raise waits a beat after the focus
-kwinrc|Windows|ClickRaise|false|a click in a window does not fight the canvas's own stacking
-kwinrc|Effect-kwin-canvas|BorderActivate|1,3,5,7|the four screen corners open the canvas
-kwinrc|Effect-kwin-canvas|BorderZoom|fit|a corner shows every window, fitted to that monitor
-kwinrc|Plugins|zoomEnabled|false|KDE's Zoom effect owns Meta+wheel, Meta+= and Meta+-
-kdeglobals|KDE|AnimationDurationFactor|1|the slide and the camera follow the global speed; 1 is what they are tuned at
+kwinrc|Windows|FocusPolicy|FocusFollowsMouse|resting on a window hands it the input|ClickToFocus
+kwinrc|Windows|DelayFocusInterval|150|a pass-over does not steal the focus|300
+kwinrc|Windows|AutoRaise|true|the window you rest on comes up, as the canvas raises a fly's landing|false
+kwinrc|Windows|AutoRaiseInterval|300|the raise waits a beat after the focus|750
+kwinrc|Windows|ClickRaise|false|a click in a window does not fight the canvas's own stacking|true
+kwinrc|Effect-kwin-canvas|BorderActivate|1,3,5,7|the four screen corners open the canvas|
+kwinrc|Effect-kwin-canvas|BorderZoom|fit|a corner shows every window, fitted to that monitor|0.8
+kwinrc|Plugins|zoomEnabled|false|KDE's Zoom effect owns Meta+wheel, Meta+= and Meta+-|true
+kwinrc|org.kde.kdecoration2|library|org.kde.kwin.aurorae|the Canvas window frame: a bar in the colour scheme's colours with the canvas's glyphs (the next row picks it)|org.kde.breeze
+kwinrc|org.kde.kdecoration2|theme|kwin-canvas-decoration|the Canvas window frame itself|
+kdeglobals|KDE|AnimationDurationFactor|1|the slide and the camera follow the global speed; 1 is what they are tuned at|1
 LIST
-    # What needs a person, said and not touched.
     if [ -f "$cfg/kglobalshortcutsrc" ]; then
+        # A shortcut two actions hold needs a person: said, not touched.
         local hits k who
         hits=$(shortcut_conflicts "$cfg/kglobalshortcutsrc")
         while IFS=$'\t' read -r k who; do
             [ -n "$k" ] && printf '  fix   %s is bound to %s: rebind one in System Settings > Shortcuts\n' "$k" "$who"
         done <<<"$hits"
+        # A chord KDE's action holds over the canvas's: kglobalaccel can hand it over now. The
+        # list comes in on fd 3 again, the answers on stdin.
+        local held action chord comp holder hf cf reg rest keep c ki ok
+        held=$(shortcut_held "$cfg/kglobalshortcutsrc" <(canvas_wants "$data" "$cfg"))
+        while IFS=$'\t' read -r action chord comp holder hf cf reg rest <&3; do
+            [ -n "$action" ] || continue
+            pending=$((pending + 1))
+            printf '  take? %s holds %s, which %s wants, so the canvas never gets it\n' "\"$hf\"" "$chord" "$action"
+            [ $only = 1 ] && continue
+            printf '        take it from "%s" and give it to %s? [y/N] ' "$hf" "$action"
+            read -r ans || ans=""
+            case "$ans" in
+                y|Y|yes) ;;
+                *) echo "        left as it is"; continue ;;
+            esac
+            # The holder keeps its other chords, when this table can spell them; else it loses all.
+            keep=(); ok=1
+            while IFS= read -r c; do
+                [ -n "$c" ] && [ "$c" != none ] && [ "$c" != "$chord" ] || continue
+                if ki=$(keyint "$c"); then keep+=("$ki"); else ok=0; fi
+            done <<<"${rest//$'\t'/$'\n'}"
+            [ $ok = 1 ] || keep=()
+            if kga_keys "$comp" "$holder" "$cf" "$hf" "${keep[@]}"; then
+                changed=$((changed + 1))
+                echo "        \"$hf\" no longer holds $chord$([ $ok = 1 ] || echo ' (nor its other chords: one of them this tool cannot spell)')"
+            else
+                echo "        kglobalaccel did not answer, so nothing changed (is the session running?)"
+                continue
+            fi
+            if [ "$reg" = yes ] && ki=$(keyint "$chord"); then
+                if kga_keys kwin "$action" KWin "$action" "$ki"; then echo "        $action has it now"
+                else echo "        $action takes it at the next login (kglobalaccel did not take the rebind)"; fi
+            else
+                echo "        $action takes it at the next login"
+            fi
+        done 3<<<"$held"
     fi
     local desks
     desks=$(ini_get "$cfg/kwinrc" Desktops Number 1)
     [ "$desks" != 1 ] && printf '  note  %s virtual desktops: the plane takes their place; one is recommended (System Settings > Virtual Desktops)\n' "$desks"
+    printf '  note  panels, window rules and the colour scheme are yours to set (README, Recommended KDE setup)\n'
     if [ $only = 1 ]; then
         echo "kwin-canvas setup: $pending to change; run kwin-canvas setup to be asked about each"
         return 0
@@ -857,6 +1077,9 @@ check() {
             *) echo "kwin-canvas: check takes --notify and --after SECONDS"; return 2 ;;
         esac
     done
+    if [ "$notify" = 1 ] && ! command -v notify-send >/dev/null 2>&1; then
+        echo "kwin-canvas: notify-send is missing (Arch: libnotify), so a problem is printed here and raises no desktop notification"
+    fi
     plugincheck "${args[@]}" || rc=1
     e=$(qml_errors)
     if [ -n "$e" ]; then
@@ -883,7 +1106,7 @@ plugincheck() {
     done
     if m=$(plugin_mismatch); then
         read -r built kw found <<<"$m"
-        msg="The kwin-canvas plugin is built for KWin $built but this is KWin $kw, so KWin refuses it: the grasp over windows and the panel applet's buttons are off. Run: kwin-canvas fix-plugin, then log in again (kwin-canvas plugin-hook install does this by itself after every KWin update)."
+        msg="The kwin-canvas plugin is built for KWin $built but $(kwin_is "$kw"): the grasp over windows and the panel applet's buttons are off. Run: kwin-canvas fix-plugin, then log in again (kwin-canvas plugin-hook install does this by itself after every KWin update)."
         echo "kwin-canvas: $msg"
         if [ "$notify" = 1 ] && command -v notify-send >/dev/null 2>&1; then
             notify-send -a kwin-canvas -i dialog-warning "kwin-canvas plugin out of date" "$msg" || true
@@ -901,8 +1124,10 @@ case "${1:-}" in
     fix-plugin) shift; fix_plugin "$@"; exit $? ;;
     setup) shift; setup "$@"; exit $? ;;
     plugin-hook) shift; plugin_hook "$@"; exit $? ;;
+    -h|--help|help) sed -n 's/^#   \(kwin-canvas \)/\1/p' "$0"; exit 0 ;;
 esac
 
+# The session commands below need the bus tools; help and the read-only commands above do not.
 for tool in qdbus6 kreadconfig6 kwriteconfig6; do
     command -v "$tool" >/dev/null 2>&1 || { echo "kwin-canvas: $tool is missing (Arch: qt6-tools, kconfig)"; exit 1; }
 done
@@ -936,7 +1161,11 @@ send() {
     seq=$((seq + 1))
     kwriteconfig6 --file kwinrc --group Effect-kwin-canvas --key DebugCommand "$1"
     kwriteconfig6 --file kwinrc --group Effect-kwin-canvas --key DebugSeq "$seq"
+    # reconfigureEffect returns once the effect has read and run the command; the command is
+    # then cleared, so a KWin that starts later does not find it and run it again (the sequence
+    # number stays, so a plain reconfigure does not either).
     qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.reconfigureEffect kwin-canvas >/dev/null
+    kwriteconfig6 --file kwinrc --group Effect-kwin-canvas --key DebugCommand --delete
     echo "kwin-canvas: $2"
 }
 
@@ -946,7 +1175,10 @@ case "${1:-}" in
     open)   send open   "stepping out to the overworld" 10 ;;
     toggle) send toggle "toggled" ;;
     reset)  send recentre "the plane recentred on where you are: the view is (0, 0) now, no window moved" ;;
-    status) echo "kwin-canvas: effect loaded: $(loaded); pass-through plugin: $(plugin)" ;;
-    -h|--help|help) sed -n 's/^#   \(kwin-canvas \)/\1/p' "$0"; exit 0 ;;
+    status)
+        state=$(loaded)
+        echo "kwin-canvas: effect loaded: $state; pass-through plugin: $(plugin)"
+        # A script can tell "KWin did not answer" from a reading.
+        case "$state" in true|false) ;; *) exit 1 ;; esac ;;
     *) sed -n 's/^#   \(kwin-canvas \)/\1/p' "$0"; exit 1 ;;
 esac

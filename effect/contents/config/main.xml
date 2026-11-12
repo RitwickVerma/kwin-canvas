@@ -40,7 +40,7 @@
             <default>true</default>
         </entry>
         <entry name="Backdrop" type="String">
-            <label>What the plane draws beyond the monitor frames: "wallpaper" (the default) puts the desktop's own wallpaper on the plane - exactly on the desks, and as a blurred, dimmed continuation of it across the rest of the view, so the plane reads as the desktop dissolving into a haze rather than repeating - with the ground grid over it; "grid" is the plain grid on Background, with no wallpaper at all.</label>
+            <label>What the plane draws beyond the monitor frames: "wallpaper" (the default) puts the desktop\'s own wallpaper on the plane - exactly on the desks, and drawn once per output, screen-fixed, across the rest of the view, with the grid over it; "grid" draws the plain ground everywhere.</label>
             <default>wallpaper</default>
         </entry>
         <entry name="BackdropDim" type="Double">
@@ -64,7 +64,7 @@
             <default>false</default>
         </entry>
         <entry name="HudPosition" type="String">
-            <label>Where the toolbar sits on the primary display: Top, TopLeft, TopRight, Bottom, BottomLeft, BottomRight, Left, Right.</label>
+            <label>Where the toolbar sits on the monitor the pointer rests on (the primary until the pointer has rested on another for half a second): Top, TopLeft, TopRight, Bottom, BottomLeft, BottomRight, Left, Right.</label>
             <default>Top</default>
         </entry>
         <entry name="HudShape" type="String">
@@ -161,7 +161,7 @@
             <default>BackButton</default>
         </entry>
         <entry name="SwapButton" type="String">
-            <label>Mouse buttons that, pressed while the canvas modifier is held, fly between the two most recent windows - an Alt-Tab on the plane: the camera springs to the other window, the focus follows, and releasing the modifier opens the location there, focused on it. ForwardButton (MB5, a mouse's side button) is the default, so the two side buttons are one hand on the plane.</label>
+            <label>Mouse button that, tapped while the canvas modifier is held, tours the clusters: the camera and the focus hop to the next cluster\'s most recently focused window, placed so the windows around it come into view; letting the modifier go opens the location there (ForwardButton by default).</label>
             <default>ForwardButton</default>
         </entry>
         <entry name="EdgePan" type="Bool">
@@ -252,8 +252,52 @@
             <label>The cluster switcher: this chord steps among the windows of the cluster the eye is on, fitted to that cluster instead of the whole plane - the quick switch among neighbours, where SwitcherShortcut sweeps everything. Hold the chord and tap it again to step, release it or press Enter to enter the chosen window, Esc to step back out. Bind this over KWin's own task switcher in System Settings.</label>
             <default>Alt+Tab</default>
         </entry>
+        <entry name="WalkLeftShortcut" type="String">
+            <label>Walk the window graph left: the focus (or, in the open canvas, the selection) moves to the next window of its cluster that way, and past the cluster's edge to the nearest window that way in the next cluster; the camera follows. The threads draw these steps. Takes over KWin's own Switch to Window to the Left, which must be unbound.</label>
+            <default>Meta+Alt+Left</default>
+        </entry>
+        <entry name="CarryLeftShortcut" type="String">
+            <label>Carry the focused window (or the selected one in the open canvas) left into the next cluster that way: it lands beside that cluster on the side it arrives from, and the camera follows. Carried straight back, it returns to the exact spot it left.</label>
+            <default>Meta+Alt+Shift+Left</default>
+        </entry>
+        <entry name="WalkRightShortcut" type="String">
+            <label>Walk the window graph right: the focus (or, in the open canvas, the selection) moves to the next window of its cluster that way, and past the cluster's edge to the nearest window that way in the next cluster; the camera follows. The threads draw these steps. Takes over KWin's own Switch to Window to the Right, which must be unbound.</label>
+            <default>Meta+Alt+Right</default>
+        </entry>
+        <entry name="CarryRightShortcut" type="String">
+            <label>Carry the focused window (or the selected one in the open canvas) right into the next cluster that way: it lands beside that cluster on the side it arrives from, and the camera follows. Carried straight back, it returns to the exact spot it left.</label>
+            <default>Meta+Alt+Shift+Right</default>
+        </entry>
+        <entry name="WalkUpShortcut" type="String">
+            <label>Walk the window graph up: the focus (or, in the open canvas, the selection) moves to the next window of its cluster that way, and past the cluster's edge to the nearest window that way in the next cluster; the camera follows. The threads draw these steps. Takes over KWin's own Switch to Window Above, which must be unbound.</label>
+            <default>Meta+Alt+Up</default>
+        </entry>
+        <entry name="CarryUpShortcut" type="String">
+            <label>Carry the focused window (or the selected one in the open canvas) up into the next cluster that way: it lands beside that cluster on the side it arrives from, and the camera follows. Carried straight back, it returns to the exact spot it left.</label>
+            <default>Meta+Alt+Shift+Up</default>
+        </entry>
+        <entry name="WalkDownShortcut" type="String">
+            <label>Walk the window graph down: the focus (or, in the open canvas, the selection) moves to the next window of its cluster that way, and past the cluster's edge to the nearest window that way in the next cluster; the camera follows. The threads draw these steps. Takes over KWin's own Switch to Window Below, which must be unbound.</label>
+            <default>Meta+Alt+Down</default>
+        </entry>
+        <entry name="CarryDownShortcut" type="String">
+            <label>Carry the focused window (or the selected one in the open canvas) down into the next cluster that way: it lands beside that cluster on the side it arrives from, and the camera follows. Carried straight back, it returns to the exact spot it left.</label>
+            <default>Meta+Alt+Shift+Down</default>
+        </entry>
+        <entry name="SwitcherReverseShortcut" type="String">
+            <label>The switcher's chord backwards: steps the switcher the other way (or opens it on the least recently used window). Bind it over KWin's Walk Through Windows (Reverse).</label>
+            <default>Meta+Shift+Tab</default>
+        </entry>
+        <entry name="SwitcherAltReverseShortcut" type="String">
+            <label>The cluster switcher's chord backwards. Bind it over KWin's Walk Through Windows (Reverse).</label>
+            <default>Alt+Shift+Tab</default>
+        </entry>
+        <entry name="SwitcherShowMs" type="Int">
+            <label>How long the switcher's chord must be held before the switcher shows, in milliseconds: a tap released sooner flips straight to the window used last without opening anything.</label>
+            <default>130</default>
+        </entry>
         <entry name="SwitcherSettleMs" type="Int">
-            <label>How long the switcher stays on the picked window after the chord's release before stepping in, in milliseconds. The pick settles under the eye for this beat, then the canvas enters by itself; tapping the chord again steps on, and Escape steps back out.</label>
+            <label>Only without the pass-through plugin, which sees the chord's release: how long after the last step the switcher enters the pick by itself, in milliseconds. With the plugin the release enters at once.</label>
             <default>450</default>
         </entry>
         <entry name="SwitcherShortcut" type="String">
@@ -293,7 +337,7 @@
             <default>Meta+Ctrl+F</default>
         </entry>
         <entry name="HomeShortcut" type="String">
-            <label>Key sequence that returns to the canvas origin.</label>
+            <label>Key sequence for Home: with the canvas closed it returns this activity to the plane's origin (its viewport becomes 0,0, the windows ride along); with the canvas open it looks through this activity's frames.</label>
             <default>Meta+Ctrl+Space</default>
         </entry>
         <entry name="PanLeftShortcut" type="String">
@@ -464,7 +508,7 @@
             <default>true</default>
         </entry>
         <entry name="AutoActivate" type="Bool">
-            <label>Open the canvas as soon as the effect loads (nested test harness).</label>
+            <label>Open the canvas as soon as the effect loads: at login, and the moment the effect is turned on in a live session.</label>
             <default>false</default>
         </entry>
         <entry name="DebugCommand" type="String">

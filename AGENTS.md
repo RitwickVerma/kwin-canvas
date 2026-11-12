@@ -68,7 +68,7 @@ make nest-reload             # reinstall, restart the nest, relaunch clients
 make nest-down               # stop it
 make nest-clean              # kill leftovers of nests whose state is gone
 
-make test                    # all scenarios, ~10 min; the last full run: 655 ok, 0 FAIL, 4 skip in one run, runner repaired sizes after ~10 scenarios, cause found on 114 only (docs/testing.md)
+make test                    # all scenarios, ~45 min; the last full run's figures are at the top of docs/status.md
 NEST_VIRTUAL=1 make test ...   # the same on a virtual framebuffer: no window opens on your desktop
 make test ARGS=60            # scenarios whose file name matches
 make test-panel ARGS=117     # with Plasma's default panel in the nest (the dock scenarios, 117 and 149)
@@ -104,11 +104,10 @@ Cheapest first, and stop where the change warrants:
    what the CI jobs run, so a red pipeline reproduces here.
 3. **`make test ARGS=<name>`** — one or two scenarios in a nest, a minute or two:
    the right size for a change you can describe in one sentence.
-4. **`make test`** — the whole suite against a fresh nest, ten minutes or so.
-   The last full run gave 655 `ok`, 0 `FAIL`, 4 skip in one run, in which the
-   runner repaired window sizes after about ten scenarios (cause found on 114
-   only, see `docs/testing.md`; the runner's totals used to undercount there too:
-   count the `ok` and `FAIL` lines). The runner
+4. **`make test`** — the whole suite against a fresh nest, about 45 minutes
+   for 126 scenarios (the latest figures are at the top of `docs/status.md`;
+   the runner repairs window sizes after some scenarios, cause found on 114
+   only, see `docs/testing.md`). The runner
    puts the desk back after each scenario and prints `desk reset after NAME` when
    it had to: that line names a scenario that leaks, fix it there. Run every
    failure alone before believing it, and bisect before blaming a change. The
@@ -129,7 +128,7 @@ Cheapest first, and stop where the change warrants:
 
 | Path | What it holds |
 |---|---|
-| `effect/contents/ui/main.qml` | The canvas: 5.1k lines, the whole effect — snapshot, ground, frames, thumbnails, pan, zoom, pick, commit |
+| `effect/contents/ui/main.qml` | The canvas: 7k lines, the whole effect — snapshot, ground, frames, thumbnails, pan, zoom, pick, commit; `ui.qml` is the scene tree (2.4k), `logic.js` the pure functions |
 | `effect/contents/ui/config.ui` | The settings form. **Every knob is declared in `effect/contents/config/main.xml` first** — that file is the schema |
 | `shared/Ground.qml` | The ground renderer, copied into the effect and the wallpaper at stage time: one edit has to suit both |
 | `wallpaper/` | The ground at 1:1 in a real plasmashell |
@@ -145,7 +144,7 @@ Cheapest first, and stop where the change warrants:
 | `dev/deps.sh`, `dev/play.sh` | The dependency check, and the prepared nest |
 | `dev/spike/preload/` | The `LD_PRELOAD` shim (1.1k lines of C++) that lets the canvas pass input without the plugin |
 | `packaging/` | PKGBUILD templates and the install scriptlet |
-| `docs/` | architecture (the model, KWin API facts, limits, ideas), testing (the harness and its traps), install, recovery, tour, release-notes, status, images + `tour.sh` |
+| `docs/` | `docs/README.md` indexes them: architecture (the model, KWin API facts, limits, ideas), multimonitor (the two-camera design), testing (the harness and its traps), install, recovery, tour, vision, shader-integration, release-notes, status, status-archive, images |
 | `VERSION` | Read by the Makefile; bumping it is part of a release |
 
 ## Where the thinking is written down
@@ -164,7 +163,7 @@ Cheapest first, and stop where the change warrants:
 
 ## Finding your way
 
-`effect/contents/ui/main.qml` is 5.1k lines, so search before reading. If
+`effect/contents/ui/main.qml` is 7k lines, so search before reading. If
 `graphify-out/` exists (local, gitignored, built with `graphify`), start at
 `graphify-out/GRAPH_REPORT.md`, then `graphify explain "NAME"` or
 `graphify path "A" "B"` for how two pieces connect. The graph is a map of an

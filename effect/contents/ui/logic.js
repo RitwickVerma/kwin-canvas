@@ -91,7 +91,8 @@ function recluster(rects, prevOf, ranks, gapCfg) {
 // the band it falls in (just above the highest window below it), and spans of the
 // same band, lit state and cohesion become one layer with one SVG path. A dozen
 // windows' web is then a dozen or so items instead of hundreds of one-line paths.
-// windowZs: every window's z. Returns [{ z, lit, co, d }], d an SVG path of
+// windowZs: every window's z. A bridge (a step out of the cluster) is its own layer, drawn
+// fainter. Returns [{ z, lit, co, bridge, d }], d an SVG path of
 // "M x y L x y" segments, in plane coordinates.
 function webLayers(spans, windowZs) {
     const zs = windowZs.slice().sort(function (a, b) { return a - b; });
@@ -105,9 +106,9 @@ function webLayers(spans, windowZs) {
     for (let i = 0; i < spans.length; ++i) {
         const sp = spans[i];
         const z = band(sp.z);
-        const key = z + "|" + (sp.lit ? 1 : 0) + "|" + sp.co;
+        const key = z + "|" + (sp.lit ? 1 : 0) + "|" + sp.co + "|" + (sp.bridge ? 1 : 0);
         let l = byKey[key];
-        if (!l) { l = byKey[key] = { z: z, lit: !!sp.lit, co: sp.co, d: "" }; out.push(l); }
+        if (!l) { l = byKey[key] = { z: z, lit: !!sp.lit, co: sp.co, bridge: !!sp.bridge, d: "" }; out.push(l); }
         l.d += (l.d ? " " : "") + "M " + sp.x1.toFixed(1) + " " + sp.y1.toFixed(1) + " L " + sp.x2.toFixed(1) + " " + sp.y2.toFixed(1);
     }
     out.sort(function (a, b) { return a.z - b.z || (a.lit === b.lit ? 0 : a.lit ? 1 : -1) || a.co - b.co; });
@@ -273,6 +274,229 @@ function fightStep(chain, now, fightMs) {
     const allow = c.n < 2;
     c.n++;
     return { chain: c, allow: allow };
+}
+
+// The configure echo, caught when the plugin cannot move a window as a move. KWin sends each
+// configure with the place the window has then, and puts the window there when the client commits
+// it; a script's frame write leaves the configures already sent alone. A busy client that commits
+// one after the canvas moved it (a focus change's, under a slide) takes the window back to where
+// the canvas moved it from. The canvas notes those spots per window. rec: { spots: [{ x, y,
+// width, height, at }], last } or null; g: the frame a write moves the window away from, at time
+// t. A write within burstMs of the last continues its burst (an animation's frames), and the
+// burst's first spot stands for it. At most cap spots, none older than maxAge ms.
+function noteLeftSpot(rec, g, t, burstMs, cap, maxAge) {
+    const spots = rec ? rec.spots.filter(function (s) { return t - s.at <= maxAge; }) : [];
+    if (!rec || t - rec.last > burstMs) spots.push({ x: g.x, y: g.y, width: g.width, height: g.height, at: t });
+    while (spots.length > cap) spots.shift();
+    return { spots: spots, last: t };
+}
+
+// Whether a plain move from `was` to `now` at time t lands back on one of rec's spots, within a
+// pixel and at the same size: a configure sent before the canvas's write, committed after it.
+function isEcho(rec, was, now, t, maxAge) {
+    if (!rec || !was || !now) return false;
+    if (Math.abs(now.width - was.width) > 1 || Math.abs(now.height - was.height) > 1) return false;
+    if (Math.abs(now.x - was.x) < 1 && Math.abs(now.y - was.y) < 1) return false;
+    for (let i = 0; i < rec.spots.length; ++i) {
+        const s = rec.spots[i];
+        if (t - s.at <= maxAge && Math.abs(s.x - now.x) < 1 && Math.abs(s.y - now.y) < 1
+            && Math.abs(s.width - now.width) < 1 && Math.abs(s.height - now.height) < 1) return true;
+    }
+    return false;
+}
+
+// ---- the window graph: what the walk keys follow and the threads draw ----
+// The nodes are the windows of the plane as { id, x, y, width, height } in plane pixels;
+// clusterOf maps id -> cluster index (recluster's). The four directions are "left", "right",
+// "up" and "down".
+
+// How far window c lies from window f towards dir: KWin's own directional choice
+// (Workspace::switchWindow), the centres' distance along the axis plus the offset across it plus
+// the offset squared over the distance, so a window straight ahead beats a nearer one off to the
+// side. Infinity when c is not ahead: its centre is not past f's along the axis, or it is more than
+// 60 degrees off the axis and its span across the axis does not meet f's (a window below and to
+// the right is not "right" of a window it does not face).
+function dirScore(f, c, dir) {
+    const fx = f.x + f.width / 2, fy = f.y + f.height / 2;
+    const cx = c.x + c.width / 2, cy = c.y + c.height / 2;
+    let d, o, spans;
+    if (dir === "left" || dir === "right") {
+        d = dir === "left" ? fx - cx : cx - fx;
+        o = Math.abs(cy - fy);
+        spans = c.y < f.y + f.height && c.y + c.height > f.y;
+    } else {
+        d = dir === "up" ? fy - cy : cy - fy;
+        o = Math.abs(cx - fx);
+        spans = c.x < f.x + f.width && c.x + c.width > f.x;
+    }
+    if (!(d > 0.5)) return Infinity;
+    if (!spans && o > d * 1.7321) return Infinity;
+    return d + o + o * o / d;
+}
+
+// The window the walk reaches from f among cands (f itself skipped), or null.
+function dirStep(f, cands, dir) {
+    let best = null, bestScore = Infinity;
+    for (let i = 0; i < cands.length; ++i) {
+        const c = cands[i];
+        if (c.id === f.id) continue;
+        const s = dirScore(f, c, dir);
+        if (s < bestScore) { bestScore = s; best = c; }
+    }
+    return best;
+}
+
+// One step of the walk from window fromId: the next window of its own cluster towards dir, and
+// past the cluster's edge the nearest window towards dir in another cluster. Returns
+// { id, cross } (cross: it left the cluster) or null when nothing lies that way.
+function walkStep(fromId, nodes, clusterOf, dir) {
+    let f = null;
+    for (let i = 0; i < nodes.length; ++i) if (nodes[i].id === fromId) { f = nodes[i]; break; }
+    if (!f) return null;
+    const ci = clusterOf[fromId];
+    const own = [], rest = [];
+    for (let i = 0; i < nodes.length; ++i) {
+        const n = nodes[i];
+        if (n.id === fromId) continue;
+        (ci !== undefined && clusterOf[n.id] === ci ? own : rest).push(n);
+    }
+    const inside = dirStep(f, own, dir);
+    if (inside) return { id: inside.id, cross: false };
+    const out = dirStep(f, rest, dir);
+    return out ? { id: out.id, cross: true } : null;
+}
+
+// The graph's edges: every step the walk can take inside a cluster (each window to its in-cluster
+// neighbour in each direction, a pair once), and, from the windows of cluster `lit`, the bridges:
+// a step that leaves the cluster. Returns [{ a, b, bridge }].
+function walkEdges(nodes, clusterOf, lit) {
+    const dirs = ["left", "right", "up", "down"];
+    const seen = {};
+    const out = [];
+    const byCluster = {};
+    for (let i = 0; i < nodes.length; ++i) {
+        const k = clusterOf[nodes[i].id];
+        // A window not clustered yet (it opened a moment ago) is nobody's neighbour until it is.
+        if (k === undefined) continue;
+        if (!byCluster[k]) byCluster[k] = [];
+        byCluster[k].push(nodes[i]);
+    }
+    for (let i = 0; i < nodes.length; ++i) {
+        const f = nodes[i];
+        const ci = clusterOf[f.id];
+        const own = byCluster[ci] || [];
+        for (let d = 0; d < dirs.length; ++d) {
+            let to = dirStep(f, own, dirs[d]);
+            let bridge = false;
+            if (!to) {
+                if (ci === undefined || ci !== lit) continue;
+                const rest = nodes.filter(function (n) { return clusterOf[n.id] !== ci; });
+                to = dirStep(f, rest, dirs[d]);
+                bridge = true;
+                if (!to) continue;
+            }
+            const key = f.id < to.id ? f.id + "|" + to.id : to.id + "|" + f.id;
+            if (seen[key] !== undefined) {
+                // A pair the walk links both ways is an edge, not a bridge, whichever side saw it first.
+                if (!bridge) out[seen[key]].bridge = false;
+                continue;
+            }
+            seen[key] = out.length;
+            out.push({ a: f.id, b: to.id, bridge: bridge });
+        }
+    }
+    return out;
+}
+
+// An edge as drawn: the line between the two windows' centres, cut to the stretch outside both,
+// so a thread joins facing sides and never crosses its own windows. null when the windows meet.
+function edgeSegment(a, b) {
+    const x1 = a.x + a.width / 2, y1 = a.y + a.height / 2;
+    const x2 = b.x + b.width / 2, y2 = b.y + b.height / 2;
+    const ta = segRectT(x1, y1, x2, y2, a.x, a.y, a.width, a.height);
+    const tb = segRectT(x1, y1, x2, y2, b.x, b.y, b.width, b.height);
+    const t0 = ta ? ta[1] : 0, t1 = tb ? tb[0] : 1;
+    if (t1 - t0 < 1e-3) return null;
+    return { x1: x1 + (x2 - x1) * t0, y1: y1 + (y2 - y1) * t0, x2: x1 + (x2 - x1) * t1, y2: y1 + (y2 - y1) * t1 };
+}
+
+// The box around a set of rects: { x, y, width, height }, or a zero box for none.
+function boundsOf(rects) {
+    if (!rects || !rects.length) return { x: 0, y: 0, width: 0, height: 0 };
+    let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+    for (let i = 0; i < rects.length; ++i) {
+        const m = rects[i];
+        l = Math.min(l, m.x); t = Math.min(t, m.y);
+        r = Math.max(r, m.x + m.width); b = Math.max(b, m.y + m.height);
+    }
+    return { x: l, y: t, width: r - l, height: b - t };
+}
+
+// The cluster a carry takes window fromId into: the cluster of the nearest window towards dir that
+// is not in its own cluster, or -1.
+function carryCluster(fromId, nodes, clusterOf, dir) {
+    let f = null;
+    for (let i = 0; i < nodes.length; ++i) if (nodes[i].id === fromId) { f = nodes[i]; break; }
+    if (!f) return -1;
+    const ci = clusterOf[fromId];
+    const rest = nodes.filter(function (n) { return n.id !== fromId && (ci === undefined || clusterOf[n.id] !== ci); });
+    const to = dirStep(f, rest, dir);
+    return to && clusterOf[to.id] !== undefined ? clusterOf[to.id] : -1;
+}
+
+// Where a carried window lands in the cluster it is carried into: beside one of the cluster's
+// windows (members), clear of every window, near enough to join the cluster and far enough from
+// every other window (others; the carried window's old spot is not among them) not to join theirs,
+// as near as can be to the cluster's side it arrives from, at the height (or across the width) it
+// left. w: the window's rect before the carry. Returns { x, y } or null when there is no room.
+function carrySpot(w, members, others, dir, gapCfg) {
+    if (!members.length) return null;
+    let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+    for (let i = 0; i < members.length; ++i) {
+        const m = members[i];
+        l = Math.min(l, m.x); t = Math.min(t, m.y);
+        r = Math.max(r, m.x + m.width); b = Math.max(b, m.y + m.height);
+    }
+    const W = w.width, H = w.height;
+    const wcx = w.x + W / 2, wcy = w.y + H / 2;
+    // The point the window arrives at: the middle of the cluster's near side, held to the row (or
+    // column) the window left.
+    const ax = dir === "right" ? l : dir === "left" ? r : Math.max(l, Math.min(r, wcx));
+    const ay = dir === "down" ? t : dir === "up" ? b : Math.max(t, Math.min(b, wcy));
+    const cands = [];
+    for (let i = 0; i < members.length; ++i) {
+        const m = members[i];
+        const pad = Math.min(24, clusterGapFor(w, m, gapCfg) * 0.5);
+        const ys = [m.y, m.y + m.height - H, m.y + (m.height - H) / 2, wcy - H / 2];
+        const xs = [m.x, m.x + m.width - W, m.x + (m.width - W) / 2, wcx - W / 2];
+        for (let k = 0; k < ys.length; ++k) {
+            cands.push({ x: m.x - pad - W, y: ys[k] });
+            cands.push({ x: m.x + m.width + pad, y: ys[k] });
+        }
+        for (let k = 0; k < xs.length; ++k) {
+            cands.push({ x: xs[k], y: m.y - pad - H });
+            cands.push({ x: xs[k], y: m.y + m.height + pad });
+        }
+    }
+    let best = null, bestD = Infinity;
+    for (let i = 0; i < cands.length; ++i) {
+        const c = { x: Math.round(cands[i].x), y: Math.round(cands[i].y), width: W, height: H };
+        let ok = false;
+        for (let k = 0; k < members.length && !ok; ++k) {
+            if (clusterDist(c, members[k]) <= clusterGapFor(c, members[k], gapCfg)) ok = true;
+        }
+        if (!ok) continue;
+        for (let k = 0; k < members.length && ok; ++k) {
+            if (clusterDist(c, members[k]) < 8) ok = false;
+        }
+        for (let k = 0; k < others.length && ok; ++k) {
+            if (clusterDist(c, others[k]) <= clusterGapFor(c, others[k], gapCfg) * 1.5 + 1) ok = false;
+        }
+        if (!ok) continue;
+        const d = Math.hypot(c.x + W / 2 - ax, c.y + H / 2 - ay);
+        if (d < bestD) { bestD = d; best = { x: c.x, y: c.y }; }
+    }
+    return best;
 }
 
 // The search's matches. items: [{ id, text }], text what a window answers to (its

@@ -3,9 +3,9 @@
 post_install() {
     cat <<'MSG'
 kwin-canvas-passthrough: KWin loads the plugin at login, so log out and in
-once. `make plugin-status` in a kwin-canvas checkout, or
-    qdbus6 org.kde.KWin /KWinCanvas org.kde.kwin.canvas.Passthrough.probe
-tells whether it answers. After a kwin upgrade, rebuild this package.
+once. `kwin-canvas doctor` (or `kwin-canvas status`) tells whether it
+answers. After a kwin upgrade, rebuild this package; `kwin-canvas doctor`
+and the login check say when that is due.
 MSG
 }
 post_upgrade() {

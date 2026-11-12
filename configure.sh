@@ -5,8 +5,8 @@
 # kwin-canvas, the short way. Each command is one Makefile target; `make`
 # alone lists them all.
 #
-#   ./configure.sh install      install the effect and the ground wallpaper for this user, and turn the effect on
-#   ./configure.sh uninstall    turn it off and remove both packages
+#   ./configure.sh install      install the effect, the ground wallpaper, the applets, the decoration and the CLI for this user, and turn the effect on
+#   ./configure.sh uninstall    turn it off and remove all of them (the root-owned plugin and pacman hook are named, not removed)
 #   ./configure.sh enable       turn the effect on in the running session
 #   ./configure.sh disable      turn it off
 #   ./configure.sh status       what is installed, enabled and loaded, and whether the pass-through plugin answers in the running KWin

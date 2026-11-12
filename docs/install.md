@@ -1,8 +1,9 @@
 # Installing kwin-canvas
 
-For KDE Plasma 6 on Wayland. Tested on Plasma 6.8. Nothing is compiled;
-the effect, the wallpaper and the applet are QML packages, and the CLI is a
-shell script.
+For KDE Plasma 6 on Wayland. Tested on Plasma 6.8. Nothing is compiled
+except the optional pass-through plugin: the effect, the ground wallpaper,
+the three applets (toggle, decor glyphs, map) and the window decoration are
+QML packages, and the CLI is a shell script.
 
 ## Try it without touching your desktop
 
@@ -31,7 +32,7 @@ not in it yet — install them from the checkout below.
 yay -S kwin-canvas
 ```
 
-The package puts the three QML packages under `/usr/share` and the
+The package puts the QML packages under `/usr/share` and the
 `kwin-canvas` CLI in `/usr/bin`. Then enable the
 effect as in step 3 below, or tick **Canvas** in Desktop Effects. After an
 upgrade, log out and in once: KWin keeps the version it compiled at login.
@@ -83,11 +84,13 @@ the same thing, and `make` alone lists every target.
 
 ### As a distro package
 
-`make install-system DESTDIR=...` copies the three packages into
-`/usr/share/kwin/effects`, `/usr/share/plasma/wallpapers` and
-`/usr/share/plasma/plasmoids` under that root, the same places
+`make install-system DESTDIR=...` copies the six packages into
+`/usr/share/kwin/effects`, `/usr/share/plasma/wallpapers`,
+`/usr/share/plasma/plasmoids` (the three applets) and
+`/usr/share/kwin/decorations` under that root, the same places
 `kpackagetool6 --global` uses, and the CLI into `/usr/bin`, with no session
-calls.
+calls. `make dist` makes one tarball per package for `kpackagetool6` or the
+KDE Store.
 `make pkgbuild` writes `dist/PKGBUILD` for the AUR from
 `packaging/PKGBUILD.in`, plus `dist/passthrough/PKGBUILD` for the plugin,
 and `make aur` and `make aur-passthrough` publish them after `make release`
@@ -161,6 +164,14 @@ All of it is reassignable in System Settings:
 | A hot corner or edge that opens it | Screen Edges → pick **Canvas** for a corner |
 | Keys inside the canvas, mouse gestures, opening view, toolbar position and shape | Desktop Effects → Canvas → configure |
 
+Every setting applies when you press Apply. The global chords are the
+defaults the effect registers once: rebind them under Shortcuts → KWin, and
+know that KDE registers its own actions first, so a chord KDE already holds
+(Alt+Tab, Meta+Alt+arrows) never reaches the canvas until KDE's action is
+unbound - `kwin-canvas setup` offers to take each such chord over, and
+`kwin-canvas doctor` names them. A new `main.qml` (an update from the
+checkout) is loaded at the next login, nothing sooner.
+
 ## Start in the overworld at login
 
 Two ways, pick one:
@@ -214,7 +225,11 @@ kpackagetool6 --type Plasma/Applet --install kwin-canvas-toggle-0.4.0.tar.gz
 ```
 
 It invokes the chord by name through kglobalaccel, so it follows a
-rebinding in System Settings.
+rebinding in System Settings. Two more applets come with it: **Canvas
+Decor** (`org.kde.kwin.canvas.decor`) shows the focused window's glyphs in
+the panel in the decoration's language, and **Canvas Map** is below. The
+**Canvas** window decoration (`kwin-canvas-decoration`, Window Decorations
+in System Settings) is the same five glyphs as a title bar.
 
 ## The map widget
 
@@ -226,26 +241,19 @@ In a panel it is a small map that opens the full one. A click on a window
 flies to it and focuses it; a click on the ground brings that spot to the
 middle of the screen. Without the plugin it says so instead of drawing.
 
-## Known limits in 0.4.0
+## Known limits
 
-- The monitor frames reproduce KDE's display arrangement and the canvas
-  never changes it. Rearrange or resize displays in System Settings →
-  Display Configuration; the frames follow.
-- Every frame shows the current activity's wallpaper; Plasma keeps one
-  desktop window per screen.
-- Without the pass-through plugin there is no interaction with windows in
-  the overworld; it is for arranging and navigating, and work happens in a
-  location. With the plugin the overworld is live, and a window's popups
-  still open at its real position, off screen if the window is.
-- X11 (XWayland) windows cannot be placed beyond about ±32k pixels.
-- An output change (plug or unplug a monitor, change resolution) can pull
-  far-off windows back toward the screens.
-- The pan position resets when KWin restarts; window positions survive.
+The short list: the monitor frames reproduce KDE's display arrangement and
+never change it; every frame shows the current activity's wallpaper; without
+the pass-through plugin the overworld is a navigation view; X11 windows
+cannot be placed beyond about ±32k pixels. The full list, kept with the
+model, is [architecture.md → Known limits](architecture.md#known-limits).
 
 ## Turn it off or remove it
 
-Untick **Canvas** in Desktop Effects, `./configure.sh uninstall` from a
-checkout, or:
+Untick **Canvas** in Desktop Effects to turn it off. To remove everything
+`make install` put in place, `./configure.sh uninstall` from the checkout
+(it names the two root-owned parts it cannot remove); the same by hand:
 
 ```bash
 kwriteconfig6 --file kwinrc --group Plugins --key kwin-canvasEnabled false
@@ -253,6 +261,12 @@ qdbus6 org.kde.KWin /Effects org.kde.kwin.Effects.unloadEffect kwin-canvas
 kpackagetool6 --type KWin/Effect --remove kwin-canvas
 kpackagetool6 --type Plasma/Wallpaper --remove kwin-canvas-ground
 kpackagetool6 --type Plasma/Applet --remove org.kde.kwin.canvas.toggle
+kpackagetool6 --type Plasma/Applet --remove org.kde.kwin.canvas.decor
+kpackagetool6 --type Plasma/Applet --remove org.kde.kwin.canvas.map
+rm -rf ~/.local/share/kwin/decorations/kwin-canvas-decoration   # pick another decoration first
+rm -f ~/.local/bin/kwin-canvas ~/.config/autostart/kwin-canvas-plugincheck.desktop
+kwin-canvas plugin-hook remove       # only if you installed the pacman hook; before the CLI goes
+sudo rm /usr/lib/qt6/plugins/kwin/plugins/kwin_canvas_passthrough.so   # the plugin, if installed
 ```
 
 Windows that were off-screen when you disabled it stay off-screen. Bring

@@ -74,17 +74,20 @@ restore_settings() {
 # and the effect reloads them on the next reconfigure.
 # Whether the desk is off the arranged one: a window off its LAYOUT spot, or
 # something other than KCalc on top.
+# layout_moved: true when a window is off the layout or KCalc is not on top; LAYOUT_OFF says what.
+LAYOUT_OFF=""
 layout_moved() {
     local cap spec x y
     c state >/dev/null 2>&1
     for cap in "${!LAYOUT[@]}"; do
         spec=(${LAYOUT[$cap]})
         x=$(eget "$cap" x); y=$(eget "$cap" y)
-        [ "$x" = "${spec[0]}" ] && [ "$y" = "${spec[1]}" ] || return 0
+        [ "$x" = "${spec[0]}" ] && [ "$y" = "${spec[1]}" ] || { LAYOUT_OFF="$cap at $x,$y (layout ${spec[0]},${spec[1]})"; return 0; }
     done
     # The stacking too: KCalc on top, the arranged chain, so a hover raise
     # (110) that moved nothing still counts.
-    [ "$(awk '/^  \[/{e=$0} END{print e}' <<<"$LAST_STATE" | grep -c KCalc)" = 1 ] || return 0
+    [ "$(awk '/^  \[/{e=$0} END{print e}' <<<"$LAST_STATE" | grep -c KCalc)" = 1 ] || { LAYOUT_OFF="KCalc is not on top"; return 0; }
+    LAYOUT_OFF=""
     return 1
 }
 # The windows' sizes. A window's real size can end up off its arranged one
@@ -212,7 +215,11 @@ for f in "${files[@]}"; do
     # raises one by hover (110), and does not arrange again, left the next
     # one's screenshots a different desk. Cheap to check, so only a layout
     # that has moved is arranged again.
-    layout_moved && arrange >/dev/null 2>&1
+    if layout_moved; then
+        DESK_RESETS=$((DESK_RESETS + 1))
+        echo "   desk reset after $name: the layout or the stacking moved ($LAYOUT_OFF)"
+        arrange >/dev/null 2>&1
+    fi
     if off=$(sizes_off); then
         DESK_RESETS=$((DESK_RESETS + 1))
         echo "   desk reset after $name: window sizes drifted off the layout:$off;"

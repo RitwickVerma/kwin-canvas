@@ -19,7 +19,9 @@ Nothing on the plane is a monitor. The overview does not draw monitors as
 rectangles with output names; it draws where each camera is looking, and each
 activity's desk frame, once.
 
-Two modes, chosen with the `Cameras` setting and a toolbar toggle:
+Two modes, chosen with the `Cameras` setting (`merged`, the default, or
+`separate`; a hidden knob, `kwriteconfig6 --file kwinrc --group
+Effect-kwin-canvas --key Cameras separate`; no toolbar toggle yet):
 
 - **Merged.** The monitors are one camera over the whole arrangement, a larger
   canvas the size of the desktop. This is how the canvas has always worked, and

@@ -13,7 +13,10 @@ if [ ! -f "$REPO/plugin/CMakeLists.txt" ]; then
     echo "kwin-canvas: no checkout at $REPO; the plugin was not rebuilt (kwin-canvas plugin-hook remove drops this hook)"
     exit 0
 fi
-if ! runuser -u "$OWNER" -- make -C "$REPO" -s plugin; then
+# pacman runs this as root with root's environment; the build gets the owner's HOME, so cmake's
+# own files land in the owner's home and the owner's ccache and PATH settings apply.
+OWNER_HOME=$(getent passwd "$OWNER" | cut -d: -f6)
+if ! runuser -u "$OWNER" -- env HOME="${OWNER_HOME:-/tmp}" make -C "$REPO" -s plugin; then
     echo "kwin-canvas: the plugin build failed; run kwin-canvas fix-plugin after the upgrade"
     exit 0
 fi

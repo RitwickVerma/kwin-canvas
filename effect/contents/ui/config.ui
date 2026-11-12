@@ -35,6 +35,7 @@
        <item row="5" column="1"><widget class="QSpinBox" name="kcfg_PanDuration"><property name="minimum"><number>0</number></property><property name="maximum"><number>2000</number></property></widget></item>
        <item row="6" column="0"><widget class="QLabel" name="label_PanSwipeFingers"><property name="text"><string>Touchpad swipe fingers (0 off; 3 and 4 also fire KWin's own swipes)</string></property><property name="buddy"><cstring>kcfg_PanSwipeFingers</cstring></property></widget></item>
        <item row="6" column="1"><widget class="QSpinBox" name="kcfg_PanSwipeFingers"><property name="minimum"><number>0</number></property><property name="maximum"><number>5</number></property></widget></item>
+       <item row="7" column="1"><widget class="QCheckBox" name="kcfg_WheelDoor"><property name="text"><string>With the canvas closed, a wheel notch out over the bare wallpaper opens it (the door; needs the pass-through plugin)</string></property></widget></item>
       </layout></widget></item>
      <item><widget class="QGroupBox" name="groupActivity"><property name="title"><string>Activities and windows</string></property>
       <layout class="QFormLayout" name="formActivity">
@@ -82,6 +83,8 @@
         <item row="1" column="1"><widget class="QSpinBox" name="kcfg_HoldDelay"><property name="minimum"><number>100</number></property><property name="maximum"><number>1000</number></property></widget></item>
         <item row="2" column="0"><widget class="QLabel" name="label_SwapButton"><property name="text"><string>Button that, while the modifier is held, flies between the two most recent windows (ForwardButton = MB5)</string></property><property name="buddy"><cstring>kcfg_SwapButton</cstring></property></widget></item>
         <item row="2" column="1"><widget class="QLineEdit" name="kcfg_SwapButton"/></item>
+        <item row="3" column="0"><widget class="QLabel" name="label_HoverDelay"><property name="text"><string>Rest on a window for this long before it takes the pointer and the keys in the open canvas (ms; needs the pass-through plugin)</string></property><property name="buddy"><cstring>kcfg_HoverDelay</cstring></property></widget></item>
+        <item row="3" column="1"><widget class="QSpinBox" name="kcfg_HoverDelay"><property name="minimum"><number>100</number></property><property name="maximum"><number>5000</number></property></widget></item>
        </layout></item>
       </layout></widget></item>
      <item><widget class="QGroupBox" name="groupKeys"><property name="title"><string>Keys inside the canvas (Qt key names, comma separated; the plugin hands keys to the focused window when loaded)</string></property>
@@ -150,6 +153,7 @@
        <item row="3" column="0"><widget class="QLabel" name="label_PanFriction"><property name="text"><string>Friction on a flung pan (per second)</string></property><property name="buddy"><cstring>kcfg_PanFriction</cstring></property></widget></item>
        <item row="3" column="1"><widget class="QDoubleSpinBox" name="kcfg_PanFriction"><property name="minimum"><double>0.1</double></property><property name="maximum"><double>20.0</double></property><property name="singleStep"><double>0.1</double></property></widget></item>
        <item row="4" column="1"><widget class="QCheckBox" name="kcfg_WindowPhysics"><property name="text"><string>A dragged window lifts, trails after the hand and settles (drawn only; the position is exact either way)</string></property></widget></item>
+       <item row="5" column="1"><widget class="QCheckBox" name="kcfg_MovesGlide"><property name="text"><string>Windows a commit or an arrange moves glide to their spot (off: they are written at once)</string></property></widget></item>
       </layout></widget></item>
      <item><widget class="QGroupBox" name="groupSnap"><property name="title"><string>Snapping while dragging</string></property>
       <layout class="QFormLayout" name="formSnap">
@@ -164,6 +168,8 @@
        <item row="5" column="1"><widget class="QSpinBox" name="kcfg_ArrangeGap"><property name="minimum"><number>0</number></property><property name="maximum"><number>256</number></property></widget></item>
        <item row="6" column="0"><widget class="QLabel" name="label_ClusterGap"><property name="text"><string>Near enough to be one cluster: the gap between window edges (px, 0 = a third of the screen's smaller side)</string></property><property name="buddy"><cstring>kcfg_ClusterGap</cstring></property></widget></item>
        <item row="6" column="1"><widget class="QSpinBox" name="kcfg_ClusterGap"><property name="minimum"><number>0</number></property><property name="maximum"><number>1024</number></property></widget></item>
+       <item row="7" column="0"><widget class="QLabel" name="label_TidyGap"><property name="text"><string>Gap between the rows and the windows Tidy lays out (px)</string></property><property name="buddy"><cstring>kcfg_TidyGap</cstring></property></widget></item>
+       <item row="7" column="1"><widget class="QSpinBox" name="kcfg_TidyGap"><property name="minimum"><number>0</number></property><property name="maximum"><number>256</number></property></widget></item>
       </layout></widget></item>
      <item><widget class="QGroupBox" name="groupGround"><property name="title"><string>The ground and what lies beyond the desks</string></property>
       <layout class="QFormLayout" name="formGround">
@@ -201,6 +207,32 @@
        </layout></item>
        <item row="4" column="0"><widget class="QLabel" name="label_SearchShortcut"><property name="text"><string>Find a window by typing its title or app</string></property><property name="buddy"><cstring>kcfg_SearchShortcut</cstring></property></widget></item>
        <item row="4" column="1"><widget class="QLineEdit" name="kcfg_SearchShortcut"/></item>
+       <item row="5" column="0"><widget class="QLabel" name="label_WalkLeftShortcut"><property name="text"><string>Walk the window graph left / right / up / down (through the cluster, then to the next one)</string></property><property name="buddy"><cstring>kcfg_WalkLeftShortcut</cstring></property></widget></item>
+       <item row="5" column="1"><layout class="QHBoxLayout" name="hboxWalkChords">
+        <item><widget class="QLineEdit" name="kcfg_WalkLeftShortcut"/></item>
+        <item><widget class="QLineEdit" name="kcfg_WalkRightShortcut"/></item>
+        <item><widget class="QLineEdit" name="kcfg_WalkUpShortcut"/></item>
+        <item><widget class="QLineEdit" name="kcfg_WalkDownShortcut"/></item>
+       </layout></item>
+       <item row="6" column="0"><widget class="QLabel" name="label_CarryLeftShortcut"><property name="text"><string>Carry the window into the next cluster left / right / up / down</string></property><property name="buddy"><cstring>kcfg_CarryLeftShortcut</cstring></property></widget></item>
+       <item row="6" column="1"><layout class="QHBoxLayout" name="hboxCarryChords">
+        <item><widget class="QLineEdit" name="kcfg_CarryLeftShortcut"/></item>
+        <item><widget class="QLineEdit" name="kcfg_CarryRightShortcut"/></item>
+        <item><widget class="QLineEdit" name="kcfg_CarryUpShortcut"/></item>
+        <item><widget class="QLineEdit" name="kcfg_CarryDownShortcut"/></item>
+       </layout></item>
+       <item row="7" column="0"><widget class="QLabel" name="label_SwitcherShortcut"><property name="text"><string>The switcher: the whole plane / the cluster the eye is on (a tap flips to the window used last; held, Tab steps, letting go enters). KDE's Walk Through Windows must be unbound</string></property><property name="buddy"><cstring>kcfg_SwitcherShortcut</cstring></property></widget></item>
+       <item row="7" column="1"><layout class="QHBoxLayout" name="hboxSwitcherChords">
+        <item><widget class="QLineEdit" name="kcfg_SwitcherShortcut"/></item>
+        <item><widget class="QLineEdit" name="kcfg_SwitcherAltShortcut"/></item>
+       </layout></item>
+       <item row="8" column="0"><widget class="QLabel" name="label_SwitcherReverseShortcut"><property name="text"><string>The same, stepping back (KDE's Walk Through Windows (Reverse) must be unbound)</string></property><property name="buddy"><cstring>kcfg_SwitcherReverseShortcut</cstring></property></widget></item>
+       <item row="8" column="1"><layout class="QHBoxLayout" name="hboxSwitcherReverseChords">
+        <item><widget class="QLineEdit" name="kcfg_SwitcherReverseShortcut"/></item>
+        <item><widget class="QLineEdit" name="kcfg_SwitcherAltReverseShortcut"/></item>
+       </layout></item>
+       <item row="9" column="0"><widget class="QLabel" name="label_SwitcherShowMs"><property name="text"><string>A chord held longer than this shows the switcher; let go sooner and it is a tap (ms)</string></property><property name="buddy"><cstring>kcfg_SwitcherShowMs</cstring></property></widget></item>
+       <item row="9" column="1"><widget class="QSpinBox" name="kcfg_SwitcherShowMs"><property name="minimum"><number>0</number></property><property name="maximum"><number>1000</number></property></widget></item>
       </layout></widget></item>
      <item><widget class="QGroupBox" name="groupQuality"><property name="title"><string>Fidelity under load</string></property>
       <layout class="QFormLayout" name="formQuality">
