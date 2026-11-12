@@ -8,6 +8,12 @@ float, dodge and snap; two monitors share one plane; a panel decor, a map widget
 decoration come with it; and `kwin-canvas doctor` and `setup` keep the install and KDE's settings
 honest. The lines below are the detail, newest first.
 
+- Slides keep the window pictures after a game. A busy machine sheds the canvas's eye candy in
+  steps, down to plain named rectangles, and the step is only re-read while the full canvas is
+  open; a slide, an auto pan or a fly kept whatever step the last full open left. After a game had
+  filled the GPU's memory, every slide showed rectangles for hours. Every open now starts at the
+  step the Quality setting asks for; the full canvas still steps down within a few seconds when
+  the machine really is busy.
 - The mouse's back button works in windows again. A quick press of the canvas modifier's button
   is handed back to the window as a click, and that hand-back turned a mouse's back button into a
   code no browser, file manager or Qt app reads as Back (and a mouse that sends the rarer code got

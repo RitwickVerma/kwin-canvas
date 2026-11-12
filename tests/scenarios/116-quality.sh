@@ -147,6 +147,25 @@ run_scenario() {
     shot "$OUT/qa-11-bare.png" >/dev/null
     assert_eq "the 1:1 picture goes at bare" "$(changed "$(region_rmse "$OUT/qa-11-full.png" "$OUT/qa-11-bare.png" "16x16+324+322")")" 1
 
+    # A quiet slide starts at the mode's rung, not at the step a full open left behind: the
+    # ladder samples only the full overworld, so a step a game forced would otherwise greet
+    # every later slide with plain rectangles. The thresholds stay at zero (every reading
+    # busy), so only the open's own reset can bring the slide back to full.
+    c cancel
+    sleep 0.4
+    setcfg QualityMode Auto
+    step_thresholds 0 0 0
+    open_1to1
+    if ! wait_ql 3; then fail "the ladder stepped to bare before the slide (ql=$(sget ql))"; restore_quality_knobs; return; fi
+    c cancel
+    sleep 0.4
+    c "slide 600 0"
+    sleep 1.2
+    c state
+    assert_eq "a quiet slide after a bare overworld wears everything" "$(sget ql)" 0
+    c "slide -600 0"
+    sleep 1.2
+
     # Leave the knobs as found.
     restore_quality_knobs
 }

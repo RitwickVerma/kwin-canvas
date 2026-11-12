@@ -56,6 +56,16 @@ the plugin reading the item's own bounds, 0.49% and 0.38%, the Rounded Corners o
 does not draw. `222` pins it: a window moved on the open canvas shows its own picture (rmse 0
 fixed, 0.26 with HEAD's plugin). Needs the rebuilt plugin live (`fix-plugin`, a relogin).
 
+**Bare slides after a game (2026-11-12).** The owner: the canvas "degraded still". The live Perf
+log had every slide's `stall` line at `ql=3` (bare: rectangles, no window pictures) with the same
+reading, `vram=96`, from 01:55 to 05:50, while `nvidia-smi` read the card at 37%: Deadlock had
+filled the GPU's memory, the ladder stepped to bare, and only a full open reset the step or took
+a reading (`loadPulse` runs only when not quiet, and the open's reset sat inside `if (!quiet)`).
+Every open now starts at the mode's rung; the full overworld alone samples, as before. `116`'s new
+check forces bare in a full open, keeps every reading busy, and slides: `ql=0` with the fix, `3`
+with the old code. Verified: `116`, `143`, `144` and `170` in the hidden nest, 24 pass, 0 fail;
+`make unit` 303, `make lint`. Not seen live (not installed).
+
 **The window graph and the switcher, rethought (2026-11-11).** The owner: the cluster web was
 not good enough; windows should be walked like a graph with Mod+arrows, across clusters too, a
 window carried between clusters with Shift, and "alt+tab never enters". Decided with the owner:
