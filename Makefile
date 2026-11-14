@@ -294,6 +294,7 @@ nest-cmd: ## Send a debug command: make nest-cmd CMD="zoom 0.4 960 540"
 # ---- tests and demos --------------------------------------------------------
 unit: ## Run the unit tests (the pure logic in node, the CLI's doctor and perf in bash) - the fast iteration loop
 	node tests/unit/logic.test.js
+	node tests/unit/maplayout.test.js
 	bash tests/unit/cli.test.sh
 
 test: nest-install fixtures tools plugin-try ## Run the scenarios against a dedicated test nest (NEST_NAME=test)

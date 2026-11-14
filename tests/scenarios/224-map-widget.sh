@@ -89,6 +89,68 @@ run_scenario() {
     assert_eq "focus gives KCalc the focus" "$(pj "${kcalc}[\"active\"]" <<<"$plane")" 1
     assert_eq "and slides it wholly into view" "$(pj "(lambda w, c: c[0] <= w['x'] and w['x'] + w['w'] <= c[0] + c[2])($kcalc, p['camera'][0])" <<<"$plane")" True
 
+    # Version 2: the clusters, numbered as the canvas numbers them, and what each window is.
+    plane=$(mq read)
+    assert_eq "the reading is version 2" "$(pj 'p["v"]' <<<"$plane")" 2
+    assert_true "the plane has clusters" "$(pj 'len(p["clusters"])' <<<"$plane")" -ge 1
+    assert_eq "the clusters are numbered 1 to n" "$(pj 'sorted(c["n"] for c in p["clusters"]) == list(range(1, len(p["clusters"]) + 1))' <<<"$plane")" True
+    assert_eq "every window on the plane is in a cluster" "$(pj 'all(w["c"] >= 1 for w in p["windows"] if not w["min"] and not w["pin"])' <<<"$plane")" True
+    assert_eq "each cluster lands on one of its own windows" "$(pj 'all(any(w["id"] == c["focus"] and w["c"] == c["n"] for w in p["windows"]) for c in p["clusters"])' <<<"$plane")" True
+    assert_eq "the window's app comes along (its icon)" "$(pj "${kcalc}[\"app\"] != ''" <<<"$plane")" True
+
+    # move: a drop on the map puts the window's top-left exactly on the plane spot, the desk staying.
+    local kwrite='[w for w in p["windows"] if "KWrite" in w["caption"]][0]'
+    local kwid kx0 ky0 answer
+    kwid=$(pj "${kwrite}[\"id\"]" <<<"$plane")
+    kx0=$(pj "${kwrite}[\"x\"]" <<<"$plane")
+    ky0=$(pj "${kwrite}[\"y\"]" <<<"$plane")
+    answer=$(mq act move "{\"id\": \"$kwid\", \"x\": $((kx0 + 300)), \"y\": $((ky0 + 200))}")
+    assert_eq "move answers done" "$answer" ""
+    sleep 0.4
+    plane=$(mq read)
+    assert_eq "move puts KWrite on the spot (x)" "$(pj "${kwrite}[\"x\"]" <<<"$plane")" $((kx0 + 300))
+    assert_eq "and (y)" "$(pj "${kwrite}[\"y\"]" <<<"$plane")" $((ky0 + 200))
+    mq act move "{\"id\": \"$kwid\", \"x\": $kx0, \"y\": $ky0}" >/dev/null
+    sleep 0.4
+
+    # minimize: the window stays on the map, faint and in no cluster; a click on it brings it back.
+    mq act minimize "{\"id\": \"$kwid\"}" >/dev/null
+    sleep 0.4
+    plane=$(mq read)
+    assert_eq "a minimized window stays on the map" "$(pj "${kwrite}[\"min\"]" <<<"$plane")" 1
+    assert_eq "in no cluster" "$(pj "${kwrite}[\"c\"]" <<<"$plane")" 0
+    assert_eq "where it will come back (x)" "$(pj "${kwrite}[\"x\"]" <<<"$plane")" "$kx0"
+    mq focus "$kwid" >/dev/null
+    for i in $(seq 1 20); do
+        sleep 0.2
+        plane=$(mq read)
+        [ "$(pj "${kwrite}[\"active\"]" <<<"$plane")" = 1 ] && break
+    done
+    assert_eq "a click on it brings it back" "$(pj "${kwrite}[\"min\"]" <<<"$plane")" 0
+    assert_eq "and focuses it" "$(pj "${kwrite}[\"active\"]" <<<"$plane")" 1
+
+    # cluster: the click on a cluster's label lands on one of that cluster's windows.
+    local kn
+    kn=$(pj "${kcalc}[\"c\"]" <<<"$plane")
+    answer=$(mq act cluster "{\"n\": $kn}")
+    assert_eq "cluster answers done" "$answer" ""
+    for i in $(seq 1 20); do
+        sleep 0.2
+        plane=$(mq read)
+        [ "$(pj "[w for w in p['windows'] if w['active']][0]['c']" <<<"$plane")" = "$kn" ] && break
+    done
+    assert_eq "the focus lands in cluster $kn" "$(pj "[w for w in p['windows'] if w['active']][0]['c']" <<<"$plane")" "$kn"
+    assert_eq "a missing cluster is named" "$(mq act cluster '{"n": 99}')" "there is no cluster 99"
+    assert_eq "an unknown action is named" "$(mq act frobnicate "{\"id\": \"$kwid\"}")" "the canvas does not know frobnicate"
+
+    # A window kept from capture says so, and the widget never streams it.
+    kwinjs "$FIND_KWRITE if (w) w.excludeFromCapture = true;"
+    assert_eq "a window hidden from capture is marked" "$(pj "${kwrite}[\"nocap\"]" <<<"$(mq read)")" 1
+    kwinjs "$FIND_KWRITE if (w) w.excludeFromCapture = false;"
+    assert_eq "and unmarked" "$(pj "${kwrite}[\"nocap\"]" <<<"$(mq read)")" 0
+    mq go $((vx + WIDTH / 2)) $((vy + HEIGHT / 2)) >/dev/null
+    wait_view "$vx" "$vy"
+
     # The widget itself, on the desktop. The desk first goes somewhere empty, so
     # no window covers the widget and anything the map shows is off the screen:
     # a click anywhere on the map then has to move the desk.
@@ -97,6 +159,10 @@ run_scenario() {
     assert_eq "the desk is on empty ground" "$(printf '%.0f' "$(sget viewx)")" $((vx + 8000))
     local wx=1180 wy=640 ww=640 wh=300
     shot "$OUT/map-before.png"
+    # The widget's QML errors land in the nest's plasmashell log: counted from here on.
+    local pslog="${XDG_RUNTIME_DIR:-/tmp}/kwin-canvas-nest-${NEST_NAME:-p1}/plasmashell.log"
+    local psmark=0
+    [ -f "$pslog" ] && psmark=$(wc -l < "$pslog")
     nq org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript \
         "desktops()[0].addWidget('org.kde.kwin.canvas.map', $wx, $wy, $ww, $wh);" >/dev/null
     local drawn=0
@@ -109,10 +175,16 @@ run_scenario() {
         awk -v m="${drawn:-0}" 'BEGIN{exit !(m > 0.02)}' && break
     done
     assert_true "the widget draws the map (rmse ${drawn:-none})" "$(awk -v m="${drawn:-0}" 'BEGIN{print (m > 0.02)}')" = 1
+    # The widget as drawn, kept for a look (the run's other pictures go at the end).
+    sleep 1.5
+    shot "$OUT/map-shot.png"
+    magick "$OUT/map-shot.png" -crop "${ww}x${wh}+${wx}+${wy}" +repage "$OUT/widget-map.png"
     # The click goes through the widget's own D-Bus call, the end of the chain
     # the qdbus6 calls above stand in for.
     if have_input; then
-        printf 'move %d %d\nsleep 300\nclick\n' $((wx + ww / 2)) $((wy + wh / 2)) | input
+        # The left third: the windows sit left of this empty desk, so the click lands on the map's
+        # clusters (a window, a label or the ground beside them), never on the screen's own frame.
+        printf 'move %d %d\nsleep 300\nclick\n' $((wx + ww / 4)) $((wy + wh / 2)) | input
         for i in $(seq 1 20); do
             sleep 0.2
             c state
@@ -121,6 +193,14 @@ run_scenario() {
         assert_true "a click on the map moves the desk" "$(printf '%.0f' "$(sget viewx)")" != $((vx + 8000))
     else
         skip "a click on the widget: fakeinput not built (make tools)"
+    fi
+    if [ -f "$pslog" ]; then
+        local qmlerr
+        qmlerr=$(tail -n +"$((psmark + 1))" "$pslog" | grep -aE 'canvas\.map|MapView|WindowSheet|ClusterPager|AppIcons|Preview\.qml|layout\.js' | grep -aiE 'error|warn|undefined|not a|cannot' || true)
+        [ -n "$qmlerr" ] && printf '# %s\n' "$qmlerr" | head -8
+        assert_eq "the widget logs no QML error" "$(printf '%s' "$qmlerr" | grep -c .)" 0
+    else
+        skip "the widget's QML errors: no plasmashell log at $pslog"
     fi
 
     # Leave the desk as found: the widget off the desktop, the view home. The widget lets the map

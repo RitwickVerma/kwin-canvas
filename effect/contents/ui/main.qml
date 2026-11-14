@@ -5461,6 +5461,13 @@ KWin.SceneEffect {
     // at rest (every window the canvas would draw, at its frame plus its
     // activity's target). The frames carry their palette colours, so the
     // widget's frames are the lens's. JSON, rounded to whole pixels.
+    // Version 2 adds what the widget needs to be more than a picture: each
+    // window's app (for its icon), whether it is minimized (drawn faint, at
+    // the spot it will come back to), kept above, a float, or hidden from
+    // capture (no live preview of it, ever); the clusters, numbered as the
+    // canvas's "#n" chips and digit keys number them, with their names and
+    // the window a click on the cluster lands on; and game mode, which stops
+    // the widget's previews while a game has the focus.
     function mapPlane() {
         const live = canvasOpen;
         const z = live ? zoom : 1;
@@ -5484,20 +5491,34 @@ KWin.SceneEffect {
             frameList.push([Math.round(fs[i].x), Math.round(fs[i].y), fs[i].width, fs[i].height,
                             String(activityColor(fs[i].id)), fs[i].id === cur ? 1 : 0]);
         }
+        const m = mapModel();
+        return JSON.stringify({ v: 2, open: live, game: gameMode ? 1 : 0, camera: camera, frames: frameList,
+                                windows: m.windows, clusters: m.clusters });
+    }
+    // The map's windows and clusters (mapPlane's, and the cluster action's). Live, the entries
+    // where the hand has put them; closed, every window the canvas would draw at its plane spot.
+    // Minimized windows come too, at the spot they will come back to, but are no cluster's.
+    function mapModel() {
+        const live = canvasOpen;
+        const cur = currentActivity;
         const active = KWin.Workspace.activeWindow;
-        const windows = [];
+        const windows = [], nodes = [];
         const add = function (w, x, y, width, height) {
-            windows.push({ id: String(w.internalId), caption: String(w.caption || ""),
+            const id = String(w.internalId);
+            const pinned = windowPinned(w);
+            windows.push({ id: id, caption: String(w.caption || ""), app: String(w.desktopFileName || w.resourceClass || ""),
                            x: Math.round(x), y: Math.round(y), w: Math.round(width), h: Math.round(height),
-                           active: w === active ? 1 : 0, here: onActivity(w, cur) ? 1 : 0 });
+                           active: w === active ? 1 : 0, here: onActivity(w, cur) ? 1 : 0, min: w.minimized ? 1 : 0,
+                           above: w.keepAbove ? 1 : 0, pin: pinned ? 1 : 0, nocap: w.excludeFromCapture ? 1 : 0, c: 0 });
+            if (!w.minimized && !pinned) nodes.push({ id: id, x: x, y: y, width: width, height: height });
         };
+        const stack = KWin.Workspace.stackingOrder;
         if (live) {
             for (let i = 0; i < entries.length; ++i) {
                 const e = entries[i];
                 if (e.window && !e.window.deleted) add(e.window, e.x, e.y, e.width, e.height);
             }
         } else {
-            const stack = KWin.Workspace.stackingOrder;
             for (let i = 0; i < stack.length; ++i) {
                 const w = stack[i];
                 if (!isCanvasWindow(w, true)) continue;
@@ -5505,7 +5526,41 @@ KWin.SceneEffect {
                 add(w, p.x, p.y, w.frameGeometry.width, w.frameGeometry.height);
             }
         }
-        return JSON.stringify({ open: live, camera: camera, frames: frameList, windows: windows });
+        for (let i = 0; i < stack.length; ++i) {
+            const w = stack[i];
+            if (!isMapMinimized(w)) continue;
+            const p = planeSpot(w);
+            add(w, p.x, p.y, w.frameGeometry.width, w.frameGeometry.height);
+        }
+        const mc = Logic.mapClusters(nodes, clusterOf, threadRank, configuration.ClusterGap, clusters);
+        const out = [];
+        for (let i = 0; i < mc.clusters.length; ++i) {
+            const c = mc.clusters[i];
+            // The window a click on the cluster lands on: the one the hand last used there.
+            let focus = c.ids[0], bestAt = -1, hasActive = false;
+            for (let k = 0; k < c.ids.length; ++k) {
+                const at = focusAt[c.ids[k]] || 0;
+                if (at > bestAt) { bestAt = at; focus = c.ids[k]; }
+                if (active && String(active.internalId) === c.ids[k]) hasActive = true;
+            }
+            out.push({ n: c.n, name: String(clusterNames[clusterFingerprint(c)] || ""), x: Math.round(c.x), y: Math.round(c.y),
+                       w: Math.round(c.w), h: Math.round(c.h), count: c.ids.length, focus: focus, active: hasActive ? 1 : 0 });
+        }
+        for (let i = 0; i < windows.length; ++i) windows[i].c = mc.of[windows[i].id] || 0;
+        return { windows: windows, clusters: out };
+    }
+    // A minimized window the canvas would draw if it were not: the map shows it, faint, and a
+    // click brings it back.
+    function isMapMinimized(w) {
+        return !!w && !w.deleted && w.managed && w.minimized && !w.desktopWindow && !w.dock && !w.popupWindow
+            && !w.specialWindow && !w.skipTaskbar && onDesktop(w);
+    }
+    // The window with this internalId, or null.
+    function mapWindow(id) {
+        id = String(id);
+        const all = KWin.Workspace.windows;
+        for (let i = 0; i < all.length; ++i) if (all[i] && !all[i].deleted && String(all[i].internalId) === id) return all[i];
+        return null;
     }
     // Where a window sits on the plane while the canvas is closed: makeEntry's
     // mapping without its bookkeeping (a map read must change nothing).
@@ -5548,10 +5603,9 @@ KWin.SceneEffect {
     // click asked for exactly that); on another activity the activity switches
     // and the window takes the focus there.
     function mapFocus(id) {
-        id = String(id);
-        const all = KWin.Workspace.windows;
-        let w = null;
-        for (let i = 0; i < all.length; ++i) if (all[i] && String(all[i].internalId) === id) { w = all[i]; break; }
+        const w = mapWindow(id);
+        // A minimized window's sheet: the click brings it back first, then goes to it.
+        if (isMapMinimized(w)) w.minimized = false;
         if (!isCanvasWindow(w, true)) return;
         dbg("map", "focus " + w.caption);
         if (canvasOpen) {
@@ -5572,6 +5626,88 @@ KWin.SceneEffect {
         // would jerk the slide already under way).
         flyToWindow(w);
         KWin.Workspace.activeWindow = w;
+    }
+
+    // The widget's other hands, one entry for all of them so a new one needs no new plugin: verb
+    // and a JSON object of arguments in, "" when done or what went wrong out (the widget shows it).
+    //   move {id, x, y}  the window's top-left to this plane spot (a drag on the map)
+    //   bring {id}       the window to the middle of the screen the pointer is on, focused
+    //   minimize {id}    minimize it, or bring it back
+    //   above {id}       keep it above the others, or stop
+    //   close {id}       close it, as its own close button would
+    //   cluster {n}      go to cluster n, landing on the window the hand last used there
+    function mapAct(verb, args) {
+        verb = String(verb);
+        let a = {};
+        try { a = JSON.parse(String(args || "{}")) || {}; } catch (err) { return "the arguments are not JSON"; }
+        if (verb === "cluster") return mapCluster(Number(a.n));
+        const w = mapWindow(a.id);
+        if (!w) return "that window is gone";
+        dbg("map", verb + " " + String(w.caption).slice(0, 40));
+        if (verb === "move") return mapMove(w, Number(a.x), Number(a.y));
+        if (verb === "bring") return mapBring(w);
+        if (verb === "minimize") { w.minimized = !w.minimized; return ""; }
+        if (verb === "above") { w.keepAbove = !w.keepAbove; return ""; }
+        if (verb === "close") { w.closeWindow(); return ""; }
+        return "the canvas does not know " + verb;
+    }
+    // A window dropped on the map: its top-left goes to the plane spot. Open, its entry glides
+    // there (an undo step, as a hand's move); closed, the real window is written through the
+    // target its spot is read with, so the plane spot is exactly where it was dropped.
+    function mapMove(w, x, y) {
+        if (!isFinite(x) || !isFinite(y)) return "that is no spot on the plane";
+        if (w.minimized || windowPinned(w) || !isCanvasWindow(w, true)) return "that window does not sit on the plane";
+        if (canvasOpen) {
+            const e = entryFor(w);
+            if (!e) return "that window is on another activity";
+            noteBeforeChange([e]);
+            animateEntry(e, Math.round(x), Math.round(y));
+            revision++;
+            return "";
+        }
+        const f = w.frameGeometry;
+        const t = separate ? peekTargetOn(activityOf(w), outputAtReal(f.x, f.y, f.width, f.height)) : peekTarget(activityOf(w));
+        setReal(w, Qt.rect(Math.round(x - t.x), Math.round(y - t.y), f.width, f.height));
+        return "";
+    }
+    // Fetch the window instead of going to it: centred on the screen the pointer is on, focused.
+    function mapBring(w) {
+        if (!onActivity(w, currentActivity)) return "that window is on another activity";
+        if (isMapMinimized(w)) w.minimized = false;
+        if (windowPinned(w) || !isCanvasWindow(w)) return "that window does not sit on the plane";
+        const sg = actionScreen().geometry;
+        const f = w.frameGeometry;
+        if (canvasOpen) {
+            const e = entryFor(w);
+            if (!e) return "that window is not on the canvas";
+            const cx = viewX + (sg.x + sg.width / 2) / zoom, cy = viewY + (sg.y + sg.height / 2) / zoom;
+            noteBeforeChange([e]);
+            animateEntry(e, Math.round(cx - e.width / 2), Math.round(cy - e.height / 2));
+            revision++;
+            return "";
+        }
+        setReal(w, Qt.rect(Math.round(sg.x + (sg.width - f.width) / 2), Math.round(sg.y + (sg.height - f.height) / 2), f.width, f.height));
+        KWin.Workspace.activeWindow = w;
+        return "";
+    }
+    // The map's cluster n. Open, the canvas's own cluster flight (the same windows, whatever its
+    // index); closed, the window the hand last used there is flown to and focused.
+    function mapCluster(n) {
+        const m = mapModel();
+        let c = null;
+        for (let i = 0; i < m.clusters.length; ++i) if (m.clusters[i].n === n) c = m.clusters[i];
+        if (!c) return "there is no cluster " + n;
+        if (canvasOpen) {
+            const want = clusterOf[c.focus];
+            if (want === undefined) return "that cluster is not on the canvas";
+            hoverEntry = null;
+            focusEntry = null;
+            travelCluster = want;
+            flyToCluster(want);
+            return "";
+        }
+        mapFocus(c.focus);
+        return "";
     }
 
     // The buttons the plugin leaves to the canvas whatever is drawn under the

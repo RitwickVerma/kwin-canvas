@@ -55,6 +55,12 @@ public Q_SLOTS:
     Q_SCRIPTABLE void go(double x, double y);
     /** Fly to the window with this internalId and focus it. */
     Q_SCRIPTABLE void focus(const QString &id);
+    /**
+     * Any other action of the widget's, done by the effect (its mapAct): verb and a JSON object
+     * of arguments in, "" when done or what went wrong out. The verbs are the effect's (move,
+     * bring, minimize, above, close, cluster), so a new one needs no new plugin.
+     */
+    Q_SCRIPTABLE QString act(const QString &verb, const QString &args);
     /** A widget wants the change signal until it releases this token (or its bus connection goes). */
     Q_SCRIPTABLE void hold(const QString &token);
     /** The widget that held with this token is gone. */

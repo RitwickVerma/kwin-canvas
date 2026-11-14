@@ -182,3 +182,16 @@ void CanvasMap::focus(const QString &id)
         QMetaObject::invokeMethod(effect, "mapFocus", Q_ARG(QVariant, id));
     }
 }
+
+QString CanvasMap::act(const QString &verb, const QString &args)
+{
+    QObject *effect = canvas();
+    if (!effect) {
+        return QStringLiteral("the canvas effect is not loaded");
+    }
+    QVariant answer;
+    if (!QMetaObject::invokeMethod(effect, "mapAct", Q_RETURN_ARG(QVariant, answer), Q_ARG(QVariant, verb), Q_ARG(QVariant, args))) {
+        return QStringLiteral("the canvas effect is too old for this action");
+    }
+    return answer.toString();
+}

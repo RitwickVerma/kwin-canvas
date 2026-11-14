@@ -242,7 +242,7 @@ make lint-qml        # every .qml file, failing on a [syntax] warning
 make lint-shell      # bash -n on every script, then shellcheck at error severity
 make lint-deadcode   # the dead-code census (tools/deadcode.sh)
 make lint-python     # vulture over the Python (tests/fixtures/gen.py)
-make unit            # logic.test.js in node, cli.test.sh (doctor and perf) in bash
+make unit            # logic.test.js and maplayout.test.js in node, cli.test.sh (doctor and perf) in bash
 ```
 
 Shellcheck reads `.shellcheckrc` for the standing policy: the shell is bash

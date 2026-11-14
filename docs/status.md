@@ -56,6 +56,28 @@ the plugin reading the item's own bounds, 0.49% and 0.38%, the Rounded Corners o
 does not draw. `222` pins it: a window moved on the open canvas shows its own picture (rmse 0
 fixed, 0.26 with HEAD's plugin). Needs the rebuilt plugin live (`fix-plugin`, a relogin).
 
+**Canvas Map rebuilt (2026-11-14).** The owner: the map widget "does not show all the clusters",
+and needs "a huge revamp, transparency, blur, interactivity; move to windows by clicking". Found
+live: the widget installed on Nov 5 never holds the map, and the plugin installed on Nov 12 sends
+`changed` only to holders or for a minute after a read, so the old widget stopped hearing changes
+after a quiet minute and froze on an old plane; `make install` brings the widget that holds. The
+map itself was a to-scale picture: three clusters 10 000 px apart were small sheets with no
+grouping, no names and no icons. Built: version 2 of the reading (`mapModel`: clusters numbered
+as the canvas numbers them by `Logic.mapClusters`, apps, minimized windows, flags, game mode),
+`mapAct` and the plugin's `act` (move, bring, minimize, above, close, cluster), and the widget
+rewritten around `layout.js`'s squeezed ground: tinted cluster cards with labels, glass sheets
+with icons (`AppIcons.qml`) or live PipeWire pictures (`Preview.qml`), drag to move, a drag of the
+screen's frame to move the desk, a context menu, wheel zoom, search and keyboard, a tray for
+minimized windows (on the ground, a far minimized window stretched the whole map), and a cluster
+pager in a panel. A headless render (the plain `qml` runtime, offscreen, no bus, synthetic
+windows) found two bugs that would have kept the widget from loading at all: a cluster label's
+`focus` role overrode Item's final `focus` (Qt 6.12 refuses), and `WindowSheet { view: view }`
+bound the sheet's own empty property; it then drew the pager, the cards, labels, sheets, folds and
+tray as designed, light and dark. Verified: `make unit` (313 logic, 40 map layout, 203 CLI),
+`make lint`, the plugin builds, every new QML file parses and the map view and pager load and draw
+with no QML error. The nest (`224`): see below. Not seen live (not installed); the live pictures,
+the icons from the task manager model and the panel popup are not verified anywhere yet.
+
 **Bare slides after a game (2026-11-12).** The owner: the canvas "degraded still". The live Perf
 log had every slide's `stall` line at `ql=3` (bare: rectangles, no window pictures) with the same
 reading, `vram=96`, from 01:55 to 05:50, while `nvidia-smi` read the card at 37%: Deadlock had

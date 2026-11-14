@@ -8,6 +8,18 @@ float, dodge and snap; two monitors share one plane; a panel decor, a map widget
 decoration come with it; and `kwin-canvas doctor` and `setup` keep the install and KDE's settings
 honest. The lines below are the detail, newest first.
 
+- Canvas Map, rebuilt. Every cluster is legible however far apart they sit: the map keeps the
+  windows and the screen to scale and squeezes the empty ground between clusters (a toggle draws
+  it to scale). Each cluster is a tinted card with the number the canvas's digit keys use and its
+  name; each window a pane of glass with its app's icon, or its live picture while the map is
+  open (never while a game has the focus, never for a window hidden from capture). A click on a
+  window goes to it, a drag moves it on the plane (into another cluster too), a middle click
+  brings it here, a right click offers minimize, keep above and close; a click on a cluster's
+  label goes there, a drag of the screen's frame moves the desk, the wheel zooms the map, and
+  typing searches (the arrows and Enter go, a digit goes to that cluster). Minimized windows sit in a
+  tray along the map's foot, and a click brings one back. In a panel it is a button per
+  cluster with its windows' icons. The plugin gains one call for all of this (`kwin-canvas
+  fix-plugin`); with an older plugin the map still draws and says what an action needs.
 - Slides keep the window pictures after a game. A busy machine sheds the canvas's eye candy in
   steps, down to plain named rectangles, and the step is only re-read while the full canvas is
   open; a slide, an auto pan or a fly kept whatever step the last full open left. After a game had

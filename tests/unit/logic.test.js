@@ -691,6 +691,29 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
     ok("blurClassHit: $blank matches an empty class", L.blurClassHit("$blank", "", "x") && !L.blurClassHit("$blank", "konsole", "x"));
 }
 
+// ---- the map widget's clusters (mapClusters) ----
+{
+    const desk = [rect("a", 0, 0, 400, 300), rect("b", 420, 0, 400, 300), rect("c", 5000, 0, 400, 300), rect("d", 0, 4000, 400, 300)];
+    const fresh = L.mapClusters(desk, {}, {}, 0, []);
+    ok("mapClusters: three clusters", fresh.clusters.length === 3);
+    ok("mapClusters: unseen clusters are numbered in reading order",
+        fresh.of.a === 1 && fresh.of.b === 1 && fresh.of.c === 2 && fresh.of.d === 3);
+    const one = fresh.clusters[0];
+    ok("mapClusters: a cluster's box spans its windows", one.x === 0 && one.y === 0 && one.w === 820 && one.h === 300);
+    ok("mapClusters: the box carries no centroid", one.cx === undefined && one.cy === undefined);
+    // The canvas holds the far-right cluster as its first and the pair as its third: the map keeps
+    // both numbers, and the cluster the canvas has not seen takes the free 2.
+    const live = [{ ids: ["c"] }, { ids: ["zz"] }, { ids: ["b", "a"] }];
+    const kept = L.mapClusters(desk, {}, {}, 0, live);
+    ok("mapClusters: a cluster the canvas holds keeps the canvas's number", kept.of.c === 1 && kept.of.a === 3);
+    ok("mapClusters: an unseen cluster takes the lowest free number", kept.of.d === 2);
+    ok("mapClusters: the clusters come in number order", kept.clusters.map(function (c) { return c.n; }).join() === "1,2,3");
+    const ranks = { a: 0 };
+    L.mapClusters(desk, {}, ranks, 0, []);
+    ok("mapClusters: the canvas's ranks are read, not changed", Object.keys(ranks).length === 1);
+    ok("mapClusters: nothing to draw, no clusters", L.mapClusters([], {}, {}, 0, null).clusters.length === 0);
+}
+
 // ---- the census: every function of logic.js is called by a test above ----
 {
     const self = fs.readFileSync(__filename, "utf8");

@@ -3,11 +3,20 @@
 
     SPDX-License-Identifier: GPL-2.0-or-later
 
-    The canvas's minimap as a widget: the whole plane at a glance - the
-    activities' frames in their palette colours, every window as a sheet,
-    the screen's own rectangle - on the desktop, or small in a panel with
-    the full map a click away. A click on a window flies to it and focuses
-    it; a click on the ground brings that spot to the middle of the screen.
+    The canvas's map as a widget: every cluster and every window of the plane
+    at a glance, and a hand on it. In a panel it is a row of cluster buttons
+    (or a small map) with the full map a click away; on the desktop it is the
+    map itself.
+
+    The map keeps the windows and the screens to scale and squeezes the empty
+    ground between clusters (layout.js), so a cluster thousands of pixels away
+    is as legible as the one on the screen. Each window is a glass sheet with
+    its app's icon, or its live picture while the map is open; each cluster a
+    tinted card with the number the canvas's digit keys use and its name.
+    A click on a window goes to it, a drag moves it on the plane, a middle
+    click brings it here, a right click offers the rest; a click on a
+    cluster's label goes to the cluster, a drag of the screen's frame moves
+    the desk, the wheel zooms the map, and typing searches.
 
     The map is the canvas's own: the pass-through plugin's Map object
     (/KWinCanvas/Map) asks the effect, which is the one authority on where
@@ -22,6 +31,7 @@ import QtQuick.Layouts
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PlasmaComponents3
+import org.kde.plasma.extras as PlasmaExtras
 import org.kde.plasma.workspace.dbus as DBus
 import org.kde.kirigami as Kirigami
 
@@ -29,31 +39,33 @@ PlasmoidItem {
     id: root
 
     Plasmoid.status: PlasmaCore.Types.ActiveStatus
-    Plasmoid.backgroundHints: PlasmaCore.Types.DefaultBackground | PlasmaCore.Types.ConfigurableBackground
-    // Big enough on the desktop to read; in a panel the compact map stands in.
-    switchWidth: Kirigami.Units.gridUnit * 8
-    switchHeight: Kirigami.Units.gridUnit * 4
+    // Glass on the desktop by default; the desktop's own menu offers the other backgrounds.
+    Plasmoid.backgroundHints: PlasmaCore.Types.TranslucentBackground | PlasmaCore.Types.ConfigurableBackground
+    // Big enough on the desktop to read; in a panel the compact form stands in.
+    switchWidth: Kirigami.Units.gridUnit * 10
+    switchHeight: Kirigami.Units.gridUnit * 6
     toolTipMainText: i18n("Canvas Map")
-    toolTipSubText: plane ? i18n("Click to open the map") : i18n("Needs the kwin-canvas pass-through plugin")
+    toolTipSubText: plane ? summary : i18n("Needs the kwin-canvas pass-through plugin")
 
-    // The last reading, parsed: {open, camera, frames, windows}, or null.
+    // The last reading, parsed: {v, open, game, camera, frames, windows, clusters}, or null.
     property var plane: null
-    // The world the map fits: the frames, the windows and the camera together.
-    readonly property rect world: {
-        if (!plane) return Qt.rect(0, 0, 1, 1);
-        let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
-        const grow = function (x, y, w, h) {
-            l = Math.min(l, x); t = Math.min(t, y);
-            r = Math.max(r, x + w); b = Math.max(b, y + h);
-        };
-        for (const f of plane.frames) grow(f[0], f[1], f[2], f[3]);
-        for (const c of plane.camera) grow(c[0], c[1], c[2], c[3]);
-        for (const w of plane.windows) grow(w.x, w.y, w.w, w.h);
-        if (l === Infinity) return Qt.rect(0, 0, 1, 1);
-        return Qt.rect(l, t, Math.max(1, r - l), Math.max(1, b - t));
+    readonly property var windows: plane ? plane.windows : []
+    readonly property var clusters: plane && plane.clusters ? plane.clusters : []
+    // The cluster the focused window is in, or 0.
+    readonly property int activeCluster: {
+        for (let i = 0; i < clusters.length; ++i) if (clusters[i].active) return clusters[i].n;
+        return 0;
     }
-    readonly property real aspect: Math.max(0.5, Math.min(6, world.width / world.height))
+    readonly property string summary: {
+        let shown = 0, minimized = 0;
+        for (let i = 0; i < windows.length; ++i) if (windows[i].min) minimized++; else shown++;
+        const parts = [i18np("%1 cluster", "%1 clusters", clusters.length), i18np("%1 window", "%1 windows", shown)];
+        if (minimized) parts.push(i18n("%1 minimized", minimized));
+        return parts.join(" · ");
+    }
+    readonly property bool inPanel: Plasmoid.formFactor === PlasmaCore.Types.Horizontal || Plasmoid.formFactor === PlasmaCore.Types.Vertical
 
+    // ---- the bus ----
     readonly property var mapObject: ({ service: "org.kde.KWin", path: "/KWinCanvas/Map", iface: "org.kde.kwin.canvas.Map" })
     function message(member, args, signature) {
         return { service: mapObject.service, path: mapObject.path, iface: mapObject.iface,
@@ -81,15 +93,29 @@ PlasmoidItem {
             if (root.readAgain) { root.readAgain = false; root.read(); }
         });
     }
-    // A click's call answers nothing worth reading; the reply is let go when it lands.
     // The signature is the whole argument list as one tuple: the module encodes the
     // arguments against it ("dd" sends none), and without one it introspects first.
-    function send(member, args, signature) {
+    function send(member, args, signature, then) {
         const reply = DBus.SessionBus.asyncCall(message(member, args, signature));
-        reply.finished.connect(() => reply.destroy());
+        reply.finished.connect(() => {
+            if (then) then(reply.isError ? null : String(reply.value));
+            reply.destroy();
+        });
     }
     function go(x, y) { send("go", [x, y], "(dd)"); }
     function focusWindow(id) { send("focus", [id], "(s)"); }
+    // The effect's other actions (move, bring, minimize, above, close, cluster): what went wrong
+    // comes back as text and is shown on the map; a plugin without act is named as the cause.
+    function act(verb, args) {
+        send("act", [verb, JSON.stringify(args)], "(ss)", function (answer) {
+            if (answer === null) root.say(i18n("Update the pass-through plugin for this (kwin-canvas fix-plugin)"));
+            else if (answer !== "") root.say(answer);
+        });
+    }
+    // A line on the map for a few seconds.
+    property string notice: ""
+    function say(text) { notice = text; noticeTimer.restart(); }
+    Timer { id: noticeTimer; interval: 3500; onTriggered: root.notice = "" }
 
     // The map watches the windows only while a widget holds it: held from here on, let go when
     // the widget is removed (and by the plugin itself when plasmashell's connection goes). Each
@@ -119,133 +145,89 @@ PlasmoidItem {
         onTriggered: { root.hold(); root.read(); }
     }
 
-    // The map itself, for both forms: the compact one in a panel is a glance
-    // that opens the full map, the full one takes the clicks.
-    component PlaneMap: Item {
-        id: map
-        property bool interactive: true
-        readonly property real pad: interactive ? Kirigami.Units.smallSpacing * 2 : 1
-        readonly property real sc: Math.min((width - 2 * pad) / root.world.width, (height - 2 * pad) / root.world.height)
-        readonly property real ox: (width - root.world.width * sc) / 2
-        readonly property real oy: (height - root.world.height * sc) / 2
-        function mx(x) { return ox + (x - root.world.x) * sc; }
-        function my(y) { return oy + (y - root.world.y) * sc; }
-        // The topmost window under a point of the map, or null.
-        function windowAt(px, py) {
-            if (!root.plane) return null;
-            const ws = root.plane.windows;
-            for (let i = ws.length - 1; i >= 0; --i) {
-                const w = ws[i];
-                const x = mx(w.x), y = my(w.y);
-                if (px >= x && px < x + Math.max(2, w.w * sc) && py >= y && py < y + Math.max(2, w.h * sc)) return w;
-            }
-            return null;
-        }
-
-        Rectangle {
-            anchors.fill: parent
-            radius: map.interactive ? Kirigami.Units.cornerRadius : 3
-            color: Qt.rgba(0.07, 0.07, 0.09, 0.42)
-            border.width: map.interactive ? 1 : 0
-            border.color: "#3affffff"
-        }
-        // The Repeaters count, and each delegate reads its own item: every read is a new plane
-        // object, and a list model would destroy and make every delegate on each change (ten
-        // times a second while a window is dragged); by index they update in place.
-        Repeater {
-            model: root.plane ? root.plane.frames.length : 0
-            delegate: Rectangle {
-                required property int index
-                readonly property var f: (root.plane && root.plane.frames[index]) || [0, 0, 0, 0, "#000000", 0]
-                readonly property color accent: f[4]
-                x: map.mx(f[0])
-                y: map.my(f[1])
-                width: f[2] * map.sc
-                height: f[3] * map.sc
-                color: Qt.rgba(accent.r, accent.g, accent.b, 0.30)
-                border.width: 1
-                border.color: Qt.rgba(accent.r, accent.g, accent.b, 0.75)
+    // ---- the icons ----
+    // Plasma's task manager knows every window's icon; it is asked in a file of its own, so a
+    // system without it loses the icons (the app's own name stands in), not the widget.
+    Loader { id: appIcons; source: "AppIcons.qml" }
+    readonly property int iconsRev: appIcons.item ? appIcons.item.rev : 0
+    function iconFor(id, app) {
+        const icon = appIcons.item ? appIcons.item.iconFor(id) : null;
+        return icon ? icon : (app ? String(app).toLowerCase() : "application-x-executable");
+    }
+    function appNameFor(id, app) {
+        const name = appIcons.item ? appIcons.item.appNameFor(id) : "";
+        return name ? name : String(app || "");
+    }
+    // A cluster's label: its name on the canvas, else its focus window's app.
+    function clusterLabel(c) {
+        if (c.name) return c.name;
+        for (let i = 0; i < windows.length; ++i) {
+            if (windows[i].id === c.focus) {
+                const app = appNameFor(windows[i].id, windows[i].app);
+                return c.count > 1 ? i18n("%1 +%2", app, c.count - 1) : app;
             }
         }
-        // The sheets, bottom to top. Another activity's windows are fainter:
-        // they are on the plane, but not on the desk the screen shows.
-        Repeater {
-            model: root.plane ? root.plane.windows.length : 0
-            delegate: Rectangle {
-                required property int index
-                readonly property var w: (root.plane && root.plane.windows[index]) || ({ id: "", x: 0, y: 0, w: 0, h: 0 })
-                x: map.mx(w.x)
-                y: map.my(w.y)
-                width: Math.max(1.6, w.w * map.sc)
-                height: Math.max(1.6, w.h * map.sc)
-                radius: 1
-                color: Qt.rgba(1, 1, 1, w.here ? 0.5 : 0.22)
-                border.width: map.interactive ? 0.6 : 0
-                border.color: w.active ? "#e8ffffff" : (hover.hoveredId === w.id ? "#b8ffffff" : "#4affffff")
-            }
+        return "";
+    }
+    // Go to cluster n. Closed, that is its last-used window, which the plugin's oldest call
+    // reaches (a plugin from before act() still does this); open, the canvas's own cluster flight.
+    function goCluster(n) {
+        for (let i = 0; i < clusters.length; ++i) {
+            if (clusters[i].n !== n) continue;
+            if (plane && plane.open) act("cluster", { n: n });
+            else focusWindow(clusters[i].focus);
+            return;
         }
-        // What the screens show now: a soft halo under a white outline, the
-        // lens's camera rectangle.
-        Repeater {
-            model: root.plane ? root.plane.camera.length : 0
-            delegate: Rectangle {
-                required property int index
-                readonly property var c: (root.plane && root.plane.camera[index]) || [0, 0, 0, 0]
-                x: map.mx(c[0])
-                y: map.my(c[1])
-                width: c[2] * map.sc
-                height: c[3] * map.sc
-                radius: 2
-                color: Qt.rgba(1, 1, 1, 0.08)
-                border.width: 1
-                border.color: "#e8ffffff"
-            }
-        }
-
-        HoverHandler {
-            id: hover
-            enabled: map.interactive
-            property string hoveredId: ""
-            property string hoveredCaption: ""
-            cursorShape: Qt.PointingHandCursor
-            onPointChanged: {
-                const w = hovered ? map.windowAt(point.position.x, point.position.y) : null;
-                hoveredId = w ? w.id : "";
-                hoveredCaption = w ? w.caption : "";
-            }
-            onHoveredChanged: if (!hovered) { hoveredId = ""; hoveredCaption = ""; }
-        }
-        PlasmaComponents3.ToolTip.text: hover.hoveredCaption
-        PlasmaComponents3.ToolTip.visible: map.interactive && hover.hoveredCaption !== ""
-        PlasmaComponents3.ToolTip.delay: Kirigami.Units.toolTipDelay
-
-        TapHandler {
-            enabled: map.interactive && root.plane !== null
-            onTapped: (eventPoint) => {
-                const p = eventPoint.position;
-                const w = map.windowAt(p.x, p.y);
-                if (w) root.focusWindow(w.id);
-                else root.go(root.world.x + (p.x - map.ox) / map.sc, root.world.y + (p.y - map.oy) / map.sc);
-                // The popup has done its work: the desk is where the eye goes next.
-                if (root.compactRepresentationItem && root.compactRepresentationItem.visible) root.expanded = false;
-            }
-        }
+        say(i18n("There is no cluster %1", n));
+    }
+    // The cluster after (+1) or before (-1) the focused one, by number, round the end.
+    function stepCluster(dir) {
+        if (!clusters.length) return;
+        let k = 0;
+        for (let i = 0; i < clusters.length; ++i) if (clusters[i].n === activeCluster) k = i + dir;
+        if (activeCluster === 0) k = dir > 0 ? 0 : clusters.length - 1;
+        k = (k + clusters.length) % clusters.length;
+        goCluster(clusters[k].n);
     }
 
-    compactRepresentation: MouseArea {
-        readonly property bool horizontal: Plasmoid.formFactor === PlasmaCore.Types.Horizontal
-        Layout.minimumWidth: horizontal ? Math.round(height * root.aspect) : -1
-        Layout.preferredWidth: Layout.minimumWidth
-        Layout.minimumHeight: horizontal ? -1 : Math.round(width / root.aspect)
-        Layout.preferredHeight: Layout.minimumHeight
-        hoverEnabled: true
-        onClicked: root.expanded = !root.expanded
+    // Live pictures cost a screencast each, so they run only while the map is looked at: the
+    // panel's popup while it is open, the desktop's map while the pointer is on it, never while a
+    // game has the focus, and only when the setting allows them.
+    property bool desktopHovered: false
+    readonly property bool previewsOn: Plasmoid.configuration.livePreviews && plane !== null && !plane.game
+        && (inPanel ? root.expanded : desktopHovered)
 
-        PlaneMap {
+    compactRepresentation: Item {
+        id: compact
+        readonly property bool vertical: Plasmoid.formFactor === PlasmaCore.Types.Vertical
+        readonly property bool asMap: Plasmoid.configuration.panelView === "map" || root.plane === null
+        Layout.minimumWidth: vertical ? -1 : (asMap ? Math.round(height * Math.max(1, Math.min(4, mini.aspect))) : pager.implicitWidth)
+        Layout.preferredWidth: Layout.minimumWidth
+        Layout.minimumHeight: vertical ? (asMap ? Math.round(width / Math.max(1, Math.min(4, mini.aspect))) : pager.implicitHeight) : -1
+        Layout.preferredHeight: Layout.minimumHeight
+
+        ClusterPager {
+            id: pager
+            anchors.fill: parent
+            visible: !compact.asMap
+            vertical: compact.vertical
+            ctl: root
+        }
+        MapView {
+            id: mini
             anchors.fill: parent
             anchors.margins: Kirigami.Units.smallSpacing / 2
+            visible: compact.asMap && root.plane !== null
             interactive: false
-            visible: root.plane !== null
+            plane: root.plane
+            ctl: root
+            toScale: Plasmoid.configuration.toScale
+            showMinimized: false
+        }
+        MouseArea {
+            anchors.fill: parent
+            visible: compact.asMap
+            onClicked: root.expanded = !root.expanded
         }
         Kirigami.Icon {
             anchors.fill: parent
@@ -256,25 +238,134 @@ PlasmoidItem {
     }
 
     fullRepresentation: Item {
-        Layout.minimumWidth: Kirigami.Units.gridUnit * 10
-        Layout.minimumHeight: Kirigami.Units.gridUnit * 5
-        // A wide plane (an ultrawide screen, desks laid out in a row) gets a
-        // wider map rather than a thinner strip.
-        Layout.preferredWidth: Kirigami.Units.gridUnit * Math.min(48, Math.max(20, 10 * root.aspect))
-        Layout.preferredHeight: Math.max(Kirigami.Units.gridUnit * 8, Math.round(Layout.preferredWidth / root.aspect))
+        id: full
+        Layout.minimumWidth: Kirigami.Units.gridUnit * 14
+        Layout.minimumHeight: Kirigami.Units.gridUnit * 9
+        // A wide plane gets a wider map rather than a thinner strip.
+        Layout.preferredWidth: Kirigami.Units.gridUnit * Math.min(52, Math.max(24, 11 * Math.min(5, map.aspect)))
+        Layout.preferredHeight: Math.max(Kirigami.Units.gridUnit * 12, Math.round(Layout.preferredWidth / Math.min(5, map.aspect)) + header.implicitHeight)
 
-        PlaneMap {
-            anchors.fill: parent
-            visible: root.plane !== null
+        // The header earns its room on a map of any size; on a small desktop map it shows while the
+        // pointer is on the map or a search is typed.
+        readonly property bool roomy: height >= Kirigami.Units.gridUnit * 12
+        readonly property bool showHeader: root.inPanel || roomy || hover.hovered || search.text !== ""
+        HoverHandler {
+            id: hover
+            onHoveredChanged: root.desktopHovered = hovered
         }
-        PlasmaComponents3.Label {
-            anchors.centerIn: parent
-            width: parent.width - Kirigami.Units.gridUnit * 2
-            visible: root.plane === null
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
-            text: i18n("The map needs the kwin-canvas effect and its pass-through plugin (kwin-canvas fix-plugin).")
-            opacity: 0.7
+
+        Connections {
+            target: root
+            // The popup opens on a fresh search with the keyboard in it.
+            function onExpandedChanged() {
+                if (!root.expanded) return;
+                search.text = "";
+                map.resetView();
+                search.forceActiveFocus();
+            }
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: Kirigami.Units.smallSpacing
+
+            RowLayout {
+                id: header
+                Layout.fillWidth: true
+                visible: full.showHeader
+                spacing: Kirigami.Units.smallSpacing
+                PlasmaExtras.SearchField {
+                    id: search
+                    Layout.fillWidth: true
+                    placeholderText: i18n("Search windows…")
+                    onTextChanged: map.filter = text
+                    onAccepted: map.enter()
+                    Keys.onPressed: (event) => {
+                        const dirs = { [Qt.Key_Left]: "left", [Qt.Key_Right]: "right", [Qt.Key_Up]: "up", [Qt.Key_Down]: "down" };
+                        if (dirs[event.key] && (text === "" || event.key === Qt.Key_Up || event.key === Qt.Key_Down)) {
+                            map.step(dirs[event.key]);
+                            event.accepted = true;
+                        } else if (text === "" && event.key >= Qt.Key_1 && event.key <= Qt.Key_9) {
+                            // The canvas's digit keys: straight to cluster N.
+                            root.goCluster(event.key - Qt.Key_0);
+                            if (root.inPanel) root.expanded = false;
+                            event.accepted = true;
+                        } else if (event.key === Qt.Key_Escape && text !== "") {
+                            text = "";
+                            event.accepted = true;
+                        }
+                    }
+                }
+                PlasmaComponents3.Label {
+                    text: root.summary
+                    opacity: 0.7
+                    elide: Text.ElideRight
+                    Layout.maximumWidth: Kirigami.Units.gridUnit * 12
+                    visible: full.width > Kirigami.Units.gridUnit * 22
+                }
+                PlasmaComponents3.ToolButton {
+                    icon.name: "zoom-fit-best"
+                    visible: map.zoomed
+                    onClicked: map.resetView()
+                    PlasmaComponents3.ToolTip.text: i18n("Show the whole plane")
+                    PlasmaComponents3.ToolTip.visible: hovered
+                }
+                PlasmaComponents3.ToolButton {
+                    icon.name: "measure"
+                    checkable: true
+                    checked: Plasmoid.configuration.toScale
+                    onToggled: Plasmoid.configuration.toScale = checked
+                    PlasmaComponents3.ToolTip.text: checked ? i18n("To scale: far clusters are small. Click to bring them close")
+                                                            : i18n("Empty ground is squeezed so every cluster reads. Click to draw to scale")
+                    PlasmaComponents3.ToolTip.visible: hovered
+                }
+            }
+
+            MapView {
+                id: map
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: root.plane !== null
+                plane: root.plane
+                ctl: root
+                previews: root.previewsOn
+                toScale: Plasmoid.configuration.toScale
+                showMinimized: Plasmoid.configuration.showMinimized
+                // The popup has done its work: the desk is where the eye goes next.
+                onActivated: if (root.inPanel) root.expanded = false
+            }
+            PlasmaComponents3.Label {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: root.plane === null
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                wrapMode: Text.WordWrap
+                text: i18n("The map needs the kwin-canvas effect and its pass-through plugin (kwin-canvas fix-plugin).")
+                opacity: 0.7
+            }
+        }
+
+        // What an action had to say, over the map's foot.
+        Rectangle {
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: Kirigami.Units.largeSpacing
+            visible: root.notice !== ""
+            width: Math.min(parent.width - Kirigami.Units.gridUnit * 2, noticeText.implicitWidth + Kirigami.Units.largeSpacing * 2)
+            height: noticeText.implicitHeight + Kirigami.Units.smallSpacing * 2
+            radius: height / 2
+            color: Qt.rgba(Kirigami.Theme.backgroundColor.r, Kirigami.Theme.backgroundColor.g, Kirigami.Theme.backgroundColor.b, 0.92)
+            border.width: 1
+            border.color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.25)
+            z: 1000
+            PlasmaComponents3.Label {
+                id: noticeText
+                anchors.centerIn: parent
+                width: Math.min(implicitWidth, parent.width - Kirigami.Units.largeSpacing * 2)
+                elide: Text.ElideRight
+                text: root.notice
+            }
         }
     }
 }

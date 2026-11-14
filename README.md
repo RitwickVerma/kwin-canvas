@@ -104,7 +104,7 @@ with the grid over it. `Backdrop=grid` is the old plane.
 | `tools/kwin-canvas` | CLI (bash) | Step in, cancel, open, toggle or reset from a terminal or a VT; status; doctor, check and perf, which only read; setup, fix-plugin and plugin-hook, which change things and say so first (the table under Troubleshooting) |
 | `applet/` | Plasma/Applet | A panel button that fires the Toggle Canvas chord |
 | `applet-decor/` | Plasma/Applet | The decor applet: the focused window's glyphs in the panel, in the decoration's language |
-| `applet-map/` | Plasma/Applet | The canvas's minimap as a widget, on the desktop or in a panel: a click flies there (needs the plugin) |
+| `applet-map/` | Plasma/Applet | The canvas's map as a widget: every cluster legible, live pictures, click to go, drag to move, type to search; a cluster pager in a panel (needs the plugin) |
 | `decoration/` | KWin/Decoration | The Canvas window frame: no border, one title bar in the colour scheme's colours with the canvas's glyphs, drawn edge to edge so Rounded Corners rounds it |
 | `dev/nest.sh` | harness | Nested KWin with its own D-Bus and config, driven from the shell |
 
@@ -287,8 +287,11 @@ centre; `cancel`, `open`, `toggle` and `status` are the other subcommands.
 It finds the session bus at the user's runtime directory, so it works from
 a VT with no display. The **Canvas** panel applet (`applet/`) is a button
 that fires the Toggle Canvas chord, and **Canvas Map** (`applet-map/`, with
-the plugin) is the minimap as a widget on the desktop or in a panel: the
-whole plane at a glance, and a click flies there.
+the plugin) is the map as a widget on the desktop or in a panel: every
+cluster at a glance with the empty ground between them squeezed, live
+window pictures while it is open, and a hand on it (click a window to go
+there, drag it to move it, type to search). In a panel it is a button per
+cluster.
 
 ## Troubleshooting
 

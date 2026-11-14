@@ -1246,10 +1246,24 @@ as a Plasma widget, on the desktop or in a panel, with the canvas closed. It nee
   draws (`isCanvasWindow`, every activity) with its id, caption, plane rectangle, focus and
   whether it is on the current activity. Open, the windows are the live entries and the camera
   is the moving view; closed, they are the desk at rest (`planeSpot`, `makeEntry`'s mapping
-  without its bookkeeping, since a read must change nothing).
+  without its bookkeeping, since a read must change nothing). Version 2 (`v: 2`, `mapModel`)
+  adds each window's app (for its icon), minimized windows (`isMapMinimized`, in no cluster;
+  the widget shows them in a tray along the map's foot, not on the ground, so a far one cannot
+  stretch the map), the keep-above, float and capture-exclusion flags, game mode,
+  and the clusters: `Logic.mapClusters` runs the canvas's own `recluster` over the map's windows,
+  reading the canvas's hysteresis and thread ranks without changing them, and numbers each
+  cluster as the canvas's `#n` chips and digit keys do (a cluster the canvas holds keeps its
+  number, an unseen one takes the lowest free number in reading order), with its name, box,
+  window count, the window a click on it lands on (the most recently focused) and whether the
+  focused window is in it.
 - **The plugin relays.** `CanvasMap` (`plugin/map.cpp`) is `/KWinCanvas/Map`,
   `org.kde.kwin.canvas.Map`: `read()` calls `mapPlane` in process, `go(x, y)` and `focus(id)`
-  call `mapGo` and `mapFocus`. What it adds is `changed()`. The effect notices a window's move
+  call `mapGo` and `mapFocus`, and `act(verb, json)` calls `mapAct`, the one entry for every
+  other action (`move`, `bring`, `minimize`, `above`, `close`, `cluster`), so a new action needs
+  no new plugin; it answers "" when done or what went wrong, which the widget shows. A dropped
+  window's `move` writes the real window through the target its plane spot is read with (as the
+  closed carry does), so its spot is exactly where it was dropped; open, its entry glides there
+  as an undo step. What it adds is `changed()`. The effect notices a window's move
   only while the canvas is open, so the map watches KWin's windows itself (geometry, minimized,
   hidden, desktops, activities, caption, added, removed, activated, stacking, desktop, outputs)
   and the effect's camera, entries and activity (the `viewX`, `viewY`, `zoom`, `revision`,
@@ -1275,13 +1289,47 @@ as a Plasma widget, on the desktop or in a panel, with the canvas closed. It nee
   and the window takes the focus there (`pendingFocus`). A click on the ground is `mapGo`: the
   plane point comes to the middle of the screen the pointer is on, by `camGo` when open and by
   the closed slide (`slideTo`) otherwise.
-- **The two forms.** In a panel the compact form is the live map at the panel's thickness, as
-  wide as the plane's aspect asks; a click opens the full map, whose own click closes it again.
-  On the desktop the full map is the widget. Another activity's windows are fainter: they are on
-  the plane but not on the desk the screen shows.
+- **Every cluster reads.** The plane is vast and mostly empty, and a map drawn to scale shrinks
+  clusters thousands of pixels apart to specks. `applet-map/contents/code/layout.js` (pure,
+  `tests/unit/maplayout.test.js`) keeps what matters to scale and squeezes the rest: along each
+  axis the spans the windows and the screens cover keep their length, an empty gap up to the cap
+  (two thirds of the median window) keeps its length too, and a longer one is drawn
+  `cap * (1 + ln(gap / cap))` long. A far cluster comes close and stays farther than a near one,
+  the order along each axis never changes, and the mapping is piecewise linear and strictly
+  increasing, so a click or a drop has an exact plane point (`from`). A dashed fold marks each
+  squeezed gap; the to-scale toggle turns it off.
+- **The widget.** `MapView.qml` draws, bottom to top, the folds, the activities' frames, each
+  cluster's tinted card, the windows (`WindowSheet.qml`: glass with the app's icon from Plasma's
+  task manager model, `AppIcons.qml`, whose window ids are KWin's own), the screens' frames, and
+  the clusters' labels; the label under the pointer is frosted glass (the drawn layers under it,
+  blurred through a `ShaderEffectSource` and `MultiEffect`), and the focused window and its
+  cluster glow (`RectangularShadow`). The windows and clusters are `ListModel`s synced by id and number, so a
+  reading (up to ten a second during a drag) updates delegates in place. The hand: a click on a
+  window is `focus`, on the ground `go`, on a label `act cluster`; a drag of a window is `act
+  move` at the plane point under the pointer minus the grab offset; a drag of a screen's frame
+  is `go` to its new centre; a middle click is `act bring`; a right click is a menu (go, bring,
+  minimize or restore, keep above, close); the wheel zooms the map about the pointer, and a
+  zoomed map pans by dragging the ground. The search field filters by caption and app, the
+  arrows walk the windows on the drawn map (`stepTowards`), Enter goes, and a digit with an
+  empty search goes to that cluster, as on the canvas.
+- **Live pictures.** `Preview.qml` asks KWin for a window's screencast by its id
+  (`ScreencastingRequest`, KWin's `findWindow(QUuid)`) and draws the PipeWire stream, as
+  Plasma's task manager does for its previews. A stream costs, so the biggest dozen windows get
+  one, only while the panel's popup is open or the pointer is on the desktop's map, never in
+  game mode, never for a window hidden from capture (`nocap`) or minimized. `Preview.qml` and
+  `AppIcons.qml` are loaded through `Loader`s, so a system without KPipeWire or the task manager
+  module loses the pictures or the icons, not the widget.
+- **The two forms.** In a panel the compact form is a pager by default: a button per cluster
+  with its number and its windows' icons, the focused window's cluster lit, a click going there,
+  the wheel stepping through them, and a map button opening the full map (the setting "A small
+  map" brings back the compressed map at the panel's thickness). On the desktop the full map is
+  the widget, on translucent glass by default. Another activity's windows are fainter: they are
+  on the plane but not on the desk the screen shows.
 
 Scenario `224` pins the reading against the effect's state, the lazy signal, `go` and `focus`,
-and the widget itself in the nest's plasmashell (it draws, and a click on it moves the desk).
+version 2's clusters and flags, `act`'s move, minimize, cluster and errors, the capture flag,
+and the widget itself in the nest's plasmashell (it draws, a click on it moves the desk, and the
+plasmashell log carries no QML error from it).
 
 ## Known limits
 

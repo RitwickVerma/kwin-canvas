@@ -234,12 +234,29 @@ in System Settings) is the same five glyphs as a title bar.
 ## The map widget
 
 Optional, and it needs the pass-through plugin. **Canvas Map**
-(`org.kde.kwin.canvas.map`) is the canvas's minimap as a widget: every
-window, the activities' frames and where the screen is on the plane, live,
-with the canvas closed. Add it to the desktop or to a panel from Add Widgets.
-In a panel it is a small map that opens the full one. A click on a window
-flies to it and focuses it; a click on the ground brings that spot to the
-middle of the screen. Without the plugin it says so instead of drawing.
+(`org.kde.kwin.canvas.map`) is the canvas's map as a widget: every cluster
+and window, the activities' frames and where the screen is on the plane,
+live, with the canvas closed. The empty ground between clusters is drawn
+squeezed, so every cluster is legible however far apart they sit (a toggle
+draws it to scale). Add it to the desktop or to a panel from Add Widgets.
+
+- **In a panel** it is a button per cluster, numbered as the canvas's digit
+  keys number them, with its windows' icons; a click goes there, the wheel
+  steps through them, and the map button opens the full map.
+- **On the map**, a click on a window goes to it, a drag moves it on the
+  plane (into another cluster too), a middle click brings it here, and a
+  right click offers minimize, keep above and close; minimized windows sit
+  in a tray along the map's foot. A click on a cluster's
+  label goes to the cluster, a click on the ground brings that spot to the
+  middle of the screen, a drag of the screen's frame moves the desk, and the
+  wheel zooms the map. Typing searches; the arrows and Enter go.
+- **Live pictures** of the windows show while the map is open (a screencast
+  each, needing `kpipewire`), never while a game has the focus and never for
+  a window hidden from capture. The widget's settings turn them off.
+
+Without the plugin it says so instead of drawing. An action that needs a
+newer plugin than the one KWin loaded says so too (`kwin-canvas fix-plugin`,
+then log in again).
 
 ## Known limits
 

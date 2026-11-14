@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    SPDX-FileCopyrightText: 2026 Ritwick Verma <verma1997@gmail.com>
+    SPDX-License-Identifier: GPL-2.0-or-later
+-->
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+                          http://www.kde.org/standards/kcfg/1.0/kcfg.xsd" >
+    <kcfgfile name=""/>
+    <group name="General">
+        <entry name="panelView" type="String">
+            <label>In a panel: "clusters" (one button per cluster) or "map" (a small map); either opens the full map.</label>
+            <default>clusters</default>
+        </entry>
+        <entry name="toScale" type="Bool">
+            <label>Draw the plane to scale. Off, empty ground between clusters is squeezed so every cluster reads.</label>
+            <default>false</default>
+        </entry>
+        <entry name="showMinimized" type="Bool">
+            <label>Show minimized windows in a tray along the map's foot; a click brings one back.</label>
+            <default>true</default>
+        </entry>
+        <entry name="livePreviews" type="Bool">
+            <label>Live window pictures while the map is looked at (never while a game has the focus, never for a window hidden from capture).</label>
+            <default>true</default>
+        </entry>
+    </group>
+</kcfg>
