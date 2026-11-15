@@ -8,6 +8,11 @@ float, dodge and snap; two monitors share one plane; a panel decor, a map widget
 decoration come with it; and `kwin-canvas doctor` and `setup` keep the install and KDE's settings
 honest. The lines below are the detail, newest first.
 
+- Far jumps fly instead of teleporting. A slide to somewhere wholly off the screen (a click on
+  the map widget, a cluster digit, a walk or an activation far away) crossed several screens at
+  1:1 in a third of a second, which the eye sees as windows teleporting. It now eases out until
+  both ends are in view, travels, and lands at 1:1, the way a web map flies, in about half a
+  second for a cluster three or four screens away. Short slides are unchanged.
 - Canvas Map, rebuilt. Every cluster is legible however far apart they sit: the map keeps the
   windows and the screen to scale and squeezes the empty ground between clusters (a toggle draws
   it to scale). Each cluster is a tinted card with the number the canvas's digit keys use and its

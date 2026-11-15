@@ -78,7 +78,20 @@ thumbnails, with no tags, borders or toolbar. At zoom 1 that is
 pixel-identical to the real screen when the Canvas Ground wallpaper is in
 use. A `ParallelAnimation` moves `viewX`/`viewY` to `slideTo` over
 `PanDuration` with an ease-out; a second slide while one runs adds to the
-destination and restarts. On arrival the entry targets are restored and
+destination and restarts. A slide whose destination is wholly off the screen
+(`Logic.isFarJump`: a screen's width or height or more) flies instead: at 1:1
+the content would cross several screens in a third of a second, every frame in
+between a streak, and the jump read as a teleport (the owner's word, about the
+map widget's clicks; the live log had slides of 12 000 to 16 000 px in 290 ms).
+`flyGo` runs van Wijk and Nuij's zoom-pan path (`Logic.zoomPath`, the one web
+maps and d3's `interpolateZoom` use) from the camera's view to the destination's:
+the quiet scene eases out until both ends are in view (a cluster 15 000 px away
+on a 4096 px screen, to about zoom 0.26), travels and lands at 1:1, in
+`PanDuration` times 0.9 + 0.6 S (S the path's length; about 570 ms there,
+never more than four slides), with an ease-out so it leaves at once. A new
+destination mid-flight re-plans from the zoomed-out camera; a cancel, a drop or
+a takeover puts the camera at 1:1 on the destination first (`stopFlight`), so
+`endSlide` measures as it always has. Separate cameras keep the plain slide. On arrival the entry targets are restored and
 `shiftAll` moves this activity's windows by the distance travelled, while
 the thumbnails still cover them, and the effect hides. A slide is
 navigation: only the current activity's windows are drawn while quiet, and
@@ -967,7 +980,7 @@ growing list.
 | `open` | none | `open()` ran (a quiet slide opens too) |
 | `first-paint` | `ms` | `open()` to the first physics tick after it, the time the scene took to produce its first frame |
 | `settle` | `ms`, `zoom` | `open()` until the camera is within 2% of its goal, once per open (at once when there is no goal) |
-| `slide` | `dist`, `ms` | a quiet slide: distance in px and wall-clock time from the animation's start to its landing |
+| `slide` | `dist`, `ms`, `arc` | a quiet slide: distance in px and wall-clock time from the animation's start to its landing; `arc`, only on a far fly, is the lowest zoom the camera eased out to |
 | `hover-fetch` | `ms` | the rest that made the camera fetch a hovered window (the pointer's rest, which is the fetch's latency) |
 | `ticks` | `n`, `p50`, `p95`, `max` | physics tick spacing in ms over the session, written when the canvas closes |
 | `built` | `n`, `moving`, `frames`, `of`, and a count per kind (`thumb`, `web`, `badge`, `chip`, `weave`) | scene items created in the session, written when the canvas closes; `moving` counts those created while the camera or a drag was moving (a re-weave of the cluster web counts as `weave`), `frames` in how many of the session's `of` frames that happened. A rebuild on the frame path builds in most moving frames; a window that opens mid-flight builds its badge in one. Doctor and `perf --week` call it a rebuild at 5 frames and a tenth of the session's |
@@ -1262,8 +1275,10 @@ as a Plasma widget, on the desktop or in a panel, with the canvas closed. It nee
   other action (`move`, `bring`, `minimize`, `above`, `close`, `cluster`), so a new action needs
   no new plugin; it answers "" when done or what went wrong, which the widget shows. A dropped
   window's `move` writes the real window through the target its plane spot is read with (as the
-  closed carry does), so its spot is exactly where it was dropped; open, its entry glides there
-  as an undo step. What it adds is `changed()`. The effect notices a window's move
+  closed carry does), so its spot is exactly where it was dropped: a drop within a screen of
+  where it was glides there (`glideReal`, the float dodge's glide), a farther one is written at
+  once, since the window is leaving the screen and a glide across screens would be a streak;
+  open, its entry glides there as an undo step. What it adds is `changed()`. The effect notices a window's move
   only while the canvas is open, so the map watches KWin's windows itself (geometry, minimized,
   hidden, desktops, activities, caption, added, removed, activated, stacking, desktop, outputs)
   and the effect's camera, entries and activity (the `viewX`, `viewY`, `zoom`, `revision`,

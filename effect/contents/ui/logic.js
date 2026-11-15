@@ -432,6 +432,48 @@ function boundsOf(rects) {
     return { x: l, y: t, width: r - l, height: b - t };
 }
 
+// The fly between two views far apart: van Wijk and Nuij's smooth zoom-pan path ("Smooth and
+// efficient zooming and panning", 2003), the one d3's interpolateZoom and web maps use. A pan at 1:1
+// across several screens moves the content faster than the eye can follow - every in-between frame
+// is a streak, and the jump reads as a teleport - so the camera eases out until both ends are in
+// view, travels, and eases back in. A view is its centre and its width on the plane, { cx, cy, w }.
+// Returns { S, at(u) }: S is the path's length (rho = sqrt 2, the paper's recommended trade between
+// zooming and panning), and at(u), u in [0, 1], the view u of the way along it.
+function zoomPath(a, b) {
+    const rho = Math.SQRT2;
+    const ux0 = a.cx, uy0 = a.cy, w0 = a.w, w1 = b.w;
+    const dx = b.cx - ux0, dy = b.cy - uy0, d2 = dx * dx + dy * dy;
+    const cosh = function (x) { return (Math.exp(x) + Math.exp(-x)) / 2; };
+    const sinh = function (x) { return (Math.exp(x) - Math.exp(-x)) / 2; };
+    const tanh = function (x) { const e = Math.exp(2 * x); return (e - 1) / (e + 1); };
+    if (d2 < 1e-12) {
+        // The same place: a pure zoom, evenly in the logarithm.
+        const k = Math.log(w1 / w0);
+        return { S: Math.abs(k) / rho, at: function (u) { return { cx: ux0 + u * dx, cy: uy0 + u * dy, w: w0 * Math.exp(u * k) }; } };
+    }
+    const d1 = Math.sqrt(d2);
+    const b0 = (w1 * w1 - w0 * w0 + 4 * d2) / (2 * w0 * 2 * d1);
+    const b1 = (w1 * w1 - w0 * w0 - 4 * d2) / (2 * w1 * 2 * d1);
+    const r0 = Math.log(Math.sqrt(b0 * b0 + 1) - b0);
+    const r1 = Math.log(Math.sqrt(b1 * b1 + 1) - b1);
+    const S = (r1 - r0) / rho;
+    const c0 = cosh(r0);
+    return {
+        S: S,
+        at: function (u) {
+            if (u >= 1) return { cx: b.cx, cy: b.cy, w: w1 };
+            const s = u * S;
+            const k = w0 / (2 * d1) * (c0 * tanh(rho * s + r0) - sinh(r0));
+            return { cx: ux0 + k * dx, cy: uy0 + k * dy, w: w0 * c0 / cosh(rho * s + r0) };
+        }
+    };
+}
+
+// A slide of (dx, dy) leaves nothing of the start on the screen (w x h): the far fly's case.
+function isFarJump(dx, dy, w, h) {
+    return Math.abs(dx) >= w || Math.abs(dy) >= h;
+}
+
 // The map widget's clusters: the canvas's own clustering (recluster, reading the canvas's hysteresis
 // and thread ranks without changing them) over the windows the map draws, numbered the way the
 // canvas's "#n" chips and digit keys number them. A cluster the canvas holds now (the same windows)

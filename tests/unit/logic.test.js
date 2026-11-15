@@ -691,6 +691,42 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
     ok("blurClassHit: $blank matches an empty class", L.blurClassHit("$blank", "", "x") && !L.blurClassHit("$blank", "konsole", "x"));
 }
 
+// ---- the far fly's zoom-pan path (zoomPath) ----
+{
+    const W = 4096;
+    const far = L.zoomPath({ cx: 0, cy: 0, w: W }, { cx: 15000, cy: 0, w: W });
+    const a = far.at(0), b = far.at(1), mid = far.at(0.5);
+    ok("zoomPath: it starts where the camera is", near(a.cx, 0, 1e-6) && near(a.w, W, 1e-6));
+    ok("zoomPath: it ends at the destination, at 1:1", near(b.cx, 15000, 1e-6) && near(b.w, W, 1e-6));
+    ok("zoomPath: a far fly eases out until both ends are in view", mid.w > 15000 && mid.w < 4 * 15000);
+    ok("zoomPath: halfway along the path is halfway across", near(mid.cx, 7500, 1));
+    let forward = true, wider = true;
+    for (let u = 0.05; u <= 1.0001; u += 0.05) {
+        if (!(far.at(u).cx >= far.at(u - 0.05).cx - 1e-9)) forward = false;
+        if (!(far.at(u).w >= W - 1e-6)) wider = false;
+    }
+    ok("zoomPath: the centre never turns back", forward);
+    ok("zoomPath: the camera never zooms in past 1:1 on the way", wider);
+    ok("zoomPath: the path is longer the farther it goes",
+        L.zoomPath({ cx: 0, cy: 0, w: W }, { cx: 50000, cy: 0, w: W }).S > far.S && far.S > L.zoomPath({ cx: 0, cy: 0, w: W }, { cx: 2000, cy: 0, w: W }).S);
+    const diag = L.zoomPath({ cx: 100, cy: 200, w: W }, { cx: 100 + 9000, cy: 200 + 12000, w: W }).at(0.5);
+    ok("zoomPath: a diagonal fly keeps its line", near((diag.cx - 100) / (diag.cy - 200), 9000 / 12000, 1e-6));
+    // From a camera already zoomed out (a new destination mid-flight): it lands at 1:1 all the same.
+    const turn = L.zoomPath({ cx: 3000, cy: 0, w: 3 * W }, { cx: -8000, cy: 500, w: W });
+    ok("zoomPath: a fly turned mid-way lands at 1:1", near(turn.at(1).w, W, 1e-6) && near(turn.at(1).cx, -8000, 1e-6));
+    const still = L.zoomPath({ cx: 5, cy: 5, w: 2 * W }, { cx: 5, cy: 5, w: W });
+    ok("zoomPath: the same place is a pure zoom", near(still.at(0.5).w, Math.SQRT2 * W, 1e-6) && near(still.at(1).w, W, 1e-6));
+    ok("zoomPath: nowhere to go is no path", L.zoomPath({ cx: 1, cy: 1, w: W }, { cx: 1, cy: 1, w: W }).S === 0);
+}
+
+// ---- which slides fly (isFarJump) ----
+{
+    ok("isFarJump: half a screen slides", !L.isFarJump(2000, 0, 4096, 1152));
+    ok("isFarJump: a screen's width across flies", L.isFarJump(-4096, 0, 4096, 1152));
+    ok("isFarJump: a screen's height down flies", L.isFarJump(0, 1200, 4096, 1152));
+    ok("isFarJump: no move does not", !L.isFarJump(0, 0, 4096, 1152));
+}
+
 // ---- the map widget's clusters (mapClusters) ----
 {
     const desk = [rect("a", 0, 0, 400, 300), rect("b", 420, 0, 400, 300), rect("c", 5000, 0, 400, 300), rect("d", 0, 4000, 400, 300)];

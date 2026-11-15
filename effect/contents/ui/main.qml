@@ -1045,8 +1045,8 @@ KWin.SceneEffect {
     // any other hand (a resize in place keeps it), stops floating, or the overview opens, where
     // the hand may put it anywhere.
     property var floatHome: ({})
-    property var dodgeMoves: []        // [{ w, fx, fy, tx, ty }], the glide in flight
-    property real dodgeT: 0
+    property var glideMoves: []        // [{ w, fx, fy, tx, ty }], the glide in flight (glideReal)
+    property real glideT: 0
     readonly property int dodgeGap: 12
     Timer {
         id: dodgeTimer
@@ -1065,7 +1065,7 @@ KWin.SceneEffect {
         if (configuration.FloatDodge === false || safeMode) return;
         if (visible) return;
         // A glide still in flight lands first, so every spot below is read where it ends.
-        if (dodgeAnim.running) dodgeAnim.complete();
+        if (glideAnim.running) glideAnim.complete();
         const focus = KWin.Workspace.activeWindow;
         if (!focus || !isPlaneWindow(focus) || windowPinned(focus)) return;
         const fg = focus.frameGeometry;
@@ -1109,25 +1109,31 @@ KWin.SceneEffect {
         }
         if (moves.length === 0) return;
         dbg("dodge", moves.map(function (m) { return m.w.caption + " (" + m.fx + "," + m.fy + ") -> (" + m.tx + "," + m.ty + ")"; }).join(", "));
-        dodgeMoves = moves;
-        dodgeT = 0;
-        dodgeAnim.restart();
+        glideReal(moves);
     }
-    // The glide: each float written along its way at every step, as the canvas's own write, so
-    // the frame authority takes it as the canvas's and the plane coordinate follows. A float the
-    // hand takes mid-glide is the hand's: the glide stops writing it.
-    onDodgeTChanged: {
-        for (let i = 0; i < dodgeMoves.length; ++i) {
-            const m = dodgeMoves[i];
+    // The canvas's own glide of real windows (the float dodge, a window dropped on the map near
+    // the screen): each one is written along the way at every step, the canvas's own write, so
+    // the frame authority takes it as the canvas's and the plane coordinate follows. A window the
+    // hand takes mid-glide is the hand's: the glide stops writing it. A new glide lands the one
+    // under way first.
+    function glideReal(moves) {
+        if (glideAnim.running) glideAnim.complete();
+        glideMoves = moves;
+        glideT = 0;
+        glideAnim.restart();
+    }
+    onGlideTChanged: {
+        for (let i = 0; i < glideMoves.length; ++i) {
+            const m = glideMoves[i];
             if (!m.w || m.w.deleted || m.w.move || m.w.resize) continue;
             const g = m.w.frameGeometry;
-            setReal(m.w, Qt.rect(Math.round(m.fx + (m.tx - m.fx) * dodgeT), Math.round(m.fy + (m.ty - m.fy) * dodgeT), g.width, g.height));
+            setReal(m.w, Qt.rect(Math.round(m.fx + (m.tx - m.fx) * glideT), Math.round(m.fy + (m.ty - m.fy) * glideT), g.width, g.height));
         }
     }
     NumberAnimation {
-        id: dodgeAnim
+        id: glideAnim
         target: effect
-        property: "dodgeT"
+        property: "glideT"
         from: 0
         to: 1
         duration: Math.round(200 * effect.animFactor)
@@ -3979,7 +3985,7 @@ KWin.SceneEffect {
         }
         // A float's glide lands before the scene reads the frames; in the overview the hand may
         // put a float anywhere, so the spots floats left are forgotten.
-        if (dodgeAnim.running) dodgeAnim.complete();
+        if (glideAnim.running) glideAnim.complete();
         // A grasp is the hand's too: it can move a float, and what it commits is the canvas's
         // own write, which the frame watch does not take for another hand.
         if (!quietMode || grasp) floatHome = ({});
@@ -4305,6 +4311,7 @@ KWin.SceneEffect {
             return;
         }
         slideAnim.stop();
+        stopFlight();
         unsettle();
         targets = copyTargets(entryTargets);
         viewX = entryViewX;
@@ -5667,7 +5674,12 @@ KWin.SceneEffect {
         }
         const f = w.frameGeometry;
         const t = separate ? peekTargetOn(activityOf(w), outputAtReal(f.x, f.y, f.width, f.height)) : peekTarget(activityOf(w));
-        setReal(w, Qt.rect(Math.round(x - t.x), Math.round(y - t.y), f.width, f.height));
+        const tx = Math.round(x - t.x), ty = Math.round(y - t.y);
+        // A drop near the screen glides there, as the dodge does; a far one is written at once (a
+        // glide across several screens would be a streak, and the window is leaving the screen).
+        const sg = actionScreen().geometry;
+        if (Logic.isFarJump(tx - f.x, ty - f.y, sg.width, sg.height)) setReal(w, Qt.rect(tx, ty, f.width, f.height));
+        else glideReal([{ w: w, fx: f.x, fy: f.y, tx: tx, ty: ty }]);
         return "";
     }
     // Fetch the window instead of going to it: centred on the screen the pointer is on, focused.
@@ -6215,7 +6227,7 @@ KWin.SceneEffect {
     // half-screen reference.
     function slide(dx, dy) {
         if (!beginSlide()) return;
-        if (!slideAnim.running) { slideToX = viewX; slideToY = viewY; }
+        if (!slideAnim.running && !flightAnim.running) { slideToX = viewX; slideToY = viewY; }
         slideToX += dx;
         slideToY += dy;
         slideGo();
@@ -6241,11 +6253,85 @@ KWin.SceneEffect {
         // quick, a long one a little longer, so near moves never drag and far
         // ones never jerk. PanDuration is the reference for about half a
         // screen; 0 still jumps.
-        const dist = Math.hypot(slideToX - viewX, slideToY - viewY) * zoom;
         const g = actionScreen().geometry;
+        // A destination wholly off the screen is a fly, not a slide: at 1:1 the content would cross
+        // several screens in a third of a second and the eye sees a teleport. A fly already under
+        // way (the camera zoomed out) takes a new destination the same way, from where it is.
+        if (panDuration > 0 && animFactor > 0.02 && !separate
+            && (flightAnim.running || Logic.isFarJump(slideToX - viewX, slideToY - viewY, g.width, g.height))) {
+            flyGo(g);
+            return;
+        }
+        flightAnim.stop();
+        const dist = Math.hypot(slideToX - viewX, slideToY - viewY) * zoom;
         const half = Math.max(1, Math.hypot(g.width, g.height) / 2);
         slideMs = panDuration <= 0 ? 0 : Math.round(Math.max(0.8, Math.min(1.5, 0.8 + 0.7 * Math.sqrt(dist / half))) * panDuration * animFactor);
         slideAnim.restart();
+    }
+    // The far fly (Logic.zoomPath): the quiet scene eases out until the start and the destination
+    // are both in view, travels, and eases back in to land at 1:1, as web maps fly. The views are
+    // the action screen's centre and width on the plane; the camera follows the path's centre with
+    // the screen's centre and its zoom with the path's width, never below the overworld's floor.
+    property var flightPath: null
+    property real flightT: 0
+    property real flightHX: 0
+    property real flightHY: 0
+    property real flightW: 1
+    property real flightMinZoom: 1
+    property int flightMs: panDuration
+    function flyGo(g) {
+        slideAnim.stop();
+        flightHX = g.x + g.width / 2;
+        flightHY = g.y + g.height / 2;
+        flightW = Math.max(1, g.width);
+        flightPath = Logic.zoomPath({ cx: viewX + flightHX / zoom, cy: viewY + flightHY / zoom, w: flightW / zoom },
+                                    { cx: slideToX + flightHX, cy: slideToY + flightHY, w: flightW });
+        flightMinZoom = Math.min(flightMinZoom, zoom);
+        // The duration grows with the path, gently: a screen and a half is about a third of a
+        // second more than a hop, a far cluster half a second, never more than four slides.
+        flightMs = Math.round(panDuration * animFactor * Math.min(4, 0.9 + 0.6 * flightPath.S));
+        dbg("slide", "far: flying " + Math.round(Math.hypot(slideToX - viewX, slideToY - viewY)) + " px in " + flightMs + " ms");
+        flightT = 0;
+        flightAnim.restart();
+    }
+    onFlightTChanged: {
+        if (!flightPath || !flightAnim.running) return;
+        const v = flightPath.at(flightT);
+        const z = clampZoom(flightW / Math.max(1e-6, v.w));
+        flightMinZoom = Math.min(flightMinZoom, z);
+        zoom = z;
+        viewX = v.cx - flightHX / z;
+        viewY = v.cy - flightHY / z;
+    }
+    NumberAnimation {
+        id: flightAnim
+        target: effect
+        property: "flightT"
+        from: 0
+        to: 1
+        duration: effect.flightMs
+        // Off at once, as the slide (an in-out curve made every fly seem to hesitate), and a
+        // long settle into the destination, where the eye is going.
+        easing.type: Easing.OutCubic
+        onStarted: { if (effect.perf) effect.perfSlideAt = Date.now(); }
+        onFinished: {
+            effect.flightPath = null;
+            effect.zoom = 1.0;
+            effect.viewX = effect.slideToX;
+            effect.viewY = effect.slideToY;
+            effect.endSlide();
+        }
+    }
+    // A fly stopped short (a cancel, a takeover): the camera is back at 1:1 on the view it was
+    // going to, which endSlide and the cancel then measure from.
+    function stopFlight() {
+        if (!flightAnim.running) return;
+        flightAnim.stop();
+        flightPath = null;
+        flightMinZoom = 1;
+        zoom = 1.0;
+        viewX = slideToX;
+        viewY = slideToY;
     }
     property int slideMs: panDuration
 
@@ -6291,9 +6377,11 @@ KWin.SceneEffect {
         zoom = 1.0;
         const dx = Math.round(slideToX - entryViewX), dy = Math.round(slideToY - entryViewY);
         if (perf && perfSlideAt > 0) {
-            perfLog("slide", "dist=" + Math.round(Math.hypot(dx, dy)) + " ms=" + (Date.now() - perfSlideAt));
+            perfLog("slide", "dist=" + Math.round(Math.hypot(dx, dy)) + " ms=" + (Date.now() - perfSlideAt)
+                    + (flightMinZoom < 0.999 ? " arc=" + flightMinZoom.toFixed(2) : ""));
             perfSlideAt = 0;
         }
+        flightMinZoom = 1;
         // The same net as commit: a slide that landed on a non-finite camera
         // must not write non-finite frames.
         if (!Number.isFinite(dx) || !Number.isFinite(dy) || !Number.isFinite(viewX) || !Number.isFinite(viewY)) {
@@ -6391,6 +6479,7 @@ KWin.SceneEffect {
     function dropSlide() {
         if (!quiet || grasp) return;
         slideAnim.stop();
+        stopFlight();
         slideCloseTimer.stop();
         swiping = false;
         floatAnchor = ({});
@@ -6407,6 +6496,7 @@ KWin.SceneEffect {
     function finishSlide() {
         if (!quiet) return;
         slideAnim.stop();
+        stopFlight();
         endSlide();
     }
 
@@ -6448,6 +6538,7 @@ KWin.SceneEffect {
             if (p <= 0) return;
             if (!beginSlide()) return;
             slideAnim.stop();
+            stopFlight();
             swipeBaseX = viewX;
             swipeBaseY = viewY;
             swiping = true;

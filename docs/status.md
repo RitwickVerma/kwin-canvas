@@ -56,6 +56,22 @@ the plugin reading the item's own bounds, 0.49% and 0.38%, the Rounded Corners o
 does not draw. `222` pins it: a window moved on the open canvas shows its own picture (rmse 0
 fixed, 0.26 with HEAD's plugin). Needs the rebuilt plugin live (`fix-plugin`, a relogin).
 
+**Far jumps fly (2026-11-14).** The owner: "the widget makes the windows teleport". Not installed
+yet, so this was the Nov 5 widget and effect: a map click is `mapGo` or `mapFocus`, a closed slide,
+and the slide's time was capped at 1.5 slides whatever the distance. The live Perf log had six
+slides of 12 000 to 16 000 px in about 290 ms each (16:23 to 16:27), about four screen widths in a
+third of a second at 1:1. Fixed in the effect for every far slide, not only the map's: `flyGo`
+(`Logic.zoomPath`, van Wijk and Nuij's zoom-pan path) eases the quiet scene out until both ends are
+in view, travels and lands at 1:1; short slides are unchanged; separate cameras keep the slide.
+A window dropped on the map within a screen of where it was glides there (`glideReal`, the float
+dodge's glide, now shared); a farther drop is written at once. `229` pins the fly. Verified:
+`make unit` (logic 330, map layout 40, CLI 203), `make lint`, the plugin builds; in the hidden
+nest, 22 scenarios (the fly, the map, the slides, perf, the animation factor, far stress, border
+slide, moves, activation, the switcher, the graph, the echo, grasp, quality, frame authority):
+234 pass, 0 fail, and `229`, `224` and `225` again on the final code, 62 pass, 0 fail. A fly
+stretched to five seconds and shot mid-way: the desk shrinks to a card, the ground passes under,
+and it lands at 1:1 (`arc=0.30` for 6060 px on the nest's 1920 px screen). Not seen live.
+
 **Canvas Map rebuilt (2026-11-14).** The owner: the map widget "does not show all the clusters",
 and needs "a huge revamp, transparency, blur, interactivity; move to windows by clicking". Found
 live: the widget installed on Nov 5 never holds the map, and the plugin installed on Nov 12 sends
@@ -69,13 +85,14 @@ rewritten around `layout.js`'s squeezed ground: tinted cluster cards with labels
 with icons (`AppIcons.qml`) or live PipeWire pictures (`Preview.qml`), drag to move, a drag of the
 screen's frame to move the desk, a context menu, wheel zoom, search and keyboard, a tray for
 minimized windows (on the ground, a far minimized window stretched the whole map), and a cluster
-pager in a panel. A headless render (the plain `qml` runtime, offscreen, no bus, synthetic
+pager in a panel. In the nest, `224` passes all 39 checks with the v2 reading, `act`, the widget
+on the desktop and no QML error in plasmashell's log. A headless render (the plain `qml` runtime, offscreen, no bus, synthetic
 windows) found two bugs that would have kept the widget from loading at all: a cluster label's
 `focus` role overrode Item's final `focus` (Qt 6.12 refuses), and `WindowSheet { view: view }`
 bound the sheet's own empty property; it then drew the pager, the cards, labels, sheets, folds and
 tray as designed, light and dark. Verified: `make unit` (313 logic, 40 map layout, 203 CLI),
 `make lint`, the plugin builds, every new QML file parses and the map view and pager load and draw
-with no QML error. The nest (`224`): see below. Not seen live (not installed); the live pictures,
+with no QML error. Not seen live (not installed); the live pictures,
 the icons from the task manager model and the panel popup are not verified anywhere yet.
 
 **Bare slides after a game (2026-11-12).** The owner: the canvas "degraded still". The live Perf
