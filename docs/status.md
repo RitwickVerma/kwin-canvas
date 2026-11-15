@@ -56,6 +56,19 @@ the plugin reading the item's own bounds, 0.49% and 0.38%, the Rounded Corners o
 does not draw. `222` pins it: a window moved on the open canvas shows its own picture (rmse 0
 fixed, 0.26 with HEAD's plugin). Needs the rebuilt plugin live (`fix-plugin`, a relogin).
 
+**The map's screen rectangle (2026-11-14).** The owner asked whether it is inaccurate. The data is
+not: every window the live map reads sits where KWin's own `getWindowInfo` puts it, to the pixel,
+relative to the screen rectangle, and the installed effect's camera code is the repo's. What makes
+the installed widget (Nov 5) wrong is staleness: it never holds the map, and the plugin installed on
+Nov 12 stops watching a minute after the last read with no holder, so after a quiet minute (a game,
+a still page) the widget never hears another change and keeps showing an old screen; `make install`
+brings the widget that holds. In the new widget, two drawing faults were found and fixed: the window
+sheets glided while the screen rectangle, the cards, the labels and the folds jumped (for a glide's
+length after each change the windows sat off the screen rectangle), and a sheet's width was measured
+from its gliding x, stretching it mid-glide. Every layer now glides together (`glideMs`) and sizes
+from where it is going. Verified: a headless render at rest, mid-glide and settled shows all layers
+in register; `224` in the hidden nest, 39 pass, 0 fail, no QML error. Not seen live.
+
 **Far jumps fly (2026-11-14).** The owner: "the widget makes the windows teleport". Not installed
 yet, so this was the Nov 5 widget and effect: a map click is `mapGo` or `mapFocus`, a closed slide,
 and the slide's time was capped at 1.5 slides whatever the distance. The live Perf log had six

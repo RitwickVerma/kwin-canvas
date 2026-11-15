@@ -76,6 +76,9 @@ Item {
     // Sheets glide when the plane moves a window, not while the map itself is zoomed, panned or
     // resized, which moves every sheet at once and has to follow the hand.
     property bool glide: true
+    // Every layer that moves with the plane glides for this long and on the same curve, so the
+    // screens' frames, the cards, the labels and the windows stay in register throughout.
+    readonly property int glideMs: Kirigami.Units.longDuration
     function holdGlide() { glide = false; glideTimer.restart(); }
     Timer { id: glideTimer; interval: 220; onTriggered: view.glide = true }
     onWidthChanged: holdGlide()
@@ -209,6 +212,7 @@ Item {
             delegate: Shape {
                 required property int index
                 x: view.width / 2 + (view.lay.x.folds[index] - view.centreU) * view.s
+                Behavior on x { enabled: view.glide; NumberAnimation { duration: view.glideMs; easing.type: Easing.OutCubic } }
                 width: 1
                 height: view.height
                 ShapePath {
@@ -226,6 +230,7 @@ Item {
             delegate: Shape {
                 required property int index
                 y: (view.height - view.footRoom) / 2 + (view.lay.y.folds[index] - view.centreV) * view.s
+                Behavior on y { enabled: view.glide; NumberAnimation { duration: view.glideMs; easing.type: Easing.OutCubic } }
                 width: view.width
                 height: 1
                 ShapePath {
@@ -248,8 +253,12 @@ Item {
                 readonly property color tint: f[4]
                 x: view.mx(f[0])
                 y: view.my(f[1])
-                width: view.mx(f[0] + f[2]) - x
-                height: view.my(f[1] + f[3]) - y
+                width: view.mx(f[0] + f[2]) - view.mx(f[0])
+                height: view.my(f[1] + f[3]) - view.my(f[1])
+                Behavior on x { enabled: view.glide; NumberAnimation { duration: view.glideMs; easing.type: Easing.OutCubic } }
+                Behavior on y { enabled: view.glide; NumberAnimation { duration: view.glideMs; easing.type: Easing.OutCubic } }
+                Behavior on width { enabled: view.glide; NumberAnimation { duration: view.glideMs; easing.type: Easing.OutCubic } }
+                Behavior on height { enabled: view.glide; NumberAnimation { duration: view.glideMs; easing.type: Easing.OutCubic } }
                 z: 2
                 radius: 4
                 color: Qt.rgba(tint.r, tint.g, tint.b, 0.12)
@@ -276,6 +285,10 @@ Item {
                 y: view.my(py) - margin
                 width: view.mx(px + pw) - view.mx(px) + 2 * margin
                 height: view.my(py + ph) - view.my(py) + 2 * margin
+                Behavior on x { enabled: view.glide; NumberAnimation { duration: view.glideMs; easing.type: Easing.OutCubic } }
+                Behavior on y { enabled: view.glide; NumberAnimation { duration: view.glideMs; easing.type: Easing.OutCubic } }
+                Behavior on width { enabled: view.glide; NumberAnimation { duration: view.glideMs; easing.type: Easing.OutCubic } }
+                Behavior on height { enabled: view.glide; NumberAnimation { duration: view.glideMs; easing.type: Easing.OutCubic } }
                 z: 3
                 RectangularShadow {
                     anchors.fill: pane
@@ -310,8 +323,13 @@ Item {
                 readonly property var c: (view.plane && view.plane.camera[index]) || [0, 0, 0, 0]
                 x: view.mx(c[0])
                 y: view.my(c[1])
-                width: Math.max(4, view.mx(c[0] + c[2]) - x)
-                height: Math.max(4, view.my(c[1] + c[3]) - y)
+                // From where it is going, as the windows' sheets (x glides).
+                width: Math.max(4, view.mx(c[0] + c[2]) - view.mx(c[0]))
+                height: Math.max(4, view.my(c[1] + c[3]) - view.my(c[1]))
+                Behavior on x { enabled: view.glide; NumberAnimation { duration: view.glideMs; easing.type: Easing.OutCubic } }
+                Behavior on y { enabled: view.glide; NumberAnimation { duration: view.glideMs; easing.type: Easing.OutCubic } }
+                Behavior on width { enabled: view.glide; NumberAnimation { duration: view.glideMs; easing.type: Easing.OutCubic } }
+                Behavior on height { enabled: view.glide; NumberAnimation { duration: view.glideMs; easing.type: Easing.OutCubic } }
                 z: 500
                 radius: 3
                 color: Qt.rgba(view.ink.r, view.ink.g, view.ink.b, hand.dragKind === "camera" && hand.dragIndex === index ? 0.02 : 0.05)
@@ -471,6 +489,8 @@ Item {
             readonly property real margin: Math.max(5, Math.min(14, view.s * 180))
             x: Math.max(2, Math.min(view.width - width - 2, view.mx(px) - margin))
             y: Math.max(2, view.my(py) - margin - height * 0.6)
+            Behavior on x { enabled: view.glide; NumberAnimation { duration: view.glideMs; easing.type: Easing.OutCubic } }
+            Behavior on y { enabled: view.glide; NumberAnimation { duration: view.glideMs; easing.type: Easing.OutCubic } }
             z: 600
             height: label.implicitHeight + 4
             width: label.width + 10

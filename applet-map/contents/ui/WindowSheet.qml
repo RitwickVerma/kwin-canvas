@@ -50,17 +50,22 @@ Item {
 
     x: map.mx(px)
     y: map.my(py)
-    width: Math.max(3, map.mx(px + pw) - x)
-    height: Math.max(3, map.my(py + ph) - y)
+    // From the place it is going, not from x: while x glides, x is somewhere on the way.
+    width: Math.max(3, map.mx(px + pw) - map.mx(px))
+    height: Math.max(3, map.my(py + ph) - map.my(py))
     z: 10 + order
     opacity: (matched ? 1 : 0.16) * (min ? 0.45 : 1) * (here ? 1 : 0.6) * (dragged ? 0.35 : 1)
     scale: hovered && map.interactive ? 1.035 : 1
     Behavior on scale { NumberAnimation { duration: Kirigami.Units.shortDuration; easing.type: Easing.OutCubic } }
     Behavior on opacity { NumberAnimation { duration: Kirigami.Units.shortDuration } }
-    // A moved window glides to its new place instead of jumping (skipped while the map itself
-    // is zoomed or panned, which moves every sheet at once and must follow the hand).
-    Behavior on x { enabled: map.glide; NumberAnimation { duration: Kirigami.Units.longDuration; easing.type: Easing.OutCubic } }
-    Behavior on y { enabled: map.glide; NumberAnimation { duration: Kirigami.Units.longDuration; easing.type: Easing.OutCubic } }
+    // A moved window glides to its new place instead of jumping, in step with the screens'
+    // frames, the cards and the labels (MapView's glideMs): one glide, so nothing drawn is ever
+    // off from the rest mid-way. Skipped while the map itself is zoomed, panned or resized,
+    // which has to follow the hand.
+    Behavior on x { enabled: map.glide; NumberAnimation { duration: map.glideMs; easing.type: Easing.OutCubic } }
+    Behavior on y { enabled: map.glide; NumberAnimation { duration: map.glideMs; easing.type: Easing.OutCubic } }
+    Behavior on width { enabled: map.glide; NumberAnimation { duration: map.glideMs; easing.type: Easing.OutCubic } }
+    Behavior on height { enabled: map.glide; NumberAnimation { duration: map.glideMs; easing.type: Easing.OutCubic } }
 
     readonly property color ink: Kirigami.Theme.textColor
     readonly property color glass: Kirigami.Theme.backgroundColor
