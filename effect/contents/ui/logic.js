@@ -221,39 +221,62 @@ function onAMonitor(r, monitors) {
     return meetsAny(r, monitors);
 }
 
-// Where a floated window steps to so the focused window shows whole: the spot nearest its own,
-// inside the work area, clear of the focused window by gap, or null when it does not overlap
-// the focused window. It slides along one axis to just past the focused window's edge, the other
-// axis held where it was or pulled into the area, and failing those tries the area's corners; a
-// spot clear of the other floats wins over a nearer one that is not. When no spot clears the
+// Where a floated window steps to so the focused window shows whole, by the shortest move that
+// does it: the nearest spot inside the work area clear of the focused window by gap, and of the
+// other floats by gap too when any such spot exists; failing that, the spot clear of the focused
+// window that hides the least of the other floats, nearest among equals. When no spot clears the
 // focused window (the two do not fit side by side on the monitor), the float takes the spot that
 // leaves the most of everything on show (leastHiddenSpot: the focused window and every float
-// counted alike), marked partial; null when no spot shows enough more than where it is (a
-// maximized focused window). Every rect is {x, y, width, height}.
+// counted alike, nearest among equals), marked partial; null when it does not overlap the focused
+// window, or no spot shows enough more than where it is (a maximized focused window). Exact: the
+// spots a float may take are a union of boxes whose sides lie where one of its edges meets an
+// edge of the area or of another window (by gap), and the nearest point of a box keeps the float's
+// own x or y or sits on a side, so the candidates are those lines crossed (spotLines). Every rect
+// is {x, y, width, height}.
 function dodgeSpot(f, focus, area, others, gap) {
     if (!focus || !rectsMeet(f, focus)) return null;
     const g = gap || 0;
-    const clampX = function (x) { return Math.max(area.x, Math.min(x, area.x + area.width - f.width)); };
-    const clampY = function (y) { return Math.max(area.y, Math.min(y, area.y + area.height - f.height)); };
-    const spots = [
-        { x: focus.x - g - f.width, y: clampY(f.y) },
-        { x: focus.x + focus.width + g, y: clampY(f.y) },
-        { x: clampX(f.x), y: focus.y - g - f.height },
-        { x: clampX(f.x), y: focus.y + focus.height + g },
-        { x: area.x + g, y: area.y + g },
-        { x: area.x + area.width - f.width - g, y: area.y + g },
-        { x: area.x + g, y: area.y + area.height - f.height - g },
-        { x: area.x + area.width - f.width - g, y: area.y + area.height - f.height - g },
-    ];
-    let best = null, bestCost = Infinity;
-    for (let i = 0; i < spots.length; ++i) {
-        const r = { x: spots[i].x, y: spots[i].y, width: f.width, height: f.height };
-        if (!rectInside(r, area) || rectsMeet(r, focus)) continue;
-        const cost = Math.hypot(r.x - f.x, r.y - f.y) + (meetsAny(r, others) ? 1e6 : 0);
-        if (cost < bestCost) { bestCost = cost; best = { x: r.x, y: r.y }; }
+    const fl = others || [];
+    const grow = function (o) { return { x: o.x - g, y: o.y - g, width: o.width + 2 * g, height: o.height + 2 * g }; };
+    const focusG = grow(focus), othersG = fl.map(grow);
+    const lines = spotLines(f, area, [focus].concat(fl), g);
+    let clear = null, beside = null;
+    for (let i = 0; i < lines.xs.length; ++i) {
+        for (let j = 0; j < lines.ys.length; ++j) {
+            const r = { x: lines.xs[i], y: lines.ys[j], width: f.width, height: f.height };
+            if (rectsMeet(r, focusG)) continue;
+            const d = Math.hypot(r.x - f.x, r.y - f.y);
+            if (!meetsAny(r, othersG)) {
+                if (!clear || d < clear.d) clear = { x: r.x, y: r.y, d: d };
+            } else {
+                const h = coveredArea(r, fl);
+                if (!beside || h < beside.h - 0.5 || (h <= beside.h + 0.5 && d < beside.d)) beside = { x: r.x, y: r.y, h: h, d: d };
+            }
+        }
     }
-    if (best) return best;
-    return leastHiddenSpot(f, area, [focus].concat(others || []), DODGE_MIN_GAIN * f.width * f.height);
+    const best = clear || beside;
+    if (best) return { x: Math.round(best.x), y: Math.round(best.y) };
+    return leastHiddenSpot(f, area, [focus].concat(fl), DODGE_MIN_GAIN * f.width * f.height);
+}
+// The places a float f may stop on, as x and y lines: the area's two ends (a float wider or taller
+// than the area at its left or top edge), f's own x and y pulled into the area, and for every rect
+// the places where one of f's edges meets one of its edges, flush or gap away. Inside the area's
+// range, without repeats.
+function spotLines(f, area, rects, gap) {
+    const loX = area.x, hiX = Math.max(area.x, area.x + area.width - f.width);
+    const loY = area.y, hiY = Math.max(area.y, area.y + area.height - f.height);
+    const xs = new Set([loX, hiX, Math.max(loX, Math.min(f.x, hiX))]);
+    const ys = new Set([loY, hiY, Math.max(loY, Math.min(f.y, hiY))]);
+    const gs = gap ? [0, gap] : [0];
+    for (let i = 0; rects && i < rects.length; ++i) {
+        const o = rects[i];
+        if (!o) continue;
+        for (const g of gs) {
+            for (const x of [o.x - g - f.width, o.x - g, o.x + o.width + g, o.x + o.width + g - f.width]) if (x >= loX && x <= hiX) xs.add(x);
+            for (const y of [o.y - g - f.height, o.y - g, o.y + o.height + g, o.y + o.height + g - f.height]) if (y >= loY && y <= hiY) ys.add(y);
+        }
+    }
+    return { xs: Array.from(xs), ys: Array.from(ys) };
 }
 // The least a partial dodge must win, as a share of the float's own area: a step for less (a
 // focused window that leaves a sliver free) moves the float for nothing the eye would notice.
@@ -297,22 +320,9 @@ function coveredArea(r, rects) {
 // f's less what f shares with them. Nearest f's own spot among equals; null when the best hides
 // less than minGain less than f's own spot does. Exact: the shared area is bilinear in (x, y)
 // between the places where one of f's edges meets one of theirs, so its least is at one of those
-// places (or on f's own row or column, the nearest point of a flat stretch), clamped into the
-// area. A float wider or taller than the area sits at its left or top edge.
+// places (or on f's own row or column, the nearest point of a flat stretch): spotLines.
 function leastHiddenSpot(f, area, rects, minGain) {
-    const loX = area.x, hiX = Math.max(area.x, area.x + area.width - f.width);
-    const loY = area.y, hiY = Math.max(area.y, area.y + area.height - f.height);
-    const xs = [loX, hiX, Math.max(loX, Math.min(f.x, hiX))];
-    const ys = [loY, hiY, Math.max(loY, Math.min(f.y, hiY))];
-    for (let i = 0; rects && i < rects.length; ++i) {
-        const o = rects[i];
-        if (!o) continue;
-        const ex = [o.x, o.x + o.width], ey = [o.y, o.y + o.height];
-        for (let k = 0; k < 2; ++k) {
-            for (const x of [ex[k], ex[k] - f.width]) if (x >= loX && x <= hiX) xs.push(x);
-            for (const y of [ey[k], ey[k] - f.height]) if (y >= loY && y <= hiY) ys.push(y);
-        }
-    }
+    const lines = spotLines(f, area, rects, 0), xs = lines.xs, ys = lines.ys;
     const here = coveredArea(f, rects);
     let best = null, bestHidden = Infinity, bestDist = Infinity;
     for (let i = 0; i < xs.length; ++i) {

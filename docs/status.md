@@ -44,7 +44,7 @@ and back to where it began, the dock approach, and a wallpaper that is not a pic
 to 12% (all on the compositor's main thread). The idle bob was the one decorative
 cost, 21% of a core zoomed out, and is gone.
 
-**A float with no room still steps aside (2026-11-16).** The owner: the dodge "doesn't work if
+**A float steps aside by the shortest move, room or none (2026-11-16).** The owner: the dodge "doesn't work if
 the geometries don't fit on the screen", and some overlap is fine if the most of the floats and the
 focused window shows. `Logic.dodgeSpot` returned null when none of its eight spots cleared the
 focused window, so the float stayed wholly under it. It now falls back to `Logic.leastHiddenSpot`:
@@ -55,12 +55,21 @@ a gain of a tenth of the float's area or more (`DODGE_MIN_GAIN`), so a sliver or
 moves nothing. Exact by construction: the shared area is bilinear between the places where the
 float's edges meet theirs, so the candidates are those places, the area's ends and the float's own
 row and column. The home logic is unchanged (the float goes back once its home clears the focus).
-Verified: `make unit` (logic 361: the least hidden corner, another float counted, the sliver, the
+Then the owner: "at all times, the windows should move minimum distance to satisfy conditions".
+The clear search tried eight fixed spots (four straight slides, four corners a gap in from the
+screen's edges), so a blocked slide sent the float to a corner or the far side; it is now exact
+(`Logic.spotLines`: every crossing of the lines where the float's edges meet the area's or another
+window's, flush or a gap away, holds the nearest point of every box the float may take), with the
+other floats kept a gap away too when there is room. A seeded property test checks 35 random desks
+against a scan of the whole area every 4 px: none has a nearer clear spot. Verified: `make unit`
+(logic 366: the least hidden corner, another float counted, the sliver, the
 union counted once, a float wider than the area, the nearest of equal spots), `make lint`; the
 nest: `225` extended (a 1500x850 focused window with no room for a 460x420 float: it lands at
 1460,660, the spot `Logic.dodgeSpot` works out from the nest's own work area, and goes home when the
-focus moves on), with the 12 other float scenarios, 70 pass, 0 fail. Not verified: live, and two
-monitors (the dodge keeps each float on its own monitor's work area, as before).
+focus moves on), with the 12 other float scenarios, 70 pass, 0 fail, on the partial step and
+again on the exact search (225's clear step still lands at 1352,250, the straight slide being the
+shortest there). Not verified: live, and two monitors (the dodge keeps each float on its own
+monitor's work area, as before).
 
 **The flash at a landing (2026-11-05).** The owner: "always a flash after auto pan finishes". With
 Rounded Corners on, every cornered window's picture is cut from KWin's texture through the

@@ -8,11 +8,14 @@ float, dodge and snap; two monitors share one plane; a panel decor, a map widget
 decoration come with it; and `kwin-canvas doctor` and `setup` keep the install and KDE's settings
 honest. The lines below are the detail, newest first.
 
-- A float that cannot clear the focused window still steps aside. When the two do not fit side by
-  side on the monitor, the float stayed wholly under the focused window; it now takes the spot
-  that leaves the most of both (and of every other float) on show, with a little overlap where
-  there must be some, and goes back once the focus moves on. A step that would show less than a
-  tenth more of the float is not taken.
+- A float steps aside by the shortest move. It tried four straight slides and the four corners,
+  so when the slide was blocked (by the screen's edge or another float) it could go the long way
+  round; it now finds the nearest spot that clears the focused window, sliding both ways when
+  that is shorter. And a float that cannot clear the focused window still steps aside: when the
+  two do not fit side by side on the monitor, it stayed wholly under the focused window; it now
+  takes the spot that leaves the most of both (and of every other float) on show, with a little
+  overlap where there must be some, and goes back once the focus moves on. A step that would show
+  less than a tenth more of the float is not taken.
 - The open canvas moves at the display's rate. The camera, the window glides, the floats and the
   edge pan were stepped by a 16 ms timer, 60 times a second whatever the monitor: on a 240 Hz
   screen every position of a flight, a pan or a zoom was held for four frames, while the slides

@@ -768,22 +768,29 @@ an old config still loads.
 
 ### A float steps aside for the focused window
 
-A floated window that overlaps the focused window glides (200 ms) to the nearest spot on its
-monitor's work area that clears it by 12 px, and goes back to where it was once the focused window
-leaves that spot free (`dodgeFloats`, `Logic.dodgeSpot`, `225`). It waits for the focus to settle,
+A floated window that overlaps the focused window glides (200 ms) by the shortest move that
+clears it by 12 px on its monitor's work area, and goes back to where it was once the focused
+window leaves that spot free (`dodgeFloats`, `Logic.dodgeSpot`, `225`). It waits for the focus to settle,
 450 ms after the last focus change (`dodgeTimer`), so a fly lands first and a pointer crossing
 windows with focus following the mouse moves nothing; it runs only with the canvas closed, and
 every close starts the clock again, since a slide or a commit moved the desk under the floats.
 The floats are planned in turn, each against where the others will be,
 so two never take the same spot and none goes home onto another; a spot clear of the other
-floats beats a nearer one under another float. When no spot on the monitor clears the focused
+floats (by 12 px too) beats a nearer one that is not, and when none is, the spot clear of the
+focused window that hides the least of them. The search is exact, not a few fixed tries (it was
+four straight slides and four corners until 2026-11-16, so a move that had to slide both ways went
+the long way round): the spots a float may take are a union of boxes whose sides lie where one of
+its edges meets an edge of the work area or of another window, flush or 12 px away, and the
+nearest point of a box keeps the float's own x or y or sits on a side, so every crossing of those
+lines (`Logic.spotLines`) is a candidate and the nearest clear one is the shortest move. When no
+spot on the monitor clears the focused
 window (the two do not fit side by side), the float takes the spot that leaves the most of
 everything on show (`Logic.leastHiddenSpot`): the union of the focused window and every float is
 theirs plus the float's area less what the float shares with them (`Logic.coveredArea`, an area two
 of them share counted once), so the float goes where it shares the least, nearest its own spot
-among equals. The search is exact: the shared area is bilinear in the float's position between
-the places where one of its edges meets one of theirs, so its least is at one of those places or
-on the float's own row or column, clamped into the work area. It moves only for a tenth of its own
+among equals. That search is exact too: the shared area is bilinear in the float's position
+between the places where one of its edges meets one of theirs, so its least is on the same lines.
+It moves only for a tenth of its own
 area or more (`DODGE_MIN_GAIN`), so a focused window that leaves a sliver, or a maximized one,
 moves nothing. A
 focus that is not a free window of the plane (a launcher, a panel, the desktop, a maximized or

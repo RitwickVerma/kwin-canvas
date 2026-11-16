@@ -175,6 +175,45 @@ ok("no window is not", !L.isGameWindow(null));
     ok("and not when it meets none", !L.meetsAny(r(0, 0, 100, 100), [r(500, 500, 10, 10)]) && !L.meetsAny(r(0, 0, 100, 100), null));
     const s5 = L.dodgeSpot(r(600, 900, 300, 200), r(100, 100, 600, 1000), area, [], 12);
     ok("the held axis is pulled into the work area", s5 && s5.y + 200 <= 1040 && s5.x === 712);
+    // The shortest move, not one of a few fixed ones: the slide right is taken by another float, so
+    // the old search went down (362 px); right of the focused window and just under that float is
+    // nearer (285 px).
+    const m1 = L.dodgeSpot(r(600, 150, 300, 200), r(100, 100, 600, 400), area, [r(712, 100, 400, 300)], 12);
+    ok("the nearest clear spot may slide both ways", m1 && m1.x === 712 && m1.y === 412);
+    const m3 = L.dodgeSpot(r(1300, 300, 300, 200), r(1000, 50, 400, 900), area, [r(1412, 0, 300, 290)], 12);
+    ok("past a float that holds the near spot, the next nearest", m3 && m3.x === 1412 && m3.y === 302);
+    // Against a scan of the whole work area every 4 px: on 80 random desks (a fixed seed), the spot
+    // is clear of the focused window, inside the area, and no scanned clear spot is nearer.
+    {
+        let seed = 7;
+        const rnd = function (n) { seed = (seed * 1103515245 + 12345) % 2147483648; return Math.floor(seed / 2147483648 * n); };
+        const grown = function (o, g) { return r(o.x - g, o.y - g, o.width + 2 * g, o.height + 2 * g); };
+        let good = 0, cases = 0;
+        for (let t = 0; t < 80; ++t) {
+            const fw = 200 + rnd(500), fh = 150 + rnd(400);
+            const fo = r(rnd(1920 - fw), rnd(1040 - fh), fw, fh);
+            const fc = r(rnd(1500), rnd(800), 300 + rnd(900), 200 + rnd(600));
+            if (!L.rectsMeet(fo, fc)) continue;
+            const sp = L.dodgeSpot(fo, fc, area, [], 12);
+            if (!sp || sp.partial) continue;
+            cases++;
+            const at = r(sp.x, sp.y, fw, fh);
+            const d = Math.hypot(sp.x - fo.x, sp.y - fo.y);
+            let nearer = false;
+            for (let x = 0; x <= 1920 - fw && !nearer; x += 4) {
+                for (let y = 0; y <= 1040 - fh; y += 4) {
+                    if (!L.rectsMeet(r(x, y, fw, fh), grown(fc, 12)) && Math.hypot(x - fo.x, y - fo.y) < d - 1e-6) { nearer = true; break; }
+                }
+            }
+            if (L.rectInside(at, area) && !L.rectsMeet(at, grown(fc, 12)) && !nearer) good++;
+        }
+        ok("on random desks no clear spot is nearer than the one taken (" + good + " of " + cases + ")", cases >= 20 && good === cases);
+    }
+    const lines = L.spotLines(r(100, 100, 300, 200), area, [r(500, 400, 200, 100)], 12);
+    ok("the lines: the area's ends, the float's own place, and flush and gap-away edges",
+       [0, 1620, 100, 188, 200, 488, 500, 700, 712, 400, 412].every(function (x) { return lines.xs.indexOf(x) >= 0; })
+       && [0, 840, 100, 188, 200, 388, 400, 500, 512, 300, 312].every(function (y) { return lines.ys.indexOf(y) >= 0; })
+       && lines.xs.every(function (x) { return x >= 0 && x <= 1620; }));
     // No room beside a large focused window (200 px free left, 320 right, 100 above, 140 below a
     // 500x400 float): the float takes the spot that hides the least, the corner of the widest gaps.
     const big = r(200, 100, 1400, 800);
