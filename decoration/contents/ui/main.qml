@@ -6,8 +6,9 @@
 /*
     The canvas's window frame is the window and one bar. No border on the
     sides or at the bottom (the resize band lies outside the window), and
-    on top a 32 px title bar in the colour scheme's own title bar colours,
-    active and inactive, with the canvas's glyphs and the caption. The bar
+    on top a title bar (32 px, taller for a large title font) in the colour
+    scheme's own title bar colours, active and inactive, with the canvas's
+    glyphs and the caption; the glyphs' states wear the scheme's accent. The bar
     is drawn edge to edge, so an effect that shapes the frame (Rounded
     Corners, an outline) rounds and rings the window the eye sees: with the
     old transparent band the effect's top corners fell on nothing, and the
@@ -44,7 +45,21 @@ Decoration {
     // The colour scheme's title bar and its text, each for the window's
     // active or inactive state (the options follow the client's focus).
     readonly property color ink: options.fontColor
-    readonly property int band: 32
+    // The accent the state marks wear: the window's own palette's highlight, which is the colour
+    // scheme's accent (and a window with its own scheme brings its own); the old fixed blue only
+    // if the palette cannot be read.
+    readonly property color accent: {
+        const p = decoration.client.palette;
+        return p && p.highlight !== undefined ? p.highlight : "#2a6ddf";
+    }
+    // The bar's height: 32 px, or the title font's line and a margin above and below when the
+    // font is larger, so a big title font is never clipped.
+    readonly property int band: Math.max(32, Math.ceil(titleMetrics.height) + 12)
+    onBandChanged: borders.setTitle(band)
+    FontMetrics {
+        id: titleMetrics
+        font: options.titleFont
+    }
 
     // The native titlebar-buttons configuration: which glyphs the bar shows,
     // on which side, in the user's own order, so the bar is the system's
@@ -155,6 +170,7 @@ Decoration {
             property bool pressed: false
             readonly property bool lit: (modelData === "S" && root.floating) || (modelData === "A" && root.maximized) || (modelData === "F" && root.above) || (modelData === "B" && root.below)
             readonly property color ink: root.ink
+            readonly property color accent: root.accent
             scale: pressed ? 0.86 : (hovered ? 1.2 : 1)
             width: 22
             height: 22
@@ -171,7 +187,7 @@ Decoration {
                 height: 16
                 radius: 8
                 visible: parent.modelData !== "_"
-                color: parent.pressed ? Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.36) : (parent.hovered ? Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.22) : (parent.lit ? Qt.rgba(0.16, 0.43, 0.87, 0.30) : "transparent"))
+                color: parent.pressed ? Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.36) : (parent.hovered ? Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.22) : (parent.lit ? Qt.rgba(root.accent.r, root.accent.g, root.accent.b, 0.30) : "transparent"))
                 Behavior on color {
                     ColorAnimation {
                         duration: 140
@@ -179,7 +195,7 @@ Decoration {
                     }
                 }
                 border.width: 1
-                border.color: parent.hovered || parent.pressed ? root.ink : (parent.lit ? "#2a6ddf" : Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.7))
+                border.color: parent.hovered || parent.pressed ? root.ink : (parent.lit ? root.accent : Qt.rgba(root.ink.r, root.ink.g, root.ink.b, 0.7))
                 Behavior on border.color {
                     ColorAnimation {
                         duration: 140
@@ -207,8 +223,8 @@ Decoration {
                     ctx.clearRect(0, 0, width, height);
                     const code = parent.modelData;
                     const lit = parent.lit;
-                    ctx.strokeStyle = lit ? "#2a6ddf" : root.ink;
-                    ctx.fillStyle = lit ? "#2a6ddf" : root.ink;
+                    ctx.strokeStyle = lit ? root.accent : root.ink;
+                    ctx.fillStyle = lit ? root.accent : root.ink;
                     ctx.lineWidth = (code === "S" || code === "F" || code === "B") ? 1.3 : 1.2;
                     if (code === "X") {
                         ctx.beginPath();
@@ -298,6 +314,7 @@ Decoration {
                     target: mark.parent
                     function onLitChanged() { mark.requestPaint(); }
                     function onInkChanged() { mark.requestPaint(); }
+                    function onAccentChanged() { mark.requestPaint(); }
                 }
             }
 

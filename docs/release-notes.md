@@ -20,6 +20,9 @@ honest. The lines below are the detail, newest first.
   alone while the effect is turned off; NVML (the GPU's load) starts on a thread of its own and
   never holds the compositor, a wedged driver included; and the ground wallpaper's state file is
   written without a disk sync on the compositor's thread. Needs `kwin-canvas fix-plugin`.
+- The canvas decoration wears your accent. The pin, the maximize pair and the keep-above and
+  keep-below marks were a fixed blue; they take the window's colour scheme's highlight now, and
+  the title bar grows with a title font too large for its 32 px.
 - Far jumps fly instead of teleporting. A slide to somewhere wholly off the screen (a click on
   the map widget, a cluster digit, a walk or an activation far away) crossed several screens at
   1:1 in a third of a second, which the eye sees as windows teleporting. It now eases out until
