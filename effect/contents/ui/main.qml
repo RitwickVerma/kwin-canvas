@@ -595,11 +595,12 @@ KWin.SceneEffect {
             const w = stack[i];
             if (!isCanvasWindow(w) || windowPinned(w)) continue;
             const g = w.frameGeometry;
-            const t = separate ? peekTargetOn(activityOf(w), outputAtReal(g.x, g.y, g.width, g.height)) : peekTarget(activityOf(w));
+            // The plane spot as the map and every other read takes it (planeSpot): with separate
+            // cameras a window parked beyond the monitors is at its kept spot, not wherever its
+            // parked real frame reads through the nearest monitor's camera.
+            const p = planeSpot(w);
             const id = String(w.internalId);
-            // The target the spot was read through rides along (tx, ty), so a write back (the
-            // carry) goes through the same one, whichever monitor's camera that is.
-            nodes.push({ id: id, x: g.x + t.x, y: g.y + t.y, width: g.width, height: g.height, tx: t.x, ty: t.y });
+            nodes.push({ id: id, x: p.x, y: p.y, width: g.width, height: g.height });
             win[id] = w;
         }
         const r = Logic.recluster(nodes, clusterOf, Object.assign({}, threadRank), configuration.ClusterGap);
@@ -693,7 +694,10 @@ KWin.SceneEffect {
         // (what overlapped it then may still). A window that was alone has no cluster to come
         // back to, so this comes before the cluster is looked for.
         const lc = lastCarry;
-        if (lc && lc.ids.join() === pieceIds.join() && lc.dir === oppositeDir(dir) && Date.now() - lc.at < 300000) {
+        // Only from where the carry put it: a window moved since (by hand, by the map) is carried
+        // from where it is, not jumped back to a spot it left two moves ago.
+        if (lc && lc.ids.join() === pieceIds.join() && lc.dir === oppositeDir(dir) && Date.now() - lc.at < 300000
+            && Math.abs(box.x - lc.toX) <= 1 && Math.abs(box.y - lc.toY) <= 1) {
             const back = { x: lc.x, y: lc.y, width: box.width, height: box.height };
             const blocked = rest.some(function (n) { return Logic.clusterDist(back, n) < 8 && lc.over.indexOf(n.id) < 0; });
             if (!blocked) spot = { x: lc.x, y: lc.y };
@@ -706,7 +710,7 @@ KWin.SceneEffect {
             spot = Logic.carrySpot(box, members, others, dir, configuration.ClusterGap);
             if (!spot) { notify("No room beside the cluster " + dirWord(dir)); return; }
         }
-        lastCarry = { ids: pieceIds, dir: dir, x: box.x, y: box.y, at: Date.now(),
+        lastCarry = { ids: pieceIds, dir: dir, x: box.x, y: box.y, toX: spot.x, toY: spot.y, at: Date.now(),
                       over: rest.filter(function (n) { return Logic.clusterDist(box, n) < 8; }).map(function (n) { return n.id; }) };
         const dx = spot.x - box.x, dy = spot.y - box.y;
         dbg("carry", w.caption + (piece.length > 1 ? " +" + (piece.length - 1) : "") + " " + dir + " to (" + Math.round(spot.x) + "," + Math.round(spot.y) + ")");
@@ -727,9 +731,17 @@ KWin.SceneEffect {
             revision++;
             return;
         }
-        // Closed: the window is written at its new plane spot (off the screen, likely), through
-        // the target planeGraph read it with, and the camera flies to it, the cluster around it.
-        setReal(w, Qt.rect(Math.round(f.x + dx - f.tx), Math.round(f.y + dy - f.ty), f.width, f.height));
+        // Closed: the window is written at its new plane spot (off the screen, likely) as every
+        // plane spot is (projectEntry: with separate cameras through the frame it lands in, parked
+        // when it lands in none), and the camera flies to it, the cluster around it.
+        const nx = Math.round(f.x + dx), ny = Math.round(f.y + dy);
+        const pj = projectEntry({ x: nx, y: ny, width: f.width, height: f.height, out: null }, activityOf(w));
+        const rx = Math.round(pj.x), ry = Math.round(pj.y);
+        if (separate) {
+            if (pj.parked) parked[w.internalId] = { x: nx, y: ny, rx: rx, ry: ry };
+            else delete parked[w.internalId];
+        }
+        setReal(w, Qt.rect(rx, ry, f.width, f.height));
         flyToWindow(w);
     }
     // What just happened, said where the eye is: the toast in the open canvas, Plasma's OSD on the
@@ -777,6 +789,13 @@ KWin.SceneEffect {
     function switcherPick() {
         if (!switcherActive) return null;
         for (let i = 0; i < entries.length; ++i) if (isSelected(entries[i])) return entries[i];
+        // Nothing picked under the chord: its release steps once from the active window
+        // (chordRelease's cycleSelection(1)), so that is the window the card names.
+        if (switcherFromChord) {
+            const pool = [];
+            for (let i = 0; i < switcherPool.length; ++i) { const e = entryFor(switcherPool[i]); if (e) pool.push(e); }
+            if (pool.length) return pool[pool[0].window === KWin.Workspace.activeWindow ? 1 % pool.length : 0];
+        }
         return focusEntry ? focusEntry : (entries.length ? entries[0] : null);
     }
 
@@ -1429,7 +1448,15 @@ KWin.SceneEffect {
             if (at > bestAt) { bestAt = at; dest = id; }
         }
         const destEntry = dest !== null ? entryById(dest) : null;
-        if (destEntry) focusEntry = destEntry;
+        if (destEntry) {
+            focusEntry = destEntry;
+            // A single picked window elsewhere would still win Enter, the walk and Tab over the
+            // arrival; a selection of several is a set being worked on (Bring here, the arrange
+            // menu) and stays.
+            let picked = 0;
+            for (const id in selected) if (selected[id]) picked++;
+            if (picked === 1 && !isSelected(destEntry)) clearSelection();
+        }
         // The remembered spot: the digit jumps return to it (the room's
         // place), the tour never does - a hop is a switch, and it lands on
         // the window the hand last used there.
@@ -3220,10 +3247,13 @@ KWin.SceneEffect {
     property real lastSwitchAt: 0
     // A press the scene saw (and found not to be a repeat) rides past the gate: a re-tap can be
     // quicker than the gate's 150 ms, and the scene knows a repeat from a tap.
+    // Every delivery moves the gate, a swallowed one too: a held Tab's repeats come every 40 ms or
+    // so and keep it shut for as long as the key is held (stamping only the steps that passed let
+    // a repeat through every 150 ms, six steps a second).
     function switcherCycle(dir, fromScene) {
-        const now = Date.now();
-        if (!fromScene && now - lastSwitchAt < 150) return;
+        const now = Date.now(), gap = now - lastSwitchAt;
         lastSwitchAt = now;
+        if (!fromScene && gap < 150) return;
         cycleSelection(dir);
         if (switcherFromChord && chordBlind) switcherSettle.restart();
     }
@@ -3287,12 +3317,25 @@ KWin.SceneEffect {
     // both chords (a reverse bound with other modifiers than the forward one still ends when
     // its own modifiers go up).
     function chordPress(cluster, dir, spec, reverseSpec) {
-        if (switcherActive) { switcherCycle(dir); return; }
+        if (switcherActive) {
+            // Pressed again while the last release's enter is still flying (its commit waits in
+            // camOnArrive): a new hold of the chord. It takes the switcher back, the enter's
+            // commit dropped, and its own release enters again; without arming it, no release was
+            // waited for and the switcher stayed open on the screen until Enter or Esc.
+            if (switcherModMask === 0 && !chordBlind) {
+                switcherFromChord = true;
+                switcherModMask = modMaskOf(spec) | modMaskOf(reverseSpec);
+                chordBlind = switcherModMask === 0 || !pluginPresent();
+                camOnArrive = null;
+            }
+            switcherCycle(dir);
+            return;
+        }
         if (switcherPending) {
             // One press delivered twice is not two steps (the cycle's gate, before the show).
-            const now = Date.now();
-            if (now - lastSwitchAt < 150) return;
+            const now = Date.now(), gap = now - lastSwitchAt;
             lastSwitchAt = now;
+            if (gap < 150) return;
             switcherSteps += dir; showSwitcher(); return;
         }
         if (canvasHold || closing || gameMode || safeMode) return;
@@ -3305,6 +3348,8 @@ KWin.SceneEffect {
         chordBlind = switcherModMask === 0 || !pluginPresent();
         switcherPool = mruWindows(cluster);
         switcherSteps = dir;
+        // The press itself shuts the repeat gate: a Tab held down repeats into it from here.
+        lastSwitchAt = Date.now();
         if (switcherPool.length < 2 && !canvasOpen) { switcherModMask = 0; return; }
         dbg("switcher", "chord down: " + switcherPool.length + " windows, " + (cluster ? "cluster" : "plane") + (chordBlind ? ", blind" : ""));
         switcherPending = true;
@@ -3416,6 +3461,9 @@ KWin.SceneEffect {
         // The world is the map: the switcher opens the canvas fitted to the whole plane (or the
         // cluster), from the closed location or the open overworld alike. The fit rides a brisk
         // flight and the windows rise in z at the same time, so the switch-in is a snap, not a wait.
+        // A slide or a fly that began in the show's beat (a click's deferred fly, a followed
+        // activation) lands and closes first: the switcher is the full canvas, not the quiet scene.
+        landQuiet();
         switcherOpened = !visible;
         switcherCamBefore = visible ? { z: camHasGoal ? camGoalZoom : zoom, x: camHasGoal ? camGoalX : viewX, y: camHasGoal ? camGoalY : viewY } : null;
         if (!visible) open();
@@ -5435,7 +5483,10 @@ KWin.SceneEffect {
     }
     // The plugin answered: if the canvas is still open, switch it on and give it the camera.
     function passthroughProbed() {
-        if (!canvasOpen || passthroughLive) return;
+        // The search holds the keys (an answer to the open's probe arrived after searchStart had
+        // dropped a pass-through that was not live yet, and the typing went to the window under
+        // the pointer); a closing canvas has none to hand on.
+        if (!canvasOpen || closing || searchActive || passthroughLive) return;
         passthroughLive = true;
         publishCamera();
         publishNav();

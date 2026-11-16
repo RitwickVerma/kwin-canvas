@@ -20,6 +20,14 @@ honest. The lines below are the detail, newest first.
   alone while the effect is turned off; NVML (the GPU's load) starts on a thread of its own and
   never holds the compositor, a wedged driver included; and the ground wallpaper's state file is
   written without a disk sync on the compositor's thread. Needs `kwin-canvas fix-plugin`.
+- The switcher and the keys, after review. Alt+Tab pressed again while the last one's enter was
+  still flying left the switcher on the screen until Enter or Esc; it takes the switcher back and
+  enters on its release. A held Tab steps once instead of six times a second. The card names the
+  window the release enters. A slide that starts as the switcher shows lands first. Text typed
+  into the search never reaches a window. A cluster's digit makes its arrival the pick for Enter,
+  the walk and Tab (a selection of several windows stays). A carry back returns only from where
+  the carry put the window. With separate cameras the closed walk and carry read and write a
+  parked window as everything else does.
 - Canvas Map fixes from review. A click on a cluster's label or on a minimized window in the
   tray did two things (the label's, then a click on the ground under it, so the desk slid past
   the cluster); it does one. Dragging a screen's frame on a two-monitor map moved the other

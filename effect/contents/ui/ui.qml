@@ -370,7 +370,9 @@ Item {
             function onVisibleChanged() { if (effect.visible) { view.spaceHeld = false; view.forceActiveFocus(); } }
             // The switcher asks for the keyboard focus through a property
             // bump: the effect's own scope cannot name a view delegate.
-            function onSwitcherFocusReqChanged() { view.focus = true; }
+            // forceActiveFocus, not focus = true: view is focus: true already, and the assignment
+            // could not take the keys back from a focused chrome control.
+            function onSwitcherFocusReqChanged() { view.forceActiveFocus(); }
         }
 
         // The plane's base: opaque, so nothing shows through to the real
