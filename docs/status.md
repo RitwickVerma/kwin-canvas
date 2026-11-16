@@ -56,6 +56,67 @@ the plugin reading the item's own bounds, 0.49% and 0.38%, the Rounded Corners o
 does not draw. `222` pins it: a window moved on the open canvas shows its own picture (rmse 0
 fixed, 0.26 with HEAD's plugin). Needs the rebuilt plugin live (`fix-plugin`, a relogin).
 
+**The display's rate, and a review round (2026-11-14).** The owner's monitor runs 5120x1440 at
+240 Hz (`kscreen-doctor`); the live Perf `ticks` read p50 16 ms. KWin's compositor installs its own
+Qt animation driver and advances it once a composited frame (`Compositor::composite`, read from
+`libkwin.so`), so the slides' `NumberAnimation`s already moved every frame, while the open canvas's
+camera, glides, floats and edge pan were stepped by a 16 ms timer: 60 positions a second, each held
+four frames. They are now stepped by a `FrameAnimation` while something moves, the timer only
+starting a motion and carrying it when no frame comes, both paced by `Logic.tickPace` on one clock
+(12 unit cases: even 240 Hz steps from a whole-millisecond clock, no double steps at 60 Hz, a
+stall carried). Also: the bookmarks as global actions that work closed (`145` extended); the
+decoration's accent from the window's palette and a bar that grows with the title font; NVML
+started on a worker at plugin load (its first call measured 26 ms on the owner's card, on the
+compositor thread at the first open; a reading is 0.1 ms); and the fixes from two read-only reviews
+of the newest code: ten in the Canvas Map (a label or tray click did two actions, a screen's frame
+drag moved the pointer's screen, separate cameras lost a dropped window, open-canvas go/bring on a
+minimized window only restored it, closed cluster numbers disagreed with the next open's, minimized
+windows listed twice, no drag cancel, the zoomed map drifting on readings, the search missing the
+tray, the pager's wheel) and eight in the far fly (a fly
+outliving its slide under a swipe or a grasp, floats shrinking in a fly, an activation mid-fly aimed
+from the zoomed-out camera, a map drop during a slide written against the old view, extreme
+distances racing at the zoom floor, vertical and diagonal jumps under-flown, the fall-through slide
+at the fly's zoom, the toggle chord mid-fly entering instead of opening). Two more reviews, the
+plugin and the keys, found and this round fixed: a CSD title-bar drag (Brave, Zed) in the open
+canvas started a KWin move that the effects' filter starved (KWin's move-resize filter comes after
+it), so the window followed the cursor after the close (the plugin now drives and ends it while the
+canvas has the pointer); the idle swallowing a held button's release; a window's held key repeating
+into the canvas; a canvas key's release (Space) forwarded to a window; the grasp overlay dropping a
+live grab; forwarded events without their timestamps (`setTimestamp` was never called); Back held by
+the plugin with the effect turned off; NVML's `call_once` still able to block the compositor on a
+wedged driver (now a detached thread and a ready flag); QSaveFile's fsync on the compositor thread
+for the ground's state file (now write-and-rename); and in the keys, the switcher stuck open by a
+re-press during the enter's flight, a held Tab stepping six times a second, the card naming another
+window than the release enters, a slide in the show's beat, the search's text reaching a window
+when the probe answered late, a cluster digit leaving an old single pick in charge, the carry back
+ignoring a later move, and separate cameras' closed walk and carry. Left: the release routed by the
+nav mask at release rather than at press (needs a reconfigure mid-press), and the D-Bus surface
+(any session client can call the plugin, as it can KWin's own scripting). The nest (2026-11-15, on
+KWin 6.8.3) then found three bugs of this round's own, all fixed: the edge pan never ran (its live
+flag and tick sat on an anonymous item while the frame and the timer read them off `view`: "Unable
+to assign [undefined] to bool", `81`); the map's go did nothing (`mapGo` took a third parameter for a
+screen, and the plugin's `invokeMethod` with two finds no QML function of three: the screen's go is
+`mapGoOn` now, `224`); and the review's lease change (a release left a plain reader's lease running)
+broke the documented rule that a widget's release stops the watching, so it is undone (`224`). And
+four scenarios whose premise had rotted: `117` and `86` found the panel clock by the bright pixels
+of a whole strip, and a `.desktop` file on the owner's ~/Desktop (the nest's folder view shows it)
+made them click the icon (86 had been passing on that icon's menu), while the bottom strip's box ran
+from the task bar's icons to the clock - `clock_box` (lib.sh) now asks Plasma where the panel and
+its digital clock are; `143` switched to `org.kde.plasma.worldmap`, which no package ships (the
+closed desktop itself read black), and uses Hunyango now; `230` read `undo=`, the commit stack,
+where the open canvas's Ctrl+Z is the move history (it brings two windows now and checks that one
+undo puts both back). Verified: `make unit` (logic 351, map layout 40, CLI 203), `make lint`, the
+plugin builds without a warning, the map widget headless (no QML error; the zoomed view holds
+across a reading; the search finds a minimized window), and the nest: the whole suite in two passes
+(the first cut at 82 scenarios by a session end; 489 pass in the second, its twelve failures the
+ones above), then every failed scenario again on the fixes (`81`, `86`, `117`, `143`, `224`, `230`:
+0 fail), the ten two-output scenarios on a two-output nest (55 pass, 0 fail) and the three
+decoration scenarios wearing the canvas decoration (22 pass, 0 fail; `135`'s close glyph skips, as
+ever: the nest's KWin cannot close a window). `123` failed once under a load average of 25 (the fidelity ladder
+stepped down and its toast reached the golden) and passed on the rerun. Not verified: the 240 Hz
+motion, which only the owner's monitor can show (`kwin-canvas perf` should read `ticks p50=4` in a
+flight), and anything live.
+
 **The map's screen rectangle (2026-11-14).** The owner asked whether it is inaccurate. The data is
 not: every window the live map reads sits where KWin's own `getWindowInfo` puts it, to the pixel,
 relative to the screen rectangle, and the installed effect's camera code is the repo's. What makes
@@ -257,18 +318,18 @@ satellites, the harness, settings and docs, performance), what was not done that
 - Minimized windows in the switcher pool: KDE's Alt+Tab reaches them, the canvas's does not
   (the plane does not draw them, so the pick would be invisible; a card-only pick is the design
   question).
-- Bookmarks with the canvas closed (`Alt+1..9` are scene keys): nine global actions with no
-  default that slide to a saved view at 1:1.
-- The slide's 6 to 12%: most likely the `viewX`/`viewY` binding fan-out, twice per frame (two
+  A proposal: a tray of the minimized windows' icons along the switcher's foot, as the Canvas
+  Map's, stepped after the plane's windows; the pick restores and flies.
+- The slide's 6 to 12% (measured at the nest's 60 Hz; on a 240 Hz monitor every slide, and now
+  every open-canvas motion, pays it four times as often): most likely the `viewX`/`viewY` binding fan-out, twice per frame (two
   NumberAnimations) over every thumbnail, frame and chip on both views, plus the ground's ~100
   invisible items re-bound at 1:1 and the chrome's edge marks once the chrome has been built.
   The measurements that settle it: `perf record` on the nest's KWin over 50 slides; hot-reload
   ablation of the ground models, the marks' `quiet` gate and a single camera point; a per-slide
   `ticks=` on the Perf `slide` line. A plane `Item` with one transform per view is the
   architectural fix.
-- NVML on the compositor thread (`load`, `gpuMemory`): time it, then a worker thread or a skip
-  while a fullscreen game has the focus. The 16 ms physics timer runs for the whole open
-  session; gate it on a camera, a float or a glide being live.
+- The motion tick's 16 ms timer still runs for the whole open session (it starts motions); it
+  could stop while nothing can move, with the gestures that start one kicking it.
 - The harness: `kwinjs` should poll the log for its tag instead of a fixed settle and fail
   loudly; `arrange` should place every window and then size them so `heal_sizes` can go; the
   runner should trap INT/TERM and bound `spectacle`; a scenario with no checks should count as a
@@ -276,11 +337,12 @@ satellites, the harness, settings and docs, performance), what was not done that
 - `main.qml` is 7k lines: the switcher, the graph, the frame authority and the search are each a
   block that could be its own QML object or JS library once the suite can prove a split moved
   nothing.
-- The decoration's accent is a fixed blue; the band is 32 px whatever the title font. The map
-  widget is unchanged by this round.
-- Scenarios that leave the desk changed: the runner now names each repair (`desk reset
-  after …`). Thirteen leave another window above KCalc (`80`, `85`, `87`, `103`, `113`, `126`,
-  `137`, `184`, `204`, `210`, `221`, `226`, `227`), and `111` leaves KCalc at 900,300. Each should end with `arrange` (or its own undo) so the repair is the exception again.
+- Scenarios that leave the desk changed: the runner names each repair (`desk reset after …`).
+  The thirteen named for "KCalc is not on top" were read from the state's entries, which closed
+  are the last open's snapshot in the stacking of then, so the check saw the desk from before the
+  arrange's own activations; it now reads KWin's real stacking (the state's `top=`). Whether any
+  of the thirteen still leaves another window on top is for the next full run; `111`, which left
+  KCalc at 900,300, ends with `arrange` now.
 - Scenarios for what only review has seen: Bring here, Close and the two-tap trash, the `notify`
   OSD without the toast, the switcher with no plugin (`chordBlind`), the plugin's popup-grab and
   keyboard-focus checks.

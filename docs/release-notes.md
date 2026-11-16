@@ -8,6 +8,15 @@ float, dodge and snap; two monitors share one plane; a panel decor, a map widget
 decoration come with it; and `kwin-canvas doctor` and `setup` keep the install and KDE's settings
 honest. The lines below are the detail, newest first.
 
+- The open canvas moves at the display's rate. The camera, the window glides, the floats and the
+  edge pan were stepped by a 16 ms timer, 60 times a second whatever the monitor: on a 240 Hz
+  screen every position of a flight, a pan or a zoom was held for four frames, while the slides
+  beside them moved every frame. They are now stepped by the frames the compositor draws, evenly,
+  and the timer only starts a motion and carries it when no frame comes.
+- Bookmarks from the desktop. Canvas Bookmark 1..9 and Canvas Save Bookmark 1..9 are global
+  shortcuts (no default; System Settings > Shortcuts > KWin). Closed, a save keeps the desk as it
+  is and a go slides back to it at 1:1, flying when it is far; open, they are Ctrl+digit and
+  Alt+digit.
 - The pass-through plugin, after review. A title-bar drag in an app that draws its own title bar
   (Brave, Zed, Firefox, GTK apps) in the open canvas ran KWin's move with nothing driving it: the
   pass-through went dead for the rest of the opening and the window followed the cursor after the
@@ -28,6 +37,15 @@ honest. The lines below are the detail, newest first.
   the walk and Tab (a selection of several windows stays). A carry back returns only from where
   the carry put the window. With separate cameras the closed walk and carry read and write a
   parked window as everything else does.
+- Flies, polished after review. A jump of a screen's height down, or most of a screen on a
+  diagonal, flies as a jump across does (measured by the width alone, a vertical jump barely
+  eased out, and a long diagonal never flew). A very far fly no longer races once the camera
+  reaches the overworld's zoom floor: it goes out, across and back in, taking a little longer
+  the farther it goes. A pinned window keeps its size through a fly instead of shrinking with
+  the plane; the window captions no longer blink on and off mid-flight; a window activated
+  during a fly is aimed from where the fly lands; the toggle chord during a fly opens the
+  overview instead of entering; and a swipe or a hold that meets a fly can no longer leave it
+  writing the camera after the landing.
 - Canvas Map fixes from review. A click on a cluster's label or on a minimized window in the
   tray did two things (the label's, then a click on the ground under it, so the desk slid past
   the cluster); it does one. Dragging a screen's frame on a two-monitor map moved the other

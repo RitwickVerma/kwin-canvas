@@ -438,8 +438,10 @@ function boundsOf(rects) {
 // is a streak, and the jump reads as a teleport - so the camera eases out until both ends are in
 // view, travels, and eases back in. A view is its centre and its width on the plane, { cx, cy, w }.
 // Returns { S, at(u) }: S is the path's length (rho = sqrt 2, the paper's recommended trade between
-// zooming and panning), and at(u), u in [0, 1], the view u of the way along it.
-function zoomPath(a, b) {
+// zooming and panning), and at(u), u in [0, 1], the view u of the way along it. maxW, when given,
+// is the widest view the camera may take: a path that would need a wider one goes out to it,
+// across and back in instead (capped: true).
+function zoomPath(a, b, maxW) {
     const rho = Math.SQRT2;
     const ux0 = a.cx, uy0 = a.cy, w0 = a.w, w1 = b.w;
     const dx = b.cx - ux0, dy = b.cy - uy0, d2 = dx * dx + dy * dy;
@@ -458,6 +460,29 @@ function zoomPath(a, b) {
     const r1 = Math.log(Math.sqrt(b1 * b1 + 1) - b1);
     const S = (r1 - r0) / rho;
     const c0 = cosh(r0);
+    // The widest view on the way: where cosh(rho s + r0) is least, or an end.
+    const sPeak = -r0 / rho;
+    const wPeak = sPeak > 0 && sPeak < S ? w0 * c0 : Math.max(w0, w1);
+    if (maxW > 0 && wPeak > maxW) {
+        // The camera cannot ease out that far (the overworld's zoom floor): out to the widest view it
+        // may take, across at that width, and back in. Measured the same way (a zoom by e is
+        // 1/rho long, a pan of one view's width is 1), so the duration keeps growing with the
+        // distance instead of the camera, held at the floor, racing to keep to the path.
+        const top = Math.max(maxW, w0, w1);
+        const L1 = Math.log(top / w0) / rho, L2 = d1 / top, L3 = Math.log(top / w1) / rho;
+        const S2 = L1 + L2 + L3;
+        return {
+            S: S2,
+            capped: true,
+            at: function (u) {
+                if (u >= 1) return { cx: b.cx, cy: b.cy, w: w1 };
+                const s = Math.max(0, u) * S2;
+                if (s < L1) return { cx: ux0, cy: uy0, w: w0 * Math.exp(rho * s) };
+                if (s < L1 + L2) { const k = (s - L1) / L2; return { cx: ux0 + k * dx, cy: uy0 + k * dy, w: top }; }
+                return { cx: b.cx, cy: b.cy, w: top * Math.exp(-rho * (s - L1 - L2)) };
+            }
+        };
+    }
     return {
         S: S,
         at: function (u) {
@@ -469,9 +494,52 @@ function zoomPath(a, b) {
     };
 }
 
-// A slide of (dx, dy) leaves nothing of the start on the screen (w x h): the far fly's case.
+// A slide of (dx, dy) that is a screen or more long, measured in screens (a screen's width across,
+// its height down, or the two together on a diagonal): the far fly's case. Little or nothing of
+// the start is left on the screen (w x h), and at 1:1 the eye would see a teleport.
 function isFarJump(dx, dy, w, h) {
-    return Math.abs(dx) >= w || Math.abs(dy) >= h;
+    return Math.hypot(dx / Math.max(1, w), dy / Math.max(1, h)) >= 1;
+}
+
+// The motion tick's pace. The open canvas steps its camera, its glides and its floats from two
+// sources: the frames KWin composites (a FrameAnimation, which the compositor's own animation
+// driver advances once a frame, 240 times a second on a 240 Hz monitor) and a 16 ms timer. The
+// frames give the motion the display's own rate; the timer starts it (a motion that has moved
+// nothing yet has damaged nothing, and no frame comes until something has) and carries it if the
+// frames stop. One clock, the caller's milliseconds, measures both, so a stretch of time is
+// stepped once, whichever source steps it.
+//
+// st: the state the last call returned (null at first); now: milliseconds; fromFrame: a frame
+// asks, not the timer. Returns { skip, dt, raw, st }: skip when the timer has nothing to do (the
+// frames are stepping), dt the seconds to step, raw the milliseconds since the last step, st the
+// state for the next call.
+//
+// A frame about one frame interval after a frame steps exactly the smoothed interval: the clock
+// has whole milliseconds, and a 4.17 ms frame read as 4, 4, 4, 5 would step the motion unevenly.
+// What the even step leaves out is kept as a debt and paid back up to a quarter of a millisecond a
+// frame, so the stepped time never drifts from the clock. A frame later than that (one dropped)
+// steps the time it really took.
+function tickPace(st, now, fromFrame) {
+    const s = st || { at: 0, frameAt: 0, frameMs: 0, debt: 0, fromFrame: false };
+    const raw = s.at > 0 ? Math.max(0, now - s.at) : 0;
+    if (!fromFrame) {
+        // The frames are coming: they step, and the timer waits (a frame and a half, never less
+        // than 20 ms, so a 60 Hz display's frames are never doubled by the timer's).
+        if (s.frameAt > 0 && now - s.frameAt < Math.max(20, 1.5 * s.frameMs)) return { skip: true, dt: 0, raw: raw, st: s };
+        return { skip: false, dt: Math.min(raw, 100) / 1000, raw: raw,
+                 st: { at: now, frameAt: s.frameAt, frameMs: s.frameMs, debt: 0, fromFrame: false } };
+    }
+    let frameMs = s.frameMs, ms = raw, debt = 0;
+    if (s.fromFrame && raw > 0) {
+        // The display's interval, from frame to frame only; a long gap is a pause, not a frame.
+        if (raw < 50) frameMs = frameMs > 0 ? frameMs * 0.9 + raw * 0.1 : raw;
+        if (frameMs > 0 && Math.abs(raw - frameMs) <= 1.5) {
+            ms = frameMs + Math.max(-0.25, Math.min(0.25, s.debt));
+            debt = Math.max(-5, Math.min(5, s.debt + raw - ms));
+        }
+    }
+    return { skip: false, dt: Math.min(ms, 100) / 1000, raw: raw,
+             st: { at: now, frameAt: now, frameMs: frameMs, debt: debt, fromFrame: true } };
 }
 
 // The map widget's clusters: the canvas's own clustering (recluster, reading the canvas's hysteresis

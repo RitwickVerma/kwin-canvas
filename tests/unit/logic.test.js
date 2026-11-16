@@ -725,6 +725,88 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
     ok("isFarJump: a screen's width across flies", L.isFarJump(-4096, 0, 4096, 1152));
     ok("isFarJump: a screen's height down flies", L.isFarJump(0, 1200, 4096, 1152));
     ok("isFarJump: no move does not", !L.isFarJump(0, 0, 4096, 1152));
+    ok("isFarJump: a diagonal of most of a screen each way flies", L.isFarJump(0.95 * 1920, 0.95 * 1080, 1920, 1080));
+    ok("isFarJump: a short diagonal slides", !L.isFarJump(0.5 * 1920, 0.5 * 1080, 1920, 1080));
+}
+
+// ---- the fly held at the zoom floor (zoomPath's maxW) ----
+{
+    const W = 1920;
+    const a = { cx: 0, cy: 0, w: W }, b = { cx: 200000, cy: 0, w: W };
+    const free = L.zoomPath(a, b);
+    const held = L.zoomPath(a, b, W / 0.05);
+    ok("zoomPath: a path that needs a wider view than the floor allows is capped", held.capped === true && !free.capped);
+    let widest = 0, ends = true;
+    for (let k = 0; k <= 400; ++k) widest = Math.max(widest, held.at(k / 400).w);
+    ok("zoomPath: the capped path never goes wider than the floor allows", widest <= W / 0.05 + 1e-6);
+    ends = near(held.at(0).w, W, 1e-6) && near(held.at(0).cx, 0, 1e-6) && near(held.at(1).cx, 200000, 1e-9) && held.at(1).w === W;
+    ok("zoomPath: the capped path starts and lands on the two views", ends);
+    let cont = true;
+    for (let k = 1; k <= 400; ++k) {
+        const p = held.at((k - 1) / 400), q = held.at(k / 400);
+        if (Math.abs(q.cx - p.cx) > 200000 / 400 * 3 || Math.abs(Math.log(q.w / p.w)) > 0.2) cont = false;
+    }
+    ok("zoomPath: the capped path is continuous", cont);
+    ok("zoomPath: held at the floor, a farther fly is a longer path", L.zoomPath(a, { cx: 400000, cy: 0, w: W }, W / 0.05).S > held.S + 1);
+    ok("zoomPath: a path within the floor is not capped", !L.zoomPath(a, { cx: 6000, cy: 0, w: W }, W / 0.05).capped);
+}
+
+// ---- the motion tick's pace (tickPace) ----
+{
+    // A 240 Hz display read through a whole-millisecond clock: the frames come every 4.1667 ms
+    // and are read as 4 or 5 ms apart.
+    const T = 1000 / 240, t0 = 50000;
+    let st = null, stepped = 0, minDt = Infinity, maxDt = 0, timerSteps = 0;
+    for (let k = 0; k <= 480; ++k) {
+        const now = Math.floor(t0 + k * T);
+        const p = L.tickPace(st, now, true);
+        st = p.st;
+        if (k > 0) stepped += p.dt * 1000;
+        if (k > 24) { minDt = Math.min(minDt, p.dt * 1000); maxDt = Math.max(maxDt, p.dt * 1000); }
+        // The timer fires on its own 16 ms beat in between: it never steps while the frames come.
+        if (k % 4 === 2) { const q = L.tickPace(st, now + 1, false); if (!q.skip) timerSteps++; else st = q.st; }
+    }
+    const wall = Math.floor(t0 + 480 * T) - Math.floor(t0);
+    ok("tickPace: a 240 Hz frame steps a frame's time, evenly (" + minDt.toFixed(3) + " to " + maxDt.toFixed(3) + " ms)",
+        minDt > T - 0.3 && maxDt < T + 0.3);
+    ok("tickPace: the stepped time keeps to the clock (" + stepped.toFixed(2) + " of " + wall + " ms)", Math.abs(stepped - wall) <= 5);
+    ok("tickPace: the timer steps nothing while the frames come", timerSteps === 0);
+
+    // The frames stop (the motion moved nothing yet, or the compositor paused): the timer carries.
+    const last = st.at;
+    ok("tickPace: the timer waits out a frame and a half, at least 20 ms", L.tickPace(st, last + 15, false).skip);
+    const carried = L.tickPace(st, last + 24, false);
+    ok("tickPace: then steps the time since the last frame", !carried.skip && near(carried.dt, 0.024, 1e-9));
+    // The first frame after the timer's step steps from that step, not from the frame before it:
+    // the stretch the timer stepped is not stepped twice.
+    const after = L.tickPace(carried.st, last + 28, true);
+    ok("tickPace: a frame after the timer steps only the time since it", near(after.dt, 0.004, 1e-9));
+
+    // A dropped frame steps what it took; a pause is clamped to a tenth of a second.
+    const dropped = L.tickPace(st, last + 8, true);
+    ok("tickPace: a dropped frame steps the time it took", near(dropped.dt, 0.008, 1e-9));
+    ok("tickPace: a long pause steps at most 100 ms", near(L.tickPace(st, last + 5000, true).dt, 0.1, 1e-9));
+
+    // No frames at all (the FrameAnimation never runs): the timer alone, as before.
+    let ts = null, sum = 0, skips = 0;
+    for (let k = 0; k <= 60; ++k) {
+        const q = L.tickPace(ts, 1000 + k * 16, false);
+        if (q.skip) skips++;
+        ts = q.st;
+        if (k > 0) sum += q.dt * 1000;
+    }
+    ok("tickPace: the timer alone steps every beat, its whole time", skips === 0 && near(sum, 960, 1e-6));
+    ok("tickPace: the first step of all steps nothing", L.tickPace(null, 1234, true).dt === 0 && L.tickPace(null, 1234, false).dt === 0);
+
+    // A 60 Hz display: the frames are 16.7 ms apart, and the timer's 16 ms beat never doubles them.
+    let s60 = null, doubled = 0;
+    for (let k = 0; k <= 120; ++k) {
+        const now = Math.floor(9000 + k * 1000 / 60);
+        s60 = L.tickPace(s60, now, true).st;
+        const q = L.tickPace(s60, now + 15, false);
+        if (!q.skip) doubled++;
+    }
+    ok("tickPace: at 60 Hz the timer never steps between two frames", doubled === 0);
 }
 
 // ---- the map widget's clusters (mapClusters) ----

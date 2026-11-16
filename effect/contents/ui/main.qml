@@ -2144,6 +2144,34 @@ KWin.SceneEffect {
         noteGesture();
         camGo(b.z, b.x, b.y, undefined, undefined, 2.0);
     }
+    // The bookmarks from anywhere, the global actions' (Canvas Bookmark N, Canvas Save Bookmark
+    // N: no default chord). Open, they are Ctrl+digit and Alt+digit. Closed, a save keeps the
+    // desk as it is, the view of the screen the pointer is on at 1:1; a go slides the desk to the
+    // bookmark at 1:1, its middle at the middle of the screen the pointer is on, and flies when
+    // the bookmark is wholly off the screen, as every far slide does. A bookmark saved zoomed
+    // out is gone to at 1:1 too: the desk is never zoomed.
+    function bookmarkSetAnywhere(n) {
+        if (!(n >= 1 && n <= 9)) return;
+        landQuiet();
+        if (canvasOpen) { bookmarkSet(n); return; }
+        const t = peekTargetOn(currentActivity, actionScreen());
+        if (!Number.isFinite(t.x) || !Number.isFinite(t.y)) return;
+        const all = Object.assign({}, bookmarks);
+        all[n] = { x: Math.round(t.x), y: Math.round(t.y), z: 1 };
+        bookmarks = all;
+        configuration.Bookmarks = JSON.stringify(all);
+        configuration.writeConfig();
+        notify("Bookmark " + n + " saved");
+    }
+    function bookmarkGoAnywhere(n) {
+        if (!(n >= 1 && n <= 9)) return;
+        if (canvasOpen) { bookmarkGo(n); return; }
+        const b = bookmarks[n];
+        if (!b) { notify("No bookmark " + n); return; }
+        const z = b.z > 0 ? b.z : 1;
+        const g = actionScreen().geometry;
+        mapGo(b.x + (g.x + g.width / 2) / z, b.y + (g.y + g.height / 2) / z);
+    }
     // The toast: a brief glass chip naming what just happened.
     property string toastText: ""
     property int toastRev: 0
@@ -3722,14 +3750,13 @@ KWin.SceneEffect {
     // stepping the canvas out around its own screen.
     function camZoomTo(z, gx, gy) { camGo(z, viewX, viewY, gx, gy); }
 
-    // One step, dt in seconds. A Timer and not a FrameAnimation: a
-    // FrameAnimation advances with the frames the compositor draws for the
-    // effect, so the first step of a gesture would wait for damage the gesture
-    // has not caused yet - the wheel sets a goal, nothing on screen has moved,
-    // no frame is drawn, and the spring never starts. A timer steps from the
-    // event loop; the step it takes is what damages the scene, and the motion
-    // then keeps its own frames coming. The tick calls this in sub-steps of at
-    // most 16 ms (a frame at 60 Hz): an explicit Euler spring is only stable
+    // One step, dt in seconds. The motion tick (motionTick) calls it from the
+    // frames while the camera moves and from its timer to start it: a
+    // FrameAnimation alone advances only with the frames the compositor draws,
+    // so the first step of a gesture would wait for damage the gesture has not
+    // caused yet - the wheel sets a goal, nothing on screen has moved, no frame
+    // is drawn, and the spring never starts. The tick calls this in sub-steps of
+    // at most 16 ms (a frame at 60 Hz): an explicit Euler spring is only stable
     // for a fraction of its period, so a long tick is split, never stretched.
     function camStep(dt) {
         if (!camLive() || dt <= 0) return;
@@ -3795,51 +3822,70 @@ KWin.SceneEffect {
         }
     }
 
-    property real lastTickAt: 0
-
-    // The physics tick's dt: the real time since the last tick, up to a
-    // tenth of a second (past that the loop stalled, and catching up would
-    // lurch). The Euler spring is only stable for a fraction of its period,
-    // so the tick integrates it in sub-steps of at most a frame at 60 Hz:
-    // under load the camera keeps real time, as the wall-clock slides do,
-    // instead of running in slow motion against them.
-    // The first tick after an open is one frame, whatever the clock says: the
-    // scene's first paint can take 100 to 200 ms, and a spring that integrates
-    // all of it takes a third of the way in its first step - the start of the
-    // motion is skipped, and the open reads as a jump and then a glide.
+    // The motion tick: the camera's spring, the glides and the floats, stepped by the time that
+    // really passed, up to a tenth of a second (past that the loop stalled, and catching up would
+    // lurch). The Euler spring is only stable for a fraction of its period, so the tick integrates
+    // it in sub-steps of at most a frame at 60 Hz: under load the camera keeps real time, as the
+    // wall-clock slides do, instead of running in slow motion against them.
+    //
+    // Two sources step it, paced by Logic.tickPace on one clock. While something moves, the frames
+    // the compositor draws (motionFrames, a FrameAnimation: KWin's own animation driver advances it
+    // once a composited frame, as it does the slides' NumberAnimations), so the open canvas moves at
+    // the display's rate: a 240 Hz monitor had the camera stepped 60 times a second by the 16 ms
+    // timer alone, and every position held for four frames. The timer (motionTimer) starts a motion
+    // and carries it when no frame comes: a motion that has moved nothing yet has damaged nothing,
+    // and the compositor draws no frame for it; the timer's step is what damages the scene, and the
+    // frames then keep coming. While they do, the timer steps nothing.
+    //
+    // The first tick after an open is one frame, whatever the clock says: the scene's first paint
+    // can take 100 to 200 ms, and a spring that integrates all of it takes a third of the way in its
+    // first step - the start of the motion is skipped, and the open reads as a jump and then a glide.
     property bool tickFresh: false
-    function frameDt() {
+    property var motionPace: null
+    // Something the tick moves: the camera, or a window's glide. Only then do the frames step it
+    // (a FrameAnimation running over a still scene would be stepped by every frame drawn for
+    // anything else, for nothing).
+    readonly property bool motionLive: camHasGoal || Math.abs(camVX) > 0.001 || Math.abs(camVY) > 0.001
+        || Math.abs(camVZoom) > 0.0001 || glidesLive
+    readonly property bool glidesLive: { moveRev; for (const id in entryAnims) return true; return false; }
+    // The pace for a tick of the scene's (the edge pan's): Logic.tickPace on the canvas's clock.
+    function tickPace(st, fromFrame) { return Logic.tickPace(st, Date.now(), fromFrame); }
+    function motionTick(fromFrame) {
         const now = Date.now();
-        let dt = (now - lastTickAt) / 1000;
-        if (!(dt > 0)) dt = 0;
-        lastTickAt = now;
-        if (perf) perfTick(now, dt * 1000, tickFresh);
-        if (tickFresh) { tickFresh = false; return 0.0167; }
-        return Math.min(dt, 0.1);
+        const p = Logic.tickPace(motionPace, now, fromFrame);
+        if (p.skip) return;
+        motionPace = p.st;
+        let dt = p.dt;
+        if (perf) perfTick(now, p.raw, tickFresh);
+        if (tickFresh) { tickFresh = false; dt = 0.0167; }
+        if (camLive()) {
+            const n = Math.max(1, Math.ceil(dt / 0.0167));
+            for (let i = 0; i < n; ++i) camStep(dt / n);
+        }
+        if (perf) perfSettleCheck(now);
+        // Each of these is a walk over every window: at rest with nothing
+        // floating and nothing gliding there is nothing for them to do.
+        // The float walk also drops a picture whose window has just been
+        // unpinned (floatOf), so it runs while any picture is still held,
+        // not only while a window is pinned.
+        if (pinnedCount > 0 || floatHeld()) floatPinned(dt);
+        for (const id in entryAnims) { stepEntryAnims(); break; }
     }
 
+    FrameAnimation {
+        id: motionFrames
+        running: effect.visible && effect.motionLive
+        onTriggered: effect.motionTick(true)
+    }
     Timer {
+        id: motionTimer
         // A display's own cadence is all the compositor needs: the old 8 ms
         // ticks repainted twice per frame, and that doubled full-screen load
         // is exactly what starved the video wallpaper's renderer in motion.
         interval: 16
         repeat: true
         running: effect.visible
-        onTriggered: {
-            const dt = effect.frameDt();
-            if (effect.camLive()) {
-                const n = Math.max(1, Math.ceil(dt / 0.0167));
-                for (let i = 0; i < n; ++i) effect.camStep(dt / n);
-            }
-            if (effect.perf) effect.perfSettleCheck(Date.now());
-            // Each of these is a walk over every window: at rest with nothing
-            // floating and nothing gliding there is nothing for them to do.
-            // The float walk also drops a picture whose window has just been
-            // unpinned (floatOf), so it runs while any picture is still held,
-            // not only while a window is pinned.
-            if (effect.pinnedCount > 0 || effect.floatHeld()) effect.floatPinned(dt);
-            for (const id in effect.entryAnims) { effect.stepEntryAnims(); break; }
-        }
+        onTriggered: effect.motionTick(false)
     }
 
     // ---- opening and closing fades ------------------------------------------
@@ -4038,6 +4084,7 @@ KWin.SceneEffect {
         // own write, which the frame watch does not take for another hand.
         if (!quietMode || grasp) floatHome = ({});
         tickFresh = true;
+        motionPace = null;
         { const cp = cursorScreen(); chromeScreen = screenAt(cp.x, cp.y) || null; chromeCandidate = null; }
         if (perf) {
             perfOpenAt = Date.now();
@@ -4376,7 +4423,7 @@ KWin.SceneEffect {
     function toggle() {
         // A chord during a slide lands the slide first and then does what it says (as Home, the
         // walk and the search do); the grasp's hold is its own gesture and the chord only ends it.
-        if (quiet) { if (grasp) { graspEnd(); return; } finishSlide(); }
+        if (quiet) { if (grasp) { graspEnd(); return; } landQuiet(); }
         // Pushed again with the camera where the open left it (the border's own rule): nothing was
         // chosen, so the way out is the way back, not the plane's middle.
         if (visible && untouchedSinceOpen()) { cancel(); return; }
@@ -6349,16 +6396,33 @@ KWin.SceneEffect {
         // A destination wholly off the screen is a fly, not a slide: at 1:1 the content would cross
         // several screens in a third of a second and the eye sees a teleport. A fly already under
         // way (the camera zoomed out) takes a new destination the same way, from where it is.
-        if (panDuration > 0 && animFactor > 0.02 && !separate
+        // Not under the fingers (a swipe writes the view itself) nor under the grasp's hold (its
+        // quiet scene reads the zoom as the hold's own).
+        if (panDuration > 0 && animFactor > 0.02 && !separate && !swiping && !grasp
             && (flightAnim.running || Logic.isFarJump(slideToX - viewX, slideToY - viewY, g.width, g.height))) {
             flyGo(g);
             return;
         }
-        flightAnim.stop();
-        const dist = Math.hypot(slideToX - viewX, slideToY - viewY) * zoom;
-        const half = Math.max(1, Math.hypot(g.width, g.height) / 2);
-        slideMs = panDuration <= 0 ? 0 : Math.round(Math.max(0.8, Math.min(1.5, 0.8 + 0.7 * Math.sqrt(dist / half))) * panDuration * animFactor);
+        if (flightAnim.running) {
+            // A fly turned into a plain slide mid-way (the cameras separated, the animations made
+            // instant, a swipe began): the camera comes back to 1:1 about the middle it has
+            // reached, and slides from there.
+            const cx = viewX + flightHX / zoom, cy = viewY + flightHY / zoom;
+            flightAnim.stop();
+            flightPath = null;
+            zoom = 1.0;
+            viewX = cx - flightHX;
+            viewY = cy - flightHY;
+        }
+        slideMs = hopMs(Math.hypot(slideToX - viewX, slideToY - viewY) * zoom, g);
         slideAnim.restart();
+    }
+    // A slide's length in time for a distance in screen pixels on screen g: PanDuration is about
+    // half a screen, shorter hops are quicker, longer ones a little longer.
+    function hopMs(dist, g) {
+        if (panDuration <= 0) return 0;
+        const half = Math.max(1, Math.hypot(g.width, g.height) / 2);
+        return Math.round(Math.max(0.8, Math.min(1.5, 0.8 + 0.7 * Math.sqrt(dist / half))) * panDuration * animFactor);
     }
     // The far fly (Logic.zoomPath): the quiet scene eases out until the start and the destination
     // are both in view, travels, and eases back in to land at 1:1, as web maps fly. The views are
@@ -6369,6 +6433,10 @@ KWin.SceneEffect {
     property real flightHX: 0
     property real flightHY: 0
     property real flightW: 1
+    // The path is planned with the screen made square: its heights are counted in its widths (y
+    // times flightYS), so a jump of a screen's height down eases out as far as a screen's width
+    // across does (measured by the width alone, it barely eased out at all).
+    property real flightYS: 1
     property real flightMinZoom: 1
     property int flightMs: panDuration
     function flyGo(g) {
@@ -6376,12 +6444,18 @@ KWin.SceneEffect {
         flightHX = g.x + g.width / 2;
         flightHY = g.y + g.height / 2;
         flightW = Math.max(1, g.width);
-        flightPath = Logic.zoomPath({ cx: viewX + flightHX / zoom, cy: viewY + flightHY / zoom, w: flightW / zoom },
-                                    { cx: slideToX + flightHX, cy: slideToY + flightHY, w: flightW });
+        flightYS = flightW / Math.max(1, g.height);
+        // Never wider than the overworld's zoom floor lets the camera see: past it the path goes
+        // out, across and back in, and its length (so its time) keeps growing with the distance.
+        flightPath = Logic.zoomPath({ cx: viewX + flightHX / zoom, cy: (viewY + flightHY / zoom) * flightYS, w: flightW / zoom },
+                                    { cx: slideToX + flightHX, cy: (slideToY + flightHY) * flightYS, w: flightW },
+                                    flightW / Math.max(1e-3, zoomMin));
         flightMinZoom = Math.min(flightMinZoom, zoom);
         // The duration grows with the path, gently: a screen and a half is about a third of a
-        // second more than a hop, a far cluster half a second, never more than four slides.
-        flightMs = Math.round(panDuration * animFactor * Math.min(4, 0.9 + 0.6 * flightPath.S));
+        // second more than a hop, a far cluster half a second, never more than six slides; and a
+        // fly is never quicker than the slide it stands in for.
+        const hop = hopMs(Math.hypot(slideToX - viewX, slideToY - viewY) * zoom, g);
+        flightMs = Math.max(hop, Math.round(panDuration * animFactor * Math.min(6, 0.9 + 0.6 * flightPath.S)));
         dbg("slide", "far: flying " + Math.round(Math.hypot(slideToX - viewX, slideToY - viewY)) + " px in " + flightMs + " ms");
         flightT = 0;
         flightAnim.restart();
@@ -6393,7 +6467,7 @@ KWin.SceneEffect {
         flightMinZoom = Math.min(flightMinZoom, z);
         zoom = z;
         viewX = v.cx - flightHX / z;
-        viewY = v.cy - flightHY / z;
+        viewY = v.cy / flightYS - flightHY / z;
     }
     NumberAnimation {
         id: flightAnim
@@ -6463,6 +6537,9 @@ KWin.SceneEffect {
     // screen.
     function endSlide() {
         if (!quiet) return;
+        // The landing is the slide's (a swipe's settle can land while a fly still runs): the fly
+        // ends with it, so it cannot go on writing the camera of a closed canvas.
+        if (flightAnim.running) { flightAnim.stop(); flightPath = null; }
         stopClickPan();
         swiping = false;
         dropPassthrough();
@@ -6814,6 +6891,14 @@ KWin.SceneEffect {
             const g = planeGraph();
             for (let i = 0; i < g.nodes.length; ++i) if (g.win[g.nodes[i].id] !== w) others.push(g.nodes[i]);
         }
+        // A slide or a fly under way: the pan is measured from where it is going, at 1:1, and
+        // chained onto it (the camera mid-way, zoomed out on a fly, is not the view it lands on).
+        if (quiet && (slideAnim.running || flightAnim.running)) {
+            const dd = Logic.smartPanNeighbourhood(rect, others, actionScreen().geometry, slideToX, slideToY, 1, 24);
+            if (dd.dx !== 0 || dd.dy !== 0) slide(dd.dx, dd.dy);
+            raiseAfterFly(w);
+            return;
+        }
         const d = smartPan(rect, others, 24);
         if (d.dx !== 0 || d.dy !== 0) slideTo(d.dx, d.dy);
         // Raised now, not at the landing: the slide is a quiet scene over the
@@ -6997,6 +7082,28 @@ KWin.SceneEffect {
     KWin.ShortcutHandler { name: "Canvas Origin";   text: "Canvas: camera to the origin";      sequence: ""; onActivated: if (effect.canvasOpen) effect.origin() }
     KWin.ShortcutHandler { name: "Canvas Zoom In";  text: "Canvas: zoom in";                   sequence: ""; onActivated: if (effect.canvasOpen) effect.camZoomTo(effect.zoom * effect.zoomStep, effect.cursorScreen().x, effect.cursorScreen().y) }
     KWin.ShortcutHandler { name: "Canvas Zoom Out"; text: "Canvas: zoom out";                  sequence: ""; onActivated: if (effect.canvasOpen) effect.camZoomTo(effect.zoom / effect.zoomStep, effect.cursorScreen().x, effect.cursorScreen().y) }
+    // The nine bookmarks as global actions, open or closed (bookmarkGoAnywhere), with no
+    // default chord: Ctrl+digit and Alt+digit are the open canvas's own keys.
+    Instantiator {
+        model: 9
+        delegate: KWin.ShortcutHandler {
+            required property int index
+            name: "Canvas Bookmark " + (index + 1)
+            text: "Canvas: go to bookmark " + (index + 1)
+            sequence: ""
+            onActivated: effect.bookmarkGoAnywhere(index + 1)
+        }
+    }
+    Instantiator {
+        model: 9
+        delegate: KWin.ShortcutHandler {
+            required property int index
+            name: "Canvas Save Bookmark " + (index + 1)
+            text: "Canvas: save this view as bookmark " + (index + 1)
+            sequence: ""
+            onActivated: effect.bookmarkSetAnywhere(index + 1)
+        }
+    }
     // Pan at 1:1 by one step (a slide), or move the open canvas's camera.
     KWin.ShortcutHandler { name: "Canvas Pan Left";  text: "Canvas: pan left";  sequence: effect.configuration.PanLeftShortcut;  onActivated: effect.panStepBy(-1, 0) }
     KWin.ShortcutHandler { name: "Canvas Pan Right"; text: "Canvas: pan right"; sequence: effect.configuration.PanRightShortcut; onActivated: effect.panStepBy(1, 0) }
@@ -7052,8 +7159,8 @@ KWin.SceneEffect {
         case "apphome": if (a[1] === "set") setAppHome(); else if (a[1] === "forget") forgetAppHome(); break;
         case "bookmark": {
             // bookmark set N | bookmark go N: the keys' two verbs, for a script.
-            if (a[1] === "set" && numok(2)) bookmarkSet(Number(a[2]));
-            else if (a[1] === "go" && numok(2)) bookmarkGo(Number(a[2]));
+            if (a[1] === "set" && numok(2)) bookmarkSetAnywhere(Number(a[2]));
+            else if (a[1] === "go" && numok(2)) bookmarkGoAnywhere(Number(a[2]));
             break;
         }
         case "origin": origin(); break;

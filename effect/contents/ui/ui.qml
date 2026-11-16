@@ -504,6 +504,7 @@ Item {
             }
         }
         Item {
+            id: groundLayer
             anchors.fill: parent
             visible: !view.replica
 
@@ -649,14 +650,30 @@ Item {
         // up. A window in hand rides the pan (edgePanStep): holding the button
         // on a window and pushing the pointer to the edge carries the window
         // with it. The screen the pointer is on does the panning, so a hold that
-        // walks onto another screen hands over to that screen's view. A Timer,
-        // as the camera's is, for the same reason: it steps from the event loop
-        // rather than waiting for a frame, and its own step is what gets drawn.
+        // walks onto another screen hands over to that screen's view. Stepped as
+        // the camera's motion tick is (effect.motionTick): by the frames while
+        // the pan moves, so it keeps the display's rate, and by a timer that
+        // starts it, since a pan that has not moved yet has drawn no frame.
+        readonly property bool edgePanLive: view.navHeld && effect.edgePan && (effect.canvasOpen || effect.grasp) && !effect.chromeHover
+        property var edgePace: null
+        onEdgePanLiveChanged: edgePace = null
+        function edgeTick(fromFrame) {
+            const p = effect.tickPace(edgePace, fromFrame);
+            if (p.skip) return;
+            edgePace = p.st;
+            // The first step after the button goes down has no time behind it: one frame at 60 Hz.
+            effect.edgePanStep(view.sg, p.raw > 0 ? p.dt : 0.016);
+        }
+        // The frames only while the pan moves: held still, out of the band, there is nothing to step.
+        FrameAnimation {
+            running: groundLayer.edgePanLive && effect.edgePanGain > 0
+            onTriggered: groundLayer.edgeTick(true)
+        }
         Timer {
-                        interval: 16
+            interval: 16
             repeat: true
-            running: view.navHeld && effect.edgePan && (effect.canvasOpen || effect.grasp) && !effect.chromeHover
-            onTriggered: effect.edgePanStep(view.sg, interval / 1000)
+            running: groundLayer.edgePanLive
+            onTriggered: groundLayer.edgeTick(false)
         }
 
         // Zoom at the cursor, whether or not a pan button is held: a notch up
@@ -835,8 +852,10 @@ Item {
                 property var held: null
                 x: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; effect.moveRev; const f = (effect.floatAnchor && effect.floatAnchor[thumb.entry.window.internalId]) || effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].x - effect.viewX) * effect.zoom - view.sg.x; return f ? f.x - view.sg.x : base; }
                 y: { effect.revision; effect.floatRev; effect.viewX; effect.viewY; effect.zoom; effect.moveRev; const f = (effect.floatAnchor && effect.floatAnchor[thumb.entry.window.internalId]) || effect.floatOf[thumb.entry.window.internalId]; const base = (effect.entries[index].y - effect.viewY) * effect.zoom - view.sg.y; return f ? f.y - view.sg.y : base; }
-                width: { effect.revision; return effect.entries[index].width * effect.zoom; }
-                height: { effect.revision; return effect.entries[index].height * effect.zoom; }
+                // A float in a slide or a fly (floatAnchor) is the real window on the glass: its
+                // spot and its size are the screen's, at 1:1, while the plane eases out under it.
+                width: { effect.revision; effect.floatRev; const a = effect.floatAnchor && effect.floatAnchor[thumb.entry.window.internalId]; return effect.entries[index].width * (a ? 1 : effect.zoom); }
+                height: { effect.revision; effect.floatRev; const a = effect.floatAnchor && effect.floatAnchor[thumb.entry.window.internalId]; return effect.entries[index].height * (a ? 1 : effect.zoom); }
                 visible: !effect.quiet || entry.activity === effect.currentActivity
                 // The entries are the real stacking order, so the index IS the
                 // z; the hovered window lifts above the web, and nothing else
@@ -1131,7 +1150,9 @@ Item {
                     text: thumb.entry.window.caption
                     color: "#ffffff"
                     font.pixelSize: 12
-                    visible: effect.ql >= 3 || effect.zoom < 0.6 || thumb.hovered
+                    // Not in a slide or a fly: a far fly eases out past 0.6 and back, and the
+                    // captions would blink on and off over the moving desk.
+                    visible: effect.ql >= 3 || (effect.zoom < 0.6 && !effect.quiet) || thumb.hovered
                     style: Text.Outline
                     styleColor: "#000000"
                 }

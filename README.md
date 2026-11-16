@@ -201,6 +201,7 @@ tile, a maximized window) moves as a whole room on the plane.
 | Meta+Ctrl+Space (`HomeShortcut`) | return this activity to the plane's origin: its viewport becomes (0, 0), the windows ride along | look through this activity's frames |
 | Meta+Ctrl+F (or `/` when the canvas has the keys) | find a window: the overview opens fitted | type words of a window's title or app: the others dim, the camera brings the match to the middle; Tab steps the matches, Enter flies into the chosen one, Esc ends the search |
 | pan chords (no default; bind under Shortcuts → KWin) | slide the desktop half a screen that way | move the camera |
+| bookmark chords (Canvas Bookmark 1..9 and Canvas Save Bookmark 1..9; no default) | go to the bookmark at 1:1, sliding or flying there; save the desk as it is | fly to the bookmark; save the view (as `Alt+1..9` and `Ctrl+1..9`) |
 | three-finger touchpad swipe | the desktop follows the fingers, then settles half a screen that way | |
 | drag on ground, Space+drag, or middle-drag | | pan |
 | hold a button and drag (`PanHold`, empty by default; the right button and the side buttons are there if you want one), or the middle button | | a portal into the canvas: drag the ground to pan, drag a window (its client area too) to move it on the plane — the app under it never sees the press. The middle button pans from anywhere, windows and tags included |
@@ -344,7 +345,8 @@ Everything above is reassignable the KDE way:
   starting with "Canvas": Toggle Canvas, Canvas Home, Canvas Search, the four
   switcher chords, the walk and carry chords, the pan chords (Canvas Pan Left,
   Right, Up, Down; every Meta+arrow chord is taken by KWin, so these have no
-  default until you give them one) and the in-canvas actions (Canvas Apply,
+  default until you give them one), the bookmark chords (Canvas Bookmark 1..9,
+  Canvas Save Bookmark 1..9; no default) and the in-canvas actions (Canvas Apply,
   Cancel, Fit, Origin, Zoom In, Zoom Out; no default). The effect registers
   its defaults once; KDE's own actions register first, so a chord KDE holds
   never reaches the canvas until KDE's is unbound (`kwin-canvas setup`).

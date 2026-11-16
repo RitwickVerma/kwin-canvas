@@ -78,8 +78,9 @@ thumbnails, with no tags, borders or toolbar. At zoom 1 that is
 pixel-identical to the real screen when the Canvas Ground wallpaper is in
 use. A `ParallelAnimation` moves `viewX`/`viewY` to `slideTo` over
 `PanDuration` with an ease-out; a second slide while one runs adds to the
-destination and restarts. A slide whose destination is wholly off the screen
-(`Logic.isFarJump`: a screen's width or height or more) flies instead: at 1:1
+destination and restarts. A slide a screen or more long, measured in screens
+(`Logic.isFarJump`: its width across, its height down, or both together on a
+diagonal), flies instead: at 1:1
 the content would cross several screens in a third of a second, every frame in
 between a streak, and the jump read as a teleport (the owner's word, about the
 map widget's clicks; the live log had slides of 12 000 to 16 000 px in 290 ms).
@@ -88,10 +89,22 @@ maps and d3's `interpolateZoom` use) from the camera's view to the destination's
 the quiet scene eases out until both ends are in view (a cluster 15 000 px away
 on a 4096 px screen, to about zoom 0.26), travels and lands at 1:1, in
 `PanDuration` times 0.9 + 0.6 S (S the path's length; about 570 ms there,
-never more than four slides), with an ease-out so it leaves at once. A new
+never more than six slides, and never less than the slide it stands in for),
+with an ease-out so it leaves at once. The path is planned with the screen made
+square (its heights counted in its widths), so a jump of a screen's height down
+eases out as far as one of its width across. A path that would need a wider view
+than the overworld's zoom floor (`ZoomMin`) allows goes out to the floor, across
+and back in, and its length keeps growing with the distance: held at the floor
+on the free path, the camera raced to keep to it (a full screen a frame at
+200 000 px). A new
 destination mid-flight re-plans from the zoomed-out camera; a cancel, a drop or
 a takeover puts the camera at 1:1 on the destination first (`stopFlight`), so
-`endSlide` measures as it always has. Separate cameras keep the plain slide. On arrival the entry targets are restored and
+`endSlide` measures as it always has. Separate cameras keep the plain slide, and so do a
+swipe (the fingers write the view) and the grasp's hold (its scene reads the zoom as its
+own); a fly that a landing overtakes ends with it (`endSlide`), and an activation mid-flight
+is aimed from where the fly is going, at 1:1 (`flyToWindow`), not from the zoomed-out camera.
+A float keeps its screen spot and its 1:1 size through a fly, and the captions the overworld
+shows below zoom 0.6 stay off in a slide. On arrival the entry targets are restored and
 `shiftAll` moves this activity's windows by the distance travelled, while
 the thumbnails still cover them, and the effect hides. A slide is
 navigation: only the current activity's windows are drawn while quiet, and
@@ -577,8 +590,9 @@ gesture, so the edge pans with no drag at all. The Screen Edges handlers ask
 for the same hold before they toggle the canvas, so a pointer pushed into a
 corner on purpose pans instead of closing it.
 
-`edgePanStep(sg, dt)` is one tick of the edge screen's own 16 ms `Timer`,
-running while a
+`edgePanStep(sg, dt)` is one tick of the edge screen's own pan tick (a
+`FrameAnimation` while the pan moves and a 16 ms `Timer` that starts it, paced
+as the camera's motion tick is), running while a
 button is held and the pointer is inside an edge band
 `EdgePanMargin` screen pixels wide:
 the depth in the band times `EdgePanSpeed` screen pixels per second, signed
@@ -905,18 +919,34 @@ absorbs as no move rather than as a drag the float must then correct.
 ## Motion
 
 The camera is not a timeline. `viewX`, `viewY` and `zoom` are the state, a set
-of velocities (`camVX`, `camVY`, `camVZoom`) is what moves them, and one
-`FrameAnimation` integrates while anything is live (`camLive()`), so any motion
-can be taken over mid-flight by a hand, a new destination or a commit without a
-jolt and without a queue. A `Timer` and not a `FrameAnimation`: the frame
-animation advances with the frames the compositor draws for the effect, so the
-first step of a gesture would wait for damage the gesture has not caused yet —
-the wheel sets a goal, nothing on screen has moved, no frame is drawn, and the
-spring would never start. The timer steps from the event loop, and the step it
-takes is what damages the scene, so the motion keeps its own frames coming. Its
-dt is the interval rather than what the event loop actually took, so a busy loop
-slows the camera rather than lengthening the steps an explicit Euler spring is
-only stable for a fraction of a period of. Two motions fall out of
+of velocities (`camVX`, `camVY`, `camVZoom`) is what moves them, and one tick
+(`motionTick`) integrates them while anything is live (`camLive()`), so any
+motion can be taken over mid-flight by a hand, a new destination or a commit
+without a jolt and without a queue. The same tick steps the window glides
+(`stepEntryAnims`) and the floats (`floatPinned`).
+
+Two sources step it, paced on one clock by `Logic.tickPace`. While something
+moves (`motionLive`), a `FrameAnimation` does: KWin's compositor installs its own
+Qt animation driver and advances it once a composited frame
+(`Compositor::composite`), so the frame animation, like the slides'
+`NumberAnimation`s, runs at the display's rate. A 16 ms `Timer` starts a motion
+and carries it when no frame comes: the first step of a gesture cannot wait for a
+frame, because the wheel sets a goal, nothing on screen has moved, no frame is
+drawn, and the spring would never start. The timer's step is what damages the
+scene; the frames then keep coming, and while they do the timer steps nothing (it
+waits a frame and a half, at least 20 ms, so a 60 Hz display's frames are never
+doubled). Before, the timer alone stepped the camera, 60 times a second whatever
+the display: on a 240 Hz monitor every position of a flight, a pan or a zoom was
+held for four frames, while the slides beside them moved every frame. The clock
+has whole milliseconds, so a frame about one frame interval after a frame steps
+the smoothed interval (4.17 ms read as 4, 4, 4, 5 would step unevenly), with the
+difference paid back so the stepped time keeps to the clock; a dropped frame
+steps the time it took. `tickPace` is unit-tested (`tests/unit/logic.test.js`).
+
+The step is the time that really passed, up to a tenth of a second, integrated
+in sub-steps of at most 16 ms, since an explicit Euler spring is only stable for
+a fraction of its period: under load the camera keeps real time instead of
+running in slow motion. Two motions fall out of
 that.
 
 **A glide** is a pan the hand let go of: `camFling(dx, dy, ms)` from the pan
@@ -982,7 +1012,7 @@ growing list.
 | `settle` | `ms`, `zoom` | `open()` until the camera is within 2% of its goal, once per open (at once when there is no goal) |
 | `slide` | `dist`, `ms`, `arc` | a quiet slide: distance in px and wall-clock time from the animation's start to its landing; `arc`, only on a far fly, is the lowest zoom the camera eased out to |
 | `hover-fetch` | `ms` | the rest that made the camera fetch a hovered window (the pointer's rest, which is the fetch's latency) |
-| `ticks` | `n`, `p50`, `p95`, `max` | physics tick spacing in ms over the session, written when the canvas closes |
+| `ticks` | `n`, `p50`, `p95`, `max` | motion tick spacing in ms over the session (the display's frames while something moves, the 16 ms timer otherwise: a 240 Hz monitor reads `p50=4` in a flight), written when the canvas closes |
 | `built` | `n`, `moving`, `frames`, `of`, and a count per kind (`thumb`, `web`, `badge`, `chip`, `weave`) | scene items created in the session, written when the canvas closes; `moving` counts those created while the camera or a drag was moving (a re-weave of the cluster web counts as `weave`), `frames` in how many of the session's `of` frames that happened. A rebuild on the frame path builds in most moving frames; a window that opens mid-flight builds its badge in one. Doctor and `perf --week` call it a rebuild at 5 frames and a tenth of the session's |
 | `moved` | `win`, `cls`, `dx`, `dy`, `open`, `quiet`, `pinned`, `floats`, `since …` | a real window's position changed by something other than the canvas and was adopted into the plane (a move the classifier did not take for KWin's reachability rule or an echo: see *Frame authority*), open or closed; the first 60 of a session |
 | `reverted` | `win`, `cls`, `dx`, `dy`, `why`, `open`, `quiet`, `since …` | something other than the hand or the canvas moved a window from out of reach to in reach (`why=revert`), or back onto a spot the canvas's own write had moved it from (`why=echo`, a late configure), and the canvas put it back (*Frame authority*); `since` is the milliseconds since the last open, close, focus change, dock event and layout change, `-` when none in five seconds |
@@ -1400,11 +1430,19 @@ zone number, so it takes the same path, but it is not installed in the nest.
 Nine saved views, slot 1 to 9. Ctrl+digit in the open canvas stores where the
 camera is looking - or, in a flight, where it is going - and how far out;
 Alt+digit flies back with `camGo` on the same spring as every other flight
-(`bookmarkSet`, `bookmarkGo`, and the debug verbs `bookmark set N` / `bookmark go N`).
-Bare digits stay the cluster jump. The slots are JSON in the hidden `Bookmarks`
+(`bookmarkSet`, `bookmarkGo`). Bare digits stay the cluster jump.
+
+The global actions `Canvas Bookmark N` and `Canvas Save Bookmark N` (no default
+chord, System Settings > Shortcuts > KWin) do the same open, and work closed:
+`bookmarkSetAnywhere` keeps the desk as it is, the target of the screen the pointer
+is on at zoom 1, and `bookmarkGoAnywhere` goes the way the map widget's click on the
+ground does (`mapGo`): a slide at 1:1 that puts the bookmark's middle at the middle
+of the pointer's screen, and the far fly when that is wholly off the screen. A
+bookmark saved zoomed out is gone to at 1:1 about its middle. The debug verbs
+`bookmark set N` / `bookmark go N` take the same path. The slots are JSON in the hidden `Bookmarks`
 knob, loaded at startup, so they survive a restart; `state` reports `bookmarks=`
 (how many are held). Scenario `145` pins the flight, an empty slot, the config
-write and the real keys.
+write, the real keys and the closed save, slide, fly and zoomed-out landing.
 
 ## Next
 
