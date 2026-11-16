@@ -5521,9 +5521,11 @@ KWin.SceneEffect {
         };
         const stack = KWin.Workspace.stackingOrder;
         if (live) {
+            // A window minimized since the last resync is still an entry for up to a second: the
+            // minimized pass below lists it, once.
             for (let i = 0; i < entries.length; ++i) {
                 const e = entries[i];
-                if (e.window && !e.window.deleted) add(e.window, e.x, e.y, e.width, e.height);
+                if (e.window && !e.window.deleted && !e.window.minimized) add(e.window, e.x, e.y, e.width, e.height);
             }
         } else {
             for (let i = 0; i < stack.length; ++i) {
@@ -5539,7 +5541,9 @@ KWin.SceneEffect {
             const p = planeSpot(w);
             add(w, p.x, p.y, w.frameGeometry.width, w.frameGeometry.height);
         }
-        const mc = Logic.mapClusters(nodes, clusterOf, threadRank, configuration.ClusterGap, clusters);
+        // Open, the canvas's own numbers (its chips and digit keys); closed, the canvas's clusters are
+        // the last open's, and the numbers are the ones the next open will give.
+        const mc = Logic.mapClusters(nodes, clusterOf, threadRank, configuration.ClusterGap, live ? clusters : null);
         const out = [];
         for (let i = 0; i < mc.clusters.length; ++i) {
             const c = mc.clusters[i];
@@ -5585,14 +5589,18 @@ KWin.SceneEffect {
     }
     // The widget's click on the ground: the plane point to the centre of the
     // screen the pointer is on. Open, the camera flies there; closed, the desk
-    // slides there the way a pan step does, and stays at 1:1.
-    function mapGo(x, y) {
+    // slides there the way a pan step does, and stays at 1:1. Two parameters, as the plugin's
+    // Map.go calls it (QMetaObject::invokeMethod matches a QML function by its parameter count,
+    // so a third one would make that call find nothing); a screen's own go is mapGoOn.
+    function mapGo(x, y) { mapGoOn(x, y, null); }
+    function mapGoOn(x, y, screen) {
         x = Number(x);
         y = Number(y);
         if (!isFinite(x) || !isFinite(y)) return;
         // Open with separate cameras the view is the camera screen's, whichever screen the
-        // widget (and so the pointer) is on.
-        const g = (canvasOpen && separate && camScreen ? camScreen : actionScreen()).geometry;
+        // widget (and so the pointer) is on. A screen given (a drag of that screen's frame on the
+        // map) is the one whose middle goes there; with merged cameras every screen moves with it.
+        const g = (screen ? screen : (canvasOpen && separate && camScreen ? camScreen : actionScreen())).geometry;
         dbg("map", "go (" + Math.round(x) + "," + Math.round(y) + ")");
         if (canvasOpen) {
             camGo(zoom, x - (g.x + g.width / 2) / zoom, y - (g.y + g.height / 2) / zoom);
@@ -5611,8 +5619,9 @@ KWin.SceneEffect {
     // and the window takes the focus there.
     function mapFocus(id) {
         const w = mapWindow(id);
-        // A minimized window's sheet: the click brings it back first, then goes to it.
-        if (isMapMinimized(w)) w.minimized = false;
+        // A minimized window's sheet: the click brings it back first, then goes to it (open, the
+        // canvas takes it in now rather than at its next resync, so there is an entry to go to).
+        if (isMapMinimized(w)) { w.minimized = false; if (canvasOpen) resync(); }
         if (!isCanvasWindow(w, true)) return;
         dbg("map", "focus " + w.caption);
         if (canvasOpen) {
@@ -5643,11 +5652,14 @@ KWin.SceneEffect {
     //   above {id}       keep it above the others, or stop
     //   close {id}       close it, as its own close button would
     //   cluster {n}      go to cluster n, landing on the window the hand last used there
+    //   go {x, y, screen} the middle of screen (the reading's camera index) to this plane spot: a
+    //                    drag of that screen's frame (go() alone moves the pointer's screen)
     function mapAct(verb, args) {
         verb = String(verb);
         let a = {};
         try { a = JSON.parse(String(args || "{}")) || {}; } catch (err) { return "the arguments are not JSON"; }
         if (verb === "cluster") return mapCluster(Number(a.n));
+        if (verb === "go") return mapGoScreen(Number(a.x), Number(a.y), Number(a.screen));
         const w = mapWindow(a.id);
         if (!w) return "that window is gone";
         dbg("map", verb + " " + String(w.caption).slice(0, 40));
@@ -5672,9 +5684,25 @@ KWin.SceneEffect {
             revision++;
             return "";
         }
+        // A slide or a fly under way: the real windows are written at its landing, from the
+        // entries, so the drop goes into the window's entry and lands with the rest (a real write
+        // now would be measured against the view before the landing).
+        if (visible && quiet) {
+            const e = entryFor(w);
+            if (e) { e.x = Math.round(x); e.y = Math.round(y); revision++; return ""; }
+        }
+        // A glide still running (a second drop in quick succession) ends first, so the drop is
+        // measured from where the window really is.
+        if (glideAnim.running) glideAnim.complete();
+        // Written as every plane spot is (projectEntry): with separate cameras through the frame the
+        // drop lies in, parked beyond every monitor when it lies in none, as a commit would write it.
         const f = w.frameGeometry;
-        const t = separate ? peekTargetOn(activityOf(w), outputAtReal(f.x, f.y, f.width, f.height)) : peekTarget(activityOf(w));
-        const tx = Math.round(x - t.x), ty = Math.round(y - t.y);
+        const pj = projectEntry({ x: x, y: y, width: f.width, height: f.height, out: null }, activityOf(w));
+        const tx = Math.round(pj.x), ty = Math.round(pj.y);
+        if (separate) {
+            if (pj.parked) parked[w.internalId] = { x: Math.round(x), y: Math.round(y), rx: tx, ry: ty };
+            else delete parked[w.internalId];
+        }
         // A drop near the screen glides there, as the dodge does; a far one is written at once (a
         // glide across several screens would be a streak, and the window is leaving the screen).
         const sg = actionScreen().geometry;
@@ -5682,10 +5710,23 @@ KWin.SceneEffect {
         else glideReal([{ w: w, fx: f.x, fy: f.y, tx: tx, ty: ty }]);
         return "";
     }
+    // A screen's frame dragged on the map: screen n (the reading's camera index, KWin's screen
+    // order) is centred on the drop. With separate cameras only the screen the slide moves can be
+    // dragged: closed, the pointer's monitor (the slide's camera); open, the camera screen.
+    function mapGoScreen(x, y, n) {
+        if (!isFinite(x) || !isFinite(y)) return "that is no spot on the plane";
+        const ss = KWin.Workspace.screens;
+        const s = n >= 0 && n < ss.length ? ss[n] : null;
+        if (!s) return "there is no such screen";
+        if (separate && s !== (canvasOpen ? camScreen : actionScreen()))
+            return "with separate cameras, drag the frame of the screen the pointer is on";
+        mapGoOn(x, y, s);
+        return "";
+    }
     // Fetch the window instead of going to it: centred on the screen the pointer is on, focused.
     function mapBring(w) {
         if (!onActivity(w, currentActivity)) return "that window is on another activity";
-        if (isMapMinimized(w)) w.minimized = false;
+        if (isMapMinimized(w)) { w.minimized = false; if (canvasOpen) resync(); }
         if (windowPinned(w) || !isCanvasWindow(w)) return "that window does not sit on the plane";
         const sg = actionScreen().geometry;
         const f = w.frameGeometry;

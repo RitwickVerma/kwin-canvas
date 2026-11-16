@@ -477,10 +477,12 @@ function isFarJump(dx, dy, w, h) {
 // The map widget's clusters: the canvas's own clustering (recluster, reading the canvas's hysteresis
 // and thread ranks without changing them) over the windows the map draws, numbered the way the
 // canvas's "#n" chips and digit keys number them. A cluster the canvas holds now (the same windows)
-// keeps the canvas's number; a cluster it has not seen takes the lowest free number, in reading
-// order (top to bottom, then left to right). nodes: [{ id, x, y, width, height }]; live: the
-// canvas's clusters ([{ ids }], index + 1 is the number). Returns { clusters: [{ n, ids, x, y, w,
-// h }] by number, of: id -> number }.
+// keeps the canvas's number; a cluster it has not seen takes the lowest free number, in the order
+// the clustering itself gives (the order the canvas's next recluster over the same windows gives,
+// which is what its chips will read). nodes: [{ id, x, y, width, height }], in the canvas's entry
+// order (the stacking order); live: the canvas's clusters ([{ ids }], index + 1 is the number)
+// while it is open, null when its clusters are the last open's. Returns { clusters: [{ n, ids, x,
+// y, w, h }] by number, of: id -> number }.
 function mapClusters(nodes, prevOf, ranks, gapCfg, live) {
     const r = recluster(nodes, prevOf || {}, Object.assign({}, ranks || {}), gapCfg);
     const byId = {};
@@ -493,12 +495,11 @@ function mapClusters(nodes, prevOf, ranks, gapCfg, live) {
     for (let i = 0; i < r.clusters.length; ++i) {
         const c = r.clusters[i];
         const b = boundsOf(c.ids.map(function (id) { return byId[id]; }));
-        const item = { n: 0, ids: c.ids.map(String), x: b.x, y: b.y, w: b.width, h: b.height, cx: c.cx, cy: c.cy };
+        const item = { n: 0, ids: c.ids.map(String), x: b.x, y: b.y, w: b.width, h: b.height };
         const n = liveN[key(c.ids)];
         if (n && !used[n]) { item.n = n; used[n] = true; } else fresh.push(item);
         out.push(item);
     }
-    fresh.sort(function (p, q) { return (p.cy - q.cy) || (p.cx - q.cx); });
     let next = 1;
     for (let i = 0; i < fresh.length; ++i) {
         while (used[next]) next++;
@@ -507,11 +508,7 @@ function mapClusters(nodes, prevOf, ranks, gapCfg, live) {
     }
     out.sort(function (p, q) { return p.n - q.n; });
     const of = {};
-    for (let i = 0; i < out.length; ++i) {
-        delete out[i].cx;
-        delete out[i].cy;
-        for (let k = 0; k < out[i].ids.length; ++k) of[out[i].ids[k]] = out[i].n;
-    }
+    for (let i = 0; i < out.length; ++i) for (let k = 0; k < out[i].ids.length; ++k) of[out[i].ids[k]] = out[i].n;
     return { clusters: out, of: of };
 }
 

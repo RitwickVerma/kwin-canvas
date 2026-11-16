@@ -36,11 +36,20 @@ Item {
         return out;
     }
 
+    // One step a notch: a touchpad or a high-resolution wheel sends many small deltas for one
+    // notch's travel, which are summed to a notch (120) before a step.
+    property real wheelSum: 0
     WheelHandler {
         acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
         onWheel: (event) => {
             const d = event.angleDelta.y !== 0 ? event.angleDelta.y : -event.angleDelta.x;
-            if (d !== 0 && pager.ctl) pager.ctl.stepCluster(d < 0 ? 1 : -1);
+            if (d === 0 || !pager.ctl) return;
+            if (pager.wheelSum !== 0 && Math.sign(d) !== Math.sign(pager.wheelSum)) pager.wheelSum = 0;
+            pager.wheelSum += d;
+            while (Math.abs(pager.wheelSum) >= 120) {
+                pager.ctl.stepCluster(pager.wheelSum < 0 ? 1 : -1);
+                pager.wheelSum -= 120 * Math.sign(pager.wheelSum);
+            }
         }
     }
 

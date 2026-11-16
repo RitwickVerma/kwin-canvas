@@ -151,6 +151,15 @@ run_scenario() {
     mq go $((vx + WIDTH / 2)) $((vy + HEIGHT / 2)) >/dev/null
     wait_view "$vx" "$vy"
 
+    # go with a screen: a drag of that screen's frame centres that screen on the drop.
+    answer=$(mq act go "{\"x\": $((vx + 700 + WIDTH / 2)), \"y\": $((vy + HEIGHT / 2)), \"screen\": 0}")
+    assert_eq "a screen's frame dragged answers done" "$answer" ""
+    wait_view $((vx + 700)) "$vy"
+    assert_eq "and that screen's middle lands on the drop" "$(printf '%.0f' "$(sget viewx)")" $((vx + 700))
+    assert_eq "a screen that is not there is named" "$(mq act go '{"x": 0, "y": 0, "screen": 7}')" "there is no such screen"
+    mq go $((vx + WIDTH / 2)) $((vy + HEIGHT / 2)) >/dev/null
+    wait_view "$vx" "$vy"
+
     # The widget itself, on the desktop. The desk first goes somewhere empty, so
     # no window covers the widget and anything the map shows is off the screen:
     # a click anywhere on the map then has to move the desk.

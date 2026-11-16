@@ -1270,27 +1270,28 @@ as a Plasma widget, on the desktop or in a panel, with the canvas closed. It nee
   window count, the window a click on it lands on (the most recently focused) and whether the
   focused window is in it.
 - **The plugin relays.** `CanvasMap` (`plugin/map.cpp`) is `/KWinCanvas/Map`,
-  `org.kde.kwin.canvas.Map`: `read()` calls `mapPlane` in process, `go(x, y)` and `focus(id)`
-  call `mapGo` and `mapFocus`, and `act(verb, json)` calls `mapAct`, the one entry for every
-  other action (`move`, `bring`, `minimize`, `above`, `close`, `cluster`), so a new action needs
-  no new plugin; it answers "" when done or what went wrong, which the widget shows. A dropped
-  window's `move` writes the real window through the target its plane spot is read with (as the
-  closed carry does), so its spot is exactly where it was dropped: a drop within a screen of
-  where it was glides there (`glideReal`, the float dodge's glide), a farther one is written at
-  once, since the window is leaving the screen and a glide across screens would be a streak;
-  open, its entry glides there as an undo step. What it adds is `changed()`. The effect notices a window's move
-  only while the canvas is open, so the map watches KWin's windows itself (geometry, minimized,
-  hidden, desktops, activities, caption, added, removed, activated, stacking, desktop, outputs)
-  and the effect's camera, entries and activity (the `viewX`, `viewY`, `zoom`, `revision`,
-  `screensRev`, `visible`, `quiet` and `currentActivity` notify signals), and says changed at
-  most once per 100 ms: the first change starts the clock and the rest of a burst rides it, so a
-  drag still updates ten times a second. It watches only while someone wants the signal: each
-  widget holds the map with a token of its own (`hold`) from its creation and lets go
-  (`release`) as it is removed, and the plugin lets go of every token of a bus connection that
-  goes (plasmashell quit or crashed; `QDBusServiceWatcher`). A read without a hold (a script,
-  `qdbus`, the scenarios) keeps it watching for a minute after that read. With no holder and no
-  recent read it disconnects everything, so a session without the widget, or after it, pays
-  nothing (`224`).
+  `org.kde.kwin.canvas.Map`: `read()` calls `mapPlane` in process, `go(x, y)` and `focus(id)` call
+  `mapGo` and `mapFocus`, and `act(verb, json)` calls `mapAct`, the one entry for every other action
+  (`move`, `bring`, `minimize`, `above`, `close`, `cluster`, `go` with a screen), so a new action
+  needs no new plugin. The four are called by name (`QMetaObject::invokeMethod`), which matches a
+  QML function by its parameter count: a parameter added to one makes the plugin's call find
+  nothing, silently (`224` caught it once). It answers "" when done or what went wrong, which the
+  widget shows. A dropped window's `move` writes the real window through the target its plane spot
+  is read with (as the closed carry does), so its spot is exactly where it was dropped: a drop
+  within a screen of where it was glides there (`glideReal`, the float dodge's glide), a farther one
+  is written at once, since the window is leaving the screen and a glide across screens would be a
+  streak; open, its entry glides there as an undo step. What it adds is `changed()`. The effect
+  notices a window's move only while the canvas is open, so the map watches KWin's windows itself
+  (geometry, minimized, hidden, desktops, activities, caption, added, removed, activated, stacking,
+  desktop, outputs) and the effect's camera, entries and activity (the `viewX`, `viewY`, `zoom`,
+  `revision`, `screensRev`, `visible`, `quiet` and `currentActivity` notify signals), and says
+  changed at most once per 100 ms: the first change starts the clock and the rest of a burst rides
+  it, so a drag still updates ten times a second. It watches only while someone wants the signal:
+  each widget holds the map with a token of its own (`hold`) from its creation and lets go
+  (`release`) as it is removed, and the plugin lets go of every token of a bus connection that goes
+  (plasmashell quit or crashed; `QDBusServiceWatcher`). A read without a hold (a script, `qdbus`,
+  the scenarios) keeps it watching for a minute after that read. With no holder and no recent read
+  it disconnects everything, so a session without the widget, or after it, pays nothing (`224`).
 - **The widget reads on the signal.** It uses Plasma's own D-Bus module
   (`org.kde.plasma.workspace.dbus`): `SessionBus.asyncCall` for the calls and a `SignalWatcher`
   whose `dbuschanged` handler reads again, one read in flight at a time. No polling and no process

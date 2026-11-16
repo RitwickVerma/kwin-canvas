@@ -732,8 +732,14 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
     const desk = [rect("a", 0, 0, 400, 300), rect("b", 420, 0, 400, 300), rect("c", 5000, 0, 400, 300), rect("d", 0, 4000, 400, 300)];
     const fresh = L.mapClusters(desk, {}, {}, 0, []);
     ok("mapClusters: three clusters", fresh.clusters.length === 3);
-    ok("mapClusters: unseen clusters are numbered in reading order",
+    ok("mapClusters: unseen clusters are numbered in the clustering's order",
         fresh.of.a === 1 && fresh.of.b === 1 && fresh.of.c === 2 && fresh.of.d === 3);
+    // The canvas's chips follow its clustering's order (the entries' stacking order), not reading
+    // order: closed, the map numbers the clusters as the next open will.
+    const stacked = L.mapClusters([rect("d", 0, 4000, 400, 300), rect("c", 5000, 0, 400, 300)], {}, {}, 0, null);
+    const canvasOrder = L.recluster([rect("d", 0, 4000, 400, 300), rect("c", 5000, 0, 400, 300)], {}, {}, 0);
+    ok("mapClusters: closed, the numbers are the next open's chips",
+        stacked.of.d === canvasOrder.clusterOf.d + 1 && stacked.of.c === canvasOrder.clusterOf.c + 1);
     const one = fresh.clusters[0];
     ok("mapClusters: a cluster's box spans its windows", one.x === 0 && one.y === 0 && one.w === 820 && one.h === 300);
     ok("mapClusters: the box carries no centroid", one.cx === undefined && one.cy === undefined);

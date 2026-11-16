@@ -20,6 +20,14 @@ honest. The lines below are the detail, newest first.
   alone while the effect is turned off; NVML (the GPU's load) starts on a thread of its own and
   never holds the compositor, a wedged driver included; and the ground wallpaper's state file is
   written without a disk sync on the compositor's thread. Needs `kwin-canvas fix-plugin`.
+- Canvas Map fixes from review. A click on a cluster's label or on a minimized window in the
+  tray did two things (the label's, then a click on the ground under it, so the desk slid past
+  the cluster); it does one. Dragging a screen's frame on a two-monitor map moved the other
+  screen. A zoomed map stays on what it shows when a window moves elsewhere. Escape, or letting
+  go outside the map, cancels a drag. Typing finds minimized windows too, and Enter brings one
+  back. The panel pager's wheel steps one cluster a notch, quick notches included. With the
+  canvas closed, the clusters are numbered as the canvas will number them when it opens. Going
+  to or bringing a minimized window while the canvas is open no longer only restores it.
 - The canvas decoration wears your accent. The pin, the maximize pair and the keep-above and
   keep-below marks were a fixed blue; they take the window's colour scheme's highlight now, and
   the title bar grows with a title font too large for its 32 px.

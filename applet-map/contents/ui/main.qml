@@ -112,6 +112,14 @@ PlasmoidItem {
             else if (answer !== "") root.say(answer);
         });
     }
+    // An action with a way back for a plugin or an effect without it: `fallback` runs instead of
+    // showing what went wrong.
+    function actOr(verb, args, fallback) {
+        send("act", [verb, JSON.stringify(args)], "(ss)", function (answer) {
+            if (answer === null || answer.indexOf("does not know") >= 0) fallback();
+            else if (answer !== "") root.say(answer);
+        });
+    }
     // A line on the map for a few seconds.
     property string notice: ""
     function say(text) { notice = text; noticeTimer.restart(); }
@@ -180,13 +188,20 @@ PlasmoidItem {
         }
         say(i18n("There is no cluster %1", n));
     }
-    // The cluster after (+1) or before (-1) the focused one, by number, round the end.
+    // The cluster after (+1) or before (-1) the focused one, by number, round the end. A step taken
+    // in the last second and a half counts from where it went: the reading that lights the new
+    // cluster comes after the fly, and quick steps would otherwise all count from the old one.
+    property int steppedTo: 0
+    property real steppedAt: 0
     function stepCluster(dir) {
         if (!clusters.length) return;
+        const from = steppedTo !== 0 && Date.now() - steppedAt < 1500 ? steppedTo : activeCluster;
         let k = 0;
-        for (let i = 0; i < clusters.length; ++i) if (clusters[i].n === activeCluster) k = i + dir;
-        if (activeCluster === 0) k = dir > 0 ? 0 : clusters.length - 1;
+        for (let i = 0; i < clusters.length; ++i) if (clusters[i].n === from) k = i + dir;
+        if (from === 0) k = dir > 0 ? 0 : clusters.length - 1;
         k = (k + clusters.length) % clusters.length;
+        steppedTo = clusters[k].n;
+        steppedAt = Date.now();
         goCluster(clusters[k].n);
     }
 
@@ -289,6 +304,9 @@ PlasmoidItem {
                             // The canvas's digit keys: straight to cluster N.
                             root.goCluster(event.key - Qt.Key_0);
                             if (root.inPanel) root.expanded = false;
+                            event.accepted = true;
+                        } else if (event.key === Qt.Key_Escape && map.dragging) {
+                            map.cancelDrag();
                             event.accepted = true;
                         } else if (event.key === Qt.Key_Escape && text !== "") {
                             text = "";

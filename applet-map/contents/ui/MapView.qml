@@ -59,14 +59,16 @@ Item {
     // The tray of minimized windows takes the map's foot when it shows; the plane fits above it.
     readonly property real footRoom: tray.visible ? tray.height + Kirigami.Units.smallSpacing : 0
     readonly property real fit: Math.max(1e-6, Math.min((width - 2 * pad) / lay.x.length, (height - footRoom - 2 * pad) / lay.y.length))
-    // The map's own zoom, about a point: k times the fit, centred on (cu, cv) of the map's axes.
+    // The map's own zoom, about a point: k times the fit, centred on the plane point (zx, zy). A
+    // plane point and not a spot on the map's axes: a reading redraws the axes (a window moved,
+    // came or went), and the zoomed map must stay on what it was showing.
     property real zoomK: 1
-    property real cu: 0
-    property real cv: 0
+    property real zx: 0
+    property real zy: 0
     readonly property bool zoomed: zoomK > 1.001
     readonly property real s: fit * zoomK
-    readonly property real centreU: zoomed ? cu : lay.x.length / 2
-    readonly property real centreV: zoomed ? cv : lay.y.length / 2
+    readonly property real centreU: zoomed ? lay.x.to(zx) : lay.x.length / 2
+    readonly property real centreV: zoomed ? lay.y.to(zy) : lay.y.length / 2
     function mx(x) { return width / 2 + (lay.x.to(x) - centreU) * s; }
     function my(y) { return (height - footRoom) / 2 + (lay.y.to(y) - centreV) * s; }
     function planeX(px) { return lay.x.from(centreU + (px - width / 2) / s); }
@@ -177,11 +179,16 @@ Item {
         }
         return out;
     }
+    // The search's pick: the topmost window on the plane that matches, else a minimized one that
+    // does (the tray's; Enter brings it back).
     function topmostMatch() {
         const rs = drawnRects(true);
         let best = null;
         for (let i = 0; i < rs.length; ++i) if (!best || rs[i].order > best.order) best = rs[i];
-        return best ? best.id : "";
+        if (best) return best.id;
+        if (filter === "") return "";
+        for (let i = 0; i < minimized.length; ++i) if (matchesFilter(minimized[i].caption, minimized[i].app)) return String(minimized[i].id);
+        return "";
     }
     onFilterChanged: selectedId = filter === "" ? "" : topmostMatch()
     function step(dir) {
@@ -194,6 +201,9 @@ Item {
         const id = MapLayout.stepTowards(from, rs, dir);
         selectedId = id || from.id;
     }
+    // Escape during a drag: main.qml's search field has the keys.
+    readonly property bool dragging: hand.dragKind === "sheet" || hand.dragKind === "camera"
+    function cancelDrag() { hand.cancelDrag(); }
     function enter() {
         const id = selectedId || topmostMatch();
         if (!id || !ctl) return;
@@ -401,19 +411,20 @@ Item {
                     ghostH = view.my(c[1] + c[3]) - view.my(c[1]);
                 } else if (pressId === "" && view.zoomed) {
                     dragKind = "pan";
-                    startCu = view.cu;
-                    startCv = view.cv;
+                    startCu = view.centreU;
+                    startCv = view.centreV;
                 }
                 view.hoveredId = "";
             }
             if (dragKind === "sheet") view.hotCluster = view.clusterAt(mouse.x, mouse.y);
             else if (dragKind === "pan") {
                 view.holdGlide();
-                view.cu = startCu - (mouse.x - at.x) / view.s;
-                view.cv = startCv - (mouse.y - at.y) / view.s;
+                view.zx = view.lay.x.from(startCu - (mouse.x - at.x) / view.s);
+                view.zy = view.lay.y.from(startCv - (mouse.y - at.y) / view.s);
             }
         }
         onPressed: (mouse) => {
+            dragCancelled = false;
             at = Qt.point(mouse.x, mouse.y);
             now = at;
             button = mouse.button;
@@ -422,18 +433,35 @@ Item {
             pressCamera = w ? -1 : view.cameraAt(mouse.x, mouse.y);
             dragKind = "";
         }
+        // A drag let go outside the map, or Escape during it (main.qml's search field has the keys),
+        // puts nothing anywhere: the window stays, the desk stays.
+        function cancelDrag() {
+            dragKind = "";
+            dragIndex = -1;
+            dragCancelled = true;
+            view.dragId = "";
+            view.hotCluster = 0;
+        }
+        property bool dragCancelled: false
         onReleased: (mouse) => {
             const kind = dragKind;
+            const cancelled = dragCancelled;
+            dragCancelled = false;
             dragKind = "";
             dragIndex = -1;
             view.dragId = "";
             view.hotCluster = 0;
+            if (cancelled) return;
+            const outside = mouse.x < 0 || mouse.y < 0 || mouse.x >= view.width || mouse.y >= view.height;
+            if ((kind === "sheet" || kind === "camera") && outside) return;
             if (kind === "sheet") {
                 view.ctl.act("move", { id: pressId, x: Math.round(view.planeX(mouse.x) - grabX), y: Math.round(view.planeY(mouse.y) - grabY) });
                 return;
             }
             if (kind === "camera") {
-                view.ctl.go(view.planeX(mouse.x) - grabX, view.planeY(mouse.y) - grabY);
+                // That screen's middle to the drop (go() alone would centre the pointer's screen).
+                const gx = view.planeX(mouse.x) - grabX, gy = view.planeY(mouse.y) - grabY;
+                view.ctl.actOr("go", { x: gx, y: gy, screen: pressCamera }, function () { view.ctl.go(gx, gy); });
                 return;
             }
             if (kind === "pan") return;
@@ -464,8 +492,8 @@ Item {
             const k = Math.max(1, Math.min(16, view.zoomK * Math.pow(1.0015, d)));
             view.holdGlide();
             if (k <= 1.001) { view.zoomK = 1; return; }
-            view.cu = u - (wheel.x - view.width / 2) / (view.fit * k);
-            view.cv = v - (wheel.y - (view.height - view.footRoom) / 2) / (view.fit * k);
+            view.zx = view.lay.x.from(u - (wheel.x - view.width / 2) / (view.fit * k));
+            view.zy = view.lay.y.from(v - (wheel.y - (view.height - view.footRoom) / 2) / (view.fit * k));
             view.zoomK = k;
         }
     }
@@ -518,7 +546,10 @@ Item {
                 cursorShape: Qt.PointingHandCursor
                 onHoveredChanged: view.hotCluster = hovered ? chip.n : (view.hotCluster === chip.n ? 0 : view.hotCluster)
             }
+            // The tap takes the press (ReleaseWithinBounds grabs it), so the hand under the label
+            // never also takes it for a click on the ground or the window beneath.
             TapHandler {
+                gesturePolicy: TapHandler.ReleaseWithinBounds
                 onTapped: { view.ctl.goCluster(chip.n); view.activated(); }
             }
         }
@@ -567,15 +598,18 @@ Item {
                     anchors.verticalCenter: parent.verticalCenter
                     width: Kirigami.Units.iconSizes.smallMedium
                     height: width
-                    active: trayHover.hovered
+                    active: trayHover.hovered || view.selectedId === w.id
+                    opacity: view.matchesFilter(w.caption, w.app) ? 1 : 0.25
                     source: { view.iconsRev; return view.ctl ? view.ctl.iconFor(w.id, w.app) : ""; }
                     HoverHandler { id: trayHover; cursorShape: Qt.PointingHandCursor }
                     TapHandler {
                         acceptedButtons: Qt.LeftButton
+                        gesturePolicy: TapHandler.ReleaseWithinBounds
                         onTapped: { view.ctl.focusWindow(trayIcon.w.id); view.activated(); }
                     }
                     TapHandler {
                         acceptedButtons: Qt.RightButton
+                        gesturePolicy: TapHandler.ReleaseWithinBounds
                         onTapped: (point) => {
                             const p = trayIcon.mapToItem(view, point.position.x, point.position.y);
                             menu.show(trayIcon.w, p.x, p.y);
