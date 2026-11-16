@@ -2,23 +2,6 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 # shellcheck source=../tests/lib.sh
 scenario_desc="a panel applet's dropdown opens and never flies the desktop"
-# The clock is the only thing in the panel: its bright pixels locate it in
-# whichever strip the panel lives in. Prints "top WxH+X+Y" or
-# "bottom WxH+X+Y", or nothing. An empty bounding box prints as
-# "0x0+1920+40" (the image's far corner), not "0x0+0+0", so the width and
-# the height decide emptiness, not the offsets. The bottom crop's box is
-# local to the crop, so the strip is carried as a word, not derived.
-clock_box() {
-    local top tw th bottom
-    top=$(magick "$1" -crop 1920x40+0+0 +repage -colorspace gray -threshold 80% -format "%@" info: 2>/dev/null)
-    tw=$(cut -dx -f1 <<<"$top"); th=$(cut -dx -f2 <<<"$top" | cut -d+ -f1)
-    if [ -n "$tw" ] && [ "$tw" != 0 ] && [ "$th" != 0 ]; then
-        printf 'top %s\n' "$top"
-        return
-    fi
-    bottom=$(magick "$1" -crop 1920x32+0+1048 +repage -colorspace gray -threshold 80% -format "%@" info: 2>/dev/null)
-    printf 'bottom %s\n' "$bottom"
-}
 run_scenario() {
     if ! have_input; then skip "fakeinput not built (make tools)"; return; fi
     # The script's print() output comes back through the nq reply; the poll
@@ -53,6 +36,7 @@ run_scenario() {
     cx=$(cut -d+ -f2 <<<"$bbox"); cy=$(cut -d+ -f3 <<<"$bbox")
     px=$((cx + cw / 2))
     if [ "$strip" = top ]; then py=$((cy + ch / 2)); else py=$((1048 + cy + ch / 2)); fi
+    echo "# the clock ($strip panel) at $px,$py"
     # The panel's dropdown: a right-click opens the context menu - a plasma
     # popup, the same class an applet's dropdown is.
     magick "$OUT/panel.png" -crop 1920x960+0+60 +repage "$OUT/pop-before.png" 2>/dev/null

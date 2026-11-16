@@ -7198,6 +7198,9 @@ KWin.SceneEffect {
         case "selectadd": selectAdd(entries[Number(a[1])]); break;
         case "selecttoggle": selectToggle(entries[Number(a[1])]); break;
         case "clearsel": clearSelection(); break;
+        // The arrange menu's Bring here and Close (the Delete key), on the selection.
+        case "bringhere": bringHere(); break;
+        case "closesel": closeSelection(); break;
         case "pin": pinEntries([entries[Number(a[1])]]); break;
         case "unpin": unpinEntries([entries[Number(a[1])]]); break;
         case "unpinall": for (let i = 0; i < entries.length; ++i) setPinned(entries[i].window, false); break;
@@ -7262,6 +7265,13 @@ KWin.SceneEffect {
         return null;
     }
 
+    // The topmost window the canvas draws, by KWin's real stacking order (JSON), for the state line:
+    // closed, the entries the state lists are the last open's snapshot, in the order of then.
+    function topWindowCaption() {
+        const stack = KWin.Workspace.stackingOrder;
+        for (let i = stack.length - 1; i >= 0; --i) if (isCanvasWindow(stack[i])) return JSON.stringify(String(stack[i].caption));
+        return "none";
+    }
     function logState() {
         let s = "kwin-canvas state visible=" + visible + (quiet ? " quiet" : "") + (grasp ? " grasp" : "") + (passthroughLive ? " passthrough" : "") + (planeLive ? " plane" : "") + " zoom=" + zoom.toFixed(4) + " view=(" + viewX.toFixed(1) + "," + viewY.toFixed(1) + ") activity=" + labelOf(currentActivity) + " entries=" + entries.length
             + " popups=" + appPopups.length + " menus=" + canvasMenus + " floats=" + pinnedCount + " anim=" + animFactor.toFixed(2) + " chrome=" + (chromeScr ? chromeScr.name : "-") + " cams=" + (separate ? "separate:" + (camScreen ? camScreen.name : "-") : "merged") + " floatheld=" + Object.keys(floatOf).length + " nav=" + (navHeld ? "hold" : "-") + " snap=" + (snapEdges ? "E" : "-") + (snapCorners ? "C" : "-") + (snapGrid ? "G" : "-")
@@ -7310,6 +7320,7 @@ KWin.SceneEffect {
             + " gpu=" + Math.round(gpuBusy)
             + " mem=" + Math.round(memBusy)
             + " vram=" + Math.round(vramBusy)
+            + " top=" + topWindowCaption()
             + " active=" + (KWin.Workspace.activeWindow ? JSON.stringify(KWin.Workspace.activeWindow.caption) : "none");
         const ids = activityIds, screens = KWin.Workspace.screens;
         for (let i = 0; i < screens.length; ++i) {

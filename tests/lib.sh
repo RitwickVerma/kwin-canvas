@@ -131,6 +131,7 @@ sget() {
         graph)    sed -n 's/.* graph=\([-0-9/]*\).*/\1/p' <<<"$line" ;;
         switcher) sed -n 's/.* switcher=\([a-z-]*\).*/\1/p' <<<"$line" ;;
         kept)     sed -n 's/.* kept=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        top)      sed -n 's/.* top=\(.*\) active=.*$/\1/p' <<<"$line" ;;
         active)   sed -n 's/.* active=\(.*\)$/\1/p' <<<"$line" ;;
         nactivities) grep -c '^  {' <<<"$LAST_STATE" ;;
     esac
@@ -384,4 +385,33 @@ float_frame() {
     local cap=${1:-KCalc}
     kwinjs 'var w = null; workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("'"$cap"'") >= 0) w = x; }); var g = w.frameGeometry; print("FLOATFRAME " + Math.round(g.x) + " " + Math.round(g.y) + " " + Math.round(g.width) + " " + Math.round(g.height));' 0.6
     grep -a "FLOATFRAME" "$STATE/kwin.log" | tail -1 | sed 's/.*FLOATFRAME //'
+}
+
+# clock_box FILE: the panel clock in a screenshot of the nest, as "top WxH+X+Y" or "bottom
+# WxH+X+Y" (X across the screen, Y within the panel's strip), or nothing. Plasma says where the
+# panel is and where its digital clock sits along it; the clock's bright pixels in that span give
+# its box. (Guessed from the bright pixels of a whole strip, the top strip won whenever the
+# desktop showed a bright icon there - the folder view shows the owner's own ~/Desktop, and a
+# .desktop file there made 117 and 86 click the icon, 2026-11-15 - and the bottom strip's box ran
+# from the task bar's icons to the clock, its middle on the empty task bar.)
+clock_box() {
+    local info edge cx cw box w h
+    info=$(nq org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "
+        const p = panels()[0];
+        const c = p ? p.widgets('org.kde.plasma.digitalclock')[0] : null;
+        if (c) print('CLOCK ' + p.location + ' ' + Math.round(c.geometry.x) + ' ' + Math.round(c.geometry.width));" 2>/dev/null \
+        | sed -n 's/.*CLOCK \([a-z]*\) \([0-9]*\) \([0-9]*\).*/\1 \2 \3/p')
+    read -r edge cx cw <<<"$info"
+    [ -n "$cw" ] && [ "$cw" -gt 0 ] || return 0
+    case $edge in
+        top) box=$(magick "$1" -crop "${cw}x40+${cx}+0" +repage -colorspace gray -threshold 80% -format "%@" info: 2>/dev/null) ;;
+        bottom) box=$(magick "$1" -crop "${cw}x32+${cx}+1048" +repage -colorspace gray -threshold 80% -format "%@" info: 2>/dev/null) ;;
+        *) return 0 ;;
+    esac
+    w=$(cut -dx -f1 <<<"$box"); h=$(cut -dx -f2 <<<"$box" | cut -d+ -f1)
+    [ -n "$w" ] && [ "$w" != 0 ] && [ "$h" != 0 ] || return 0
+    # The box is local to the crop: its x goes back across the screen.
+    local bx by
+    bx=$(cut -d+ -f2 <<<"$box"); by=$(cut -d+ -f3 <<<"$box")
+    printf '%s %sx%s+%s+%s\n' "$edge" "$w" "$h" "$((cx + bx))" "$by"
 }

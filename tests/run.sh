@@ -85,8 +85,11 @@ layout_moved() {
         [ "$x" = "${spec[0]}" ] && [ "$y" = "${spec[1]}" ] || { LAYOUT_OFF="$cap at $x,$y (layout ${spec[0]},${spec[1]})"; return 0; }
     done
     # The stacking too: KCalc on top, the arranged chain, so a hover raise
-    # (110) that moved nothing still counts.
-    [ "$(awk '/^  \[/{e=$0} END{print e}' <<<"$LAST_STATE" | grep -c KCalc)" = 1 ] || { LAYOUT_OFF="KCalc is not on top"; return 0; }
+    # (110) that moved nothing still counts. KWin's own stacking (the state's
+    # top=): closed, the entries the state lists are the last open's snapshot,
+    # in the stacking of then, so the check read the desk from before the
+    # arrange's own activations and named thirteen scenarios for it.
+    [ "$(sget top | grep -c KCalc)" = 1 ] || { LAYOUT_OFF="KCalc is not on top ($(sget top))"; return 0; }
     LAYOUT_OFF=""
     return 1
 }

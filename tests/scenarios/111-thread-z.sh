@@ -70,4 +70,6 @@ run_scenario() {
     assert_eq "and the hover lifts it above the web" "$(eget Konsole z)" 2000
     assert_eq "and the raise shifted KCalc down one" "$(eget KCalc z)" 1001
     c cancel
+    # The desk as the next scenario expects it (this one moved KCalc to 900,300).
+    arrange >/dev/null
 }
