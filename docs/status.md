@@ -44,6 +44,32 @@ and back to where it began, the dock approach, and a wallpaper that is not a pic
 to 12% (all on the compositor's main thread). The idle bob was the one decorative
 cost, 21% of a core zoomed out, and is gone.
 
+**Windows come back where they were (2026-11-16).** The owner: "why are the windows forgetting their
+positions", "everything ends up clumped together in the screen, all clusters back to 0,0". Two
+causes, read from the live session without driving it. The session's `main.qml` was Nov 5's (its
+properties, read over D-Bus, match `f2bf19e`'s and miss the 35 added since; the nests install into
+`build/nest-data`, so nothing had run `make install` until this morning), with the configure-echo
+drift `28a0a0f` fixed on Nov 12, and its entries disagreed with the real frames by (5929, -4007) for
+six of seven windows; and nothing kept the plane across a login: the reboot at 21:20 brought every
+window back on the screen (Remember Window Positions keeps on-screen spots only). `doctor`'s session
+lines did say "main.qml is newer than the session: relogin"; the deploy report had read only the
+"installed" lines. Fixed: the spot book (`WindowSpots`, `RestoreSpots`; architecture.md, *Where
+windows were*), and the closed desk's camera is now written at every landing, not only at the
+overview's commit (`persistView`; 231 read the camera going back from (4273, -224) to (0, 0) across
+a reload without it). Verified: `make unit` (logic 382: `spotMatch` and `spotTrim`), `make lint`;
+`231` passes 17 of 17, and 8 of 17 with `restoreSpot` and `persistView` disabled. The suite
+(130 scenarios, one nest): the full run stopped at its 90-minute limit after 109 (790 ok, 10 FAIL,
+11 skip); the 22 it had not reached ran next, 238 pass, 0 fail, 2 skip. The ten failures, in `20`
+(two goldens), `123` (a golden), `220`, `222`, `223` and `228`, pass when run again as a set, on this
+tree (with `231` and `30`, 113 pass, 0 fail) and on HEAD before it (96 pass, 0 fail): long-run
+flakes. The desk resets after `96`, `110`, `115`, `138`, `168` and `229-side-buttons` happen on HEAD
+too: older leaks, not chased here. (A first run had a sixth window in every scenario, kiod6's
+password dialog: a Dolphin session saved by a nest the agent had started from zsh, where
+`dev/nest.sh` cannot work, asked for `smb://tests/fixtures`; the nest's state was removed.) Not
+verified: a real login (the reload stands in for it), separate cameras, and an app that restores
+its windows over more than 15 s. The first login after the install restores nothing unless the book
+is seeded: the Nov 5 code wrote none.
+
 **A float steps aside by the shortest move, room or none (2026-11-16).** The owner: the dodge "doesn't work if
 the geometries don't fit on the screen", and some overlap is fine if the most of the floats and the
 focused window shows. `Logic.dodgeSpot` returned null when none of its eight spots cleared the

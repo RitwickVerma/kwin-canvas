@@ -392,6 +392,62 @@ function isEcho(rec, was, now, t, maxAge) {
     return false;
 }
 
+// ---- the spot book: where an app's windows were, across sessions ----
+// A book maps an app's key (its desktop file, else its class) to a list of records { c (the
+// caption), x, y (the plane spot), w, h (the size), a (the activity), t (ms, when it last changed) }.
+
+// The record a starting app's new window goes back to: the index in recs, or -1 when every record
+// is taken (by a window open now, the `taken` list of records). The same caption counts most, then
+// the same size (within 8 px: a client rounds its size by its own scale), then the same activity;
+// among equals the latest wins. A new window that shares none of them still takes the latest
+// spot: an app that opens one window at a time comes back where its last window was.
+function spotMatch(recs, cand, taken) {
+    let best = -1, bestScore = -1, bestT = -Infinity;
+    for (let i = 0; i < (recs || []).length; ++i) {
+        const r = recs[i];
+        if (!r || (taken && taken.indexOf(r) >= 0)) continue;
+        let s = 0;
+        if (cand.c && r.c === cand.c) s += 4;
+        if (Math.abs(r.w - cand.w) <= 8 && Math.abs(r.h - cand.h) <= 8) s += 2;
+        if (cand.a && r.a === cand.a) s += 1;
+        const t = Number(r.t) || 0;
+        if (s > bestScore || (s === bestScore && t > bestT)) { best = i; bestScore = s; bestT = t; }
+    }
+    return best;
+}
+
+// The book cut to its bounds, as a new book holding the same record objects (the windows that own
+// them keep writing into them). Per app, the owned records (windows open now) are all kept and the
+// rest by recency up to perApp in all; past maxApps apps, the apps with no window open and the
+// oldest last change go first.
+function spotTrim(book, owned, perApp, maxApps) {
+    const own = owned || [];
+    const newest = function (list) { let t = 0; for (let i = 0; i < list.length; ++i) t = Math.max(t, Number(list[i].t) || 0); return t; };
+    const keys = Object.keys(book || {});
+    const kept = {};
+    const live = {};
+    for (let k = 0; k < keys.length; ++k) {
+        const list = (book[keys[k]] || []).filter(function (r) { return r && Number.isFinite(r.x) && Number.isFinite(r.y); });
+        const mine = list.filter(function (r) { return own.indexOf(r) >= 0; });
+        const rest = list.filter(function (r) { return own.indexOf(r) < 0; })
+            .sort(function (p, q) { return (Number(q.t) || 0) - (Number(p.t) || 0); });
+        const out = mine.concat(rest.slice(0, Math.max(0, perApp - mine.length)));
+        if (!out.length) continue;
+        kept[keys[k]] = out;
+        live[keys[k]] = mine.length > 0;
+    }
+    const order = Object.keys(kept).sort(function (p, q) {
+        if (live[p] !== live[q]) return live[p] ? -1 : 1;
+        return newest(kept[q]) - newest(kept[p]);
+    });
+    const out = {};
+    for (let i = 0; i < order.length; ++i) {
+        if (i >= maxApps && !live[order[i]]) continue;
+        out[order[i]] = kept[order[i]];
+    }
+    return out;
+}
+
 // ---- the window graph: what the walk keys follow and the threads draw ----
 // The nodes are the windows of the plane as { id, x, y, width, height } in plane pixels;
 // clusterOf maps id -> cluster index (recluster's). The four directions are "left", "right",

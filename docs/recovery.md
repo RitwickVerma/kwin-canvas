@@ -32,6 +32,7 @@ put it back.
 | per-activity desktop containment | `plasma-org.kde.plasma.desktop-appletsrc`, `activityId=` | no — plasmashell makes a fresh one |
 | panels, wallpaper plugin, applets | the same file, empty `activityId` | yes |
 | a hidden frame (`HiddenFrames`) | `kwinrc`, `[Effect-kwin-canvas]` | yes |
+| windows' plane spots (`WindowSpots`) and the camera (`ViewX`, `ViewY`) | `kwinrc`, `[Effect-kwin-canvas]` | yes, with the activity uuid in each spot |
 
 ## Check first
 

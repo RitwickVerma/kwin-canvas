@@ -2087,6 +2087,7 @@ KWin.SceneEffect {
     // The one handler of a window's frame changes (watchWindow connects it).
     function frameChanged(w, was) {
         markDirty(w);
+        spotsDirty();
         if (w && w.dock) lastDockAt = Date.now();
         if (selfWriting > 0 || !was) return;
         if (floatHome[w.internalId] && (w.frameGeometry.x !== was.x || w.frameGeometry.y !== was.y)) forgetFloatHome(w);
@@ -4007,6 +4008,8 @@ KWin.SceneEffect {
         for (const id in planeRestore) shift(planeRestore[id]);
         for (const k in appHomes) shift(appHomes[k]);
         saveAppHomes();
+        for (const k in spotBook) (spotBook[k] || []).forEach(shift);
+        spotsSave();
         for (const id in parked) shift(parked[id]);
         for (let i = 0; i < undoStack.length; ++i) {
             for (const k in undoStack[i].targets) shift(undoStack[i].targets[k]);
@@ -6611,6 +6614,7 @@ KWin.SceneEffect {
         }
         viewX = cur.x;
         viewY = cur.y;
+        viewSaveTimer.restart();
         publishGround();
         dbg("slide", "arrived at (" + Math.round(viewX) + "," + Math.round(viewY) + "), geometries written, closing");
         // The close is instant: the canvas's last frame sits exactly over
@@ -6624,6 +6628,25 @@ KWin.SceneEffect {
         // position with black where its frame had left. At the destination
         // the scene is the desktop it covers, so the extra frame is unseen.
         slideCloseTimer.restart();
+    }
+    // The closed desk's camera survives the session as a commit's does. A slide, a fly, a bookmark or
+    // the map's go on the closed desktop moves the plane under the screen, and only the overview's
+    // commit wrote the camera, so a login came back at the last overview's camera with every window
+    // shifted by the slides since. Written a moment after the last landing (a held pan key lands
+    // many times a second), and once the canvas closes again when it opened in between.
+    Timer {
+        id: viewSaveTimer
+        interval: 2000
+        onTriggered: effect.persistView()
+    }
+    function persistView() {
+        if (visible) { viewSaveTimer.restart(); return; }
+        const x = Math.round(viewX), y = Math.round(viewY);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        if (Number(configuration.ViewX) === x && Number(configuration.ViewY) === y) return;
+        configuration.ViewX = x;
+        configuration.ViewY = y;
+        configuration.writeConfig();
     }
     Timer {
         id: slideCloseTimer
@@ -6784,6 +6807,10 @@ KWin.SceneEffect {
         // Only what bringNewWindowIntoView takes: a tooltip or a menu arriving every few hundred
         // milliseconds kept restarting the clock, and the window waited as long as they came.
         if (!w || !w.normalWindow || w.popupWindow) return;
+        // Whether its app is starting is judged now, as it appears: the restore runs after the
+        // clock, which a login's stream of windows can hold off for many seconds.
+        noteAppStart(w);
+        spotPending[w.internalId] = { start: Date.now() - (appStartAt[appKey(w)] || 0) <= spotStartMs };
         newWindows.push(w);
         newWindowTimer.restart();
     }
@@ -6833,7 +6860,13 @@ KWin.SceneEffect {
         toast(appName(e.window) + " windows open where KDE puts them again");
     }
     function bringNewWindowIntoView(w) {
+        const fresh = w ? spotPending[w.internalId] : null;
+        if (w) delete spotPending[w.internalId];
         if (!w || w.deleted || !w.managed || !w.normalWindow || w.minimized || w.fullScreen) return;
+        // A starting app's window goes back to its spot first, on its own activity too: a login
+        // brings every activity's windows back at once. Before the app's home, which is where a
+        // running app's new windows open, not where a restarted app's old ones were.
+        if (fresh && fresh.start && restoreSpot(w)) return;
         if (!isViewportWindow(w) || windowPinned(w)) return;
         const home = appHomes[appKey(w)];
         if (home && !visible) {
@@ -6859,6 +6892,134 @@ KWin.SceneEffect {
         dbg("newwindow", w.caption + " opened at (" + Math.round(g.x) + "," + Math.round(g.y) + "), off every monitor: centred on " + s.name);
         setReal(w, Qt.rect(x, y, g.width, g.height));
         if (visible) markDirty(w);
+    }
+
+    // ---- the spot book: where windows were, across sessions -------------------------
+    // A login, a reboot or an app's restart opens windows where KWin, a script (Remember Window
+    // Positions) or the app puts them: on the screen, which on an infinite plane is not where they
+    // were, so after a login the whole layout lay piled on one monitor. The canvas writes down
+    // each window's plane spot by app (WindowSpots: the app key to records { c caption, x, y, w,
+    // h, a activity, t }; Logic.spotMatch and spotTrim) a few seconds after windows move and as
+    // each one closes, and a window of an app that is starting (no other window of it open when
+    // it appears, or one that follows within the start's first seconds) goes back to its best
+    // match. A running app's next window is a new one and opens as KDE places it. Within a minute
+    // of the effect loading (a login) a window put back off the screen stays there and the camera
+    // stays where it was left; later the desk slides to it, as to an app's home. RestoreSpots
+    // turns it off.
+    property var spotBook: ({})
+    property var spotOwner: ({})      // internalId -> the record that window writes
+    property var spotPending: ({})    // internalId -> { start } for a new window until its restore runs
+    property var appStartAt: ({})     // app key -> when its latest start began
+    property string spotsWritten: ""
+    property int spotsRestored: 0     // windows put back this session, for the state line
+    property real loadedAt: 0
+    readonly property int spotStartMs: 15000
+    readonly property int spotLoginMs: 60000
+    function loadSpots() {
+        let b = {};
+        try { b = JSON.parse(configuration.WindowSpots || "{}") || {}; } catch (err) { b = {}; }
+        spotBook = (typeof b === "object" && !Array.isArray(b)) ? b : {};
+        spotsWritten = JSON.stringify(spotBook);
+    }
+    function spotCount() {
+        let n = 0;
+        for (const k in spotBook) n += (spotBook[k] || []).length;
+        return n;
+    }
+    function ownedSpots() {
+        const out = [];
+        for (const id in spotOwner) out.push(spotOwner[id]);
+        return out;
+    }
+    // An app starts when a window of it appears and no other window of it is open.
+    function noteAppStart(w) {
+        const key = appKey(w);
+        if (!key) return;
+        const all = KWin.Workspace.windows;
+        for (let i = 0; i < all.length; ++i) {
+            const o = all[i];
+            if (o && o !== w && !o.deleted && o.normalWindow && appKey(o) === key) return;
+        }
+        appStartAt[key] = Date.now();
+    }
+    // A window whose frame is its plane spot: a normal window at rest, minimized too (it comes back
+    // to that spot); not one a hand holds, nor a state KWin keeps in screen coordinates. A closing
+    // window is read once more as it goes, deleted or not.
+    function spotWorthy(w, closing) {
+        if (!w || !w.normalWindow || w.skipTaskbar || !appKey(w)) return false;
+        if (!closing && (w.deleted || !w.managed)) return false;
+        if (w.desktopWindow || w.dock || w.popupWindow || w.specialWindow) return false;
+        return !(w.move || w.resize || w.fullScreen || w.maximizedHorizontally || w.maximizedVertically || w.tile);
+    }
+    // Write one window's spot into the record it owns, a new one when it owns none. Mid-slide the
+    // real frames trail the camera, so a quiet scene writes nothing; the open canvas's spots are its
+    // entries.
+    function spotNote(w, closing) {
+        if (!spotWorthy(w, closing) || spotPending[w.internalId] || (visible && !canvasOpen)) return;
+        const e = canvasOpen ? entryFor(w) : null;
+        const p = e ? { x: e.x, y: e.y } : planeSpot(w), g = w.frameGeometry;
+        const key = appKey(w);
+        const list = spotBook[key] || (spotBook[key] = []);
+        let rec = spotOwner[w.internalId];
+        if (!rec || list.indexOf(rec) < 0) { rec = { t: 0 }; list.push(rec); spotOwner[w.internalId] = rec; }
+        const n = { c: String(w.caption || "").slice(0, 120), x: Math.round(p.x), y: Math.round(p.y),
+                    w: Math.round(g.width), h: Math.round(g.height), a: activityOf(w) };
+        if (rec.c !== n.c || rec.x !== n.x || rec.y !== n.y || rec.w !== n.w || rec.h !== n.h || rec.a !== n.a) {
+            Object.assign(rec, n);
+            rec.t = Date.now();
+        }
+    }
+    function spotsSave() {
+        spotBook = Logic.spotTrim(spotBook, ownedSpots(), 8, 48);
+        const s = JSON.stringify(spotBook);
+        if (s === spotsWritten) return;
+        spotsWritten = s;
+        configuration.WindowSpots = s;
+        configuration.writeConfig();
+    }
+    // Every window's spot, a few seconds after the first move of a burst: written only when one
+    // changed, so a quiet desk writes nothing. An open canvas waits for its close.
+    Timer {
+        id: spotTimer
+        interval: 3000
+        onTriggered: effect.spotsSnapshot()
+    }
+    function spotsDirty() { if (configuration.RestoreSpots !== false && !spotTimer.running) spotTimer.start(); }
+    function spotsSnapshot() {
+        if (configuration.RestoreSpots === false) return;
+        if (visible) { spotTimer.start(); return; }
+        const all = KWin.Workspace.windows;
+        for (let i = 0; i < all.length; ++i) spotNote(all[i], false);
+        spotsSave();
+    }
+    // A closing window: its last spot and caption, written at once (a logout closes every window
+    // and the effect goes with them).
+    function spotRelease(w) {
+        const id = w.internalId;
+        delete spotPending[id];
+        // A menu or a tooltip closing writes nothing.
+        if (configuration.RestoreSpots === false || !spotWorthy(w, true)) { delete spotOwner[id]; return; }
+        spotNote(w, true);
+        delete spotOwner[id];
+        spotsSave();
+    }
+    function restoreSpot(w) {
+        if (configuration.RestoreSpots === false || visible || windowPinned(w) || !isPlaneWindow(w)) return false;
+        const key = appKey(w), list = spotBook[key];
+        if (!list || !list.length) return false;
+        const g = w.frameGeometry, a = activityOf(w);
+        const i = Logic.spotMatch(list, { c: String(w.caption || "").slice(0, 120), w: g.width, h: g.height, a: a }, ownedSpots());
+        if (i < 0) return false;
+        const rec = list[i];
+        spotOwner[w.internalId] = rec;
+        // Mapped as every plane spot is: with separate cameras the frame that holds the spot says
+        // where it shows.
+        const pj = projectEntry({ x: rec.x, y: rec.y, width: g.width, height: g.height, out: null }, a);
+        dbg("newwindow", w.caption + " goes back to its spot (" + rec.x + "," + rec.y + ")");
+        setReal(w, Qt.rect(Math.round(pj.x), Math.round(pj.y), g.width, g.height));
+        spotsRestored++;
+        if (Date.now() - loadedAt > spotLoginMs && !gameMode && !wholeOnOneMonitor(w.frameGeometry)) flyToWindow(w);
+        return true;
     }
     function wholeOnOneMonitor(g) {
         const ss = KWin.Workspace.screens;
@@ -6966,7 +7127,7 @@ KWin.SceneEffect {
         function onActivitiesChanged(id) { Qt.callLater(effect.activitiesChanged); }
         // App popups come and go with these too; resync() refreshes them.
         function onWindowAdded(w) { if (w && w.dock) effect.lastDockAt = Date.now(); effect.watchWindow(w); effect.noteNewWindow(w); if (w && w.desktopWindow) Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
-        function onWindowRemoved(w) { if (w && w.dock) effect.lastDockAt = Date.now(); if (w) { delete effect.focusAt[w.internalId]; delete effect.floatHome[w.internalId]; delete effect.blurMemo[String(w.internalId)]; delete effect.revertLog[w.internalId]; delete effect.leftSpots[w.internalId]; delete effect.parked[w.internalId]; delete effect.watchedWindows[w.internalId]; delete effect.planeRestore[w.internalId]; delete effect.holdTrack[w.internalId]; delete effect.dirtyWindows[w.internalId]; } if (w && w.desktopWindow) Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
+        function onWindowRemoved(w) { if (w && w.dock) effect.lastDockAt = Date.now(); if (w) { effect.spotRelease(w); delete effect.focusAt[w.internalId]; delete effect.floatHome[w.internalId]; delete effect.blurMemo[String(w.internalId)]; delete effect.revertLog[w.internalId]; delete effect.leftSpots[w.internalId]; delete effect.parked[w.internalId]; delete effect.watchedWindows[w.internalId]; delete effect.planeRestore[w.internalId]; delete effect.holdTrack[w.internalId]; delete effect.dirtyWindows[w.internalId]; } if (w && w.desktopWindow) Qt.callLater(effect.refreshDesktopWindow); if (effect.visible) Qt.callLater(effect.resync); }
         // Switching activities at 1:1 switches viewport: the ground follows.
         function onCurrentActivityChanged(id) {
             // A slide belongs to the activity it began on: in flight it has written nothing and
@@ -7401,7 +7562,7 @@ KWin.SceneEffect {
             + " undo=" + undoStack.length
             + " snaps=" + snapCatches
             + " throw=" + (lastThrow ? Math.round(lastThrow.dx) + "," + Math.round(lastThrow.dy) : "-")
-            + " bookmarks=" + Object.keys(bookmarks).length
+            + " bookmarks=" + Object.keys(bookmarks).length + " spots=" + spotCount() + " restored=" + spotsRestored
             + " game=" + (gameMode ? 1 : 0)
             + " safe=" + (safeMode ? 1 : 0)
             + " cached=" + (viewCached ? 1 : 0)
@@ -7505,6 +7666,8 @@ KWin.SceneEffect {
         loadHiddenFrames();
         loadClusterState();
         loadAppHomes();
+        loadSpots();
+        loadedAt = Date.now();
         loadBookmarks();
         layoutBefore = outputRects();
         watchAllWindows();

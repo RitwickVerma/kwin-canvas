@@ -191,7 +191,10 @@ it is rebuilt and installed again, and `kwin-canvas doctor` says so.
 
 Also running in the author's session, and not tested against the canvas beyond what the
 test suite covers: KZones, Remember Window Positions and a blur effect. A tile (KZones, a KWin
-tile, a maximized window) moves as a whole room on the plane.
+tile, a maximized window) moves as a whole room on the plane. Remember Window Positions keeps
+screen spots, which on the plane are not where a window was: the canvas keeps every window's plane
+spot itself and puts a starting app's windows back after the script has run (`RestoreSpots`), so
+after a login the layout comes back instead of piling up on one monitor.
 
 ## Use
 

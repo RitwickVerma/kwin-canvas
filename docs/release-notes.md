@@ -8,6 +8,16 @@ float, dodge and snap; two monitors share one plane; a panel decor, a map widget
 decoration come with it; and `kwin-canvas doctor` and `setup` keep the install and KDE's settings
 honest. The lines below are the detail, newest first.
 
+- Windows come back where they were. After a login or a reboot every app reopened its windows on
+  the screen, so the whole layout lay piled on one monitor; an app closed and opened again came
+  back on the screen too. The canvas now remembers where every window was on the plane, and when
+  an app starts it puts its windows back there: the same title first, then the same size. After a
+  login the camera stays where you left it and the windows wait at their spots; later, reopening
+  an app slides the desk to its window. A running app's new window still opens where KDE places
+  it. `RestoreSpots` turns it off.
+- The desk's position survives a login. Only closing the overview wrote the camera, so after a
+  slide, a fly or a bookmark on the desktop a login came back somewhere else; every landing now
+  writes it.
 - A float steps aside by the shortest move. It tried four straight slides and the four corners,
   so when the slide was blocked (by the screen's edge or another float) it could go the long way
   round; it now finds the nearest spot that clears the focused window, sliding both ways when

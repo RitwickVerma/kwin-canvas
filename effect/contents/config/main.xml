@@ -328,6 +328,14 @@
             <label>A new window that appears wholly off every monitor (put back at an old spot by a script or by the app itself) is moved to the middle of the monitor under the pointer, so a new window always opens where you are looking.</label>
             <default>true</default>
         </entry>
+        <entry name="RestoreSpots" type="Bool">
+            <label>Remember where every window was on the plane, and put the windows of an app that starts (after a login, a reboot, or closing and reopening it) back there, instead of piling them onto the screen. A running app's next window still opens where KDE places it.</label>
+            <default>true</default>
+        </entry>
+        <entry name="WindowSpots" type="String">
+            <label>Where windows were on the plane, as JSON: an app's desktop file or class to a list of { c caption, x, y, w, h, a activity, t time }. Written by the canvas (RestoreSpots); a hidden knob, for persistence only.</label>
+            <default>{}</default>
+        </entry>
         <entry name="FullscreenPause" type="Bool">
             <label>While a game has the focus and the canvas is closed - a fullscreen window (a game, a video), or a Steam game's window however it runs (borderless too) - the canvas stands aside: the screen corners are released, an activation does not fly, and the canvas's hold buttons and the wheel on the wallpaper go to the window.</label>
             <default>true</default>

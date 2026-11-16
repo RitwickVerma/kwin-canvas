@@ -119,6 +119,8 @@ sget() {
         snaps)    sed -n 's/.* snaps=\([0-9]*\).*/\1/p' <<<"$line" ;;
         throw)    sed -n 's/.* throw=\([-0-9,]*\).*/\1/p' <<<"$line" ;;
         bookmarks) sed -n 's/.* bookmarks=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        spots)    sed -n 's/.* spots=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        restored) sed -n 's/.* restored=\([0-9]*\).*/\1/p' <<<"$line" ;;
         deskwin)  sed -n 's/.* deskwin=\([0-9]*\).*/\1/p' <<<"$line" ;;
         map)      sed -n 's/.* map=\([a-z-]*\).*/\1/p' <<<"$line" ;;
         ql)       sed -n 's/.* ql=\([0-9]*\).*/\1/p' <<<"$line" ;;
@@ -336,6 +338,7 @@ declare -A LAYOUT=(
     [Gwenview]="1400 120 460 420"
 )
 arrange() {
+    local cap
     c cancel >/dev/null 2>&1 || true
     c resetview
     open_1to1

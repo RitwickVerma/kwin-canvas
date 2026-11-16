@@ -1418,9 +1418,9 @@ plasmashell log carries no QML error from it).
   lost, but positions can shift.
 - **X11 windows** have 16-bit coordinates. Beyond about ±32k canvas pixels
   they cannot be placed.
-- **Persistence.** `view` lives in the effect object and resets to (0,0) when
-  KWin restarts. Window positions survive since they are real geometry, but
-  the ground offset does not until the next commit.
+- **Persistence.** The camera (`ViewX`, `ViewY`) and the windows' plane spots (the spot book,
+  below) survive a restart; the per-monitor cameras of separate cameras do not, and start at the
+  merged camera. A window that opens before the effect has loaded is not put back.
 - **Stock Zoom effect** binds Meta+wheel. Disable it or rebind.
 - **Untested live in part.** The `evaluateScript` handoff has been rendered in
   isolation but not yet driven inside a live plasmashell; the ground wallpaper
@@ -1461,6 +1461,55 @@ bookmark saved zoomed out is gone to at 1:1 about its middle. The debug verbs
 knob, loaded at startup, so they survive a restart; `state` reports `bookmarks=`
 (how many are held). Scenario `145` pins the flight, an empty slot, the config
 write, the real keys and the closed save, slide, fly and zoomed-out landing.
+
+## Where windows were: the spot book
+
+A login, a reboot or an app's restart opens its windows where KWin, a script (Remember Window
+Positions) or the app puts them, and all three put them on the screen: none of them knows the plane.
+Remember Window Positions keeps real coordinates as an app closes, which is the screen spot it was
+closed at, and nothing at all for the windows a logout or a reboot takes down. So after a login
+the layout lay piled on one monitor, every cluster gone: the maintainer's report, 2026-11-16.
+
+**The book.** `WindowSpots` holds, per app (`appKey`: the desktop file, else the class), up to eight
+records `{ c caption, x, y (the plane spot), w, h, a activity, t }`, for at most 48 apps (the
+oldest with no window open go first; `Logic.spotTrim`). Each window open now owns one record and
+writes into it (`spotOwner`, `spotNote`): a few seconds after the first frame change of a burst
+(`spotTimer`, from `frameChanged`), and once more as the window closes (`spotRelease`, written at
+once, since a logout takes the effect down with the windows). What is written is the plane spot:
+`planeSpot` closed, the entry open, nothing mid-slide (the real frames trail the camera there), and
+nothing for a window a hand holds or KWin keeps in screen coordinates (maximized, tiled,
+fullscreen); a minimized window keeps its spot. A snapshot that changed nothing writes nothing.
+
+**Putting back.** An app *starts* when a window of it appears and no other window of it is open;
+the windows that follow within 15 s are part of the start (a browser restoring five windows). Only
+a starting app's windows are put back (`restoreSpot`, run by the new-window clock 900 ms after the
+window appears, so after Remember Window Positions has moved it): a running app's next window is a
+new one, and a window flying off to where an old one stood would be a surprise. Of the app's
+records not owned by an open window, `Logic.spotMatch` takes the same caption first, then the same
+size (within 8 px), then the same activity, the latest among equals, and the latest when nothing
+matches (an app with one window comes back where its last one was). The record is projected like
+every plane spot (`projectEntry`, so separate cameras park it when no frame holds it). Within a
+minute of the effect loading (a login) a window put back off the screen stays there and the camera
+stays where it was left; later, a reopened app's window off the screen is slid to, as an app's
+home is. A starting app's spot comes before its home: the home is where a running app's new
+windows open. A window put back is not then centred by `NewWindowsInView`. The canvas open at the
+start, a maximized or tiled window and a float are left as they open.
+
+**The camera.** A plane spot means nothing without the camera that maps it to the screen, and
+`ViewX`/`ViewY` were written only by the overview's commit: a slide, a fly, a bookmark or the map's
+go on the closed desktop moved the camera without writing it, so a login came back at the last
+overview's camera with every window shifted by the slides since (scenario `231` read the camera
+going back from (4273, -224) to (0, 0) across a reload). `endSlide` now writes it too
+(`persistView`, two seconds after the last landing, since a held pan key lands many times a second,
+and after the canvas closes when it opened in between).
+
+`RestoreSpots` (on) turns the putting back and the writing off; the nest seeds it off, as it does the
+motion knobs, so a scenario never finds windows where an earlier one left them. `state` reports
+`spots=` (records held) and `restored=` (windows put back this session). Scenario `231`: a parked
+window's spot in the book, a reopened app put back and slid to, the effect reloaded as at a login
+(the camera as the closed desk left it, the window put back and not flown to), a running app's
+second window left alone, and the knob off; with `restoreSpot` and `persistView` disabled nine of
+its checks fail.
 
 ## Next
 

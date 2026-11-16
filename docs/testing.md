@@ -34,6 +34,10 @@ the spring: every drag lands exactly where it was put, every camera move
 arrives at once, and every layout write is found at its landing. `94-physics`
 turns them on and measures them.
 
+It seeds `RestoreSpots` off too: the spot book puts a starting app's windows back
+where the last run left them, so a scenario would find a window where an earlier
+one parked it. `231-window-spots` turns it on and measures it.
+
 ```bash
 make play                       # up, fixture apps arranged, canvas open and fitted
 make play ARGS=--closed         # same, canvas closed at 1:1
@@ -324,6 +328,11 @@ recording, point OBS at the nest window while `DEMO_FRAMES=0 make demo` runs.
 
 ## Things that cost time
 
+- **`dev/nest.sh` and `tests/lib.sh` are bash.** Sourced from zsh (an agent's shell often is),
+  `$HERE` comes out empty, `seed_fonts` writes an empty `fonts.conf` and `up` hangs with the
+  nested KWin stuck at its start. Run them inside `bash -c 'source dev/nest.sh; ...'`. And a
+  helper's loop variable is `local`: bash's scoping is dynamic, so `arrange`'s bare `for cap`
+  once overwrote the calling scenario's own `cap` (231's first run moved KCalc, not its window).
 - **The nest renders in software.** Since 2026-10-31 the compositor and every client in a
   nest use Mesa's llvmpipe (the glvnd EGL vendor file and `LIBGL_ALWAYS_SOFTWARE`);
   `NEST_GPU=1` puts it back on the host's GPU. On the GPU a nest competed with the owner's

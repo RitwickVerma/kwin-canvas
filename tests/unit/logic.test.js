@@ -894,6 +894,41 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
     ok("mapClusters: nothing to draw, no clusters", L.mapClusters([], {}, {}, 0, null).clusters.length === 0);
 }
 
+// ---- the spot book: a starting app's window goes back to where it was (spotMatch, spotTrim) ----
+{
+    const S = function (c, x, y, w, h, a, t) { return { c: c, x: x, y: y, w: w, h: h, a: a, t: t }; };
+    const recs = [S("Home — Dolphin", 100, 200, 1200, 700, "A", 50), S("Trash — Dolphin", 9000, -400, 900, 600, "A", 90),
+                  S("Music — Dolphin", -3000, 800, 1200, 700, "B", 70)];
+    ok("spotMatch: the same caption wins over a newer record",
+        L.spotMatch(recs, { c: "Home — Dolphin", w: 900, h: 600, a: "A" }, []) === 0);
+    ok("spotMatch: the same size wins when no caption matches",
+        L.spotMatch(recs, { c: "Downloads — Dolphin", w: 1204, h: 696, a: "B" }, []) === 2);
+    ok("spotMatch: the same activity breaks the tie between two sizes alike",
+        L.spotMatch(recs, { c: "Downloads — Dolphin", w: 1200, h: 700, a: "A" }, []) === 0);
+    ok("spotMatch: among equals the latest wins",
+        L.spotMatch(recs, { c: "x", w: 10, h: 10, a: "C" }, []) === 1);
+    ok("spotMatch: a record a window owns is taken",
+        L.spotMatch(recs, { c: "Home — Dolphin", w: 1200, h: 700, a: "A" }, [recs[0]]) === 2);
+    ok("spotMatch: every record taken, nothing", L.spotMatch(recs, { c: "Home — Dolphin", w: 1, h: 1, a: "A" }, recs) === -1);
+    ok("spotMatch: no records, nothing", L.spotMatch([], { c: "a", w: 1, h: 1, a: "A" }, []) === -1 && L.spotMatch(undefined, { c: "a", w: 1, h: 1 }, null) === -1);
+
+    const many = [];
+    for (let i = 0; i < 12; ++i) many.push(S("w" + i, i, i, 100, 100, "A", i));
+    const book = { app: many, old: [S("o", 0, 0, 1, 1, "A", 1)], gone: [S("g", NaN, 0, 1, 1, "A", 5)] };
+    const t1 = L.spotTrim(book, [many[0], many[1]], 8, 10);
+    ok("spotTrim: an app keeps at most perApp records", t1.app.length === 8);
+    ok("spotTrim: the owned records stay however old", t1.app.indexOf(many[0]) >= 0 && t1.app.indexOf(many[1]) >= 0);
+    ok("spotTrim: the rest by recency", t1.app.indexOf(many[11]) >= 0 && t1.app.indexOf(many[2]) < 0);
+    ok("spotTrim: the same record objects, not copies", t1.app[0] === many[0]);
+    ok("spotTrim: a record with no spot is dropped, and an app left empty with it", t1.gone === undefined);
+    ok("spotTrim: the book itself is not changed", book.app.length === 12);
+    const apps = {};
+    for (let i = 0; i < 5; ++i) apps["a" + i] = [S("w", 0, 0, 1, 1, "A", i * 10)];
+    const t2 = L.spotTrim(apps, [apps.a0[0]], 8, 3);
+    ok("spotTrim: past maxApps the oldest apps with nothing open go",
+        Object.keys(t2).sort().join() === "a0,a3,a4");
+}
+
 // ---- the census: every function of logic.js is called by a test above ----
 {
     const self = fs.readFileSync(__filename, "utf8");
