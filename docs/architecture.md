@@ -773,9 +773,19 @@ monitor's work area that clears it by 12 px, and goes back to where it was once 
 leaves that spot free (`dodgeFloats`, `Logic.dodgeSpot`, `225`). It waits for the focus to settle,
 450 ms after the last focus change (`dodgeTimer`), so a fly lands first and a pointer crossing
 windows with focus following the mouse moves nothing; it runs only with the canvas closed, and
-every close starts the clock again, since a slide or a commit moved the desk under the floats. The floats are planned in turn, each against where the others will be,
+every close starts the clock again, since a slide or a commit moved the desk under the floats.
+The floats are planned in turn, each against where the others will be,
 so two never take the same spot and none goes home onto another; a spot clear of the other
-floats beats a nearer one under another float, and when there is no room the float stays. A
+floats beats a nearer one under another float. When no spot on the monitor clears the focused
+window (the two do not fit side by side), the float takes the spot that leaves the most of
+everything on show (`Logic.leastHiddenSpot`): the union of the focused window and every float is
+theirs plus the float's area less what the float shares with them (`Logic.coveredArea`, an area two
+of them share counted once), so the float goes where it shares the least, nearest its own spot
+among equals. The search is exact: the shared area is bilinear in the float's position between
+the places where one of its edges meets one of theirs, so its least is at one of those places or
+on the float's own row or column, clamped into the work area. It moves only for a tenth of its own
+area or more (`DODGE_MIN_GAIN`), so a focused window that leaves a sliver, or a maximized one,
+moves nothing. A
 focus that is not a free window of the plane (a launcher, a panel, the desktop, a maximized or
 tiled window, a float) moves nothing either way, so opening KRunner does not send the floats
 home and back. The glide is the canvas's own write (`setReal`), so the float's plane coordinate

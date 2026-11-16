@@ -223,10 +223,13 @@ function onAMonitor(r, monitors) {
 
 // Where a floated window steps to so the focused window shows whole: the spot nearest its own,
 // inside the work area, clear of the focused window by gap, or null when it does not overlap
-// the focused window or no such spot exists (a maximized focused window). It slides along one
-// axis to just past the focused window's edge, the other axis held where it was or pulled into
-// the area, and failing those tries the area's corners; a spot clear of the other floats wins
-// over a nearer one that is not. Every rect is {x, y, width, height}.
+// the focused window. It slides along one axis to just past the focused window's edge, the other
+// axis held where it was or pulled into the area, and failing those tries the area's corners; a
+// spot clear of the other floats wins over a nearer one that is not. When no spot clears the
+// focused window (the two do not fit side by side on the monitor), the float takes the spot that
+// leaves the most of everything on show (leastHiddenSpot: the focused window and every float
+// counted alike), marked partial; null when no spot shows enough more than where it is (a
+// maximized focused window). Every rect is {x, y, width, height}.
 function dodgeSpot(f, focus, area, others, gap) {
     if (!focus || !rectsMeet(f, focus)) return null;
     const g = gap || 0;
@@ -249,7 +252,81 @@ function dodgeSpot(f, focus, area, others, gap) {
         const cost = Math.hypot(r.x - f.x, r.y - f.y) + (meetsAny(r, others) ? 1e6 : 0);
         if (cost < bestCost) { bestCost = cost; best = { x: r.x, y: r.y }; }
     }
-    return best;
+    if (best) return best;
+    return leastHiddenSpot(f, area, [focus].concat(others || []), DODGE_MIN_GAIN * f.width * f.height);
+}
+// The least a partial dodge must win, as a share of the float's own area: a step for less (a
+// focused window that leaves a sliver free) moves the float for nothing the eye would notice.
+const DODGE_MIN_GAIN = 0.1;
+
+// How much of r the union of rects covers: the rects clipped to r, measured on the grid of their
+// own edges, so an area two of them share counts once.
+function coveredArea(r, rects) {
+    const clip = [];
+    for (let i = 0; rects && i < rects.length; ++i) {
+        const o = rects[i];
+        if (!o) continue;
+        const x0 = Math.max(r.x, o.x), x1 = Math.min(r.x + r.width, o.x + o.width);
+        const y0 = Math.max(r.y, o.y), y1 = Math.min(r.y + r.height, o.y + o.height);
+        if (x1 > x0 && y1 > y0) clip.push([x0, y0, x1, y1]);
+    }
+    if (clip.length === 0) return 0;
+    if (clip.length === 1) return (clip[0][2] - clip[0][0]) * (clip[0][3] - clip[0][1]);
+    const xs = [], ys = [];
+    for (let i = 0; i < clip.length; ++i) { xs.push(clip[i][0], clip[i][2]); ys.push(clip[i][1], clip[i][3]); }
+    const num = function (a, b) { return a - b; };
+    xs.sort(num); ys.sort(num);
+    let area = 0;
+    for (let i = 0; i + 1 < xs.length; ++i) {
+        if (xs[i + 1] === xs[i]) continue;
+        const cx = (xs[i] + xs[i + 1]) / 2;
+        for (let j = 0; j + 1 < ys.length; ++j) {
+            if (ys[j + 1] === ys[j]) continue;
+            const cy = (ys[j] + ys[j + 1]) / 2;
+            for (let k = 0; k < clip.length; ++k) {
+                const c = clip[k];
+                if (c[0] <= cx && cx < c[2] && c[1] <= cy && cy < c[3]) { area += (xs[i + 1] - xs[i]) * (ys[j + 1] - ys[j]); break; }
+            }
+        }
+    }
+    return area;
+}
+
+// The spot inside area where the least of f is hidden by, or hides, the rects (the focused window
+// and the other floats): the most of all of them on show, since the union's area is theirs plus
+// f's less what f shares with them. Nearest f's own spot among equals; null when the best hides
+// less than minGain less than f's own spot does. Exact: the shared area is bilinear in (x, y)
+// between the places where one of f's edges meets one of theirs, so its least is at one of those
+// places (or on f's own row or column, the nearest point of a flat stretch), clamped into the
+// area. A float wider or taller than the area sits at its left or top edge.
+function leastHiddenSpot(f, area, rects, minGain) {
+    const loX = area.x, hiX = Math.max(area.x, area.x + area.width - f.width);
+    const loY = area.y, hiY = Math.max(area.y, area.y + area.height - f.height);
+    const xs = [loX, hiX, Math.max(loX, Math.min(f.x, hiX))];
+    const ys = [loY, hiY, Math.max(loY, Math.min(f.y, hiY))];
+    for (let i = 0; rects && i < rects.length; ++i) {
+        const o = rects[i];
+        if (!o) continue;
+        const ex = [o.x, o.x + o.width], ey = [o.y, o.y + o.height];
+        for (let k = 0; k < 2; ++k) {
+            for (const x of [ex[k], ex[k] - f.width]) if (x >= loX && x <= hiX) xs.push(x);
+            for (const y of [ey[k], ey[k] - f.height]) if (y >= loY && y <= hiY) ys.push(y);
+        }
+    }
+    const here = coveredArea(f, rects);
+    let best = null, bestHidden = Infinity, bestDist = Infinity;
+    for (let i = 0; i < xs.length; ++i) {
+        for (let j = 0; j < ys.length; ++j) {
+            const r = { x: xs[i], y: ys[j], width: f.width, height: f.height };
+            const hidden = coveredArea(r, rects);
+            const dist = Math.hypot(r.x - f.x, r.y - f.y);
+            if (hidden < bestHidden - 0.5 || (hidden <= bestHidden + 0.5 && dist < bestDist)) {
+                best = r; bestHidden = hidden; bestDist = dist;
+            }
+        }
+    }
+    if (!best || here - bestHidden < (minGain || 0)) return null;
+    return { x: Math.round(best.x), y: Math.round(best.y), partial: true };
 }
 
 // Whether a frame change has the shape of KWin's reachability rule, the only move of a window's

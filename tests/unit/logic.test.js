@@ -175,6 +175,23 @@ ok("no window is not", !L.isGameWindow(null));
     ok("and not when it meets none", !L.meetsAny(r(0, 0, 100, 100), [r(500, 500, 10, 10)]) && !L.meetsAny(r(0, 0, 100, 100), null));
     const s5 = L.dodgeSpot(r(600, 900, 300, 200), r(100, 100, 600, 1000), area, [], 12);
     ok("the held axis is pulled into the work area", s5 && s5.y + 200 <= 1040 && s5.x === 712);
+    // No room beside a large focused window (200 px free left, 320 right, 100 above, 140 below a
+    // 500x400 float): the float takes the spot that hides the least, the corner of the widest gaps.
+    const big = r(200, 100, 1400, 800);
+    const p1 = L.dodgeSpot(r(800, 300, 500, 400), big, area, [], 12);
+    ok("no room to clear it: the float takes the least hidden spot", p1 && p1.partial === true && p1.x === 1420 && p1.y === 640);
+    ok("which hides only what the gaps cannot hold", L.coveredArea(r(1420, 640, 500, 400), [big]) === 180 * 260);
+    const p2 = L.dodgeSpot(r(800, 300, 500, 400), big, area, [r(1420, 640, 500, 400)], 12);
+    ok("another float's area counts as the focused window's does: the next best corner",
+       p2 && p2.partial === true && p2.x === 1420 && p2.y === 0);
+    ok("a focused window that leaves only a sliver moves nothing (under a tenth of the float)",
+       L.dodgeSpot(r(800, 300, 500, 400), r(0, 0, 1900, 1040), area, [], 12) === null);
+    ok("an area two rects share is hidden once", L.coveredArea(r(0, 0, 100, 100), [r(0, 0, 60, 100), r(40, 0, 60, 100)]) === 10000);
+    ok("nothing over it hides nothing", L.coveredArea(r(0, 0, 100, 100), [r(200, 0, 50, 50), null]) === 0);
+    const p3 = L.leastHiddenSpot(r(50, 500, 2000, 100), area, [r(0, 0, 1920, 300)], 0);
+    ok("a float wider than the area sits at its left edge, its row kept", p3 && p3.x === 0 && p3.y === 500);
+    const p4 = L.leastHiddenSpot(r(700, 200, 300, 200), area, [r(600, 100, 600, 400)], 0);
+    ok("among spots that hide nothing, the nearest", p4 && p4.x === 700 && p4.y === 500);
 }
 
 // ---- the corner radius a thumbnail wears ----

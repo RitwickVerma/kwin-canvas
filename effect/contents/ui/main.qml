@@ -1054,8 +1054,9 @@ KWin.SceneEffect {
 
     // A float steps aside for the focused window. A floated window that overlaps the focused
     // window glides to the nearest spot on its monitor's work area that clears it
-    // (Logic.dodgeSpot), and back to where it was once the focused window no longer needs that
-    // spot. It waits for the focus to settle (dodgeTimer): a fly lands first, and with focus
+    // (Logic.dodgeSpot), or, when the two do not fit side by side, to the spot that leaves the most
+    // of the focused window and every float on show; and back to where it was once the focused
+    // window no longer needs that spot. It waits for the focus to settle (dodgeTimer): a fly lands first, and with focus
     // following the mouse a pointer crossing windows moves nothing. Only with the canvas closed;
     // every close looks again (a slide or a commit moved the desk under the floats). A focus that is not
     // a free window of the plane (a launcher, a panel, the desktop, a maximized or tiled window,
@@ -1123,11 +1124,11 @@ KWin.SceneEffect {
                 if (to && !home) floatHome[id] = { x: f.r.x, y: f.r.y };
             }
             if (!to || (to.x === f.r.x && to.y === f.r.y)) continue;
-            moves.push({ w: f.w, fx: f.r.x, fy: f.r.y, tx: to.x, ty: to.y });
+            moves.push({ w: f.w, fx: f.r.x, fy: f.r.y, tx: to.x, ty: to.y, partial: !!to.partial });
             f.r = { x: to.x, y: to.y, width: f.r.width, height: f.r.height };
         }
         if (moves.length === 0) return;
-        dbg("dodge", moves.map(function (m) { return m.w.caption + " (" + m.fx + "," + m.fy + ") -> (" + m.tx + "," + m.ty + ")"; }).join(", "));
+        dbg("dodge", moves.map(function (m) { return m.w.caption + " (" + m.fx + "," + m.fy + ") -> (" + m.tx + "," + m.ty + ")" + (m.partial ? " partly" : ""); }).join(", "));
         glideReal(moves);
     }
     // The canvas's own glide of real windows (the float dodge, a window dropped on the map near

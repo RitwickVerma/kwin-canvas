@@ -44,6 +44,24 @@ and back to where it began, the dock approach, and a wallpaper that is not a pic
 to 12% (all on the compositor's main thread). The idle bob was the one decorative
 cost, 21% of a core zoomed out, and is gone.
 
+**A float with no room still steps aside (2026-11-16).** The owner: the dodge "doesn't work if
+the geometries don't fit on the screen", and some overlap is fine if the most of the floats and the
+focused window shows. `Logic.dodgeSpot` returned null when none of its eight spots cleared the
+focused window, so the float stayed wholly under it. It now falls back to `Logic.leastHiddenSpot`:
+the spot in the work area where the float shares the least with the union of the focused window
+and the other floats (`Logic.coveredArea`, an area two of them share counted once), which is the
+spot that leaves the most of all of them on show; nearest its own spot among equals, and only for
+a gain of a tenth of the float's area or more (`DODGE_MIN_GAIN`), so a sliver or a maximized focus
+moves nothing. Exact by construction: the shared area is bilinear between the places where the
+float's edges meet theirs, so the candidates are those places, the area's ends and the float's own
+row and column. The home logic is unchanged (the float goes back once its home clears the focus).
+Verified: `make unit` (logic 361: the least hidden corner, another float counted, the sliver, the
+union counted once, a float wider than the area, the nearest of equal spots), `make lint`; the
+nest: `225` extended (a 1500x850 focused window with no room for a 460x420 float: it lands at
+1460,660, the spot `Logic.dodgeSpot` works out from the nest's own work area, and goes home when the
+focus moves on), with the 12 other float scenarios, 70 pass, 0 fail. Not verified: live, and two
+monitors (the dodge keeps each float on its own monitor's work area, as before).
+
 **The flash at a landing (2026-11-05).** The owner: "always a flash after auto pan finishes". With
 Rounded Corners on, every cornered window's picture is cut from KWin's texture through the
 plugin's `frameInTexture`, which read the window item's scene rect; the item takes a move in its
