@@ -1052,18 +1052,19 @@ KWin.SceneEffect {
         revision++;
     }
 
-    // A float steps aside for the focused window. A floated window that overlaps the focused
-    // window glides to the nearest spot on its monitor's work area that clears it
-    // (Logic.dodgeSpot), or, when the two do not fit side by side, to the spot that leaves the most
-    // of the focused window and every float on show; and back to where it was once the focused
-    // window no longer needs that spot. It waits for the focus to settle (dodgeTimer): a fly lands first, and with focus
+    // A float steps aside for the focused window. A floated window that overlaps the focused window
+    // glides by the shortest move that clears it on its monitor's work area (Logic.dodgeSpot), or,
+    // when the two do not fit side by side, to the spot that leaves the most of the focused window
+    // and every float on show; and back to where it was once the focused window no longer needs
+    // that spot. It waits for the focus to settle (dodgeTimer): a fly lands first, and with focus
     // following the mouse a pointer crossing windows moves nothing. Only with the canvas closed;
-    // every close looks again (a slide or a commit moved the desk under the floats). A focus that is not
-    // a free window of the plane (a launcher, a panel, the desktop, a maximized or tiled window,
-    // a float) moves nothing either way. FloatDodge turns it off. floatHome: id -> { x, y }, the
-    // screen spot a float left for the focused window. It is forgotten when the float moves by
-    // any other hand (a resize in place keeps it), stops floating, or the overview opens, where
-    // the hand may put it anywhere.
+    // every close looks again (a slide or a commit moved the desk under the floats). A focused
+    // float is the focus like any other window: the other floats step aside for it, and it stays
+    // where the hand put it. A focus that is not a free window of the plane (a launcher, a panel,
+    // the desktop, a maximized or tiled window) moves nothing either way. FloatDodge turns it off.
+    // floatHome: id -> { x, y }, the screen spot a float left for the focused window. It is
+    // forgotten when the float moves by any other hand (a resize in place keeps it), stops
+    // floating, or the overview opens, where the hand may put it anywhere.
     property var floatHome: ({})
     property var glideMoves: []        // [{ w, fx, fy, tx, ty }], the glide in flight (glideReal)
     property real glideT: 0
@@ -1087,7 +1088,7 @@ KWin.SceneEffect {
         // A glide still in flight lands first, so every spot below is read where it ends.
         if (glideAnim.running) glideAnim.complete();
         const focus = KWin.Workspace.activeWindow;
-        if (!focus || !isPlaneWindow(focus) || windowPinned(focus)) return;
+        if (!focus || !isPlaneWindow(focus)) return;
         const fg = focus.frameGeometry;
         const fr = { x: fg.x, y: fg.y, width: fg.width, height: fg.height };
         const floats = [];

@@ -793,9 +793,10 @@ between the places where one of its edges meets one of theirs, so its least is o
 It moves only for a tenth of its own
 area or more (`DODGE_MIN_GAIN`), so a focused window that leaves a sliver, or a maximized one,
 moves nothing. A
-focus that is not a free window of the plane (a launcher, a panel, the desktop, a maximized or
-tiled window, a float) moves nothing either way, so opening KRunner does not send the floats
-home and back. The glide is the canvas's own write (`setReal`), so the float's plane coordinate
+focused float is the focus like any other window: the other floats step aside for it, and it
+stays where the hand put it (until 2026-11-16 a float's focus moved nothing). A focus that is not
+a free window of the plane (a launcher, a panel, the desktop, a maximized or tiled window) moves
+nothing either way, so opening KRunner does not send the floats home and back. The glide is the canvas's own write (`setReal`), so the float's plane coordinate
 follows it; a glide in flight lands before the next is planned or the canvas opens. `floatHome`
 keeps the spot each float left, and forgets it when the float moves by any other hand (a resize
 in place keeps it), stops floating, or the overview opens. The focused window's own new shape

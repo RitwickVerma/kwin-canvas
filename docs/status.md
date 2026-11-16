@@ -68,8 +68,15 @@ nest: `225` extended (a 1500x850 focused window with no room for a 460x420 float
 1460,660, the spot `Logic.dodgeSpot` works out from the nest's own work area, and goes home when the
 focus moves on), with the 12 other float scenarios, 70 pass, 0 fail, on the partial step and
 again on the exact search (225's clear step still lands at 1352,250, the straight slide being the
-shortest there). Not verified: live, and two monitors (the dodge keeps each float on its own
-monitor's work area, as before).
+shortest there). And the owner: "floating windows themselves when gaining focus dont dodge??" -
+a focused float moved nothing (`dodgeFloats` returned on `windowPinned(focus)` since the dodge's
+first commit, a890058, with no reason recorded). A focused float is the focus like any other
+window now: the other floats step aside for it, and it stays put. `225` gained the case (KCalc
+floated and focused, the other float over it steps right to 592,300): it fails on the old rule
+(the float stays at 400,300 under the focused float) and passes on the new one, with the twelve
+other float scenarios, 72 pass, 0 fail. Not
+verified: live, and two monitors (the dodge keeps each float on its own monitor's work area, as
+before).
 
 **The flash at a landing (2026-11-05).** The owner: "always a flash after auto pan finishes". With
 Rounded Corners on, every cornered window's picture is cut from KWin's texture through the
