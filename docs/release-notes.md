@@ -8,6 +8,18 @@ float, dodge and snap; two monitors share one plane; a panel decor, a map widget
 decoration come with it; and `kwin-canvas doctor` and `setup` keep the install and KDE's settings
 honest. The lines below are the detail, newest first.
 
+- The pass-through plugin, after review. A title-bar drag in an app that draws its own title bar
+  (Brave, Zed, Firefox, GTK apps) in the open canvas ran KWin's move with nothing driving it: the
+  pass-through went dead for the rest of the opening and the window followed the cursor after the
+  close. The plugin now drives and ends that move while the canvas has the pointer. Also: a press
+  held still on a window for four seconds no longer leaves the button down in it; a key held in a
+  window no longer repeats into the canvas (a held W, F or Esc in an editor panned, fitted or
+  cancelled it); Space held for a pan and let go over a window is released to the canvas; Back
+  held in the grasp no longer drops a drag under way; the clicks, keys and scrolls handed to
+  windows carry their real time, so double-clicks and kinetic scrolling read it; Back is left
+  alone while the effect is turned off; NVML (the GPU's load) starts on a thread of its own and
+  never holds the compositor, a wedged driver included; and the ground wallpaper's state file is
+  written without a disk sync on the compositor's thread. Needs `kwin-canvas fix-plugin`.
 - Far jumps fly instead of teleporting. A slide to somewhere wholly off the screen (a click on
   the map widget, a cluster digit, a walk or an activation far away) crossed several screens at
   1:1 in a third of a second, which the eye sees as windows teleporting. It now eases out until

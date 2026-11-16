@@ -377,6 +377,8 @@ private:
     // Keys whose press went to a window: their release goes there too, wherever the pointer is by
     // then, or the client's own repeat runs on. Cleared when the canvas lets the input go.
     QSet<quint32> m_keysToWindow;
+    // The keys whose press the canvas took while it was open: their release is the canvas's too.
+    QSet<quint32> m_keysToCanvas;
     /** The D-Bus object is registered: the startup retries stop once it is. */
     bool m_registered = false;
     /** The map widget's object (/KWinCanvas/Map), registered by the same retries. */

@@ -26,11 +26,14 @@
 #include <QLoggingCategory>
 #include <QQmlContext>
 #include <QQmlEngine>
-#include <QSaveFile>
 #include <QStandardPaths>
 #include <QTextStream>
 #include <QTimer>
+#include <atomic>
+#include <chrono>
 #include <cmath>
+#include <cstdio>
+#include <thread>
 
 Q_LOGGING_CATEGORY(KWIN_CANVAS, "kwin_canvas_passthrough", QtDebugMsg)
 
@@ -38,6 +41,12 @@ using namespace KWin;
 
 static const QString s_path = QStringLiteral("/KWinCanvas");
 static const QString s_mapPath = QStringLiteral("/KWinCanvas/Map");
+
+namespace
+{
+// NVML's start, on a thread of its own (defined with the readings below).
+void nvmlWarmUp();
+}
 
 // A window caption as one field of the state reply. The reply is split on
 // "|" by the decor applet and read as one line, and real captions carry both
@@ -224,6 +233,9 @@ CanvasPassthrough::CanvasPassthrough()
     , InputEventFilter(InputFilterOrder::Effects)
 {
     input()->installInputEventFilter(this);
+    // NVML's start costs 26 ms (and can hang on a wedged driver): paid now, on a thread of its
+    // own, never on this one.
+    nvmlWarmUp();
     // The session bus can still be starting when the plugin loads; a failed
     // registration is retried rather than lost, since the effect only ever
     // finds the plugin through this object: five quick tries, then every two
@@ -256,7 +268,10 @@ CanvasPassthrough::CanvasPassthrough()
     m_idleTimer.setInterval(4000);
     m_idleTimer.setSingleShot(true);
     connect(&m_idleTimer, &QTimer::timeout, this, [this]() {
-        if (m_active && !m_idle) {
+        // Not while a button is down: a press a window got must get its release, and the idle
+        // hands the release to the canvas (a still press held 4 s kept the button down in the
+        // client and the seat).
+        if (m_active && !m_idle && m_buttons == Qt::NoButton) {
             m_idle = true;
             if (QObject *canvas = canvasEffect()) {
                 canvas->setProperty("passthroughIdle", true);
@@ -441,6 +456,7 @@ void CanvasPassthrough::setActive(bool active)
         leave();
         // A key still held reaches the window natively once the canvas lets the input go.
         m_keysToWindow.clear();
+        m_keysToCanvas.clear();
     }
     // A grab or a ground gesture from before (a grasp opened with the canvas closed, at a
     // zoom long gone) is not this activation's.
@@ -476,15 +492,19 @@ void CanvasPassthrough::setCanvasState(const QString &state)
     // zoom the effect publishes), so a fragment shader works in pixels with
     // no camera math of its own; the grid passes through raw and scrolls
     // with the view on the shader side.
-    // Written through QSaveFile: the shader polls this file, and an in-place
-    // truncate-and-write lets it read a half-written plane. The save is a
-    // rename, so a reader sees the old file or the new one, never a mix.
+    // Written to a file beside it and renamed over it: the shader polls this file, and an
+    // in-place truncate-and-write let it read a half-written plane; the rename is atomic, so a
+    // reader sees the old file or the new one, never a mix. Not QSaveFile: its commit syncs the
+    // file to disk, here on the compositor's thread and about once a second while the view moves,
+    // and a busy disk (a game loading) stalled the desktop for it. A state the next write
+    // replaces needs no sync.
     const QString key = QStringLiteral("%1,%2\n").arg(workspace()->geometry().width()).arg(workspace()->geometry().height()) + state;
     if (key == m_canvasStateWritten) {
         return;
     }
-    QSaveFile f(QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + QStringLiteral("/kwin-canvas-state.txt"));
-    if (!f.open(QIODevice::WriteOnly)) {
+    const QString path = QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + QStringLiteral("/kwin-canvas-state.txt");
+    QFile f(path + QStringLiteral(".new"));
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         return;
     }
     QTextStream out(&f);
@@ -521,7 +541,9 @@ void CanvasPassthrough::setCanvasState(const QString &state)
         }
     }
     out.flush();
-    if (f.commit()) {
+    f.close();
+    if (f.error() == QFileDevice::NoError
+        && std::rename(QFile::encodeName(f.fileName()).constData(), QFile::encodeName(path).constData()) == 0) {
         m_canvasStateWritten = key;
     }
 }
@@ -715,6 +737,8 @@ void CanvasPassthrough::replayClick()
 {
     if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: replaying the click the hold threshold did not outlast";
     SeatInterface *seat = waylandServer()->seat();
+    // Replayed now, so stamped now (the monotonic clock KWin's input events are stamped with).
+    seat->setTimestamp(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now().time_since_epoch()));
     sendButton(seat, m_candidateNativeButton, m_candidateButton, PointerButtonState::Pressed);
     seat->notifyPointerFrame();
     sendButton(seat, m_candidateNativeButton, m_candidateButton, PointerButtonState::Released);
@@ -792,41 +816,63 @@ void CanvasPassthrough::windowAction(const QString &action)
 // matters on its own: a game holding most of it leaves the compositor's
 // textures (every thumbnail is one) a few allocations from failing, and a
 // full card is what wedged the driver on 2026-10-30.
+namespace
+{
+struct Nvml {
+    void *dev = nullptr;
+    int (*utilFn)(void *, void *) = nullptr;
+    int (*memFn)(void *, void *) = nullptr;
+};
+Nvml s_nvml;
+// Set once the start is over (whether it found a card or not); until then a reading is -1.
+std::atomic<bool> s_nvmlReady{false};
+// NVML, started once for the session, on a thread of its own: nvmlInit is reference-counted and
+// not free (20 ms, and 6 more for the device handle, measured on the owner's card), and a driver
+// wedged at login (the 2026-10-30 failure) can hang it outright. The compositor's thread never
+// waits for it: a reading before the start is over is -1, as without the driver, and a start that
+// never returns leaves the channels at -1 rather than the desktop frozen. The device handle is
+// kept with it; a failed start leaves both channels at -1 for good. Detached, so a start still
+// stuck at logout does not hold the compositor's exit.
+void nvmlWarmUp()
+{
+    std::thread([] {
+        static QLibrary lib(QStringLiteral("libnvidia-ml.so.1"));
+        if (lib.load()) {
+            auto initFn = (int (*)())lib.resolve("nvmlInit_v2");
+            auto handleFn = (int (*)(unsigned, void **))lib.resolve("nvmlDeviceGetHandleByIndex_v2");
+            void *dev = nullptr;
+            if (initFn && handleFn && initFn() == 0 && handleFn(0, &dev) == 0 && dev) {
+                s_nvml.dev = dev;
+                s_nvml.utilFn = (int (*)(void *, void *))lib.resolve("nvmlDeviceGetUtilizationRates");
+                s_nvml.memFn = (int (*)(void *, void *))lib.resolve("nvmlDeviceGetMemoryInfo");
+            }
+        }
+        s_nvmlReady.store(true, std::memory_order_release);
+    }).detach();
+}
+}
+
 static void nvmlRead(int *busy, int *vram)
 {
     if (busy) {
         *busy = -1;
     }
     *vram = -1;
-    // Initialised once: nvmlInit is reference-counted and not free, and this
-    // runs every couple of seconds for the whole session. The device handle
-    // is kept with it; a failed start leaves both channels at -1 for good.
-    static bool tried = false;
-    static void *dev = nullptr;
-    static int (*utilFn)(void *, void *) = nullptr;
-    static int (*memFn)(void *, void *) = nullptr;
-    if (!tried) {
-        tried = true;
-        static QLibrary lib(QStringLiteral("libnvidia-ml.so.1"));
-        if (lib.load()) {
-            auto initFn = (int (*)())lib.resolve("nvmlInit_v2");
-            auto handleFn = (int (*)(unsigned, void **))lib.resolve("nvmlDeviceGetHandleByIndex_v2");
-            if (initFn && handleFn && initFn() == 0 && handleFn(0, &dev) == 0 && dev) {
-                utilFn = (int (*)(void *, void *))lib.resolve("nvmlDeviceGetUtilizationRates");
-                memFn = (int (*)(void *, void *))lib.resolve("nvmlDeviceGetMemoryInfo");
-            }
-        }
+    if (!s_nvmlReady.load(std::memory_order_acquire)) {
+        return;
     }
+    const Nvml &n = s_nvml;
     // nvmlUtilization_t is two unsigned ints: gpu, then memory (the memory
     // controller's busy share, not how full the memory is).
     // A null busy asks for the memory alone (the kept scene's watch): one driver call.
     unsigned int rates[2] = {0, 0};
-    if (busy && utilFn && utilFn(dev, rates) == 0) {
+    if (busy && n.utilFn && n.utilFn(n.dev, rates) == 0) {
         *busy = int(rates[0]);
     }
-    // nvmlMemory_t is three unsigned long longs: total, free, used.
+    // nvmlMemory_t is three unsigned long longs: total, free, used. A reading is a tenth of a
+    // millisecond.
     unsigned long long memory[3] = {0, 0, 0};
-    if (memFn && memFn(dev, memory) == 0 && memory[0] > 0) {
+    if (n.memFn && n.memFn(n.dev, memory) == 0 && memory[0] > 0) {
         *vram = int(100.0 * double(memory[2]) / double(memory[0]));
     }
 }
@@ -1273,11 +1319,18 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
     // scene needs it too, and the scene's handlers read it fresh for each press.
     publishChrome(event->position);
     // A client the passthrough handed a press to asked KWin to move or resize it (a CSD title
-    // bar's drag, xdg_toplevel.move): KWin's own filter, which comes after this one, must get
-    // the motion and the release, or the move runs with nothing driving it.
-    if (workspace()->moveResizeWindow()) {
+    // bar's drag, xdg_toplevel.move). KWin's own move-resize filter comes after the effects'
+    // filter, which takes every event while the open canvas grabs the pointer, so the move ran
+    // with nothing driving it, never ended, and the window followed the cursor after the close.
+    // While the canvas is open this filter does what that one does (the motion steps the move);
+    // closed, KWin's own filter has it.
+    if (Window *moving = workspace()->moveResizeWindow()) {
         if (m_grab) {
             clearGrab();
+        }
+        if (m_active) {
+            moving->updateInteractiveMoveResize(event->position, event->modifiers);
+            return true;
         }
         return false;
     }
@@ -1290,7 +1343,9 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
     // motion - no window under it may hover, or the pointer's rest would
     // hand the input to the real window drawn under a sheet and the sheet's
     // click or drag would never reach the canvas.
-    if (m_holdDown && m_zoom < 0.85) {
+    // A grab under way keeps its gesture to the end (dropped here, its release went to the canvas
+    // and the client kept the button down).
+    if (m_holdDown && m_zoom < 0.85 && !m_grab) {
         if (m_verbose) qCDebug(KWIN_CANVAS) << "canvas-passthrough: overlay owns the pointer, motion stays in the canvas";
         leave();
         m_grab = nullptr;
@@ -1308,6 +1363,11 @@ bool CanvasPassthrough::pointerMotion(PointerMotionEvent *event)
     }
     const QPointF canvas = toCanvas(event->position);
     m_lastPosition = event->position;
+    // Everything this filter hands the seat from here carries the event's own time: KWin's
+    // filters each set it before they forward, and without it every forwarded event bore the
+    // time of the last one KWin forwarded itself (frozen while the canvas is open), so a
+    // client's double-click and kinetic scrolling read the clock as stopped.
+    waylandServer()->seat()->setTimestamp(event->timestamp);
     if (m_grab) {
         // Implicit grab: the window keeps the pointer until the buttons are up, and so does the
         // surface the press went to - a drag that crosses into a subsurface (a video, a
@@ -1414,7 +1474,9 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     // commits on the release - the hold that makes the location itself the
     // canvas. It works while the canvas is closed because this filter sees
     // the press before anything else does.
-    if (uint(event->button) & m_hold) {
+    // Only while the effect is loaded: turned off in System Settings, its hold would still delay
+    // every Back click and swallow every longer press, a game's included. A hold under way ends.
+    if ((uint(event->button) & m_hold) && (m_holdDown || m_holdCandidate || canvasEffect())) {
         const bool pressed = event->state == PointerButtonState::Pressed;
         if (pressed) {
             // The hold works everywhere now: over the desktop or a window,
@@ -1499,13 +1561,21 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     // The passthrough waits for the aim: until the pointer's first motion
     // after the activation, buttons belong to the canvas - the first click
     // after the overworld opens is the canvas's, not the window's.
-    if (!m_settled || wasIdle) {
+    // The release of a press the window got is the window's, idle or not.
+    if ((!m_settled || wasIdle) && !(m_grab && event->state == PointerButtonState::Released)) {
         return false;
     }
-    // A move or resize KWin runs (a CSD drag a passed-on press started) gets its release
-    // from KWin's own filter, not from here (see pointerMotion).
-    if (workspace()->moveResizeWindow()) {
+    // A move or resize KWin runs (a CSD drag a passed-on press started): while the canvas is
+    // open its release is taken here as KWin's move-resize filter would (see pointerMotion), the
+    // move ending when the last button is up.
+    if (Window *moving = workspace()->moveResizeWindow()) {
         clearGrab();
+        if (m_active) {
+            if (event->state == PointerButtonState::Released && event->buttons == Qt::NoButton) {
+                moving->endInteractiveMoveResize();
+            }
+            return true;
+        }
         return false;
     }
     const bool pressed = event->state == PointerButtonState::Pressed;
@@ -1563,6 +1633,7 @@ bool CanvasPassthrough::pointerButton(PointerButtonEvent *event)
     bool consumed = false;
     if (m_grab) {
         SeatInterface *seat = waylandServer()->seat();
+        seat->setTimestamp(event->timestamp);
         sendButton(seat, event->nativeButton, event->button, event->state);
         seat->notifyPointerFrame();
         consumed = true;
@@ -1602,39 +1673,53 @@ bool CanvasPassthrough::keyboardKey(KeyboardKeyEvent *event)
     if (event->state == KeyboardKeyState::Released && m_keysToWindow.remove(event->nativeScanCode)) {
         SeatInterface *seat = waylandServer()->seat();
         if (seat->focusedKeyboardSurface()) {
+            seat->setTimestamp(event->timestamp);
             seat->notifyKeyboardKey(event->nativeScanCode, event->state, event->serial);
             return true;
         }
         return false;
     }
+    // And a key whose press was the canvas's is released to the canvas: the window never saw the
+    // press (Space held for a pan, then a rest on a window, kept the canvas's Space down).
+    if (event->state == KeyboardKeyState::Released && m_keysToCanvas.remove(event->nativeScanCode)) {
+        return false;
+    }
+    // KWin repeats a held key whichever filter took its press. A key the window holds repeats in
+    // the client itself (Wayland's repeat is the client's): none of its repeats is the canvas's,
+    // or a held W, F or Esc typed into an editor panned, fitted or cancelled the canvas too.
+    if (event->state == KeyboardKeyState::Repeated && m_keysToWindow.contains(event->nativeScanCode)) {
+        return true;
+    }
+    // A closed canvas's keys are the desktop's.
+    if (!m_active) {
+        return false;
+    }
     // The idle's keys are the canvas's - the Esc the user reaches for is
     // the canvas's cancel, not the window's. Typing restarts the idle
     // clock nor hands a key over: the key stays the canvas's while the
-    // passthrough is idle. A closed canvas's keys are the desktop's.
-    if (!m_active || m_idle) {
-        return false;
+    // passthrough is idle.
+    // Past the idle, heavily scoped: the keys belong to the window only while the pointer
+    // hovers one of its kind. The moment the cursor is over the ground,
+    // the frames or the gaps, the canvas has the keys back. And only while the hovered window
+    // is the one the keys would reach: the seat delivers to the focused window, which with
+    // click-to-focus can be another than the one wearing the hand. Keys typed at a window the
+    // rest has not focused stay the canvas's rather than land in the window behind.
+    SeatInterface *seat = waylandServer()->seat();
+    const bool toWindow = !m_idle && m_hover && seat->focusedKeyboardSurface()
+        && m_hover->surface() == seat->focusedKeyboardSurface();
+    if (!m_idle) {
+        m_idleTimer.start();
     }
-    m_idleTimer.start();
     if (event->state == KeyboardKeyState::Repeated) {
         return false;
     }
-    // Heavily scoped: the keys belong to the window only while the pointer
-    // hovers one of its kind. The moment the cursor is over the ground,
-    // the frames or the gaps, the canvas has the keys back.
-    if (!m_hover) {
+    if (!toWindow) {
+        if (event->state == KeyboardKeyState::Pressed) {
+            m_keysToCanvas.insert(event->nativeScanCode);
+        }
         return false;
     }
-    SeatInterface *seat = waylandServer()->seat();
-    if (!seat->focusedKeyboardSurface()) {
-        return false;
-    }
-    // And only while the hovered window is the one the keys would reach: the seat delivers
-    // to the focused window, which with click-to-focus can be another than the one wearing
-    // the hand. Keys typed at a window the rest has not focused stay the canvas's rather than
-    // land in the window behind.
-    if (m_hover->surface() != seat->focusedKeyboardSurface()) {
-        return false;
-    }
+    seat->setTimestamp(event->timestamp);
     seat->notifyKeyboardKey(event->nativeScanCode, event->state, event->serial);
     if (event->state == KeyboardKeyState::Pressed) {
         m_keysToWindow.insert(event->nativeScanCode);
@@ -1708,6 +1793,7 @@ bool CanvasPassthrough::pointerAxis(PointerAxisEvent *event)
         return false;
     }
     SeatInterface *seat = waylandServer()->seat();
+    seat->setTimestamp(event->timestamp);
     seat->notifyPointerAxis(event->orientation, event->delta, event->deltaV120, event->source, event->inverted);
     seat->notifyPointerFrame();
     return true;
