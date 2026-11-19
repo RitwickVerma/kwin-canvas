@@ -6827,10 +6827,10 @@ KWin.SceneEffect {
         // Only what bringNewWindowIntoView takes: a tooltip or a menu arriving every few hundred
         // milliseconds kept restarting the clock, and the window waited as long as they came.
         if (!w || !w.normalWindow || w.popupWindow) return;
-        // Whether its app is starting is judged now, as it appears: the restore runs after the
-        // clock, which a login's stream of windows can hold off for many seconds.
+        // Whether a login is bringing its app back is judged now, as it appears: the restore runs
+        // after the clock, which a login's stream of windows can hold off for many seconds.
         noteAppStart(w);
-        spotPending[w.internalId] = { start: Date.now() - (appStartAt[appKey(w)] || 0) <= spotStartMs };
+        spotPending[w.internalId] = { start: restoring() && Date.now() - (appStartAt[appKey(w)] || 0) <= spotStartMs };
         newWindows.push(w);
         newWindowTimer.restart();
     }
@@ -6883,9 +6883,9 @@ KWin.SceneEffect {
         const fresh = w ? spotPending[w.internalId] : null;
         if (w) delete spotPending[w.internalId];
         if (!w || w.deleted || !w.managed || !w.normalWindow || w.minimized || w.fullScreen) return;
-        // A starting app's window goes back to its spot first, on its own activity too: a login
-        // brings every activity's windows back at once. Before the app's home, which is where a
-        // running app's new windows open, not where a restarted app's old ones were.
+        // A login's starting app's window goes back to its spot first, on its own activity too: a
+        // login brings every activity's windows back at once. Before the app's home, which is
+        // where an app's new windows open, not where a login's old ones were.
         if (fresh && fresh.start && restoreSpot(w)) return;
         if (!isViewportWindow(w) || windowPinned(w)) return;
         const home = appHomes[appKey(w)];
@@ -6915,17 +6915,19 @@ KWin.SceneEffect {
     }
 
     // ---- the spot book: where windows were, across sessions -------------------------
-    // A login, a reboot or an app's restart opens windows where KWin, a script (Remember Window
-    // Positions) or the app puts them: on the screen, which on an infinite plane is not where they
-    // were, so after a login the whole layout lay piled on one monitor. The canvas writes down
-    // each window's plane spot by app (WindowSpots: the app key to records { c caption, x, y, w,
-    // h, a activity, t }; Logic.spotMatch and spotTrim) a few seconds after windows move and as
-    // each one closes, and a window of an app that is starting (no other window of it open when
-    // it appears, or one that follows within the start's first seconds) goes back to its best
-    // match. A running app's next window is a new one and opens as KDE places it. Within a minute
-    // of the effect loading (a login) a window put back off the screen stays there and the camera
-    // stays where it was left; later the desk slides to it, as to an app's home. RestoreSpots
-    // turns it off.
+    // A login or a reboot opens windows where KWin, a script (Remember Window Positions) or the
+    // app puts them: on the screen, which on an infinite plane is not where they were, so after a
+    // login the whole layout lay piled on one monitor. The canvas writes down each window's plane
+    // spot by app (WindowSpots: the app key to records { c caption, x, y, w, h, a activity, t };
+    // Logic.spotMatch and spotTrim) a few seconds after windows move and as each one closes. While
+    // a login brings the apps back (the first spotLoginMs after the effect loads), a window of an
+    // app that is starting (no other window of it open when it appears, or one that follows within
+    // the start's first seconds) goes back to its best match, off the screen too, and the camera
+    // stays where it was left. Only an app's own top-level windows have spots (Logic.spotKind).
+    // Later an app's new window opens where KDE places it, in front of the hand that asked for
+    // it: putting it back where it was days ago, the desk sliding after it, read as a window
+    // opening at a random place (2026-11-19: a widget's settings dialog, an app of one window,
+    // took the desk 2615 px away). RestoreSpots turns it off.
     property var spotBook: ({})
     property var spotOwner: ({})      // internalId -> the record that window writes
     property var spotPending: ({})    // internalId -> { start } for a new window until its restore runs
@@ -6934,12 +6936,22 @@ KWin.SceneEffect {
     property int spotsRestored: 0     // windows put back this session, for the state line
     property real loadedAt: 0
     readonly property int spotStartMs: 15000
-    readonly property int spotLoginMs: 60000
+    // A login's apps came back 7 to 84 s after KWin started on the owner's last four logins.
+    readonly property int spotLoginMs: 90000
+    function restoring() { return loadedAt > 0 && Date.now() - loadedAt <= spotLoginMs; }
     function loadSpots() {
         let b = {};
         try { b = JSON.parse(configuration.WindowSpots || "{}") || {}; } catch (err) { b = {}; }
         spotBook = (typeof b === "object" && !Array.isArray(b)) ? b : {};
-        spotsWritten = JSON.stringify(spotBook);
+        // A book from before Logic.spotKind may hold a game's spots: they are never used, so
+        // they go at the next write rather than holding the book's places.
+        for (const k in spotBook) if (Logic.isGameWindow({ cls: k })) delete spotBook[k];
+        // What the config holds, so the next write goes out when the book above differs.
+        spotsWritten = String(configuration.WindowSpots || "{}");
+    }
+    function spotKindOf(w) {
+        return !!w && Logic.spotKind({ normal: w.normalWindow, dialog: w.dialog, utility: w.utility, splash: w.splash,
+                                       transient: w.transient, modal: w.modal, fullScreen: w.fullScreen, cls: w.resourceClass });
     }
     function spotCount() {
         let n = 0;
@@ -6966,7 +6978,7 @@ KWin.SceneEffect {
     // to that spot); not one a hand holds, nor a state KWin keeps in screen coordinates. A closing
     // window is read once more as it goes, deleted or not.
     function spotWorthy(w, closing) {
-        if (!w || !w.normalWindow || w.skipTaskbar || !appKey(w)) return false;
+        if (!spotKindOf(w) || w.skipTaskbar || !appKey(w)) return false;
         if (!closing && (w.deleted || !w.managed)) return false;
         if (w.desktopWindow || w.dock || w.popupWindow || w.specialWindow) return false;
         return !(w.move || w.resize || w.fullScreen || w.maximizedHorizontally || w.maximizedVertically || w.tile);
@@ -7023,8 +7035,10 @@ KWin.SceneEffect {
         delete spotOwner[id];
         spotsSave();
     }
+    // A login's window back to its spot. The camera stays where it was left: the layout comes back
+    // around it, and a window put back off the screen waits there.
     function restoreSpot(w) {
-        if (configuration.RestoreSpots === false || visible || windowPinned(w) || !isPlaneWindow(w)) return false;
+        if (configuration.RestoreSpots === false || visible || windowPinned(w) || !isPlaneWindow(w) || !spotKindOf(w)) return false;
         const key = appKey(w), list = spotBook[key];
         if (!list || !list.length) return false;
         const g = w.frameGeometry, a = activityOf(w);
@@ -7038,7 +7052,6 @@ KWin.SceneEffect {
         dbg("newwindow", w.caption + " goes back to its spot (" + rec.x + "," + rec.y + ")");
         setReal(w, Qt.rect(Math.round(pj.x), Math.round(pj.y), g.width, g.height));
         spotsRestored++;
-        if (Date.now() - loadedAt > spotLoginMs && !gameMode && !wholeOnOneMonitor(w.frameGeometry)) flyToWindow(w);
         return true;
     }
     function wholeOnOneMonitor(g) {
@@ -7582,7 +7595,7 @@ KWin.SceneEffect {
             + " undo=" + undoStack.length
             + " snaps=" + snapCatches
             + " throw=" + (lastThrow ? Math.round(lastThrow.dx) + "," + Math.round(lastThrow.dy) : "-")
-            + " bookmarks=" + Object.keys(bookmarks).length + " spots=" + spotCount() + " restored=" + spotsRestored
+            + " bookmarks=" + Object.keys(bookmarks).length + " spots=" + spotCount() + " restored=" + spotsRestored + " restoring=" + (restoring() ? 1 : 0)
             + " game=" + (gameMode ? 1 : 0)
             + " safe=" + (safeMode ? 1 : 0)
             + " cached=" + (viewCached ? 1 : 0)

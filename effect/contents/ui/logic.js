@@ -396,6 +396,18 @@ function isEcho(rec, was, now, t, maxAge) {
 // A book maps an app's key (its desktop file, else its class) to a list of records { c (the
 // caption), x, y (the plane spot), w, h (the size), a (the activity), t (ms, when it last changed) }.
 
+// Whether a window is one the book keeps: an app's own top-level window. A dialog, a utility, a
+// splash, or a window over another (transient, modal) belongs where its owner is, which is where
+// KWin puts it; an app made of nothing but such windows (a settings dialog of a widget, a password
+// prompt, a portal's file chooser) started afresh each time it appeared and went back to wherever
+// the last one had been, the desk sliding after it. A game places itself. w is { normal, dialog,
+// utility, splash, transient, modal, fullScreen, cls }.
+function spotKind(w) {
+    if (!w || !w.normal) return false;
+    if (w.dialog || w.utility || w.splash || w.transient || w.modal) return false;
+    return !isGameWindow({ fullScreen: w.fullScreen, cls: w.cls });
+}
+
 // The record a starting app's new window goes back to: the index in recs, or -1 when every record
 // is taken (by a window open now, the `taken` list of records). The same caption counts most, then
 // the same size (within 8 px: a client rounds its size by its own scale), then the same activity;

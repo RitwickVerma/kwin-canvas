@@ -193,8 +193,9 @@ Also running in the author's session, and not tested against the canvas beyond w
 test suite covers: KZones, Remember Window Positions and a blur effect. A tile (KZones, a KWin
 tile, a maximized window) moves as a whole room on the plane. Remember Window Positions keeps
 screen spots, which on the plane are not where a window was: the canvas keeps every window's plane
-spot itself and puts a starting app's windows back after the script has run (`RestoreSpots`), so
-after a login the layout comes back instead of piling up on one monitor.
+spot itself and, while a login brings the apps back, puts their windows back after the script has
+run (`RestoreSpots`), so the layout comes back instead of piling up on one monitor. An app opened
+later opens where KDE places it.
 
 ## Use
 

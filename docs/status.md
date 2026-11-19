@@ -44,6 +44,28 @@ and back to where it began, the dock approach, and a wallpaper that is not a pic
 to 12% (all on the compositor's main thread). The idle bob was the one decorative
 cost, 21% of a core zoomed out, and is gone.
 
+**New windows open in front again; a login alone puts windows back (2026-11-19).** The owner,
+after the reboot that loaded the spot book: "why do new windows open at random ass places". The
+live log, read without driving the session: "AI Usage Monitor Settings" (a widget's settings
+dialog, class `org.kde.plasmashell`) took the focus at 13:51:49.420, and 907 ms later (the
+new-window clock) the canvas put it back where the last such dialog had stood and slid the desk
+2615 px to it; plasmashell moved it again and the canvas reverted it twice. The book held 64
+records, among them polkit's "Authentication Required", the keyring's unlock prompt, a portal's
+permission prompt, zenity, a 26x64 Steam window and Deadlock: an app made of nothing but one-off
+windows starts afresh with each one, and every start went back to an old spot, at any time of the
+session. Fixed: a window is put back only while a login brings the apps back (the first 90 s after
+the effect loads, `spotLoginMs`; the last four logins brought theirs back 7 to 84 s after KWin
+started), and never flown to; later an app's new window opens where KDE places it. Only an app's
+own top-level windows have spots (`Logic.spotKind`: no dialog, utility, splash, transient or
+modal window, no game); a Wayland dialog reads `normal=true dialog=false modal=true` in KWin
+(kdialog in the nest), so `modal` is the flag that catches it. Game keys are dropped from an old
+book. `restoring=` on the state line. Verified: `make unit` (logic 402: `spotKind`), `make lint`;
+in the hidden nest `231` (rewritten) 22 of 22, and against the code before the fix 18 of 22 (the
+dialog given a spot, an app opened after the login put back, and the two `restoring=` checks);
+with `212`, `216`, `10`, `211` and `116`, 76 pass, 0 fail. Not verified: a real login (the effect's reload stands
+in for it), a login slower than 90 s, and the settings dialog itself, which the nest does not run
+(it is caught by the 90 s rule, not by `spotKind`, unless plasmashell marks it modal).
+
 **The canvas off a game's full card (2026-11-16, verified 2026-11-19).** The owner: "why 16 fps in
 deadlock?? its not that AAA!!". Read live without driving it: the RTX 3080's 10 GB were 9749 MiB
 used, 132 MiB free (Deadlock 6.9 GB, the desktop about 2.8 GB: KWin 0.5, plasmashell 0.26, serein,

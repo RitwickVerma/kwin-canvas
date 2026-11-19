@@ -121,6 +121,7 @@ sget() {
         bookmarks) sed -n 's/.* bookmarks=\([0-9]*\).*/\1/p' <<<"$line" ;;
         spots)    sed -n 's/.* spots=\([0-9]*\).*/\1/p' <<<"$line" ;;
         restored) sed -n 's/.* restored=\([0-9]*\).*/\1/p' <<<"$line" ;;
+        restoring) sed -n 's/.* restoring=\([0-9]*\).*/\1/p' <<<"$line" ;;
         deskwin)  sed -n 's/.* deskwin=\([0-9]*\).*/\1/p' <<<"$line" ;;
         map)      sed -n 's/.* map=\([a-z-]*\).*/\1/p' <<<"$line" ;;
         ql)       sed -n 's/.* ql=\([0-9]*\).*/\1/p' <<<"$line" ;;

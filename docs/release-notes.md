@@ -16,13 +16,14 @@ honest. The lines below are the detail, newest first.
   asked for at the last reading, the open's first reading (taken at once, a quiet slide's too)
   corrects that either way, and a fuller card steps down at once. CPU, GPU and RAM load still
   wait for two readings, so a launch spike cannot flash the canvas down.
-- Windows come back where they were. After a login or a reboot every app reopened its windows on
-  the screen, so the whole layout lay piled on one monitor; an app closed and opened again came
-  back on the screen too. The canvas now remembers where every window was on the plane, and when
-  an app starts it puts its windows back there: the same title first, then the same size. After a
-  login the camera stays where you left it and the windows wait at their spots; later, reopening
-  an app slides the desk to its window. A running app's new window still opens where KDE places
-  it. `RestoreSpots` turns it off.
+- Windows come back where they were after a login. After a login or a reboot every app reopened
+  its windows on the screen, so the whole layout lay piled on one monitor. The canvas now
+  remembers where every window was on the plane, and while a login brings the apps back it puts
+  their windows back there: the same title first, then the same size. The camera stays where you
+  left it and the windows wait at their spots. An app you open later opens where KDE places it,
+  in front of you, and dialogs, prompts and games are never moved (a first build also put a
+  reopened app back at its old spot and slid the desk after it, which read as new windows opening
+  at random places). `RestoreSpots` turns it off.
 - The desk's position survives a login. Only closing the overview wrote the camera, so after a
   slide, a fly or a bookmark on the desktop a login came back somewhere else; every landing now
   writes it.

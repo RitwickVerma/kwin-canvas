@@ -1480,20 +1480,34 @@ once, since a logout takes the effect down with the windows). What is written is
 nothing for a window a hand holds or KWin keeps in screen coordinates (maximized, tiled,
 fullscreen); a minimized window keeps its spot. A snapshot that changed nothing writes nothing.
 
-**Putting back.** An app *starts* when a window of it appears and no other window of it is open;
-the windows that follow within 15 s are part of the start (a browser restoring five windows). Only
-a starting app's windows are put back (`restoreSpot`, run by the new-window clock 900 ms after the
-window appears, so after Remember Window Positions has moved it): a running app's next window is a
-new one, and a window flying off to where an old one stood would be a surprise. Of the app's
-records not owned by an open window, `Logic.spotMatch` takes the same caption first, then the same
-size (within 8 px), then the same activity, the latest among equals, and the latest when nothing
-matches (an app with one window comes back where its last one was). The record is projected like
-every plane spot (`projectEntry`, so separate cameras park it when no frame holds it). Within a
-minute of the effect loading (a login) a window put back off the screen stays there and the camera
-stays where it was left; later, a reopened app's window off the screen is slid to, as an app's
-home is. A starting app's spot comes before its home: the home is where a running app's new
-windows open. A window put back is not then centred by `NewWindowsInView`. The canvas open at the
-start, a maximized or tiled window and a float are left as they open.
+**Which windows.** Only an app's own top-level windows have spots (`Logic.spotKind`): not a
+dialog, a utility, a splash, a window over another (transient, modal), nor a game (`isGameWindow`:
+fullscreen, or a Steam game's class). KWin puts a dialog over its owner, and a game places itself.
+An app made of nothing but such windows (a widget's settings dialog, a password prompt, a portal's
+file chooser) otherwise starts afresh each time it shows one, and went back to wherever the last
+one had been.
+
+**Putting back, at a login only.** An app *starts* when a window of it appears and no other window
+of it is open; the windows that follow within 15 s are part of the start (a browser restoring five
+windows). A starting app's windows are put back only while a login brings the apps back: the first
+90 s after the effect loads (`spotLoginMs`; the owner's last four logins brought their apps back 7
+to 84 s after KWin started), judged as each window appears (`restoreSpot`, run by the new-window
+clock 900 ms later, so after Remember Window Positions has moved it). A running app's next window
+is a new one. Of the app's records not owned by an open window, `Logic.spotMatch` takes the same
+caption first, then the same size (within 8 px), then the same activity, the latest among equals,
+and the latest when nothing matches (an app with one window comes back where its last one was).
+The record is projected like every plane spot (`projectEntry`, so separate cameras park it when no
+frame holds it). A window put back off the screen stays there and the camera stays where it was
+left: the layout comes back around it. A starting app's spot comes before its home, and a window
+put back is not then centred by `NewWindowsInView`. The canvas open at the start, a maximized or
+tiled window and a float are left as they open.
+
+After the login, an app opened again opens where KDE places it, in front of the hand that asked for
+it, and its home and `NewWindowsInView` apply as to any new window. The first build put a restarted
+app's window back at any time and slid the desk after it when it was off the screen; on
+2026-11-19 the owner asked why new windows opened at random places: a widget's settings dialog,
+an app of one window, had gone back to where the last one stood and taken the desk 2615 px away
+907 ms after it appeared (the new-window clock).
 
 **The camera.** A plane spot means nothing without the camera that maps it to the screen, and
 `ViewX`/`ViewY` were written only by the overview's commit: a slide, a fly, a bookmark or the map's
@@ -1505,11 +1519,11 @@ and after the canvas closes when it opened in between).
 
 `RestoreSpots` (on) turns the putting back and the writing off; the nest seeds it off, as it does the
 motion knobs, so a scenario never finds windows where an earlier one left them. `state` reports
-`spots=` (records held) and `restored=` (windows put back this session). Scenario `231`: a parked
-window's spot in the book, a reopened app put back and slid to, the effect reloaded as at a login
-(the camera as the closed desk left it, the window put back and not flown to), a running app's
-second window left alone, and the knob off; with `restoreSpot` and `persistView` disabled nine of
-its checks fail.
+`spots=` (records held), `restored=` (windows put back this session) and `restoring=` (1 while a
+login's apps may be put back). Scenario `231`: a parked window's spot in the book, the effect
+reloaded as at a login (the camera as the closed desk left it, the window put back and not flown
+to), a running app's second window left alone, a dialog given no spot, the knob off, and once the
+login is over an app opened again on the screen, not at its spot, with the desk where it was.
 
 ## Next
 

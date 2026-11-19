@@ -911,6 +911,19 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
 
 // ---- the spot book: a starting app's window goes back to where it was (spotMatch, spotTrim) ----
 {
+    // Only an app's own top-level window has a spot: a dialog, a utility, a splash, a window over
+    // another and a game are placed by KWin or themselves.
+    const top = { normal: true, dialog: false, utility: false, splash: false, transient: false, modal: false, fullScreen: false, cls: "org.kde.dolphin" };
+    const kind = function (o) { return L.spotKind(Object.assign({}, top, o)); };
+    ok("spotKind: an app's top-level window has a spot", kind({}) === true);
+    ok("spotKind: a dialog has none (a widget's settings, a password prompt)", kind({ dialog: true }) === false);
+    ok("spotKind: a window over another has none (a portal's file chooser)", kind({ transient: true }) === false);
+    ok("spotKind: a modal window has none", kind({ modal: true }) === false);
+    ok("spotKind: a utility or a splash has none", kind({ utility: true }) === false && kind({ splash: true }) === false);
+    ok("spotKind: a Steam game has none, windowed too", kind({ cls: "steam_app_1422450" }) === false);
+    ok("spotKind: a fullscreen window has none", kind({ fullScreen: true }) === false);
+    ok("spotKind: a window that is not normal has none", kind({ normal: false }) === false && L.spotKind(null) === false);
+
     const S = function (c, x, y, w, h, a, t) { return { c: c, x: x, y: y, w: w, h: h, a: a, t: t }; };
     const recs = [S("Home — Dolphin", 100, 200, 1200, 700, "A", 50), S("Trash — Dolphin", 9000, -400, 900, 600, "A", 90),
                   S("Music — Dolphin", -3000, 800, 1200, 700, "B", 70)];
