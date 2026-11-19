@@ -39,6 +39,26 @@ run_scenario() {
     read -r _ kn2 <<<"$(dominant "$OUT/135-b.png" "620x32+100+600")"
     assert_eq "the focus moved: KCalc's bar went inactive" "$ka2" "$kn"
     assert_eq "and Konsole's went active" "$kn2" "$ka"
+    # The state marks wear the colour scheme's accent: a floated window's pin is drawn in it,
+    # never in the fallback blue (KCalc, unfocused now, on its inactive bar). The first build read
+    # the window's QPalette, which QML cannot read into, so every mark wore the fallback blue,
+    # and the read built KWin's palette mid-binding: a binding loop for every window that opened
+    # (2026-11-19: twelve in a login).
+    local hl hlhex fbhex
+    hl=$(kreadconfig6 --file "$CONF/kdeglobals" --group "Colors:Selection" --key BackgroundNormal)
+    hl=${hl:-61,174,233}
+    # shellcheck disable=SC2086 # the three channels are meant to split
+    hlhex=$(printf '#%02X%02X%02X' ${hl//,/ })
+    fbhex="#2A6DDF"
+    count_in_bar() { magick "$OUT/135-c.png" -crop "480x32+100+120" +repage -alpha off -depth 8 -format %c histogram:info:- | awk -v h="$1" 'toupper($0) ~ h { s += $1 } END { print s + 0 }'; }
+    kwinjs 'workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("KCalc") >= 0) x.onAllDesktops = true; });' 1.2
+    shot "$OUT/135-c.png"
+    local hits fbhits; hits=$(count_in_bar "$hlhex"); fbhits=$(count_in_bar "$fbhex")
+    echo "# KCalc's floated bar: $hits px of the accent $hlhex, $fbhits of the fallback $fbhex"
+    assert_true "a floated window's pin wears the scheme's accent" "$hits" -ge 4
+    assert_eq "and not the fallback blue" "$fbhits" 0
+    kwinjs 'workspace.stackingOrder.forEach(function (x) { if (String(x.caption).indexOf("KCalc") >= 0) x.onAllDesktops = false; });' 1.2
+    assert_eq "the decoration reports no binding loop" "$(grep -cE 'kwin-canvas-decoration.*Binding loop' "$LOG")" 0
     # The close glyph kills the window. The click lands and the requestClose()
     # fires, but the nest's KWin cannot close a window at all - even its own
     # killWindow D-Bus is a no-op there - so the glyph's proof belongs to the

@@ -44,6 +44,25 @@ and back to where it began, the dock approach, and a wallpaper that is not a pic
 to 12% (all on the compositor's main thread). The idle bob was the one decorative
 cost, 21% of a core zoomed out, and is gone.
 
+**The decoration's accent, and doctor naming whose QML failed (2026-11-19).** `doctor` after the
+day's install: "FAIL qml 1 distinct QML errors from the effect since boot, the first: main.qml:32:1:
+QML Decoration: Binding loop detected for property "accent" (the canvas may be half built;
+reinstall...)". It was the decoration, not the effect (twelve times in the login, one per window),
+and not an install problem. The accent read `decoration.client.palette.highlight`: QML cannot read
+into a QPalette, so the highlight was always undefined and every mark wore the fallback blue (the
+owner's glyphs were #2A6DDF on a scheme whose highlight is #b6c7ed), and the read made KWin build
+the window's palette mid-binding. It now reads `SystemPalette`'s highlight, KWin's own palette.
+Probed in the nest: KWin's palette does not follow a scheme changed mid-session (a window opened
+after a changed `kdeglobals` and a `notifyChange(PaletteChanged)` still wore the old highlight),
+so a new scheme reaches the marks at the next login. Doctor's pattern `kwin-canvas[^ ]*` matched
+all three KWin packages and the sed dropped the package: each line is now named effect,
+decoration or wallpaper, and the advice says a relogin clears what is fixed, a returning one is a
+bug. Verified: `135` with `NEST_DECOR=canvas` gained the pin's colour (10 px of the scheme's
+#3DAEE9, 0 of the fallback) and no binding loop in the log; before the fix it failed both (0 px and
+10 of the fallback; five loops). `135`, `221`, `137`: 25 pass, 0 fail, 1 skip (the nest cannot
+close a window). `make unit` (cli 206 with the decoration's journal line), `make lint`. Not
+verified: the live session (the decoration loads at login).
+
 **New windows open in front again; a login alone puts windows back (2026-11-19).** The owner,
 after the reboot that loaded the spot book: "why do new windows open at random ass places". The
 live log, read without driving the session: "AI Usage Monitor Settings" (a widget's settings

@@ -84,8 +84,10 @@ honest. The lines below are the detail, newest first.
   canvas closed, the clusters are numbered as the canvas will number them when it opens. Going
   to or bringing a minimized window while the canvas is open no longer only restores it.
 - The canvas decoration wears your accent. The pin, the maximize pair and the keep-above and
-  keep-below marks were a fixed blue; they take the window's colour scheme's highlight now, and
-  the title bar grows with a title font too large for its 32 px.
+  keep-below marks were a fixed blue; they take the colour scheme's highlight now (the one KWin
+  read at login: a scheme changed mid-session reaches them at the next login), and the title bar
+  grows with a title font too large for its 32 px. (The first build read the window's palette,
+  which QML cannot read: the marks stayed blue and every new window logged a binding loop.)
 - Far jumps fly instead of teleporting. A slide to somewhere wholly off the screen (a click on
   the map widget, a cluster digit, a walk or an activation far away) crossed several screens at
   1:1 in a third of a second, which the eye sees as windows teleporting. It now eases out until

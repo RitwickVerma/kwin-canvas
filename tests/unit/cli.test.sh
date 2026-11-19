@@ -380,11 +380,18 @@ file:///home/u/.local/share/kwin/effects/kwin-canvas/contents/ui/ui.qml?rev=52:1
 qrc:/qt/qml/org/kde/plasma/components/Menu.qml:30:26: TypeError: Cannot read property 'width' of null
 kwin-canvas ui: loaded
 EOF
+cat > "$T/journal-decor" <<'EOF'
+file:///home/u/.local/share/kwin/decorations/kwin-canvas-decoration/contents/ui/main.qml:32:1: QML Decoration: Binding loop detected for property "accent":
+EOF
 doctor
-has "qml: none logged is OK" "OK    qml        no QML error from the effect logged since boot"
+has "qml: none logged is OK" "OK    qml        no QML error from the canvas logged since boot"
 JOURNAL="$T/journal-bad" doctor
-has "qml: the effect's errors fail, counted once each" "FAIL  qml        2 distinct QML errors from the effect since boot, the first: ui.qml:1430:9: QML Loader"
+has "qml: the effect's errors fail, counted once each, named as the effect's" "FAIL  qml        2 distinct QML errors from the canvas since boot, the first: effect ui.qml:1430:9: QML Loader"
 lacks "qml: Plasma's own Menu.qml is not ours" "Menu.qml"
+has "qml: the advice holds for a stale session and a bug alike" "a relogin onto the installed code clears what is already fixed"
+lacks "qml: no blind reinstall advice" "half built"
+JOURNAL="$T/journal-decor" doctor
+has "qml: the decoration's error is named as the decoration's, not the effect's" "FAIL  qml        1 distinct QML errors from the canvas since boot, the first: decoration main.qml:32:1: QML Decoration"
 ck() { out=$(env PATH="$T/bin:$PATH" DOCTOR_PLUGIN_DIR="$PLUG" DOCTOR_KWIN_VERSION="${KWV:-6.8.0}" DOCTOR_JOURNAL_FILE="$1" bash "$CLI" check "${@:2}" 2>&1); rc=$?; }
 ck "$T/journal-none"
 exit_is "check: plugin matches and no QML error exits 0" 0

@@ -45,13 +45,16 @@ Decoration {
     // The colour scheme's title bar and its text, each for the window's
     // active or inactive state (the options follow the client's focus).
     readonly property color ink: options.fontColor
-    // The accent the state marks wear: the window's own palette's highlight, which is the colour
-    // scheme's accent (and a window with its own scheme brings its own); the old fixed blue only
-    // if the palette cannot be read.
-    readonly property color accent: {
-        const p = decoration.client.palette;
-        return p && p.highlight !== undefined ? p.highlight : "#2a6ddf";
+    // The accent the state marks wear: the colour scheme's highlight, from KWin's own palette,
+    // which follows the scheme. Not the window's palette (decoration.client.palette): QML cannot
+    // read into a QPalette, so its highlight was always undefined and every mark wore a fallback
+    // blue, and the read made KWin build the window's palette mid-binding, a binding loop for
+    // every window that opened (2026-11-19).
+    SystemPalette {
+        id: schemePalette
+        colorGroup: SystemPalette.Active
     }
+    readonly property color accent: schemePalette.highlight
     // The bar's height: 32 px, or the title font's line and a margin above and below when the
     // font is larger, so a big title font is never clipped.
     readonly property int band: Math.max(32, Math.ceil(titleMetrics.height) + 12)
