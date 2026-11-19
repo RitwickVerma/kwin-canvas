@@ -44,6 +44,29 @@ and back to where it began, the dock approach, and a wallpaper that is not a pic
 to 12% (all on the compositor's main thread). The idle bob was the one decorative
 cost, 21% of a core zoomed out, and is gone.
 
+**The canvas off a game's full card (2026-11-16, verified 2026-11-19).** The owner: "why 16 fps in
+deadlock?? its not that AAA!!". Read live without driving it: the RTX 3080's 10 GB were 9749 MiB
+used, 132 MiB free (Deadlock 6.9 GB, the desktop about 2.8 GB: KWin 0.5, plasmashell 0.26, serein,
+Steam's web views, the Wallpaper Engine renderer and zed about 0.2 each), the GPU at 92% busy on
+172 of 370 W, 4.6 GB of the game in zram, and the kernel log full of `NVRM: dmaAllocMapping_GM107:
+can't update VA space`, as in every long Deadlock session since Nov 5 on drivers 615 and 620 alike.
+The card is too small for the game plus the desktop; the canvas's part: every open started at full
+quality and stepped down only after a second load reading, two seconds later, so on a full card
+each open first asked the driver for its textures. 14 of that evening's 42 bursts of driver faults
+began within ten seconds of an open (four times chance). Fixed: the card's memory is a level, not a
+spike (`Logic.ladderStep`): an open reads the card in process before its first frame (`openRung`,
+the plugin's `gpuMemory`) and starts at that rung, its first full reading comes at once, a quiet
+slide's too, and a fuller card steps down without waiting; CPU, GPU and RAM load still wait for
+two readings. `116`'s cleanup deleted the nest's pinned thresholds instead of restoring them, so
+the scenarios after it ran on the effect's defaults and a host busy with the suite (cpu=99) stepped
+`10-open-identity`'s golden down to bare rectangles; it now writes them back at 100. Verified:
+`make unit` (logic 393: `ladderStep`), `make lint`; in the hidden nest `116`, `10`, `170`, `211`,
+`71`, `145`, `150`, `154`, `169`, `171` and `213`, 110 pass, 0 fail, with `116`'s new checks (an
+open on a full card bare from its first frame with no window copied, a freed card full from its
+first frame, a quiet slide bare on a full card and full once freed). Not verified: that the game
+keeps its frame rate with the canvas in use (no frame-rate log), and the rest of the faults, which
+were not the canvas's: the owner was told which apps hold the card.
+
 **Windows come back where they were (2026-11-16).** The owner: "why are the windows forgetting their
 positions", "everything ends up clumped together in the screen, all clusters back to 0,0". Two
 causes, read from the live session without driving it. The session's `main.qml` was Nov 5's (its

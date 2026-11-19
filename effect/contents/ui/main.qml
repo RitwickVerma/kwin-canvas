@@ -107,6 +107,32 @@ KWin.SceneEffect {
     property real vramBusy: 0
     property int quietSamples: 0
     property int hotSamples: 0
+    // The rung the card's memory alone asked for at the last reading, which
+    // the next open starts at; and whether the reading pending is an open's
+    // first, which replaces that guess (Logic.ladderStep).
+    property int vramWall: 0
+    property bool ladderFirst: false
+    // The rung the GPU's memory alone asks for at a reading of used percent: a
+    // full card is a driver that fails the next allocation (it wedged on
+    // 2026-10-30), and the canvas's textures are allocations. Minimal drops the
+    // blur's, bare the window pictures'.
+    function vramRungAt(used) {
+        const reduced = Number(configuration.VramReduced);
+        const minimal = Number(configuration.VramMinimal);
+        const bare = Number(configuration.VramBare);
+        return Logic.qualityFor(used, Number.isFinite(reduced) ? reduced : 80, Number.isFinite(minimal) ? minimal : 88, Number.isFinite(bare) ? bare : 95);
+    }
+    // The rung an open starts at: the card read now, in process, before the
+    // scene asks it for anything (the plugin's canvasPlugin.gpuMemory, one NVML
+    // call). Without NVML, or with an older plugin, the last reading's.
+    function openRung() {
+        const used = gpuMemoryReadable && typeof canvasPlugin !== "undefined" && canvasPlugin && typeof canvasPlugin.gpuMemory === "function" ? Number(canvasPlugin.gpuMemory()) : -1;
+        if (Number.isFinite(used) && used >= 0 && used <= 100) {
+            vramBusy = used;
+            vramWall = vramRungAt(used);
+        }
+        return vramWall;
+    }
     function qualityCap() {
         switch (String(configuration.QualityMode)) {
             case "Full": return 0;
@@ -133,6 +159,7 @@ KWin.SceneEffect {
             ql = qualityCap();
             quietSamples = 0;
             hotSamples = 0;
+            ladderFirst = false;
             return;
         }
         const cpuReduced = Number(configuration.CpuReduced);
@@ -147,37 +174,27 @@ KWin.SceneEffect {
         const memMinimal = Number(configuration.MemMinimal);
         const memBare = Number(configuration.MemBare);
         const memQl = Logic.qualityFor(mm, Number.isFinite(memReduced) ? memReduced : 80, Number.isFinite(memMinimal) ? memMinimal : 90, Number.isFinite(memBare) ? memBare : 97);
-        // The GPU's memory: a full card is a driver that fails the next
-        // allocation (it wedged on 2026-10-30), and the canvas's textures are
-        // allocations. Minimal drops the blur's, bare the window pictures'.
-        const vramReduced = Number(configuration.VramReduced);
-        const vramMinimal = Number(configuration.VramMinimal);
-        const vramBare = Number(configuration.VramBare);
-        const vramQl = Logic.qualityFor(vv, Number.isFinite(vramReduced) ? vramReduced : 80, Number.isFinite(vramMinimal) ? vramMinimal : 88, Number.isFinite(vramBare) ? vramBare : 95);
+        const vramQl = vramRungAt(vv);
         // The four channels race each other: whichever sees the worse
         // pressure sets the step, and a calm machine must clear ALL of them
         // before the ladder climbs back up.
         const target = Math.max(cpuQl, gpuQl, memQl, vramQl);
-        // Both directions wait for two consecutive samples: a launch spike
-        // cannot flash the canvas down, and a single breath cannot flash it
-        // up. A step down to the bare rungs announces itself, so it never
-        // reads as a broken desktop.
-        if (target > ql) {
-            hotSamples++;
-            quietSamples = 0;
-            if (hotSamples >= 2) {
-                if (target >= 2) toast("The canvas steps down to keep the machine yours");
-                ql = target;
-                hotSamples = 0;
-            }
-        } else if (target < ql) {
-            quietSamples++;
-            hotSamples = 0;
-            if (quietSamples >= 2) { ql = target; quietSamples = 0; if (ql === 0) toast("The canvas is back to full"); }
-        } else {
-            quietSamples = 0;
-            hotSamples = 0;
-        }
+        // Load waits for two readings in a row either way; the card's memory
+        // steps down at once, since the canvas's own textures are what would
+        // tip a game's full card over (Logic.ladderStep). An open's first reading
+        // replaces the rung the open guessed from the last one. A step down to
+        // the bare rungs announces itself, so it never reads as a broken
+        // desktop; the first reading's climb back from a guess does not.
+        const was = ql;
+        const first = ladderFirst;
+        const next = Logic.ladderStep({ ql: ql, hot: hotSamples, quiet: quietSamples }, target, vramQl, first);
+        ladderFirst = false;
+        vramWall = vramQl;
+        ql = next.ql;
+        hotSamples = next.hot;
+        quietSamples = next.quiet;
+        if (ql >= 2 && was < 2) toast("The canvas steps down to keep the machine yours");
+        else if (ql === 0 && was > 0 && !first) toast("The canvas is back to full");
     }
     // Plane input: under the preload shim (dev/spike/preload) KWin's pointer
     // chain works in plane coordinates, plane = (screen - o) / s, where a
@@ -4100,18 +4117,21 @@ KWin.SceneEffect {
         camStop();
         graspJumped = false;
         quiet = !!quietMode;
-        // Every open starts at the rung the mode asks for, not the one the
-        // last session ended on: the ladder is only sampled while the full
-        // overworld is open, so a spike from a game or a build, long gone,
-        // would greet this open with plain rectangles until two calm readings
-        // came in - and a quiet slide, which takes no reading at all, would
-        // keep them for good (a game's full GPU memory left every slide bare
-        // for hours). The full overworld samples now and then every two
-        // seconds; a quiet slide is too short to need the probe.
-        ql = String(configuration.QualityMode) === "Auto" ? 0 : qualityCap();
+        // Every open starts at the rung the card's memory asks for now
+        // (openRung), not at the one the last session ended on: a load spike
+        // from a build, long gone, must not greet this open with plain
+        // rectangles, but a card a game has filled must not get the canvas's
+        // textures for the two seconds a second reading takes - the driver
+        // faults making room for them under the game. The open then reads the
+        // whole machine at once, a quiet slide included, and that first
+        // reading sets the memory's rung either way (Logic.ladderStep), so a
+        // guess from an older plugin never leaves even a slide bare. The full
+        // overworld then reads every two seconds.
+        ql = String(configuration.QualityMode) === "Auto" ? openRung() : qualityCap();
         hotSamples = 0;
         quietSamples = 0;
-        if (!quiet && String(configuration.QualityMode) === "Auto") loadCall.call();
+        ladderFirst = String(configuration.QualityMode) === "Auto";
+        if (ladderFirst) loadCall.call();
         // Fresh open: the pointer is the hand's until the tick sees the seam.
         seamPark = false;
         // Separate cameras: the one on the pointer's monitor is the active one, and the

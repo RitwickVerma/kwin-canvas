@@ -1146,6 +1146,41 @@ function qualityFor(busy, reduced, minimal, bare) {
     return 0;
 }
 
+// One reading's step on the fidelity ladder. state is { ql, hot, quiet }: the rung and the
+// count of busy or calm readings in a row. target is the rung the worst channel asks for;
+// wall is the rung the GPU's memory alone asks for (never above target).
+// CPU, GPU and RAM load are rates: a launch spike must not flash the canvas down, nor one
+// calm breath flash it up, so a step either way waits for two readings in a row.
+// The card's memory is a level, and the canvas's own textures are what tip a full card
+// over while a game holds the rest (2026-11-16: 14 of an evening's 42 bursts of NVIDIA
+// driver faults began within ten seconds of an open, four times chance). So the memory's
+// rung applies at once on the way down. On the way up it waits for two calm readings like the rest, so the canvas's own
+// textures cannot make it flutter at a threshold.
+// first marks an open's first reading: the open started at the last reading's wall, a
+// guess, and the reading replaces it in either direction, so a card freed since can never
+// leave the canvas bare.
+function ladderStep(state, target, wall, first) {
+    let ql = Number(state && state.ql) || 0;
+    let hot = Number(state && state.hot) || 0;
+    let quiet = Number(state && state.quiet) || 0;
+    if (first || wall > ql) {
+        ql = wall;
+        hot = 0;
+        quiet = 0;
+    }
+    if (target > ql) {
+        quiet = 0;
+        if (++hot >= 2) { ql = target; hot = 0; }
+    } else if (target < ql) {
+        hot = 0;
+        if (++quiet >= 2) { ql = target; quiet = 0; }
+    } else {
+        hot = 0;
+        quiet = 0;
+    }
+    return { ql: ql, hot: hot, quiet: quiet };
+}
+
 // The tidy pack: windows (sorted top to bottom, then left to right) laid
 // into left-to-right rows from the origin, wrapping when the next item
 // would run past the row's width. The gap applies between items and

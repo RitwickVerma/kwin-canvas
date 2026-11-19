@@ -182,7 +182,7 @@ RestoreSpots=false
 # The fidelity ladder reads the machine's real load, and the machine that
 # runs the suite IS busy with the suite: the thresholds are pinned at 100 so
 # a scenario's golden never depends on how hard the host is breathing.
-# 116-quality overrides them and deletes them itself.
+# 116-quality overrides them and puts them back at 100 itself.
 CpuReduced=100
 CpuMinimal=100
 CpuBare=100

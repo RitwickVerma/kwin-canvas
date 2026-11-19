@@ -34,12 +34,16 @@ wait_ql() {   # want [tries]
 }
 
 # Every early exit must put the knobs back: a leaked threshold follows the
-# suite into the next scenario's readings.
+# suite into the next scenario's readings. "Back" is the nest's pin at 100
+# (dev/nest.sh), not the effect's defaults: deleting the keys left every later
+# scenario on the defaults, so a host busy with the suite (cpu=99) stepped the
+# next golden's open down to bare rectangles.
 restore_quality_knobs() {
     setcfg QualityMode Auto
-    for k in QualityMode CpuBare CpuMinimal CpuReduced GpuBare GpuMinimal GpuReduced MemBare MemMinimal MemReduced VramBare VramMinimal VramReduced; do
-        kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key "$k" --delete >/dev/null
+    for k in CpuBare CpuMinimal CpuReduced GpuBare GpuMinimal GpuReduced MemBare MemMinimal MemReduced VramBare VramMinimal VramReduced; do
+        kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key "$k" -- 100 >/dev/null
     done
+    kwriteconfig6 --file "$CONF/kwinrc" --group Effect-kwin-canvas --key QualityMode --delete >/dev/null
     c cancel
     arrange >/dev/null
 }
@@ -119,8 +123,54 @@ run_scenario() {
     if ! wait_ql 2; then fail "a full GPU memory alone steps to minimal (ql=$(sget ql))"; restore_quality_knobs; return; fi
     c state
     assert_eq "a full GPU memory alone steps the ladder to minimal" "$(sget ql)" 2
-    # Back to the nest's pin, so the host's real card cannot move the checks below.
+
+    # The card's memory is a level, not a spike: a game that fills the card leaves no room
+    # for the canvas's textures, so the memory's rung must not wait for the second reading
+    # (two seconds) that a load spike waits for. The open reads the card before the scene
+    # asks it for anything, so an open on a full card is bare from its first frame and
+    # copies no window's picture; the checks read at once, and again at 0.5 s, before the
+    # overworld's next pulse.
+    setcfg VramMinimal 100; setcfg VramReduced 100
+    if ! wait_ql 0 60; then fail "the ladder stepped back up for the open checks (ql=$(sget ql))"; restore_quality_knobs; return; fi
+    c cancel
+    sleep 0.4
+    setcfg VramBare 0
+    c open
+    c state
+    assert_eq "an open on a full card is bare from its first frame" "$(sget ql)" 3
+    local lean; lean=$(( $(sget offscreen) - $(sget popups) ))
+    assert_true "an open on a full card copies no window's picture (offscreen ${lean} besides popups, bare ${bare})" "$lean" -le "$bare"
+    sleep 0.5
+    c state
+    assert_eq "and its first reading keeps it bare" "$(sget ql)" 3
+    # A freed card: the next open wears everything at once.
+    c cancel
+    sleep 0.4
+    setcfg VramBare 100
+    c open
+    c state
+    assert_eq "an open on a freed card wears everything from its first frame" "$(sget ql)" 0
+    sleep 0.5
+    c state
+    assert_eq "and its first reading keeps everything" "$(sget ql)" 0
+    # A quiet slide reads the card too: bare on a full card, and full again once it is freed.
+    c cancel
+    sleep 0.4
+    setcfg VramBare 0
+    c "slide 600 0"
+    sleep 1.2
+    c state
+    assert_eq "a quiet slide on a full card goes bare" "$(sget ql)" 3
+    setcfg VramBare 100
+    c "slide -600 0"
+    sleep 1.2
+    c state
+    assert_eq "a quiet slide on a freed card wears everything" "$(sget ql)" 0
+
+    # Back to the nest's pin, so the host's real card cannot move the checks below, and
+    # the overworld open again for them.
     setcfg VramBare 100; setcfg VramMinimal 100; setcfg VramReduced 100
+    open_1to1
 
     # A fixed mode overrides the ladder: Full holds everything even with the
     # thresholds at zero.

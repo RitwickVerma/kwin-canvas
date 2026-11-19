@@ -593,6 +593,21 @@ ok("an overlap is zero apart", L.clusterDist(rect(1, 0, 0, 200, 200), rect(2, 10
         return L.qualityFor(0, 0, 100, 100) === 1 && L.qualityFor(0, 100, 0, 100) === 2 && L.qualityFor(0, 100, 100, 0) === 3;
     })());
 
+    // One reading's step: load waits for two readings either way, the card's memory
+    // steps down at once, and an open's first reading replaces the open's guess.
+    const step = (s, target, wall, first) => L.ladderStep(s, target, wall, first);
+    const same = (a, b) => a.ql === b.ql && a.hot === b.hot && a.quiet === b.quiet;
+    ok("a load spike waits for a second reading", same(step({ ql: 0, hot: 0, quiet: 0 }, 3, 0, false), { ql: 0, hot: 1, quiet: 0 }));
+    ok("a second busy reading steps down", same(step({ ql: 0, hot: 1, quiet: 0 }, 3, 0, false), { ql: 3, hot: 0, quiet: 0 }));
+    ok("a full card steps down at its first reading", same(step({ ql: 0, hot: 0, quiet: 0 }, 3, 3, false), { ql: 3, hot: 0, quiet: 0 }));
+    ok("a fuller card steps further at once, and the load past it still waits", same(step({ ql: 1, hot: 1, quiet: 0 }, 3, 2, false), { ql: 2, hot: 1, quiet: 0 }));
+    ok("a freed card waits for two calm readings to climb", same(step({ ql: 3, hot: 0, quiet: 0 }, 0, 0, false), { ql: 3, hot: 0, quiet: 1 }));
+    ok("and climbs on the second", same(step({ ql: 3, hot: 0, quiet: 1 }, 0, 0, false), { ql: 0, hot: 0, quiet: 0 }));
+    ok("an open's first reading replaces a stale bare guess", same(step({ ql: 3, hot: 0, quiet: 0 }, 0, 0, true), { ql: 0, hot: 0, quiet: 0 }));
+    ok("an open's first reading keeps a load spike waiting", same(step({ ql: 3, hot: 0, quiet: 0 }, 2, 0, true), { ql: 0, hot: 1, quiet: 0 }));
+    ok("an open's first reading confirms a full card", same(step({ ql: 3, hot: 0, quiet: 0 }, 3, 3, true), { ql: 3, hot: 0, quiet: 0 }));
+    ok("a missing state reads as full and calm", same(step(null, 0, 0, false), { ql: 0, hot: 0, quiet: 0 }));
+
     // The tidy pack: reading order (top to bottom, then left to right),
     // left-to-right rows, the gap between items and between rows, and the
     // wrap at the row's width.

@@ -8,6 +8,14 @@ float, dodge and snap; two monitors share one plane; a panel decor, a map widget
 decoration come with it; and `kwin-canvas doctor` and `setup` keep the install and KDE's settings
 honest. The lines below are the detail, newest first.
 
+- The canvas no longer crowds a game off a full graphics card. Every open started at full
+  quality and stepped down only after a second load reading two seconds later, so with a game
+  filling the card each open first asked the NVIDIA driver for the canvas's textures; 14 of an
+  evening's 42 bursts of driver faults began within ten seconds of an open, four times chance.
+  The card's memory now counts as a level, not a spike: an open starts at the rung the card
+  asked for at the last reading, the open's first reading (taken at once, a quiet slide's too)
+  corrects that either way, and a fuller card steps down at once. CPU, GPU and RAM load still
+  wait for two readings, so a launch spike cannot flash the canvas down.
 - Windows come back where they were. After a login or a reboot every app reopened its windows on
   the screen, so the whole layout lay piled on one monitor; an app closed and opened again came
   back on the screen too. The canvas now remembers where every window was on the plane, and when
